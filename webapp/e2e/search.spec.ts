@@ -3,7 +3,9 @@ import { labelHash } from "../src/crypto/registration.ts"
 import { hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import { GRACE_S } from "../src/screens/names.ts"
-import { control, LINKS_HEADING, onStep, payButton, search, shot, startOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered } from "./helpers.ts"
+import {
+  control, LINKS_HEADING, onStep, payButton, REGISTRATION_MS, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
+} from "./helpers.ts"
 
 test.afterEach(async ({ request }) => {
   await control(request, "search", { chainDown: false, limitSeconds: 0, invoiceError: null, cancelStillOpen: false, findLimitSeconds: 0 })
@@ -97,6 +99,20 @@ test("the checkout explains every refusal and keeps the order", async ({ page, r
   await page.getByRole("button", { name: "Try again" }).click()
   await expect(page.getByRole("heading", { name: "The price changed" })).toBeVisible()
   await shot(page, "N3b-price-changed")
+})
+
+test("a name registered by someone else while its order is checked says so at Pay, and that nothing was charged", async ({ page, request }) => {
+  const label = uniqueLabel("gone")
+  await search(page, label)
+  await toReview(page)
+  await control(request, "take", { label })
+  await expect.poll(async () => (await searchName(request, label)).status, { timeout: REGISTRATION_MS }).toBe("registered")
+  await payButton(page).click()
+  await expect(onStep(page).getByRole("heading", { name: "Someone registered it first" })).toBeVisible()
+  await expect(onStep(page).getByText(`${label}.simplex was registered a moment ago. Nothing was charged.`)).toBeVisible()
+  await shot(page, "N3g-taken-at-pay")
+  await onStep(page).getByRole("button", { name: "Search another name" }).click()
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("")
 })
 
 test("without storage the name code step says the code shown is the only copy, and the order still registers", async ({ browser, request }) => {

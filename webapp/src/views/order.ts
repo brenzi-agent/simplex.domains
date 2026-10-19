@@ -358,6 +358,11 @@ function orderLine({ view, record, invoice }: OrderState): HTMLElement {
 
 const TICKER: Record<"btc" | "xmr", string> = { btc: "BTC", xmr: "XMR" }
 
+// the invoice an earlier try made, which a checkout opened in place of one with the method it chose
+let instead: string | null = null
+export const openedInstead = (invoiceId: string) => { instead = invoiceId }
+const insteadLine = (invoice: api.InvoiceView) => instead === invoice.invoiceId ? el("p", { class: "note" }, "An earlier try already made this invoice, so it opened instead of a new one.") : null
+
 function copyField(label: string, value: string): HTMLElement {
   // A long value, as an address, may break between any two letters, which the field's balance evens out: WebKit
   // balances only between the breaks it is given, Firefox only in a word that breaks anywhere (.word).
@@ -396,6 +401,7 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
   return screen({ title: `Pay with ${methodName(coin)}`, lead: "Bookmark this page to come back to this payment." },
     partial ? alertBox("warn", "alert", "Part of the payment arrived", partSentence(inv, coin)) : null,
     orderLine(s),
+    insteadLine(inv),
     el("div", { class: "qr-grid" },
       uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`), el("a", { href: uri }, "Open in wallet")) : null,
       copyField(`${partial ? "Rest to send" : "Amount"} in ${TICKER[coin]}`, due),
@@ -476,7 +482,7 @@ function buildPayCard(s: OrderState): HTMLElement {
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
   const forgetful = store.canPersist() ? null : alertBox("warn", "alert", "This browser cannot remember a card payment",
     "After paying, keep this page open until it moves on. Reloading would show the card form again.")
-  return screen({ title: "Pay by card" }, orderLine(s), forgetful, form, actionNote(s, null), payButton)
+  return screen({ title: "Pay by card" }, orderLine(s), insteadLine(invoice), forgetful, form, actionNote(s, null), payButton)
 }
 
 function cardStandIn(form: HTMLElement): void {

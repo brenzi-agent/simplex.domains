@@ -31,6 +31,7 @@ const STATES: Record<CheckoutKind, CheckoutState> = {
   "status:price-changed": open({ checkout: checkout({ price: 2500 }), refusal: "price-changed" }),
   "status:too-many": open({ hold: { until: NOW + 30_000, lead: NO_LEAD }, refusal: "too-many" }),
   "status:failed": open({ refusal: "failed" }),
+  "status:taken": open({ refusal: "taken" }),
 }
 
 describe("screenOf", () => {
@@ -44,6 +45,7 @@ describe("screenOf", () => {
     ["an order refused for a changed price", STATES["status:price-changed"], "status:price-changed"],
     ["an order that met a rate limit", STATES["status:too-many"], "status:too-many"],
     ["an order that did not go through", STATES["status:failed"], "status:failed"],
+    ["an order for a name registered meanwhile", STATES["status:taken"], "status:taken"],
   ]
   it.each(cases)("%s", (_, state, kind) => {
     expect(screenOf(state)).toBe(kind)
@@ -92,7 +94,8 @@ describe("changeOf", () => {
   })
   it("events that are not the stored checkout's change nothing in it", () => {
     const others: CheckoutEvent[] = [opened(s), { type: "waiting-settled" }, { type: "open-order-seen", order: OPEN_ORDER },
-      { type: "send-started" }, { type: "order-refused", reason: "failed" }, { type: "hold-started", until: NOW }, { type: "hold-ended" }, { type: "code-opened" }]
+      { type: "send-started" }, { type: "order-refused", reason: "failed" }, { type: "order-refused", reason: "taken" }, { type: "hold-started", until: NOW }, { type: "hold-ended" },
+      { type: "code-opened" }]
     for (const e of others) expect(changeOf(s, e), e.type).toBeNull()
   })
 })
@@ -174,6 +177,9 @@ describe("reduce", () => {
   })
   it("order-refused with no reason the checkout answers says it did not go through", () => {
     expect(reduce({ ...s, sending: true, busy: true }, { type: "order-refused", reason: "failed" })).toEqual({ ...s, refusal: "failed" })
+  })
+  it("order-refused for a name registered meanwhile says so, with the checkout as it was", () => {
+    expect(reduce({ ...s, sending: true, busy: true }, { type: "order-refused", reason: "taken" })).toEqual({ ...s, refusal: "taken" })
   })
   it("price-changed keeps the new price and says so", () => {
     expect(reduce({ ...s, sending: true, busy: true }, { type: "price-changed", price: 2500 })).toEqual({ ...s, checkout: checkout({ price: 2500 }), refusal: "price-changed" })

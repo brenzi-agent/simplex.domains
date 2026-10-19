@@ -15,6 +15,7 @@ import {
   asStep, type Builder, currentRoute, draw, focusOn, go, goFrom, isRedraw, isRoute, kept, keptLive, limitScreen, outcome, redirect, refresh, screen, searchLink, whenLeaving,
 } from "./shell.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./hold.ts"
+import { openedInstead } from "./order.ts"
 
 const METHOD_ORDER: Method[] = ["card", "btc", "xmr"]
 const CODE_FIELD = "checkout-code"
@@ -297,6 +298,11 @@ function buildTooMany({ checkout: c, hold }: CheckoutState, signal: AbortSignal)
   return limitScreen(hold, refresh, searchLink(c.label, c.appOwner), signal)
 }
 
+function buildTaken({ checkout: c }: CheckoutState): HTMLElement {
+  return outcome({ tone: "info", icon: "info", title: "Someone registered it first", text: [nameText(c.label, c.chain.tld), " was registered a moment ago. Nothing was charged."],
+    action: btn("Search another name", "", () => go(searchLink("", c.appOwner))) })
+}
+
 function buildFailed(s: CheckoutState): HTMLElement {
   const c = s.checkout
   // the same order is sent again from here; Back leaves it for the search
@@ -312,6 +318,7 @@ const BUILDERS: Record<CheckoutKind, Builder<CheckoutState>> = {
   "status:price-changed": buildPriceChanged,
   "status:too-many": buildTooMany,
   "status:failed": buildFailed,
+  "status:taken": buildTaken,
 }
 
 async function submitOrder(): Promise<void> {
@@ -358,7 +365,7 @@ async function sendOrder(): Promise<void> {
     built = await flow.orderRequest(draft)
     if (c.code) {
       const res = await api.registerWithCode(built.request, c.code.display)
-      if (res.invoiceId) return await openInvoice(draft, built, res.invoiceId, done)
+      if (res.invoiceId) return await openInvoice(draft, built, res.invoiceId, "code", done)
       store.saveOrder({ ...flow.recordFor(draft, built, "code", 0, { registrationId: res.registrationId, invoiceId: null }), prepaidCode: c.code.display })
       return done(store.orderUrl({ invoiceId: null, registrationId: res.registrationId }))
     }
@@ -367,7 +374,7 @@ async function sendOrder(): Promise<void> {
     store.saveOrder(flow.recordFor(draft, built, method, paid, { registrationId: res.registration.id, invoiceId: res.invoiceId }))
     done(store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id }))
   } catch (e) {
-    if (built && e instanceof api.ApiError && e.code === "bad_request" && typeof e.body.invoiceId === "string") return openInvoice(draft, built, e.body.invoiceId, done)
+    if (built && e instanceof api.ApiError && e.code === "bad_request" && typeof e.body.invoiceId === "string") return openInvoice(draft, built, e.body.invoiceId, c.method, done)
     // the order did not go: its checkout is open to change again before the error page sends the buyer back to it
     session.stopSending(c)
     // a rate limit holds the tab's actions wherever the buyer has gone meanwhile
@@ -381,10 +388,12 @@ async function sendOrder(): Promise<void> {
   }
 }
 
-// This commitment already has an order, so this browser's code owns it: its record is kept before it opens.
-async function openInvoice(draft: flow.Draft, built: flow.BuiltOrder, invoiceId: string, done: (url: string) => void): Promise<void> {
+// This commitment already has an order, so this browser's code owns it: its record is kept before it opens, and its page
+// says why it pays another way than the one chosen.
+async function openInvoice(draft: flow.Draft, built: flow.BuiltOrder, invoiceId: string, chosen: Method | "code", done: (url: string) => void): Promise<void> {
   const invoice = await api.readInvoice(invoiceId).catch(() => null)
   if (invoice) store.saveOrder(flow.recordFor(draft, built, invoice.cryptoCurrency ?? "card", invoice.amount, { registrationId: invoice.registration.id, invoiceId }))
+  if (invoice && (invoice.cryptoCurrency ?? "card") !== chosen) openedInstead(invoiceId)
   done(store.invoiceUrl(invoiceId))
 }
 
@@ -393,7 +402,7 @@ function orderError(e: unknown, c: session.Checkout): void {
   if (code === "name_taken") {
     // no order was made, so the name code made for it owns nothing to find later
     if (c.ownerCode) store.dropPending(c.ownerCode)
-    return go(searchLink(c.label, c.appOwner))
+    return void act({ type: "order-refused", reason: "taken" })
   }
   if (code in CODE_ERRORS) {
     // the field is emptied for another code, so a verdict on the one it held is moot

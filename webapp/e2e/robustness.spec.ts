@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  checkoutCode, checkoutOwnerCode, CODE_HEADING, control, mockRegistration, onStep, openCode, payButton, REGISTRATION_MS, registrationOf, savedToReview, search, shot, startOrder, test,
-  toCodeStep, toReview, uniqueLabel, waitRegistered,
+  CHECKOUT_KEY, checkoutCode, checkoutOwnerCode, CODE_HEADING, control, mockRegistration, onStep, openCode, payButton, REGISTRATION_MS, registrationOf, savedToReview, search, shot,
+  startOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 test("a second tab's order survives a write from a tab opened earlier", async ({ browser, request }) => {
@@ -575,4 +575,24 @@ test("Back returns to where a page was left, a slow page included, and a reload 
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   await scrolledNear(page, orderPlace)
   await page.unroute(`**/api/invoice/${invoiceId}*`)
+})
+
+test("a checkout copied to another tab that pays another way opens the first tab's invoice and says why", async ({ page }) => {
+  await search(page, uniqueLabel("copy"))
+  await toReview(page)
+  const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  const invoiceId = new URL(page.url()).searchParams.get("order")
+  const copy = await page.context().newPage()
+  // a duplicated tab starts with the first tab's session, the same checkout and its name code
+  await copy.addInitScript(([key, value]) => { if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, value) }, [CHECKOUT_KEY, checkout])
+  await copy.goto("/#/checkout")
+  await copy.getByRole("radio", { name: "Monero" }).click()
+  await payButton(copy).click()
+  await copy.waitForURL(/\?order=/)
+  expect(new URL(copy.url()).searchParams.get("order"), "the order's one invoice").toBe(invoiceId)
+  await expect(copy.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await expect(copy.getByText("An earlier try already made this invoice, so it opened instead of a new one.")).toBeVisible()
+  await copy.close()
 })

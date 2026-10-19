@@ -6,7 +6,7 @@ import type { CheckoutStep } from "./routes.ts"
 
 export const FALLBACK_METHOD: Record<Method, Method> = { card: "btc", btc: "xmr", xmr: "btc" }
 
-export type Refusal = "price-changed" | "too-many" | "failed"
+export type Refusal = "price-changed" | "too-many" | "failed" | "taken"
 export type CheckoutKind = CheckoutStep | `status:${Refusal}`
 
 export interface WaitingOrder { registrationId: string; invoiceId: string }
@@ -37,7 +37,7 @@ export type CheckoutEvent =
   | { type: "open-order-seen"; order: OpenOrder }
   | { type: "send-started" }
   | { type: "order-refused"; reason: "code"; error: string }
-  | { type: "order-refused"; reason: "method" | "failed" }
+  | { type: "order-refused"; reason: "method" | "failed" | "taken" }
   | { type: "price-changed"; price: number }
   | { type: "hold-started"; until: number }
   | { type: "hold-ended" }
@@ -78,7 +78,7 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
     case "waiting-settled": return { ...s, waiting: null }
     case "open-order-seen": return { ...s, openOrder: e.order }
     case "send-started": return { ...s, sending: true, busy: true }
-    case "order-refused": return unsent(s, { checkout, refusal: e.reason === "failed" ? "failed" : null })
+    case "order-refused": return unsent(s, { checkout, refusal: e.reason === "failed" || e.reason === "taken" ? e.reason : null })
     case "price-changed": return unsent(s, { checkout, refusal: "price-changed" })
     case "hold-started": return unsent(s, { hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: NO_LEAD }, refusal: "too-many" })
     case "hold-ended": return { ...s, hold: null }
