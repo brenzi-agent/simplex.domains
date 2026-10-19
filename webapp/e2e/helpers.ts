@@ -1,4 +1,4 @@
-import { expect, test as base, type APIRequestContext, type Page } from "@playwright/test"
+import { expect, test as base, type APIRequestContext, type BrowserContext, type BrowserContextOptions, type Page } from "@playwright/test"
 import { mkdirSync } from "node:fs"
 import { mockUrl, pageUrl } from "./slots.ts"
 
@@ -156,17 +156,32 @@ export async function startOrder(page: Page, label: string, opts: OrderOptions =
 
 const CSP_REPORT = "reportCspViolation"
 
-// Every page's CSP refusals fail its test; only a server that sends the policy, as `vite preview` does, makes any.
+// Every page's CSP refusals fail its test, in the test's own context and in every context it opens; only a server that
+// sends the policy, as `vite preview` does, makes any.
 export const test = base.extend<{ cspViolations: void }>({
   baseURL: async ({ baseURL }, use) => use(baseURL ?? pageUrl(SLOT)),
-  cspViolations: [async ({ context }, use) => {
+  cspViolations: [async ({ context, browser }, use) => {
     const refused: string[] = []
-    await context.exposeBinding(CSP_REPORT, (_source, text: string) => { refused.push(text) })
-    await context.addInitScript((report) => document.addEventListener("securitypolicyviolation", (e) => {
-      const send = (window as unknown as Record<string, (text: string) => void>)[report]
-      void send(`${e.effectiveDirective} refused ${e.blockedURI || "inline"} ${e.sample}`.trim())
-    }, true), CSP_REPORT)
-    await use()
+    const watch = async (watched: BrowserContext) => {
+      await watched.exposeBinding(CSP_REPORT, (_source, text: string) => { refused.push(text) })
+      await watched.addInitScript((report) => document.addEventListener("securitypolicyviolation", (e) => {
+        const send = (window as unknown as Record<string, (text: string) => void>)[report]
+        void send(`${e.effectiveDirective} refused ${e.blockedURI || "inline"} ${e.sample}`.trim())
+      }, true), CSP_REPORT)
+    }
+    await watch(context)
+    // the browser is the worker's, so the context maker it had is put back once the test is over
+    const newContext = browser.newContext.bind(browser)
+    browser.newContext = async (options?: BrowserContextOptions) => {
+      const made = await newContext(options)
+      await watch(made)
+      return made
+    }
+    try {
+      await use()
+    } finally {
+      browser.newContext = newContext
+    }
     expect(refused, "CSP violations").toEqual([])
   }, { auto: true }],
 })

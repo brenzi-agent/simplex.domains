@@ -442,6 +442,7 @@ html.dark .monero-base { fill: #fff; }
 .offline { position: sticky; bottom: 0; z-index: 15; display: flex; padding-inline: 16px; pointer-events: none; }
 .offline-note { pointer-events: auto; width: fit-content; max-width: 560px; margin: 0 auto calc(var(--note-offset) + env(safe-area-inset-bottom)); display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line); color: var(--ink); font-size: 14px; line-height: 1.4; }
 .offline-note svg.i { flex: none; width: 18px; height: 18px; color: var(--warn-fg); }
+.offline-note:has(> span:empty) { display: none; }
 /* a link at work, or held by a wait, shows it is not to be pressed */
 a[aria-disabled="true"] { opacity: .6; cursor: default; }
 

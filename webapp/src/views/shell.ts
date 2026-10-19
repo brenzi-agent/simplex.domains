@@ -291,10 +291,11 @@ function toggleTheme(): void {
 
 export const OFFLINE_NOTE = "You are offline. Searches, payments and order updates need the connection."
 
-// after the footer and counted in the frame, so the footer's end scrolls clear of the note; its status region stays while online, so the note is announced
-const offlineNote = el("div", { class: "offline-note", hidden: true }, icon("offline"), el("span", {}, OFFLINE_NOTE))
-const offline = el("div", { class: "offline", role: "status" }, offlineNote)
-const showConnection = () => { offlineNote.hidden = navigator.onLine }
+// After the footer and counted in the frame, so the footer's end scrolls clear of the note. The status region and its note
+// stay in place and only the words change, which a screen reader announces where it may miss a note being shown.
+const offlineText = el("span", {})
+const offline = el("div", { class: "offline", role: "status" }, el("div", { class: "offline-note" }, icon("offline"), offlineText))
+const showConnection = () => { offlineText.textContent = navigator.onLine ? "" : OFFLINE_NOTE }
 
 // Checked again whenever the page is drawn or looked at, as Firefox does not always tell a page opened offline that
 // the network is back.
