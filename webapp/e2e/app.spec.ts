@@ -162,3 +162,40 @@ test("a name code too long for its line breaks after a hyphen, so no line starts
   expect(starts.length, "the code wraps at this width").toBeGreaterThan(1)
   expect(starts.slice(1), "the first character of each later line").not.toContain("-")
 })
+
+// a laptop's, a phone's and a small phone's window
+const NOTE_SIZES = [{ width: 1280, height: 900 }, { width: 390, height: 844 }, { width: 360, height: 740 }]
+
+test("offline, the footer scrolls clear of the note, and its last link takes a click there", async ({ page, context }) => {
+  await page.goto("/")
+  await page.getByRole("heading", { name: "Your SimpleX domain" }).waitFor()
+  await context.setOffline(true)
+  try {
+    await expect(page.locator(".offline-note")).toBeVisible()
+    const lastLink = page.locator("body > footer").getByRole("link", { name: "Trademark owners" })
+    for (const size of NOTE_SIZES) {
+      await page.setViewportSize(size)
+      // how far each of the footer's items reaches past the note's top, scrolled to the end once the frame's measure and
+      // the track have caught up with the new window, as the page's end moves until then
+      const overlaps = () => page.evaluate(() => {
+        const height = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().height
+        const frame = Math.ceil(height("body > header") + height("body > footer") + height("body > .offline"))
+        const settled = getComputedStyle(document.documentElement).getPropertyValue("--frame-h") === `${frame}px`
+          && Math.round(height(".track")) === Math.ceil(height(".slide:not([inert])"))
+        scrollTo(0, document.documentElement.scrollHeight)
+        const noteTop = document.querySelector(".offline-note")!.getBoundingClientRect().top
+        return { settled, overlaps: [...document.querySelectorAll("body > footer > *")].map((n) => Math.max(0, Math.ceil(n.getBoundingClientRect().bottom - noteTop))) }
+      })
+      await expect.poll(overlaps, { message: `the footer's items under the note at ${size.width}x${size.height}` }).toEqual({ settled: true, overlaps: [0, 0] })
+      // WebKit hit-tests a mouse event against the last frame it drew, so the scroll is drawn first
+      await page.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))))
+      const box = (await lastLink.boundingBox())!
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+      await expect(page.getByRole("heading", { name: "Trademark owners" })).toBeVisible()
+      await page.goBack()
+      await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
+    }
+  } finally {
+    await context.setOffline(false)
+  }
+})

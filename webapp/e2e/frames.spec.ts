@@ -9,19 +9,30 @@ test.use({ reducedMotion: "no-preference" })
 const COLUMNS = 12
 const ROWS = 24
 const NEAR_EMPTY_SHARE = 0.4
+// boxes that only lay the screens out; a point where one of them is the topmost box shows nothing of a screen
+const LAYOUT_BOXES = "main, .track, .rail, .slide, .screen, .home"
 
+interface Recorder { stopRecording: () => number[] }
+
+// Resolves once the first frame is sampled, so the change recorded starts after it.
 async function startRecording(page: Page): Promise<void> {
-  await page.evaluate(([columns, rows]) => {
-    const w = window as unknown as { drawnFrames: number[]; recording: boolean }
-    w.drawnFrames = []
-    w.recording = true
+  await page.evaluate(([columns, rows, layout]) => new Promise<void>((started) => {
+    // each recording keeps its own frames and flag, so a frame still due from the last one never adds to this one
+    const frames: number[] = []
+    let recording = true
+    const w = window as unknown as Recorder
+    w.stopRecording = () => {
+      recording = false
+      return frames
+    }
     const main = document.querySelector<HTMLElement>("body > main")!
+    // a point counts by the topmost box hit there, not by its pixels: a box drawn with nothing visible counts as drawn
     const drawn = (x: number, y: number) => {
       const hit = document.elementFromPoint(x, y)
-      return hit !== null && main.contains(hit) && !hit.matches("main, .track, .rail, .slide, .screen, .home")
+      return hit !== null && main.contains(hit) && !hit.matches(layout)
     }
     const look = () => {
-      if (!w.recording) return
+      if (!recording) return
       // hit testing skips inert content, which is still drawn, so inert is lifted for the reads and put back before anything else runs
       const inert = [main, ...main.querySelectorAll<HTMLElement>("[inert]")].filter((n) => n.inert)
       for (const n of inert) n.inert = false
@@ -33,11 +44,12 @@ async function startRecording(page: Page): Promise<void> {
         for (let j = 0; j < rows; j++) if (drawn(box.left + (i + 0.5) * box.width / columns, top + (j + 0.5) * (bottom - top) / rows)) hits++
       }
       for (const n of inert) n.inert = true
-      w.drawnFrames.push(hits)
+      frames.push(hits)
+      if (frames.length === 1) started()
       requestAnimationFrame(look)
     }
     requestAnimationFrame(look)
-  }, [COLUMNS, ROWS] as const)
+  }), [COLUMNS, ROWS, LAYOUT_BOXES] as const)
 }
 
 // A slide is a pair of CSS transitions, which the document lists among its animations until they end; a check that the
@@ -45,11 +57,7 @@ async function startRecording(page: Page): Promise<void> {
 async function stopRecording(page: Page): Promise<number[]> {
   await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
-  return page.evaluate(() => {
-    const w = window as unknown as { drawnFrames: number[]; recording: boolean }
-    w.recording = false
-    return w.drawnFrames
-  })
+  return page.evaluate(() => (window as unknown as Recorder).stopRecording())
 }
 
 async function expectNoEmptyFrame(page: Page, change: string, act: () => Promise<void>): Promise<void> {

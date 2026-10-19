@@ -293,12 +293,10 @@ function toggleTheme(): void {
 
 export const OFFLINE_NOTE = "You are offline. Searches, payments and order updates need the connection."
 
-function showConnection(): void {
-  const shown = document.querySelector(".offline-note")
-  if (navigator.onLine) return shown?.remove()
-  if (shown) return
-  document.body.append(el("div", { class: "offline-note", role: "status" }, icon("offline"), el("span", {}, OFFLINE_NOTE)))
-}
+// after the footer and counted in the frame, so the footer's end scrolls clear of the note
+const offline = el("div", { class: "offline", hidden: true }, el("div", { class: "offline-note", role: "status" }, icon("offline"), el("span", {}, OFFLINE_NOTE)))
+const showConnection = () => { offline.hidden = navigator.onLine }
+
 // Checked again whenever the page is drawn or looked at, as Firefox does not always tell a page opened offline that
 // the network is back.
 for (const event of ["online", "offline", "focus"]) addEventListener(event, showConnection)
@@ -311,14 +309,15 @@ function frame(): HTMLElement {
   document.body.dataset.framed = "1"
   document.querySelector(".theme-switch")!.addEventListener("click", toggleTheme)
   paintBars()
+  document.body.append(offline)
   measureFrame()
   return main
 }
 
-// The header's and footer's height, which wrap on a narrow screen, so the home fills what is left of the window. Rounded
+// The header's, footer's and offline note's height, which wrap on a narrow screen, so the home fills what is left of the window. Rounded
 // up, as the track rounds its height up too and a fraction more would scroll the page.
 function measureFrame(): void {
-  const parts = [...document.querySelectorAll<HTMLElement>("body > header, body > footer")]
+  const parts = [...document.querySelectorAll<HTMLElement>("body > header, body > footer, body > .offline")]
   const fit = () => document.documentElement.style.setProperty("--frame-h", `${Math.ceil(parts.reduce((h, p) => h + p.getBoundingClientRect().height, 0))}px`)
   const resized = new ResizeObserver(fit)
   for (const part of parts) resized.observe(part)

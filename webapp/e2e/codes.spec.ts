@@ -258,6 +258,7 @@ test("a code added under Your names is listed, and forgotten", async ({ page, re
   await page.getByRole("button", { name: "Add", exact: true }).click()
   const row = page.locator(".list-row", { hasText: code })
   await expect(row.locator(".chip")).toHaveText("Unused")
+  await expect(row.getByRole("button", { name: "Use", exact: true }), "a code is used at checkout, not from its row").toHaveCount(0)
   await page.getByText("Forget everything in this browser").click()
   await shot(page, "N12c-forget")
   await page.getByRole("button", { name: "Forget everything" }).click()

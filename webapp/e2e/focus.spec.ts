@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test"
-import { control, search, startOrder, test, toCodeStep, toReview, uniqueLabel } from "./helpers.ts"
+import { control, onStep, search, startOrder, test, toCodeStep, toReview, uniqueLabel } from "./helpers.ts"
 
 // EIP-55's own example, and the same wallet with one letter's case changed
 const APP_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
@@ -11,11 +11,17 @@ async function openCodeStep(page: Page, label: string): Promise<void> {
   await toCodeStep(page)
 }
 
-async function redrawnInPlace(page: Page, invoiceId: string, redraw: () => Promise<void>): Promise<void> {
+const DRAWN_BEFORE = "data-drawn-before"
+
+// The screen in view is marked, and the redraw puts a new one in its place.
+async function drawnAgain(page: Page, invoiceId: string, redraw: () => Promise<void>): Promise<void> {
+  await onStep(page).locator("section.screen").evaluate((n, mark) => n.setAttribute(mark, ""), DRAWN_BEFORE)
   const read = page.waitForResponse((r) => new URL(r.url()).pathname === `/api/invoice/${invoiceId}` && !r.url().includes("?"))
   await redraw()
   await read
   await expect(page.locator("main[aria-busy]")).toHaveCount(0)
+  await expect(page.locator(`section.screen[${DRAWN_BEFORE}]`), "the screen drawn before the change").toHaveCount(0)
+  await expect(onStep(page).locator("section.screen")).toHaveCount(1)
 }
 
 // another tab writes the same record again with a space more or less, which this tab hears as a change
@@ -51,7 +57,7 @@ test("an order's page keeps focus when another tab changes the order", async ({ 
   const other = await page.context().newPage()
   await other.goto("/")
   await page.getByRole("button", { name: "Cancel this invoice" }).focus()
-  await redrawnInPlace(page, invoiceId, () => touchRecord(other, key))
+  await drawnAgain(page, invoiceId, () => touchRecord(other, key))
   await expect(page.getByRole("button", { name: "Cancel this invoice" })).toBeFocused()
   await other.close()
 })

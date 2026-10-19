@@ -104,7 +104,7 @@ FIREFOX_158=<Firefox 158 executable> SLOTS=3 npx playwright test --project=firef
 
 `npx playwright test` runs the `chromium`, `firefox` and `webkit` projects in one pool; `--project=chromium` (or `firefox`, `webkit`) runs one browser. Where memory is short, run the three one after another.
 
-The tests run with reduced motion, so the track moves at once, except `e2e/frames.spec.ts`, which samples each frame of the track's slide and of whole-screen swaps and fails on a near-empty one. It runs in Chromium and, with `FIREFOX_158`, in Firefox 158: the `firefox158` project runs only this spec and exists only when `FIREFOX_158` names a Firefox 158 or later executable, launched through Playwright's `moz-firefox` channel with its own libraries. The `firefox` and `webkit` projects skip it.
+The tests run with reduced motion, so the track moves at once, except `e2e/frames.spec.ts`, which samples each frame of the track's slide and of whole-screen swaps and fails on a near-empty one. It runs in Chromium and, with `FIREFOX_158`, in Firefox 158: the `firefox158` project runs only this spec and exists only when `FIREFOX_158` names a Firefox 158 or later executable, launched through Playwright's `moz-firefox` channel with its own libraries. While `FIREFOX_158` is set, a plain `npx playwright test` runs `firefox158` too. The `firefox` and `webkit` projects skip it.
 
 With `SHOTS=1` the tests write every screen they reach to `screenshots/` (or `SCREENSHOTS_DIR`), on a desktop and a phone, light and dark; Firefox's and WebKit's go to `screenshots/firefox/` and `screenshots/webkit/`, WebKit's in light only.
 

@@ -165,6 +165,7 @@ test("Get a new invoice keeps an invoice the service would not cancel", async ({
   await expect(page.getByText("This invoice was cancelled, but the service still shows it open. Do not pay it again.")).toBeVisible()
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await expect(page.getByRole("button", { name: "Get a new invoice" })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Search a name" })).toBeVisible()
   await shot(page, "N10a2-cancel-still-open")
 })
 
