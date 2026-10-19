@@ -48,7 +48,6 @@ export type OrderEvent =
   | { type: "card-started" }
   | { type: "card-submitted"; at: string }
   | { type: "card-failed" }
-  | { type: "card-retried" }
   | { type: "card-refused"; note: Note }
   | { type: "reveal-sent"; key: string }
   | { type: "reveal-refused"; key: string }
@@ -86,7 +85,6 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "tick": return { ...s, now: e.now }
     case "card-submitted": return { ...s, cardSubmittedAt: e.at }
     case "card-failed": return { ...s, cardFailed: true }
-    case "card-retried": return { ...s, cardFailed: false }
     case "card-started": return start(s, "card")
     case "card-refused": return end(s, "card", { note: e.note })
     case "reveal-sent": return { ...s, reveal: { key: e.key, sending: true, refusals: s.reveal?.key === e.key ? s.reveal.refusals : 0 } }
@@ -136,6 +134,11 @@ export function reduce(state: OrderState, event: OrderEvent): OrderState {
   if (next === state || screenOf(next) === screenOf(state)) return keptRefusal(next)
   return keptRefusal({ ...next, busy: null, note: null, codeRefused: false, codeKept: false, hold: next.hold && { ...next.hold, lead: NO_LEAD } })
 }
+
+// The code is said to be kept only once the service says so; a browser that restored the order has not got its code.
+export const failedLead = ({ invoice, codeRefused, codeKept, record }: OrderState) => invoice ? "Your payment is kept. Trying again charges nothing."
+  : codeRefused ? "Your code can no longer pay for it, so trying again cannot register it."
+  : record?.prepaidCode && codeKept ? "Your code is kept. Trying again spends nothing more." : "Trying again spends nothing more."
 
 export const openedFromApp = (view: RegistrationView, record: OrderRecord | null) => record ? record.ownerCode === null : view.sealed === null
 

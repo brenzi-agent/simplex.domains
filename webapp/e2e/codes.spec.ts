@@ -1,5 +1,5 @@
 import { type APIRequestContext, type Browser, expect, type Locator, type Page } from "@playwright/test"
-import { checkoutCode, CODE_LABEL, control, onStep, openCode, payButton, search, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { CHECKOUT_KEY, checkoutCode, CODE_LABEL, control, onStep, openCode, payButton, search, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
 const WAIT_S = 200
@@ -160,6 +160,54 @@ test("a code the service refuses as the order is sent leaves its field, says why
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
   await expect(page.getByText("This code was already used.")).toHaveCount(0)
   await expect(checkoutCode(page), "a checkout with no code or refusal opens with its field closed").toHaveCount(0)
+})
+
+test("a code judged while a paid order is on its way leaves that order as it was sent", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  await search(page, uniqueLabel("late"))
+  await page.getByRole("button", { name: "Register" }).click()
+  await openCode(page)
+  let judge: () => void = () => undefined
+  const judged = new Promise<void>((resolve) => { judge = resolve })
+  await page.route("**/api/code/check", async (route) => {
+    await judged
+    await route.continue()
+  })
+  let send: () => void = () => undefined
+  const sent = new Promise<void>((resolve) => { send = resolve })
+  await page.route("**/api/invoice", async (route) => {
+    await sent
+    await route.continue()
+  })
+  const asked = page.waitForRequest("**/api/code/check")
+  await checkoutCode(page).fill(code)
+  await asked
+  const ordered = page.waitForRequest("**/api/invoice")
+  await payButton(page).click()
+  await ordered
+  judge()
+  await expect(onStep(page).locator(".code-entry .verdict.ok"), "the verdict arrived while the order was on its way").toBeVisible()
+  await expect(total(page), "the order on its way pays money").not.toContainText("$0.00")
+  await expect(page.getByText("Paid with your code")).toHaveCount(0)
+  send()
+  await page.waitForURL(/\?order=/)
+  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await page.unrouteAll({ behavior: "wait" })
+})
+
+test("an order refused once the tab moved on to another checkout draws that checkout, ready to pay", async ({ page }) => {
+  const other = uniqueLabel("movedto")
+  await search(page, uniqueLabel("moved"))
+  await page.getByRole("button", { name: "Register" }).click()
+  await page.route("**/api/invoice", async (route) => {
+    await page.evaluate(([key, label]) => sessionStorage.setItem(key, JSON.stringify({ ...JSON.parse(sessionStorage.getItem(key)!), label })), [CHECKOUT_KEY, other])
+    await route.fulfill({ status: 503, json: { error: "provider_unavailable" } })
+  })
+  await payButton(page).click()
+  await expect(onStep(page).locator(".summary-card")).toContainText(`${other}.simplex`)
+  await expect(payButton(page), "the stale page's order is no longer on its way").toHaveText(/^Pay \$[\d.,]+ with Bitcoin/)
+  await expect(payButton(page)).toBeEnabled()
+  await page.unrouteAll({ behavior: "wait" })
 })
 
 test("the checkout's code field refuses a code for longer names, typos and owner codes", async ({ page, request }) => {

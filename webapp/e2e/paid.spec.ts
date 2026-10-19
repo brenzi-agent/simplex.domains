@@ -17,6 +17,18 @@ const drawnFill = (stage: Locator) => stage.evaluate((node) => {
 })
 
 test("the wait's line fills as the wait goes, and is full when it ends", async ({ page, request }) => {
+  // each wait stage drawn, as it is first attached: whether its fill is set before it can paint
+  await page.addInitScript(() => {
+    const w = window as unknown as { __fills: string[] }
+    w.__fills = []
+    new MutationObserver((changes) => {
+      for (const node of changes.flatMap((c) => [...c.addedNodes])) {
+        if (!(node instanceof Element)) continue
+        const stages = [...node.querySelectorAll<HTMLElement>(".stage.active")].filter((s) => s.textContent?.includes("Waiting"))
+        for (const stage of stages) w.__fills.push(stage.style.getPropertyValue("--done"))
+      }
+    }).observe(document, { childList: true, subtree: true })
+  })
   const { invoiceId } = await startOrder(page, uniqueLabel("fill"), { method: "btc" })
   await control(request, `settle/${invoiceId}`)
   const wait = page.locator("body > main .stage", { hasText: "Waiting" })
@@ -24,6 +36,9 @@ test("the wait's line fills as the wait goes, and is full when it ends", async (
   const filled = () => drawnFill(wait)
   const first = await filled()
   expect(first, "the line starts short of full").toBeLessThan(1)
+  const fills = await page.evaluate(() => (window as unknown as { __fills: string[] }).__fills)
+  expect(fills.length, "the wait stage was drawn").toBeGreaterThan(0)
+  expect(fills.filter((f) => f === ""), `every wait stage is drawn with its fill set: ${fills}`).toEqual([])
   await expect.poll(filled, { message: "the line fills as the wait goes" }).toBeGreaterThan(first)
   await page.locator(".countdown b > svg").waitFor({ timeout: REGISTRATION_MS })
   expect(await filled(), "the line is full when the wait ends").toBe(1)
@@ -661,6 +676,21 @@ test("a card form that does not load says so and offers a new invoice", async ({
   await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
   await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
   await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
+})
+
+test("a card form that does not load, in a browser without the order, leads to the name code", async ({ page }) => {
+  await startOrder(page, uniqueLabel("nocardrec"), { method: "card" })
+  await page.route(/\/\?order=/, async (route) => {
+    const res = await route.fetch()
+    await route.fulfill({ response: res, body: (await res.text()).replace('name="stripe-publishable-key" content=""', 'name="stripe-publishable-key" content="pk_test_e2e"') })
+  })
+  await page.route("https://js.stripe.com/**", (route) => route.abort())
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Load the card form again" })).toHaveCount(0)
+  await page.getByRole("button", { name: "Enter your name code" }).click()
+  await expect(page.getByLabel("Name code", { exact: true })).toBeVisible()
 })
 
 test("links saved in another tab show in Your names once it is opened again, never as the old ones", async ({ page, request }) => {

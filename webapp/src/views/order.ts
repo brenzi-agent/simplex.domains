@@ -4,9 +4,10 @@ import { codeTier, LONGEST_TIER, parseNameCode } from "../crypto/code.ts"
 import { alertBox, btn, chip, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, setAction, type Tone } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress, shortHash, termText } from "../format.ts"
+import { PRICED_YEARS } from "../names.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
-  type ClosedCase, closedCase, coinOf, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
+  type ClosedCase, closedCase, coinOf, failedLead, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, wakeAt,
 } from "../screens/order.ts"
 import * as store from "../store.ts"
@@ -554,7 +555,7 @@ function cardUnconfirmedScreen(s: OrderState, signal: AbortSignal): HTMLElement 
 
 // Once the service has seen a card payment, entering the card again could charge twice.
 function cardAction(s: OrderState, formFailed: boolean): HTMLButtonElement | null {
-  if (formFailed) return s.record ? newInvoiceButton(s, "", () => void reorderAfterCancel()) : btn("Load the card form again", "", () => dispatch({ type: "card-retried" }))
+  if (formFailed) return s.record ? newInvoiceButton(s, "", () => void reorderAfterCancel()) : withoutRecord(s.view!, "")
   return s.invoice!.amountPaid ? null : btn("Enter the card again", "", enterCardAgain)
 }
 
@@ -896,7 +897,7 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
   return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."] },
     orderLine(s),
     stages(["done", "done", "failed"]),
-    el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it, or take a code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for 2 years.`),
+    el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it, or take a code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for ${termText(PRICED_YEARS)}.`),
     cannot,
     el("div", { class: "actions" }, other, code),
     actionNote(s, canAct ? signal : null),
@@ -939,11 +940,6 @@ function buildCodeIssued({ view: issued, record }: OrderState): HTMLElement {
       el("div", { class: "center mt-16" }, el("div", { class: "qr" }, qrSvg(code, "code"))),
       el("div", { class: "left" }, alertBox("info", "info", "Keep a copy of this code", "The service keeps only its hash; this browser keeps the code, under Your names."))] })
 }
-
-// The code is said to be kept only once the service says so; a browser that restored the order has not got its code.
-const failedLead = ({ invoice, codeRefused, codeKept, record }: OrderState) => invoice ? "Your payment is kept. Trying again charges nothing."
-  : codeRefused ? "Your code can no longer pay for it, so trying again cannot register it."
-  : record?.prepaidCode && codeKept ? "Your code is kept. Trying again spends nothing more." : "Trying again spends nothing more."
 
 function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   const { view: failed, record, invoice } = s

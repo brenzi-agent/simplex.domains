@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
-  CARD_SLOW_MS, type ClosedCase, closedCase, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState,
+  CARD_SLOW_MS, type ClosedCase, closedCase, failedLead, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState,
   reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
@@ -168,10 +168,10 @@ describe("reduce", () => {
   it("card-submitted keeps when the card was submitted", () => {
     expect(reduce(STATES["pay-card"], { type: "card-submitted", at: submittedAgo(0) }).cardSubmittedAt).toBe(submittedAgo(0))
   })
-  it("card-failed and card-retried mark the card form failed and then loading again", () => {
+  it("card-failed marks the card form failed, which no later event loads again", () => {
     const failed = reduce(STATES["pay-card"], { type: "card-failed" })
     expect(failed.cardFailed).toBe(true)
-    expect(reduce(failed, { type: "card-retried" }).cardFailed).toBe(false)
+    expect(screenOf(failed)).toBe("status:card-unconfirmed")
   })
   it("card-started marks the card's confirm at work; card-refused ends it with Stripe's words as the note", () => {
     const note: Note = { tone: "danger", icon: "alert", title: null, text: "Your card was declined." }
@@ -311,6 +311,25 @@ describe("reduce", () => {
     expect(reversed).toEqual(inOrder)
     expect(inOrder.view!.phase).toBe("registering")
     expect(inOrder.now).toBe(NOW + 2000)
+  })
+})
+
+describe("failedLead", () => {
+  const coded = record({ method: "code", invoiceId: null, prepaidCode: "SN6-AAAA" })
+  const failed = (invoice: InvoiceView | null, change: Partial<OrderState> = {}) =>
+    read(invoice, registration({ phase: "failed" }), { record: invoice ? record() : coded, ...change })
+  it("an invoice's payment is kept", () => {
+    expect(failedLead(failed(crypto({ status: "paid", paidInFull: true })))).toBe("Your payment is kept. Trying again charges nothing.")
+  })
+  it("a refused code says it can no longer pay", () => {
+    expect(failedLead(failed(null, { codeRefused: true }))).toBe("Your code can no longer pay for it, so trying again cannot register it.")
+  })
+  it("a code is said to be kept only once the service says so", () => {
+    expect(failedLead(failed(null, { codeKept: true }))).toBe("Your code is kept. Trying again spends nothing more.")
+    expect(failedLead(failed(null)), "the check has not answered, or failed").toBe("Trying again spends nothing more.")
+  })
+  it("a browser without the order's code is promised nothing of it, even once the service says it is unspent", () => {
+    expect(failedLead(failed(null, { record: null, codeKept: true }))).toBe("Trying again spends nothing more.")
   })
 })
 

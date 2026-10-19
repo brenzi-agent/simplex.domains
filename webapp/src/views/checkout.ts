@@ -173,6 +173,8 @@ const waitingNotice = (blocked: WaitingOrder) => el("section", { class: "pay-wit
 // A code that pays is applied as it is judged, one for longer names is refused here, and anything else takes off the
 // code the field held. Read from the module's state, as the field is kept across draws.
 function onVerdict(v: CodeVerdict | null): string | null {
+  // the order on its way was sent without this verdict, so it pays as it was sent
+  if (state.sending) return null
   const { label, code, codeError } = state.checkout
   const tooShort = v?.ok === true && label.length < v.code.minLength
   if (v?.ok && !tooShort) act({ type: "code-applied", code: v.code })
@@ -309,7 +311,10 @@ async function sendOrder(): Promise<void> {
     holdFrom(e)
     // as on success: the error shows where the buyer still is in this checkout, by Back and Forward too
     const ours = session.checkout()?.label === c.label && session.checkout()?.ownerCode === c.ownerCode
-    if (isRoute(mine) || (ours && location.hash.startsWith("#/checkout"))) orderError(e, c)
+    if (!isRoute(mine) && !(ours && location.hash.startsWith("#/checkout"))) return
+    // a page whose checkout the tab has moved on from shows the tab's checkout now, which is not on its way
+    if (!ours) return refresh()
+    orderError(e, c)
   }
 }
 

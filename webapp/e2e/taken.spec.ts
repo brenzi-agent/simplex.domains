@@ -9,7 +9,7 @@ test("a name taken first moves the paid order to another name, owned by the same
   await control(request, "take", { label })
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
-  await expect(page.getByText(/^Choose another name of up to \$100\.00, .* or take a code for names of \d+ or more letters, for 2 years\.$/)).toBeVisible()
+  await expect(page.getByText(/^Choose another name of up to \$100\.00, .* or take a code for names of \d+ or more letters, for 2 years \+ 30 days\.$/)).toBeVisible()
   // the two ways forward are stacked, the move to another name first
   const [other, code] = [page.getByRole("button", { name: "Choose another name" }), page.getByRole("button", { name: "Take a code" })]
   const [otherBox, codeBox] = [(await other.boundingBox())!, (await code.boundingBox())!]

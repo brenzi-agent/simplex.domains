@@ -106,7 +106,7 @@ export async function openCode(page: Page): Promise<void> {
 }
 
 // where session.ts keeps the tab's checkout, with the owner code made for it
-const CHECKOUT_KEY = "simplex-names-checkout"
+export const CHECKOUT_KEY = "simplex-names-checkout"
 export const checkoutOwnerCode = (page: Page) => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).ownerCode as string, CHECKOUT_KEY)
 
 // Search and checkout, up to the order's page; returns the invoice and the owner code the browser made for it.
