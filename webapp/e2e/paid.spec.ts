@@ -1,7 +1,10 @@
-import { expect, test } from "@playwright/test"
+import { expect } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
-import { channelLink, contactLink, control, registrationOf, searchName, shot, startOrder, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { channelLink, contactLink, control, mockRegistration, registrationOf, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+
+// a field's focus ring reaches 4 px past it, and keeps clear of the label over it
+const RING_ROOM_PX = 6
 
 test("a Bitcoin order pays in two parts, registers on chain with its links, and the code owns it", async ({ page, request }) => {
   const label = uniqueLabel("btc")
@@ -53,9 +56,11 @@ test("a Bitcoin order pays in two parts, registers on chain with its links, and 
   // edit links: add a channel, signed in the page, sent by the mock's relayer
   await page.goto(`/#/edit/${registrationId}`)
   await expect(page.getByLabel("Address")).toHaveValue(contact)
+  const labelRoom = await page.locator(".link-field").evaluateAll((fields) => fields.map((f) => f.querySelector(".input")!.getBoundingClientRect().top - f.previousElementSibling!.getBoundingClientRect().bottom))
+  expect(Math.min(...labelRoom), "room between each label and its field's focus ring").toBeGreaterThanOrEqual(RING_ROOM_PX)
   const channel = channelLink("B2")
   await page.getByLabel("Channel").fill(channel)
-  await expect(page.locator(".link-field").nth(1).locator(".entity")).toBeVisible()
+  await expect(page.locator(".link-field").nth(1)).toHaveAttribute("data-state", "ok")
   await page.getByRole("button", { name: "Save links" }).click()
   await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
   // Save stays off with nothing left to save, so focus goes to the answer below it, which stays in view
@@ -87,7 +92,7 @@ test("a Bitcoin order pays in two parts, registers on chain with its links, and 
   await page.route("**/api/name/records", (route) => ++sent === 1 ? route.continue() : route.fulfill({ status: 429, headers: { "retry-after": "2" }, json: { error: "rate_limited" } }))
   await page.getByLabel("Address").fill(contact)
   await page.getByLabel("Channel").fill(nextChannel)
-  await expect(page.locator(".link-field").nth(1).locator(".entity")).toBeVisible()
+  await expect(page.locator(".link-field").nth(1)).toHaveAttribute("data-state", "ok")
   await page.getByRole("button", { name: "Save links" }).click()
   await expect(page.locator("[aria-hidden=true]", { hasText: /^The address was saved; the channel was not\. Try again in/ })).toBeVisible({ timeout: 30_000 })
   await page.unroute("**/api/name/records")
@@ -95,6 +100,36 @@ test("a Bitcoin order pays in two parts, registers on chain with its links, and 
   await page.getByRole("button", { name: "Save links" }).click()
   await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
   expect((await searchName(request, label)).records).toEqual({ contact, channel: nextChannel })
+
+  const nonceMoved = (ahead: number, records?: { contact: string; channel: string }) => page.route(/\/api\/name\/(0x)?[0-9a-f]{64}/, async (route) => {
+    const res = await route.fetch()
+    const json = await res.json() as { recordsNonce: number }
+    await route.fulfill({ response: res, json: { ...json, recordsNonce: json.recordsNonce + ahead, ...(records ? { records } : {}) } })
+  })
+  const refusedChannel = channelLink("D4")
+  sent = 0
+  await page.route("**/api/name/records", (route) => ++sent === 1 ? route.continue() : route.fulfill({ status: 400, json: { error: "bad_request" } }))
+  await nonceMoved(1)
+  await page.getByLabel("Address").fill("")
+  await page.getByLabel("Channel").fill(refusedChannel)
+  await expect(page.locator(".link-field").nth(1)).toHaveAttribute("data-state", "ok")
+  await page.getByRole("button", { name: "Save links" }).click()
+  const partly = page.getByText("Another save reached the chain first. The channel is still as you typed it: save again to send it.")
+  await expect(partly).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByLabel("Address")).toHaveValue("")
+  await expect(page.getByLabel("Channel")).toHaveValue(refusedChannel)
+  await page.unroute(/\/api\/name\/(0x)?[0-9a-f]{64}/)
+
+  await nonceMoved(2, { contact, channel: nextChannel })
+  await page.getByRole("button", { name: "Save links" }).click()
+  await expect(page.getByText("An earlier save got there first")).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByLabel("Address")).toHaveValue(contact)
+  await expect(page.getByLabel("Channel")).toHaveValue(nextChannel)
+  await expect(page.locator(".link-field").first().locator(".entity:not(.skeleton)")).toBeVisible()
+  await expect(page.locator(".link-field").nth(1).locator(".entity:not(.skeleton)")).toBeVisible()
+  await expect(page.getByText("An earlier save got there first")).toBeVisible()
+  await page.unroute(/\/api\/name\/(0x)?[0-9a-f]{64}/)
+  await page.unroute("**/api/name/records")
 
   await page.goto("/#/names")
   const row = page.locator(".row-item", { hasText: `${label}.simplex` })
@@ -111,6 +146,27 @@ test("a Bitcoin order pays in two parts, registers on chain with its links, and 
   await other.close()
   await row.getByText("Show code").click()
   await expect(page.locator(".modal .code-display")).toHaveText(ownerCode)
+  await page.keyboard.press("Escape")
+
+  await expect(row.locator(".sub")).toContainText(/points at Channel\sC3/)
+  await row.getByText("Edit links").click()
+  await expect(page.getByLabel("Channel")).toHaveValue(nextChannel)
+  await page.getByLabel("Address").fill(contact)
+  await expect(page.locator(".link-field").first()).toHaveAttribute("data-state", "ok")
+  await page.getByRole("button", { name: "Save links" }).click()
+  await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
+  await page.evaluate((name) => {
+    const w = window as unknown as { __lines: string[] }
+    w.__lines = []
+    new MutationObserver(() => {
+      const line = [...document.querySelectorAll("body > main .row-item")].find((r) => r.querySelector(".main b")?.textContent === name)?.querySelector(".sub")?.textContent
+      if (line && line !== w.__lines.at(-1)) w.__lines.push(line)
+    }).observe(document.body, { childList: true, subtree: true, characterData: true })
+  }, `${label}.simplex`)
+  await page.getByRole("link", { name: "Your names" }).first().click()
+  await expect(row.locator(".sub")).toContainText(/points at Contact\sA1/)
+  const lines = await page.evaluate(() => (window as unknown as { __lines: string[] }).__lines)
+  expect(lines.filter((l) => /points at Channel\sC3/.test(l)), lines.join(" | ")).toEqual([])
 })
 
 test("the owner code restores an order in another browser, and a bad code is refused", async ({ page, browser, request }) => {
@@ -297,8 +353,7 @@ test("a browser restored before another browser made a new invoice carries on wi
   await restored.goto(`/?order=${second}`)
   await expect(restored.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   // the adopted order carries the service's time of making it, which later searches for a newer order compare against
-  const state = await (await request.get("http://127.0.0.1:8099/control/state")).json() as { registrations: { id: string; invoiceId: string; createdAt: string }[] }
-  const made = state.registrations.find((r) => r.invoiceId === second)!.createdAt
+  const made = (await mockRegistration(request, second)).createdAt
   const adopted = await restored.evaluate((id) => Object.keys(localStorage).filter((k) => k.startsWith("simplex-names:order:"))
     .map((k) => JSON.parse(localStorage.getItem(k)!)).find((o: { invoiceId: string }) => o.invoiceId === id), second)
   expect(adopted.createdAt).toBe(made)
@@ -309,6 +364,25 @@ test("a browser restored before another browser made a new invoice carries on wi
   await control(request, `settle/${second}`)
   await waitRegistered(restored, label)
   await other.close()
+})
+
+// a balanced wrap leaves the lines of a long address within a character or two of each other
+const EVEN_LINES = 0.9
+test("a long address wraps into even lines on the pay page, on a phone too", async ({ page }) => {
+  await startOrder(page, uniqueLabel("xmrwrap"), { method: "xmr" })
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    const lines = await page.locator(".copy-field", { hasText: "Monero address" }).locator(".val > span").evaluate((n) => {
+      const range = document.createRange()
+      range.selectNodeContents(n)
+      const rows = new Map<number, number>()
+      // the break opportunities between the letters are boxes of no width
+      for (const r of [...range.getClientRects()].filter((r) => r.width >= 1)) rows.set(Math.round(r.top), (rows.get(Math.round(r.top)) ?? 0) + r.width)
+      return [...rows.values()]
+    })
+    expect(lines.length, `${width}px: the address breaks`).toBeGreaterThan(1)
+    expect(Math.min(...lines) / Math.max(...lines), `${width}px: line widths ${lines.map(Math.round)}`).toBeGreaterThanOrEqual(EVEN_LINES)
+  }
 })
 
 test("Cancel this invoice reads as working while its request runs, and as itself again once the request fails", async ({ page }) => {
@@ -447,4 +521,42 @@ test("a card form that does not load says so and offers a new invoice", async ({
   await page.getByRole("button", { name: "Get a new invoice" }).click()
   await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
   await expect(page.getByRole("heading", { name: "The card form did not load" })).toBeVisible()
+})
+
+test("links saved in another tab show in an open Your names, and in one opened again, never as the old ones", async ({ page, request }) => {
+  const label = uniqueLabel("xtab")
+  const { invoiceId } = await startOrder(page, label, { method: "btc", channel: channelLink("C3") })
+  await control(request, `settle/${invoiceId}`)
+  await waitRegistered(page, label)
+  const registrationId = await registrationOf(request, invoiceId)
+  await page.goto("/#/names")
+  const row = page.locator(".row-item", { hasText: `${label}.simplex` })
+  await expect(row.locator(".sub")).toContainText(/points at Channel\sC3/)
+  const saveContact = async (contact: string) => {
+    const other = await page.context().newPage()
+    await other.goto(`/#/edit/${registrationId}`)
+    await other.getByLabel("Address").fill(contact)
+    await expect(other.locator(".link-field").first()).toHaveAttribute("data-state", "ok")
+    await other.getByRole("button", { name: "Save links" }).click()
+    await expect(other.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
+    await other.close()
+  }
+  await saveContact(contactLink("A1"))
+  await expect(row.locator(".sub")).toContainText(/points at Contact\sA1/)
+
+  await page.evaluate(() => { location.hash = "#/trademarks" })
+  await expect(page.getByRole("heading", { name: "Trademark owners" })).toBeVisible()
+  await saveContact(contactLink("D4"))
+  await page.evaluate((name) => {
+    const w = window as unknown as { __lines: string[] }
+    w.__lines = []
+    new MutationObserver(() => {
+      const line = [...document.querySelectorAll("body > main .row-item")].find((r) => r.querySelector(".main b")?.textContent === name)?.querySelector(".sub")?.textContent
+      if (line && line !== w.__lines.at(-1)) w.__lines.push(line)
+    }).observe(document.body, { childList: true, subtree: true, characterData: true })
+  }, `${label}.simplex`)
+  await page.getByRole("link", { name: "Your names" }).first().click()
+  await expect(row.locator(".sub")).toContainText(/points at Contact\sD4/)
+  const lines = await page.evaluate(() => (window as unknown as { __lines: string[] }).__lines)
+  expect(lines.filter((l) => /points at Contact\sA1/.test(l)), lines.join(" | ")).toEqual([])
 })

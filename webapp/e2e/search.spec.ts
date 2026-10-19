@@ -1,5 +1,9 @@
-import { expect, test } from "@playwright/test"
-import { contactLink, control, savedCode, search, shot, startOrder, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { expect } from "@playwright/test"
+import { labelHash } from "../src/crypto/registration.ts"
+import { hex } from "../src/crypto/wallet.ts"
+import { dateOf } from "../src/format.ts"
+import { GRACE_S } from "../src/screens/names.ts"
+import { contactLink, control, savedCode, search, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 test.afterEach(async ({ request }) => {
   await control(request, "search", { chainDown: false, limitSeconds: 0, invoiceError: null, cancelStillOpen: false, findLimitSeconds: 0 })
@@ -111,7 +115,7 @@ test("without storage the page warns that the code is kept nowhere else", async 
   await context.close()
 })
 
-test("the menu opens on a phone, and the trademark page answers", async ({ page }) => {
+test("the menu opens on a phone, a tap on the dimmed page only closes it, and the trademark page answers", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto("/")
   await page.getByLabel("Menu").click()
@@ -125,9 +129,30 @@ test("the menu opens on a phone, and the trademark page answers", async ({ page 
   await expect(page.getByText("or Search")).toBeHidden()
   await page.getByLabel("Menu").click()
   await page.screenshot({ path: "screenshots/N0-phone-menu.png" })
-  await page.getByRole("link", { name: "Trademark owners" }).click()
+  // a tap on the dimmed page under the open menu only closes the menu, rather than also following the link there
+  const trademarks = page.getByRole("link", { name: "Trademark owners" })
+  await trademarks.click({ force: true })
+  await expect(page.getByRole("link", { name: "Your names" })).toBeHidden()
+  await expect(page.getByRole("heading", { name: /Own your name/ })).toBeVisible()
+  await trademarks.click()
   await expect(page.getByRole("heading", { name: "Trademark owners" })).toBeVisible()
   await shot(page, "T1-trademarks")
+})
+
+test("the open phone menu dims the page below the header, and only while it is open", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto("/")
+  const scrim = () => page.evaluate(() => {
+    const s = getComputedStyle(document.documentElement, "::after")
+    return { shown: s.content !== "none" && s.visibility === "visible" && Number(s.opacity) > 0, top: parseFloat(s.top), header: document.querySelector("header")!.getBoundingClientRect().bottom }
+  })
+  expect((await scrim()).shown, "the page undimmed with the menu shut").toBe(false)
+  await page.getByLabel("Menu").click()
+  await expect.poll(async () => (await scrim()).shown, { message: "the page dimmed under the open menu" }).toBe(true)
+  const { top, header } = await scrim()
+  expect(top, "where the dimming starts").toBe(header)
+  await page.keyboard.press("Escape")
+  await expect.poll(async () => (await scrim()).shown, { message: "the page undimmed once the menu shut" }).toBe(false)
 })
 
 test("without storage two expired invoices of one order do not lead to each other", async ({ browser, request }) => {
@@ -170,7 +195,7 @@ test("a double click acts once, whatever the redrawn page puts under the pointer
   await page.getByRole("button", { name: "Continue" }).dblclick()
   await expect(page.getByRole("heading", { name: "Save your name code" })).toBeVisible()
   await expect(page.getByRole("checkbox", { name: "I have saved my code" })).not.toBeChecked()
-  await page.getByText("Check a code").dblclick()
+  await page.getByRole("button", { name: "Check a code" }).dblclick()
   await expect(page.getByRole("dialog")).toBeVisible()
 })
 
@@ -182,7 +207,8 @@ test("the phone menu closes on Escape or a click outside, wherever focus went", 
   await page.keyboard.press("Escape")
   await expect(page.getByRole("link", { name: "Your names" })).toBeHidden()
   await page.getByLabel("Menu").click()
-  await page.locator(".hero h1").click()
+  // the press lands on the dimmed page over the search box
+  await page.locator(".search").click({ force: true })
   await expect(page.getByRole("link", { name: "Your names" })).toBeHidden()
 })
 
@@ -225,3 +251,107 @@ test("a rate limit answered by a proxy pauses search like the service's own", as
   await expect(page.locator("b[aria-hidden=true]", { hasText: /Try again in \d+ seconds/ })).toBeVisible()
 })
 
+test("the home page's investors tile leads to Wefunder by its wordmark and checks a code", async ({ page }) => {
+  await page.goto("/")
+  const tile = page.locator(".tile.invest")
+  const wefunder = tile.getByRole("link", { name: "Learn more on Wefunder" })
+  await expect(wefunder).toHaveAttribute("href", /^https:\/\/wefunder\.com\/simplex\.chat/)
+  await expect(wefunder.locator("svg.wefunder")).toBeVisible()
+  await tile.getByRole("button", { name: "Check your code" }).click()
+  await expect(page.getByRole("dialog")).toBeVisible()
+})
+
+test("on a touch phone the investors tile's two actions keep their gap and their size", async ({ browser }) => {
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true })
+  const page = await phone.newPage()
+  await page.goto("/")
+  expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches), "a touch screen's pointer").toBe(true)
+  const tile = page.locator(".tile.invest")
+  const [wefunder, check] = [await tile.locator(".wefunder-btn").boundingBox(), await tile.locator(".check-code-btn").boundingBox()]
+  const gap = parseFloat(await tile.locator(".links").evaluate((n) => getComputedStyle(n).rowGap))
+  expect(check!.y - (wefunder!.y + wefunder!.height), "the room between the two actions").toBeGreaterThanOrEqual(gap)
+  expect([wefunder!.height, check!.height], "each action's drawn height").toEqual([44, 44])
+  await phone.close()
+})
+
+test("Back to a search from checkout shows its answer at once, with no hint, empty card or search in sight", async ({ page }) => {
+  await search(page, uniqueLabel("back"))
+  await page.getByRole("button", { name: "Register" }).click()
+  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await page.evaluate(() => {
+    const w = window as unknown as { __seen: string[] }
+    w.__seen = []
+    new MutationObserver((records) => {
+      for (const r of records) {
+        if (r.type === "attributes" && r.target instanceof Element && r.target.matches(".result.busy")) w.__seen.push("the answer dimmed for a search")
+        for (const n of r.addedNodes) {
+          if (!(n instanceof Element)) continue
+          if (n.matches("body > main") && !n.querySelector(".result")) w.__seen.push("a page without the answer")
+          const shown = n.matches(".hint.keys, .result-shape") ? n : n.querySelector(".hint.keys, .result-shape")
+          if (shown) w.__seen.push(`${shown.className} drawn`)
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] })
+  })
+  const rechecked = page.waitForResponse(/\/api\/name\/(0x)?[0-9a-f]{64}/)
+  await page.goBack()
+  await expect(page.getByRole("button", { name: "Register" })).toBeVisible()
+  await rechecked
+  await expect(page.getByRole("button", { name: "Register" })).toBeEnabled()
+  expect(await page.evaluate(() => (window as unknown as { __seen: string[] }).__seen)).toEqual([])
+})
+
+for (const [failure, change, shown] of [
+  ["the service is down", { chainDown: true }, "This name could not be checked"],
+  ["searching is rate limited", { limitSeconds: 10 }, "Too many requests were sent from here."],
+] as const) {
+  test(`Back to a search whose check fails because ${failure} no longer offers the remembered answer`, async ({ page, request }) => {
+    await search(page, uniqueLabel("backfail"))
+    await page.getByRole("button", { name: "Register" }).click()
+    await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+    await control(request, "search", change)
+    const rechecked = page.waitForResponse(/\/api\/name\/(0x)?[0-9a-f]{64}/)
+    await page.goBack()
+    await rechecked
+    await expect(page.getByText(shown)).toBeVisible()
+    await expect(page.getByRole("button", { name: "Register" })).toHaveCount(0)
+    await expect(page.locator(".result .chip", { hasText: "Available" })).toHaveCount(0)
+  })
+}
+
+test("a search pause reads the same after leaving the page and coming back", async ({ page, request }) => {
+  await page.goto("/")
+  await control(request, "search", { limitSeconds: 30 })
+  await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("pauseback"))
+  await page.getByLabel("Name", { exact: true }).press("Enter")
+  const notice = page.locator(".under-search .alert")
+  await expect(notice).toContainText("Too many requests were sent from here. Searching is paused until then.")
+  const before = (await notice.innerText()).replace(/Try again in \d+ seconds?/, "")
+  await page.getByRole("link", { name: "Your names" }).first().click()
+  await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
+  await page.goBack()
+  await expect(notice).toBeVisible()
+  expect((await notice.innerText()).replace(/Try again in \d+ seconds?/, "")).toBe(before)
+})
+
+// an expiry ten days ago, well inside the chain's grace period
+const LAPSED_S = 10 * 86_400
+const OWNER = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
+
+test("search shows an expired name of yours with when it ran out and when it can be registered again", async ({ page }) => {
+  const label = uniqueLabel("lapse")
+  const hash = hex(labelHash(label))
+  const expiresAt = Math.floor(Date.now() / 1000) - LAPSED_S
+  await page.goto("/#/trademarks")
+  await page.evaluate(({ label, hash, owner }) => localStorage.setItem("simplex-names:order:reg-lapsed", JSON.stringify({
+    registrationId: "reg-lapsed", invoiceId: null, label, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner, contact: "", channel: "", method: "code", paid: 0,
+    years: 2, secret: "0x01", tld: "simplex", createdAt: new Date().toISOString(),
+    request: { labelHash: hash, length: label.length, owner, commitment: "0x01", sealed: "sealed" },
+  })), { label, hash, owner: OWNER })
+  await page.route("**/api/name/**", (route) => route.fulfill({ json: {
+    status: "registered", entities: [], owner: OWNER, records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt, tld: "simplex",
+  } }))
+  await page.goto(`/#/?name=${label}`)
+  await expect(page.locator(".result .chip", { hasText: "Expired" })).toBeVisible()
+  await expect(page.locator(".result .note")).toHaveText(`Its registration ran out on ${dateOf(expiresAt)}. It can be registered again from ${dateOf(expiresAt + GRACE_S)}.`)
+})

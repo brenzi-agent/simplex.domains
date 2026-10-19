@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test"
-import { contactLink, control, search, shot, startOrder, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { expect, type Page } from "@playwright/test"
+import { contactLink, control, mockRegistration, REGISTRATION_MS, registrationOf, search, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 test("a second tab's order survives a write from a tab opened earlier", async ({ browser, request }) => {
   const context = await browser.newContext()
@@ -68,12 +68,12 @@ test("a payment method is chosen with the keyboard, as one radio group", async (
 
 test("Escape closes the code popup and returns focus to what opened it", async ({ page }) => {
   await page.goto("/")
-  await page.getByText("Check a code").focus()
+  await page.getByRole("button", { name: "Check a code" }).focus()
   await page.keyboard.press("Enter")
   await expect(page.getByRole("dialog")).toBeVisible()
   await page.keyboard.press("Escape")
   await expect(page.getByRole("dialog")).toHaveCount(0)
-  await expect(page.getByText("Check a code")).toBeFocused()
+  await expect(page.getByRole("button", { name: "Check a code" })).toBeFocused()
 })
 
 test("a card payment settled while its page was closed frees checkout", async ({ page, request }) => {
@@ -132,7 +132,7 @@ test("Get a new invoice keeps an invoice the service would not cancel", async ({
 
 test("a registration link of an order paid by invoice points at its payment link", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("reglink"), { method: "btc" })
-  const registrationId = (await (await request.get(`http://127.0.0.1:8099/api/invoice/${invoiceId}`)).json()).registration.id
+  const registrationId = await registrationOf(request, invoiceId)
   await page.goto(`/?registration=${registrationId}`)
   await expect(page.getByRole("heading", { name: "This order is paid by invoice" })).toBeVisible()
   await page.getByRole("button", { name: "Open its payment" }).click()
@@ -209,14 +209,14 @@ test("after taking a code, the other-name search says the payment became a code"
   await control(request, "take", { label })
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: 120_000 })
-  const registrationId = (await (await request.get(`http://127.0.0.1:8099/api/invoice/${invoiceId}`)).json()).registration.id
+  const registrationId = await registrationOf(request, invoiceId)
   await page.getByRole("button", { name: "Take a code" }).click()
   await expect(page.getByRole("heading", { name: "Here is a code instead" })).toBeVisible()
   await page.goto(`/#/?retarget=${registrationId}`)
   await expect(page.getByText("Your payment already became a code.")).toBeVisible()
   // the search is a plain one now, so a prepaid code applies
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.getByText("Check a code").click()
+  await page.getByRole("button", { name: "Check a code" }).click()
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
   await page.getByRole("button", { name: "Use this code" }).click()
   await expect(page.getByRole("dialog")).toHaveCount(0)
@@ -275,7 +275,10 @@ test("an order left before its wait ends asks for this browser in Your names", a
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await page.goto("/#/")
   await control(request, `settle/${invoiceId}`)
-  await page.waitForTimeout(16_000)
+  await expect.poll(async () => {
+    const { phase, revealAfter } = await mockRegistration(request, invoiceId)
+    return phase === "committed" && revealAfter !== null && Date.now() / 1000 >= revealAfter
+  }, { timeout: REGISTRATION_MS }).toBe(true)
   await page.goto("/#/names")
   const row = page.locator(".row-item", { hasText: `${label}.simplex` })
   await expect(row.locator(".chip")).toHaveText("Open to finish")
@@ -283,9 +286,25 @@ test("an order left before its wait ends asks for this browser in Your names", a
   await waitRegistered(page, label)
 })
 
-test("a name typed with .simplex is searched without it", async ({ page }) => {
+test("a name typed with .simplex is searched without it, and the field shows the name searched with its caret at the end", async ({ page }) => {
   await search(page, "Bakery.simplex")
   await expect(page.locator(".result .entity")).toHaveCount(2)
+  const field = page.getByLabel("Name", { exact: true })
+  await expect(field).toHaveValue("bakery")
+  expect(await field.evaluate((n: HTMLInputElement) => [n.selectionStart, n.selectionEnd])).toEqual([6, 6])
+})
+
+// past the row's retry after a failed read, UNREAD_RETRY_MS in views/names.ts, with the read it starts
+const UNREAD_ROUND_MS = 8_000
+test("a row Your names could not read is read again while the page stays open", async ({ page }) => {
+  const { invoiceId } = await startOrder(page, uniqueLabel("unread"), { method: "btc" })
+  let refused = true
+  await page.route(`**/api/invoice/${invoiceId}*`, (route) => refused ? route.fulfill({ status: 503, json: { error: "provider_unavailable" } }) : route.continue())
+  await page.goto("/#/names")
+  const chip = page.locator(".row-item .chip")
+  await expect(chip).toHaveText("Not checked")
+  refused = false
+  await expect(chip, "the row read again by itself").toHaveText("Waiting for payment", { timeout: UNREAD_ROUND_MS })
 })
 
 test("search points at this browser's open order for a name instead of a second one", async ({ page }) => {
@@ -302,7 +321,7 @@ test("a code checked from the header applies to the checkout in progress", async
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   await search(page, uniqueLabel("hdr"))
   await page.getByRole("button", { name: "Register" }).click()
-  await page.getByText("Check a code").click()
+  await page.getByRole("button", { name: "Check a code" }).click()
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
   await page.getByRole("button", { name: "Use this code" }).click()
   await expect(page.getByText("Paid with your code")).toBeVisible()
@@ -397,6 +416,26 @@ test("a link preview the service cannot answer now is checked again by itself", 
   await expect(page.locator(".link-field").first().locator(".entity")).toBeVisible({ timeout: 10_000 })
 })
 
+test("a link preview already shown stays as it is when Details is gone back to from the name code", async ({ page }) => {
+  await search(page, uniqueLabel("keep"))
+  await page.getByRole("button", { name: "Register" }).click()
+  await page.getByLabel("Address").fill(contactLink("keep"))
+  await expect(page.locator(".link-field").first().locator(".entity:not(.skeleton)")).toBeVisible()
+  await page.getByRole("button", { name: "Continue" }).click()
+  await expect(page.getByRole("heading", { name: "Save your name code" })).toBeVisible()
+  await page.evaluate(() => {
+    const w = window as unknown as { __skeletons: number }
+    w.__skeletons = 0
+    new MutationObserver((records) => {
+      for (const n of records.flatMap((r) => [...r.addedNodes])) if (n instanceof Element && (n.matches(".entity.skeleton") || n.querySelector(".entity.skeleton"))) w.__skeletons++
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+  await page.locator(".crumb", { hasText: "Details" }).click()
+  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await expect(page.locator(".link-field").first().locator(".entity:not(.skeleton)")).toBeVisible()
+  expect(await page.evaluate(() => (window as unknown as { __skeletons: number }).__skeletons), "loading cards drawn for a link already shown").toBe(0)
+})
+
 test("a rate-limited cancel holds, and the hold outlives the page drawing itself again", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("hold"), { method: "btc" })
   let cancels = 0
@@ -434,7 +473,7 @@ test("Back from a paused order keeps the order paused", async ({ page }) => {
 
 test("a popup stays open while its page draws itself again", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("pop"), { method: "btc" })
-  await page.getByText("Check a code").click()
+  await page.getByRole("button", { name: "Check a code" }).click()
   await page.getByRole("textbox", { name: "Code", exact: true }).fill("SN6-")
   await control(request, `partial/${invoiceId}`)
   await expect(page.getByText(/BTC is seen/)).toBeVisible()
@@ -452,7 +491,7 @@ test("a link still being checked is kept when a code is applied from the header 
   await page.getByRole("button", { name: "Register" }).click()
   const link = contactLink("keep")
   await page.getByLabel("Address").fill(link)
-  await page.getByText("Check a code").click()
+  await page.getByRole("button", { name: "Check a code" }).click()
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
   await expect(page.locator(".verdict.ok")).toBeVisible()
   await page.getByRole("button", { name: "Use this code" }).click()
@@ -477,3 +516,50 @@ test("Find the order shows a wait met elsewhere in the tab", async ({ page, requ
   await control(request, "search", { findLimitSeconds: 0 })
 })
 
+// how far a restored place may be from the one left, as a page's height settles by a pixel or so
+const PLACE_PX = 4
+const scrolledNear = (page: Page, y: number) => expect.poll(() => page.evaluate((t) => Math.abs(scrollY - t), y)).toBeLessThanOrEqual(PLACE_PX)
+
+// The page goes Back itself, as Playwright's Back from Your names here never returns in Firefox driven over WebDriver BiDi.
+test("Back returns to where a page was left, a slow page included, and a reload keeps the place", { tag: "@motion" }, async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 })
+  await page.goto("/")
+  const place = await page.evaluate(() => Math.min(700, document.documentElement.scrollHeight - innerHeight))
+  expect(place).toBeGreaterThan(100)
+  await page.evaluate((y) => scrollTo(0, y), place)
+  // clicked from inside the page: a pointer click first scrolls the header's link into view, which WebKit does even
+  // for a link always in view, moving the place it then leaves
+  await page.locator("nav a[data-nav=names]").dispatchEvent("click")
+  await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
+  expect(await page.evaluate(() => scrollY)).toBe(0)
+  await page.evaluate(() => history.back())
+  await expect(page.getByRole("heading", { name: /Own your name/ })).toBeVisible()
+  await scrolledNear(page, place)
+  await page.reload()
+  await expect(page.getByRole("heading", { name: /Own your name/ })).toBeVisible()
+  await scrolledNear(page, place)
+
+  const { invoiceId } = await startOrder(page, uniqueLabel("place"), { method: "btc" })
+  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  const orderPlace = await page.evaluate(() => Math.min(400, document.documentElement.scrollHeight - innerHeight))
+  expect(orderPlace).toBeGreaterThan(100)
+  await page.evaluate((y) => scrollTo(0, y), orderPlace)
+  await page.locator("nav a[data-nav=names]").dispatchEvent("click")
+  await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
+  await page.route(`**/api/invoice/${invoiceId}*`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    await route.continue()
+  })
+  const placeholderShown = page.evaluate(() => new Promise<void>((resolve) => {
+    new MutationObserver((_, watch) => {
+      if (!document.querySelector("[data-placeholder]")) return
+      watch.disconnect()
+      resolve()
+    }).observe(document.body, { childList: true, subtree: true })
+  }))
+  await page.evaluate(() => history.back())
+  await placeholderShown
+  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await scrolledNear(page, orderPlace)
+  await page.unroute(`**/api/invoice/${invoiceId}*`)
+})

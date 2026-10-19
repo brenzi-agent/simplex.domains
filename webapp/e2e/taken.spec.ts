@@ -1,7 +1,7 @@
-import { type APIRequestContext, expect, test } from "@playwright/test"
+import { expect } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
-import { control, REGISTRATION_MS, registrationOf, searchName, shot, startOrder, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { control, mockRegistration, REGISTRATION_MS, registrationOf, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 test("a name taken first moves the paid order to another name, owned by the same code", async ({ page, request }) => {
   const label = uniqueLabel("tk")
@@ -9,12 +9,17 @@ test("a name taken first moves the paid order to another name, owned by the same
   await control(request, "take", { label })
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
+  const gap = await page.evaluate(() => {
+    const options = document.querySelector("body > main .options")!
+    return options.getBoundingClientRect().top - options.parentElement!.querySelector(".sec-note")!.getBoundingClientRect().bottom
+  })
+  expect(gap).toBeCloseTo(18, 0)
   await shot(page, "N8-taken")
 
   await page.getByRole("button", { name: "Choose another name" }).click()
   await expect(page.getByText(/Your payment is kept: \$100\.00/)).toBeVisible()
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.getByText("Check a code").click()
+  await page.getByRole("button", { name: "Check a code" }).click()
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
   await page.getByRole("button", { name: "Use this code" }).click()
   await expect(page.locator(".verdict.bad")).toContainText("Your paid order covers the name you move it to; no code is needed.")
@@ -87,20 +92,18 @@ test("a failed registration is retried without paying again, and another tab fol
   await waitRegistered(other, label)
 })
 
-// a chain that fails each transaction before it goes out, as an RPC provider down for a while
-const STATE_URL = "http://127.0.0.1:8099/control/state"
-const phaseOf = async (request: APIRequestContext, invoiceId: string) =>
-  ((await (await request.get(STATE_URL)).json()) as { registrations: { invoiceId: string; phase: string }[] }).registrations.find((r) => r.invoiceId === invoiceId)!.phase
-
+// a chain that fails each transaction before it goes out, as an RPC provider down for a while, and a look half way through
+const UNSENT_S = 4
+const UNSENT_CHECK_MS = UNSENT_S * 1000 / 2
 test("a chain that sends nothing for a moment keeps the order where it was, then registers it", async ({ page, request }) => {
   const label = uniqueLabel("ns")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   try {
-    await control(request, "search", { unsentSeconds: 12 })
+    await control(request, "search", { unsentSeconds: UNSENT_S })
     await control(request, `settle/${invoiceId}`)
-    await page.waitForTimeout(6000)
+    await page.waitForTimeout(UNSENT_CHECK_MS)
     // tried again every few seconds, the commit neither fails nor goes back to the queue
-    expect(await phaseOf(request, invoiceId)).toBe("committing")
+    expect((await mockRegistration(request, invoiceId)).phase).toBe("committing")
     await expect(page.locator(".stage.active", { hasText: "Committing" })).toBeVisible()
   } finally {
     await control(request, "search", { unsentSeconds: 0 })
@@ -108,7 +111,7 @@ test("a chain that sends nothing for a moment keeps the order where it was, then
   await waitRegistered(page, label)
 })
 
-test("a chain that sends nothing for over a minute fails the order in plain words, and Try again sends it", async ({ page, request }) => {
+test("a chain that sends nothing for longer than its resends fails the order in plain words, and Try again sends it", async ({ page, request }) => {
   test.setTimeout(240_000)
   const label = uniqueLabel("nd")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
