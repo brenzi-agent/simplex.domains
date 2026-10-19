@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test"
-import { contactLink, search, startOrder, test, uniqueLabel } from "./helpers.ts"
+import { openCode, search, startOrder, test, uniqueLabel } from "./helpers.ts"
 
 // the rail's shift in slides: its translateX over the track's width
 const shift = (page: Page) => page.locator(".rail").evaluate((rail) => {
@@ -22,8 +22,7 @@ test("search, checkout and payment move along one track a step at a time, the ot
   await expect.poll(() => shift(page)).toBe(-1)
   await expect(liveSlides(page)).toHaveCount(1)
   const before = await page.locator(".track").evaluate((t) => t.getBoundingClientRect().height)
-  await page.getByLabel("Address").fill(contactLink("A1"))
-  await expect(page.locator(".link-field").first().locator(".entity:not(.skeleton)")).toBeVisible()
+  await openCode(page)
   await expect.poll(() => fit(page)).toBe(0)
   expect(await page.locator(".track").evaluate((t) => t.getBoundingClientRect().height)).toBeGreaterThan(before)
   await page.goBack()

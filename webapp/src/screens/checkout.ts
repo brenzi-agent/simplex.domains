@@ -18,15 +18,16 @@ export interface CheckoutState {
   openOrder: OpenOrder | null
   hold: Hold | null
   refusal: Refusal | null
+  // the code field, behind its "I have a code" link until opened or until the checkout carries a code or its refusal
+  codeOpen: boolean
 }
 
 export type CheckoutEvent =
   | { type: "opened"; checkout: Checkout; sending: boolean; waiting: WaitingOrder | null; hold: Hold | null }
   | { type: "method-chosen"; method: Method }
-  | { type: "link-set"; kind: "contact" | "channel"; link: string }
   | { type: "code-applied"; code: AppliedCode }
   | { type: "code-removed" }
-  | { type: "saved"; saved: boolean }
+  | { type: "code-opened" }
   | { type: "waiting-settled" }
   | { type: "open-order-seen"; order: OpenOrder }
   | { type: "send-started" }
@@ -37,16 +38,15 @@ export type CheckoutEvent =
   | { type: "hold-ended" }
 
 export function initialState(checkout: Checkout): CheckoutState {
-  return { checkout, sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null }
+  return { checkout, sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null,
+    codeOpen: checkout.code !== null || checkout.codeError !== undefined }
 }
 
 export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial<Checkout> | null {
   switch (e.type) {
     case "method-chosen": return e.method === checkout.method || e.method === checkout.unavailable ? null : { method: e.method }
-    case "link-set": return e.kind === "contact" ? { contact: e.link } : { channel: e.link }
     case "code-applied": return { code: e.code, codeError: undefined }
     case "code-removed": return { code: null, codeError: undefined }
-    case "saved": return { saved: e.saved }
     case "order-refused":
       if (e.reason === "code") return { code: null, codeError: e.error }
       return e.reason === "method" ? { unavailable: checkout.method, method: FALLBACK_METHOD[checkout.method] } : null
@@ -63,10 +63,9 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
   switch (e.type) {
     case "opened": return { ...s, checkout: e.checkout, sending: e.sending, busy: false, waiting: e.waiting, hold: e.hold, refusal: null }
     case "method-chosen":
-    case "link-set":
     case "code-applied":
-    case "code-removed":
-    case "saved": return change ? { ...s, checkout } : s
+    case "code-removed": return change ? { ...s, checkout } : s
+    case "code-opened": return { ...s, codeOpen: true }
     case "waiting-settled": return { ...s, waiting: null }
     case "open-order-seen": return { ...s, openOrder: e.order }
     case "send-started": return { ...s, sending: true, busy: true }

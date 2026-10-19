@@ -787,6 +787,7 @@ function registeringScreen(s: OrderState, signal: AbortSignal): HTMLElement {
     el("div", { class: "countdown" }, clockNode, note),
     refused ? alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration.") : null,
     refused ? btn("Try again", "quiet block", tryAgain, icon("refresh")) : null,
+    record?.ownerCode ? nameCodeCard(record, record.ownerCode) : null,
     txRows(view, states, s.now, view.label === null && refused),
     referenceLine(s.invoice?.invoiceId ?? view.id))
 }
@@ -818,8 +819,27 @@ function onTheSecond(left: () => number, f: () => void, signal: AbortSignal): vo
 
 function buildNotOnDevice({ view, invoice }: OrderState): HTMLElement {
   return outcome({ tone: "info", icon: "key", title: "The name code is not in this browser",
-    text: ["This order registers a name to ", el("span", { class: "nowrap" }, shortAddress(view!.owner)), ". Its code was made in the browser it was bought in. Enter the code you saved before paying to carry on here."],
+    text: ["This order registers a name to ", el("span", { class: "nowrap" }, shortAddress(view!.owner)), ". Its code was made in the browser it was bought in. Enter the code you saved to carry on here."],
     action: btn("Enter your name code", "", () => go("/#/restore"), icon("arrow")), reference: invoice?.invoiceId ?? view!.id })
+}
+
+const SAVED_LABEL = "I have saved my name code"
+
+// The name code, shown once the order is paid, with a box the buyer ticks once they keep a copy elsewhere.
+function nameCodeCard(record: store.OrderRecord, code: string): HTMLElement {
+  const box = el("input", { type: "checkbox", checked: record.codeSaved === true, "data-focus": "saved" })
+  box.addEventListener("change", () => markSaved(record.registrationId, box.checked))
+  return el("div", { class: "card name-code" }, el("span", { class: "label" }, "Your name code"), codeDisplay(code, "owner-code"),
+    store.canPersist() ? alertBox("warn", "shield", null, "Whoever has this code controls the name. Nobody else has a copy, not even us.")
+      : alertBox("danger", "alert", "This code could not be saved in this browser", "Save a copy now: it will be the only one."),
+    el("label", { class: "check" }, box, el("span", { class: "box" }), SAVED_LABEL))
+}
+
+// read from the module's state, which may have moved on to another order since the box was drawn
+function markSaved(registrationId: string, codeSaved: boolean): void {
+  store.updateOrder(registrationId, { codeSaved })
+  if (state.record?.registrationId !== registrationId) return
+  dispatch({ type: "record-changed", record: { ...state.record, codeSaved }, cardSubmittedAt: state.cardSubmittedAt })
 }
 
 function registeredScreen(s: OrderState): HTMLElement {
@@ -827,12 +847,10 @@ function registeredScreen(s: OrderState): HTMLElement {
   const label = labelOf(view, s.record)
   const code = s.record?.ownerCode ?? null
   return screen({ title: [label ? gradName(label, view.tld) : "The name", " is yours"], lead: registeredLead(view, s.record) },
-    code ? el("div", { class: "card name-code" }, el("span", { class: "label" }, "Your name code"), codeDisplay(code, "owner-code"),
-      store.canPersist() ? alertBox("warn", "shield", null, "Whoever has this code controls the name. Nobody else has a copy, not even us.")
-        : alertBox("danger", "alert", "This code could not be saved in this browser", "The copy you saved before paying is the only one.")) : null,
+    code ? nameCodeCard(s.record!, code) : null,
     code ? el("div", { class: "card next-step" }, el("div", { class: "qr" }, qrSvg(code, "name code")),
-      el("div", {}, el("h2", {}, "Redeem it in the app"), el("p", { class: "note" }, "Scan or enter the code in SimpleX: the name moves to the app's wallet."),
-        el("a", { href: `/#/edit/${view.id}` }, "Edit links")))
+      el("div", {}, el("h2", {}, "Redeem it in the app"), el("p", { class: "note" }, "Scan or enter the code in SimpleX: the name moves to the app's wallet."))) : null,
+    code ? el("a", { class: "btn block", href: `/#/edit/${view.id}` }, icon("link"), "Set links")
       : s.record ? btn("Back to SimpleX", "block", () => { location.href = "simplex:/" }) : withoutRecord(view, "quiet block", "Restore with your name code"))
 }
 

@@ -2,7 +2,8 @@ import { expect, type Locator } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
 import {
-  channelLink, contactLink, control, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, savedCode, searchName, shot, startOrder, test, uniqueLabel, waitRegistered,
+  channelLink, checkoutOwnerCode, contactLink, control, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, SAVED, search, searchName, shot, startOrder, test,
+  uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
@@ -46,10 +47,10 @@ test("a stage with no timed wait, as the register transaction being mined, draws
   await page.unrouteAll({ behavior: "wait" })
 })
 
-test("a Bitcoin order pays in two parts, registers on chain with its links, and the code owns it", async ({ page, request }) => {
+test("a Bitcoin order pays in two parts, registers on chain, takes its links on Edit links, and the code owns it", async ({ page, request }) => {
   const label = uniqueLabel("btc")
   const contact = contactLink("A1")
-  const { invoiceId, ownerCode } = await startOrder(page, label, { method: "btc", contact, shots: "N3" })
+  const { invoiceId, ownerCode } = await startOrder(page, label, { method: "btc", shots: "N3" })
   expect(ownerCode).toMatch(/^SN-/)
 
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
@@ -85,19 +86,16 @@ test("a Bitcoin order pays in two parts, registers on chain with its links, and 
   const answer = await searchName(request, label)
   expect(answer.status).toBe("registered")
   expect(answer.owner).toBe(checksumAddress(walletOf(ownerCode)!.address))
-  expect(answer.records).toEqual({ contact, channel: "" })
+  expect(answer.records, "a name is registered with no links").toEqual({ contact: "", channel: "" })
   const registrationId = await registrationOf(request, invoiceId)
 
-  await page.goto(`/#/?name=${label}`)
-  await expect(page.locator(".answer .entity")).toContainText("Contact A1Y8m3")
-  await expect(page.locator(".answer .chip", { hasText: "Yours" })).toBeVisible()
-  await shot(page, "N2a-taken-own")
-
-  // edit links: add a channel, signed in the page, sent by the mock's relayer
+  // edit links: both links, signed in the page, sent by the mock's relayer
   await page.goto(`/#/edit/${registrationId}`)
-  await expect(page.getByLabel("Address")).toHaveValue(contact)
+  await expect(page.getByLabel("Address")).toHaveValue("")
   const labelRoom = await page.locator(".link-field").evaluateAll((fields) => fields.map((f) => f.querySelector(".input")!.getBoundingClientRect().top - f.previousElementSibling!.getBoundingClientRect().bottom))
   expect(Math.min(...labelRoom), "room between each label and its field's focus ring").toBeGreaterThanOrEqual(RING_ROOM_PX)
+  await page.getByLabel("Address").fill(contact)
+  await expect(page.locator(".link-field").first()).toHaveAttribute("data-state", "ok")
   const channel = channelLink("B2")
   await page.getByLabel("Channel").fill(channel)
   await expect(page.locator(".link-field").nth(1)).toHaveAttribute("data-state", "ok")
@@ -109,6 +107,13 @@ test("a Bitcoin order pays in two parts, registers on chain with its links, and 
   await expect(saved).toBeInViewport()
   await shot(page, "N12b-edit-links")
   expect((await searchName(request, label)).records).toEqual({ contact, channel })
+
+  await page.goto(`/#/?name=${label}`)
+  await expect(page.locator(".answer .entity", { hasText: "Contact A1Y8m3" })).toBeVisible()
+  await expect(page.locator(".answer .chip", { hasText: "Yours" })).toBeVisible()
+  await shot(page, "N2a-taken-own")
+  await page.goto(`/#/edit/${registrationId}`)
+  await expect(page.getByLabel("Address")).toHaveValue(contact)
 
   // a rate-limited edit keeps Save off for the wait it was given, whatever is typed meanwhile
   await page.route("**/api/name/records", (route) => route.fulfill({ status: 429, headers: { "retry-after": "2" }, json: { error: "rate_limited" } }))
@@ -209,6 +214,65 @@ test("a Bitcoin order pays in two parts, registers on chain with its links, and 
   expect(lines.filter((l) => /points at Channel\sC3/.test(l)), lines.join(" | ")).toEqual([])
 })
 
+test("a purchase checks the order, pays, then shows the name code and Set links, which opens Edit links", async ({ page, request }) => {
+  const label = uniqueLabel("flow")
+  await search(page, label)
+  await page.getByRole("button", { name: "Register" }).click()
+  const checkout = onStep(page)
+  await expect(checkout.getByRole("heading", { name: "Check your order" })).toBeFocused()
+  // one concern per block: the order, how it pays, a code instead, and Pay
+  const blocks = await checkout.locator(".screen > *").evaluateAll((nodes) => nodes.map((n) => n.tagName === "H1" ? "h1" : n.className))
+  expect(blocks).toEqual(["back", "h1", "card summary-card", "pay-with", "code-link", "pay-block"])
+  await expect(checkout.locator(".summary-card .name")).toHaveText(`${label}.simplex`)
+  await expect(checkout.locator(".summary-card .term-line")).toHaveText(/^2 years \+ 30 days\s·\suntil \d{1,2}\s\w{3} \d{4}$/)
+  await expect(checkout.locator(".summary-card .total")).toHaveText(/^Total\$[\d,]+\.\d\d$/)
+  await expect(checkout.getByRole("radio")).toHaveText(["Card", "Bitcoin", "Monero"])
+  await expect(checkout.locator(".link-field, .name-code, input[type=checkbox]")).toHaveCount(0)
+  await expect(checkout.getByTestId("owner-code")).toHaveCount(0)
+  await expect(checkout.getByRole("textbox")).toHaveCount(0)
+  await expect(payButton(page)).toBeEnabled()
+  const ownerCode = await checkoutOwnerCode(page)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await expect(page.getByTestId("owner-code"), "the name code shows once the order is paid").toHaveCount(0)
+  const invoiceId = new URL(page.url()).searchParams.get("order")!
+
+  await control(request, `settle/${invoiceId}`)
+  await expect(page.getByRole("heading", { name: `Registering ${label}.simplex` })).toBeVisible({ timeout: REGISTRATION_MS })
+  await expect(page.getByTestId("owner-code")).toHaveText(ownerCode)
+  const saved = page.getByRole("checkbox", { name: SAVED })
+  await expect(saved).not.toBeChecked()
+  await page.getByText(SAVED).click()
+  await expect(saved).toBeChecked()
+  await page.reload()
+  await expect(saved, "the order remembers the box").toBeChecked()
+
+  await waitRegistered(page, label)
+  await expect(page.getByTestId("owner-code")).toHaveText(ownerCode)
+  await expect(saved).toBeChecked()
+  await page.getByRole("link", { name: "Set links" }).click()
+  await expect(page.getByRole("heading", { name: `Edit links for ${label}.simplex` })).toBeVisible()
+  expect(new URL(page.url()).hash).toBe(`#/edit/${await registrationOf(request, invoiceId)}`)
+
+  // a link of the wrong kind is refused, and Save takes focus to it
+  await page.getByLabel("Address").fill("https://smp8.simplex.im/c#notacontact")
+  await expect(page.getByText("This is a channel link: paste it in the Channel field.")).toBeVisible()
+  await shot(page, "N12f-link-wrong-kind")
+  await page.getByRole("button", { name: "Save links" }).click()
+  await expect(page.getByLabel("Address")).toBeFocused()
+  // a link preview the service cannot answer now is checked again by itself
+  let refused = 0
+  await page.route("**/api/link/preview", async (route) => {
+    if (refused++ === 0) return route.fulfill({ status: 429, headers: { "retry-after": "2" }, json: { error: "rate_limited" } })
+    return route.continue()
+  })
+  await page.getByLabel("Address").fill(contactLink("prev"))
+  await expect(page.locator(".field-error [aria-hidden=true]", { hasText: /The link could not be checked now/ })).toBeVisible()
+  await expect(page.locator(".link-field").first().locator(".entity")).toBeVisible({ timeout: 10_000 })
+  await page.unrouteAll({ behavior: "wait" })
+})
+
 test("the owner code restores an order in another browser, and a bad code is refused", async ({ page, browser, request }) => {
   const label = uniqueLabel("rest")
   const { invoiceId, ownerCode } = await startOrder(page, label, { method: "xmr" })
@@ -254,7 +318,6 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   await page.getByLabel("Name", { exact: true }).press("Enter")
   await page.getByRole("button", { name: "Register" }).click()
   await expect(page.getByText("You have an order waiting to be confirmed")).toBeVisible()
-  await savedCode(page)
   await expect(payButton(page)).toBeDisabled()
   await shot(page, "N3e-open-card-order")
   await page.getByRole("button", { name: "Open the waiting order" }).click()
@@ -604,13 +667,14 @@ test("a card form that does not load says so and offers a new invoice", async ({
 
 test("links saved in another tab show in an open Your names, and in one opened again, never as the old ones", async ({ page, request }) => {
   const label = uniqueLabel("xtab")
-  const { invoiceId } = await startOrder(page, label, { method: "btc", channel: channelLink("C3") })
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await control(request, `settle/${invoiceId}`)
   await waitRegistered(page, label)
   const registrationId = await registrationOf(request, invoiceId)
   await page.goto("/#/names")
   const row = page.locator(".row-item", { hasText: `${label}.simplex` })
-  await expect(row.locator(".sub")).toContainText(/points at Channel\sC3/)
+  await expect(row.locator(".sub")).toContainText(/^Until /)
+  await expect(row.locator(".sub")).not.toContainText("points at")
   const saveContact = async (contact: string) => {
     const other = await page.context().newPage()
     await other.goto(`/#/edit/${registrationId}`)

@@ -1,5 +1,5 @@
 import { type APIRequestContext, type Browser, expect, type Locator, type Page } from "@playwright/test"
-import { control, onStep, payButton, savedCode, search, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { checkoutCode, CODE_LABEL, control, onStep, openCode, payButton, search, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
 const WAIT_S = 200
@@ -38,16 +38,15 @@ async function releasedAndUsed(request: APIRequestContext, code: string): Promis
 const keptRefusal = (page: Page, registrationId: string) =>
   page.evaluate((id) => JSON.parse(localStorage.getItem(`simplex-names:order:${id}`) ?? "{}").codeRefusal ?? null, registrationId)
 
-const checkoutCode = (page: Page) => page.getByRole("textbox", { name: "I have a code" })
 const total = (page: Page) => page.locator(".summary-card .total")
 
 // The name searched is registered with a prepaid code entered at checkout; the page is left on the registration.
 async function payWithCode(page: Page, label: string, code: string): Promise<void> {
   await search(page, label)
   await page.getByRole("button", { name: "Register", exact: true }).click()
+  await openCode(page)
   await checkoutCode(page).fill(code)
   await expect(page.getByText("Paid with your code")).toBeVisible()
-  await savedCode(page)
   // the search's Register stays on its inert slide beside the checkout
   await onStep(page).getByRole("button", { name: "Register", exact: true }).click()
   await page.waitForURL(/\?registration=/)
@@ -71,6 +70,8 @@ test("a prepaid code entered at checkout registers a name with nothing to pay", 
   await search(page, label)
   await page.getByRole("button", { name: "Register" }).click()
   await expect(total(page)).not.toContainText("$0.00")
+  await expect(checkoutCode(page), "the code field opens only from its link").toHaveCount(0)
+  await openCode(page)
   await checkoutCode(page).fill(code.toLowerCase())
   await expect(page.locator(".code-entry .verdict.ok")).toHaveText("Covers names of 6 or more letters, for 5 years.")
   await expect(total(page)).toContainText("$0.00")
@@ -80,8 +81,7 @@ test("a prepaid code entered at checkout registers a name with nothing to pay", 
   await expect(page.getByRole("radio")).toHaveCount(0)
   await shot(page, "K3-checkout-covered")
   const register = onStep(page).getByRole("button", { name: "Register", exact: true })
-  await expect(register).toBeDisabled()
-  await savedCode(page)
+  await expect(register).toBeEnabled()
   await register.click()
   await page.waitForURL(/\?registration=/)
   await waitRegistered(page, label)
@@ -97,6 +97,7 @@ test("a prepaid code entered at checkout registers a name with nothing to pay", 
   // the code is spent
   await search(page, uniqueLabel("spent"))
   await page.getByRole("button", { name: "Register" }).click()
+  await openCode(page)
   await checkoutCode(page).fill(code)
   await expect(page.locator(".code-entry .verdict.bad")).toContainText("This code was already used")
   await expect(payButton(page)).toBeVisible()
@@ -109,6 +110,7 @@ test("a code entered at checkout stays with its name through Back and Register, 
   const label = uniqueLabel("stay")
   await search(page, label)
   await page.getByRole("button", { name: "Register" }).click()
+  await openCode(page)
   await checkoutCode(page).fill(code)
   await expect(total(page)).toContainText("$0.00")
   await page.goBack()
@@ -127,7 +129,8 @@ test("a code entered at checkout stays with its name through Back and Register, 
 
   await search(page, uniqueLabel("other"))
   await page.getByRole("button", { name: "Register" }).click()
-  await expect(checkoutCode(page)).toHaveValue("")
+  await expect(checkoutCode(page)).toHaveCount(0)
+  await expect(onStep(page).getByRole("button", { name: CODE_LABEL })).toBeVisible()
   await expect(total(page)).not.toContainText("$0.00")
 })
 
@@ -135,9 +138,9 @@ test("a code the service refuses as the order is sent leaves its field, says why
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   await search(page, uniqueLabel("used"))
   await page.getByRole("button", { name: "Register" }).click()
+  await openCode(page)
   await checkoutCode(page).fill(code)
   await expect(total(page)).toContainText("$0.00")
-  await savedCode(page)
   await page.route("**/api/name/register", (route) => route.fulfill({ status: 409, json: { error: "code_used" } }))
   await onStep(page).getByRole("button", { name: "Register", exact: true }).click()
   const refusal = page.getByRole("status").filter({ hasText: "This code was already used." })
@@ -156,12 +159,14 @@ test("a code the service refuses as the order is sent leaves its field, says why
   await page.reload()
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
   await expect(page.getByText("This code was already used.")).toHaveCount(0)
+  await expect(checkoutCode(page), "a checkout with no code or refusal opens with its field closed").toHaveCount(0)
 })
 
 test("the checkout's code field refuses a code for longer names, typos and owner codes", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 8 }) as { code: string }
   await search(page, uniqueLabel("k7").slice(0, 7))
   await page.getByRole("button", { name: "Register" }).click()
+  await openCode(page)
   const verdict = page.locator(".code-entry .verdict.bad")
   await checkoutCode(page).fill("SN7-BJTBP-29596-R3HJ8-25YM8")
   await expect(verdict).toContainText("This code is not valid")
@@ -189,13 +194,13 @@ test("a code added under Your names is listed, and forgotten", async ({ page, re
   await expect(page.getByText("No codes in this browser yet.")).toBeVisible()
 })
 
-test("an owner code shown at checkout is kept in Your names until its order exists", async ({ page }) => {
+test("an owner code made at checkout is kept in Your names until its order exists", async ({ page }) => {
   const label = uniqueLabel("pend")
   await page.goto("/")
   await page.getByLabel("Name", { exact: true }).fill(label)
   await page.getByLabel("Name", { exact: true }).press("Enter")
   await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByTestId("owner-code")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
   await page.goto("/#/names")
   const row = page.locator(".row-item", { hasText: `${label}.simplex` })
   await expect(row.locator(".chip")).toHaveText("Checkout not finished")
@@ -212,7 +217,6 @@ test("an order refused at checkout for a name taken meanwhile leaves no unfinish
   await page.getByLabel("Name", { exact: true }).fill(label)
   await page.getByLabel("Name", { exact: true }).press("Enter")
   await page.getByRole("button", { name: "Register" }).click()
-  await savedCode(page)
   await page.route("**/api/invoice", (route) => route.fulfill({ status: 409, json: { error: "name_taken" } }))
   await payButton(page).click()
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(label)

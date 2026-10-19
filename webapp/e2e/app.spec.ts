@@ -11,7 +11,6 @@ async function orderFromApp(page: Page, app: Wallet, label: string, shots = fals
   await expect(page.getByText("Opened from SimpleX.")).toBeVisible()
   if (shots) await shot(page, "L1-from-app")
   await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByText("Point it at your SimpleX")).toHaveCount(0)
   await expect(page.getByText("I have a code")).toHaveCount(0)
   await expect(page.locator(".name-code")).toHaveCount(0)
   if (shots) await shot(page, "L2-checkout-from-app")
@@ -60,6 +59,7 @@ test("an order opened from the app registers to the app's wallet once the app si
   await appSigns(page, request, app, label, invoiceId)
   await expect(page.getByRole("heading", { name: `${label}.simplex is yours` })).toBeVisible({ timeout: REGISTRATION_MS })
   await expect(page.getByRole("button", { name: "Back to SimpleX" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Set links" }), "the app sets the links of a name in its wallet").toHaveCount(0)
   await shot(page, "L3-registered-to-app")
   expect((await searchName(request, label)).owner).toBe(checksumAddress(app.address))
 })
@@ -150,10 +150,12 @@ const lineStarts = (text: Locator) => text.evaluate((root) => {
   return starts
 })
 
-test("a name code too long for its line breaks after a hyphen, so no line starts with one", async ({ page }) => {
+test("a name code too long for its line breaks after a hyphen, so no line starts with one", async ({ page, request }) => {
   await page.setViewportSize({ width: 360, height: 800 })
-  await page.goto(`/#/?name=${uniqueLabel("wrap")}`)
-  await page.getByRole("button", { name: "Register" }).click()
+  const label = uniqueLabel("wrap")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await control(request, `settle/${invoiceId}`)
+  await expect(page.getByRole("heading", { name: `Registering ${label}.simplex` })).toBeVisible({ timeout: REGISTRATION_MS })
   const starts = await lineStarts(page.getByTestId("owner-code").locator(".code-text"))
   expect(starts.length, "the code wraps at this width").toBeGreaterThan(1)
   expect(starts.slice(1), "the first character of each later line").not.toContain("-")

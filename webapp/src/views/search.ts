@@ -190,7 +190,7 @@ function register(): void {
     return go("/#/checkout")
   }
   session.setCheckout({
-    label, price: answer.price, chain, contact: "", channel: "", method: "btc", code: null, ownerCode: null, saved: false,
+    label, price: answer.price, chain, method: "btc", code: null, ownerCode: null,
     appOwner: s.fromApp, appSecret: null,
   })
   go("/#/checkout")

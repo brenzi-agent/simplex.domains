@@ -88,8 +88,6 @@ export async function search(page: Page, label: string): Promise<void> {
 
 export interface OrderOptions {
   method?: "card" | "btc" | "xmr"
-  contact?: string
-  channel?: string
   shots?: string
 }
 
@@ -99,24 +97,27 @@ const METHOD_NAMES = { card: "Card", btc: "Bitcoin", xmr: "Monero" }
 export const onStep = (page: Page) => page.locator(".slide:not([inert])")
 export const payButton = (page: Page) => onStep(page).getByRole("button", { name: /^Pay / })
 
-// Search and checkout, up to the order's page; returns the invoice and the owner code.
+export const CODE_LABEL = "I have a code"
+// checkout's code field, which its "I have a code" link opens
+export const checkoutCode = (page: Page) => onStep(page).getByRole("textbox", { name: CODE_LABEL })
+export async function openCode(page: Page): Promise<void> {
+  await onStep(page).getByRole("button", { name: CODE_LABEL }).click()
+  await expect(checkoutCode(page)).toBeFocused()
+}
+
+// where session.ts keeps the tab's checkout, with the owner code made for it
+const CHECKOUT_KEY = "simplex-names-checkout"
+export const checkoutOwnerCode = (page: Page) => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).ownerCode as string, CHECKOUT_KEY)
+
+// Search and checkout, up to the order's page; returns the invoice and the owner code the browser made for it.
 export async function startOrder(page: Page, label: string, opts: OrderOptions = {}): Promise<{ invoiceId: string; ownerCode: string }> {
   await search(page, label)
   await page.getByRole("button", { name: "Register" }).click()
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
-  if (opts.contact) {
-    await page.getByLabel("Address").fill(opts.contact)
-    await expect(page.locator(".link-field").first().locator(".entity:not(.skeleton)")).toBeVisible()
-  }
-  if (opts.channel) {
-    await page.getByLabel("Channel").fill(opts.channel)
-    await expect(page.locator(".link-field").nth(1).locator(".entity:not(.skeleton)")).toBeVisible()
-  }
   await page.getByRole("radio", { name: METHOD_NAMES[opts.method ?? "btc"] }).click()
-  const ownerCode = (await page.getByTestId("owner-code").locator(".code-text").textContent())!.trim()
   const pay = payButton(page)
-  await expect(pay).toBeDisabled()
-  await savedCode(page)
+  await expect(pay).toBeEnabled()
+  const ownerCode = await checkoutOwnerCode(page)
   if (opts.shots) await shot(page, `${opts.shots}-checkout`)
   await pay.click()
   await page.waitForURL(/\?order=/)
@@ -126,11 +127,6 @@ export async function startOrder(page: Page, label: string, opts: OrderOptions =
 }
 
 export const SAVED = "I have saved my name code"
-
-// the box stays ticked for the tab's checkout, so a second pass must not untick it
-export async function savedCode(page: Page): Promise<void> {
-  if (!(await page.getByRole("checkbox", { name: SAVED }).isChecked())) await page.getByText(SAVED).click()
-}
 
 export const test = base.extend<{}>({
   baseURL: async ({ baseURL }, use) => use(baseURL ?? pageUrl(SLOT)),

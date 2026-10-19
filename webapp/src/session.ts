@@ -11,12 +11,9 @@ export interface Checkout {
   label: string
   price: number
   chain: ChainInfo
-  contact: string
-  channel: string
   method: Method
   code: AppliedCode | null
   ownerCode: string | null
-  saved: boolean
   // opened from the app: the app wallet's address, and the secret this page keeps for it
   appOwner: string | null
   appSecret: string | null
@@ -76,8 +73,8 @@ export function updateCheckout(label: string, change: Partial<Checkout>): boolea
   write(CHECKOUT, { ...c, ...change })
   return true
 }
-// The checkout whose order is on its way: its Pay stays disabled and its links, method and code stay locked meanwhile,
-// so a re-ticked box or Back cannot send a second order or change the one sent.
+// The checkout whose order is on its way: its Pay stays disabled and its method and code stay locked meanwhile,
+// so a second press or Back cannot send a second order or change the one sent.
 const sending = new Set<string>()
 const keyOf = (c: Checkout) => `${c.label} ${c.ownerCode ?? c.appOwner}`
 export const isSending = (c: Checkout) => sending.has(keyOf(c))

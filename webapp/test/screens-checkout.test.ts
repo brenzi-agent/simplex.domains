@@ -13,8 +13,8 @@ const OPEN_ORDER = { invoiceId: "inv-9", label: "bobby", tld: "simplex", confirm
 
 function checkout(change: Partial<Checkout> = {}): Checkout {
   return {
-    label: "alice1", price: 1500, chain: CHAIN, contact: "", channel: "", method: "btc", code: null, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF",
-    saved: false, appOwner: null, appSecret: null, ...change,
+    label: "alice1", price: 1500, chain: CHAIN, method: "btc", code: null, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF",
+    appOwner: null, appSecret: null, ...change,
   }
 }
 
@@ -33,7 +33,7 @@ describe("screenOf", () => {
   const cases: [string, CheckoutState, CheckoutKind][] = [
     ["the checkout", open(), "checkout"],
     ["the checkout with its order on its way", open({ sending: true, busy: true }), "checkout"],
-    ["the checkout with its code saved", open({ checkout: checkout({ saved: true }) }), "checkout"],
+    ["the checkout with its code field open", open({ codeOpen: true }), "checkout"],
     ["the checkout during a wait", open({ hold: { until: NOW + 5000, lead: NO_LEAD } }), "checkout"],
     ["an order refused for a changed price", STATES["status:price-changed"], "status:price-changed"],
     ["an order that met a rate limit", STATES["status:too-many"], "status:too-many"],
@@ -59,11 +59,8 @@ describe("changeOf", () => {
   const s = STATES.checkout
   it("gives each change of the stored checkout", () => {
     expect(changeOf(s, { type: "method-chosen", method: "xmr" })).toEqual({ method: "xmr" })
-    expect(changeOf(s, { type: "link-set", kind: "contact", link: "https://smp8.simplex.im/a#x" })).toEqual({ contact: "https://smp8.simplex.im/a#x" })
-    expect(changeOf(s, { type: "link-set", kind: "channel", link: "https://smp9.simplex.im/c#y" })).toEqual({ channel: "https://smp9.simplex.im/c#y" })
     expect(changeOf(s, { type: "code-applied", code: CODE })).toEqual({ code: CODE, codeError: undefined })
     expect(changeOf(s, { type: "code-removed" })).toEqual({ code: null, codeError: undefined })
-    expect(changeOf(s, { type: "saved", saved: true })).toEqual({ saved: true })
     expect(changeOf(s, { type: "order-refused", reason: "code", error: "This code was already used." })).toEqual({ code: null, codeError: "This code was already used." })
     expect(changeOf(s, { type: "price-changed", price: 2500 })).toEqual({ price: 2500 })
   })
@@ -73,17 +70,13 @@ describe("changeOf", () => {
     }
     expect(FALLBACK_METHOD).toEqual({ card: "btc", btc: "xmr", xmr: "btc" })
   })
-  it("a link is written even when the state has it, as a field saves it again before the page takes the first save", () => {
-    expect(changeOf(open({ checkout: checkout({ contact: "https://smp8.simplex.im/a#x" }) }), { type: "link-set", kind: "contact", link: "https://smp8.simplex.im/a#x" }))
-      .toEqual({ contact: "https://smp8.simplex.im/a#x" })
-  })
   it("the method already chosen, or one unavailable, changes nothing", () => {
     expect(changeOf(s, { type: "method-chosen", method: "btc" })).toBeNull()
     expect(changeOf(open({ checkout: checkout({ unavailable: "card" }) }), { type: "method-chosen", method: "card" })).toBeNull()
   })
   it("events that are not the stored checkout's change nothing in it", () => {
     const others: CheckoutEvent[] = [opened(s), { type: "waiting-settled" }, { type: "open-order-seen", order: OPEN_ORDER },
-      { type: "send-started" }, { type: "order-refused", reason: "failed" }, { type: "hold-started", until: NOW }, { type: "hold-ended" }]
+      { type: "send-started" }, { type: "order-refused", reason: "failed" }, { type: "hold-started", until: NOW }, { type: "hold-ended" }, { type: "code-opened" }]
     for (const e of others) expect(changeOf(s, e), e.type).toBeNull()
   })
 })
@@ -92,7 +85,7 @@ describe("reduce", () => {
   const s = STATES.checkout
 
   it("opened takes the checkout as stored and what the tab knew, ending a refusal and the page's own send", () => {
-    const stored = checkout({ method: "card", contact: "https://smp8.simplex.im/a#x" })
+    const stored = checkout({ method: "card" })
     const refused = { ...s, refusal: "too-many" as const, busy: true, sending: true, openOrder: OPEN_ORDER }
     expect(reduce(refused, opened(s, { checkout: stored, sending: true, waiting: WAITING, hold: { until: NOW + 1000, lead: NO_LEAD } }))).toEqual({
       ...refused, checkout: stored, sending: true, busy: false, waiting: WAITING, hold: { until: NOW + 1000, lead: NO_LEAD }, refusal: null,
@@ -109,11 +102,6 @@ describe("reduce", () => {
     const off = open({ checkout: checkout({ unavailable: "card" }) })
     expect(reduce(off, { type: "method-chosen", method: "card" })).toBe(off)
   })
-  it("link-set keeps the link typed, an emptied field too", () => {
-    const set = reduce(s, { type: "link-set", kind: "contact", link: "https://smp8.simplex.im/a#x" })
-    expect(set).toEqual({ ...s, checkout: checkout({ contact: "https://smp8.simplex.im/a#x" }) })
-    expect(reduce(set, { type: "link-set", kind: "contact", link: "" })).toEqual(s)
-  })
   it("code-applied applies the code and clears the last refusal of one", () => {
     const refused = { ...s, checkout: checkout({ codeError: "This code has expired." }) }
     expect(reduce(refused, { type: "code-applied", code: CODE })).toEqual({ ...s, checkout: { ...checkout(), code: CODE, codeError: undefined } })
@@ -129,10 +117,11 @@ describe("reduce", () => {
     expect(edited.checkout).toHaveProperty("codeError", undefined)
     expect(screenOf(edited)).toBe("checkout")
   })
-  it("saved ticks and unticks the saved box", () => {
-    const ticked = open({ checkout: checkout({ saved: true }) })
-    expect(reduce(ticked, { type: "saved", saved: false }).checkout.saved).toBe(false)
-    expect(reduce(reduce(ticked, { type: "saved", saved: false }), { type: "saved", saved: true })).toEqual(ticked)
+  it("code-opened opens the code field, which stays open as the page draws again and the code comes off", () => {
+    const shown = reduce(s, { type: "code-opened" })
+    expect(shown).toEqual({ ...s, codeOpen: true })
+    expect(reduce(shown, opened(shown)).codeOpen).toBe(true)
+    expect(reduce(reduce(shown, { type: "code-applied", code: CODE }), { type: "code-removed" }).codeOpen).toBe(true)
   })
   it("waiting-settled lets the card order that blocked a second one go", () => {
     expect(reduce({ ...s, waiting: WAITING }, { type: "waiting-settled" })).toEqual(s)
@@ -177,7 +166,11 @@ describe("reduce", () => {
 describe("initialState", () => {
   it("starts with the checkout as stored and nothing else known", () => {
     expect(initialState(checkout())).toEqual({
-      checkout: checkout(), sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null,
+      checkout: checkout(), sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null, codeOpen: false,
     })
+  })
+  it("opens the code field for a checkout that carries a code or the service's refusal of one, as after a reload", () => {
+    expect(initialState(checkout({ code: CODE })).codeOpen).toBe(true)
+    expect(initialState(checkout({ codeError: "This code was already used." })).codeOpen).toBe(true)
   })
 })

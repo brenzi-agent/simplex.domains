@@ -32,6 +32,8 @@ export interface OrderRecord {
   replacedBy?: string
   // when a tab of this browser last saved the name's links, so every tab reads them again
   linksSavedAt?: string
+  // the buyer ticked that they keep a copy of the name code
+  codeSaved?: boolean
   createdAt: string
 }
 
@@ -48,7 +50,7 @@ export interface CodeRecord {
   addedAt: string
 }
 
-// an owner code shown at checkout, kept before its order is created so a lost answer loses nothing
+// an owner code made at checkout, kept before its order is created so a lost answer loses nothing
 export interface PendingCode {
   ownerCode: string
   label: string

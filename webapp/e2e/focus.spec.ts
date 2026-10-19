@@ -5,10 +5,11 @@ import { control, search, startOrder, test, uniqueLabel } from "./helpers.ts"
 const APP_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 const DAMAGED_WALLET = "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 
-async function showOwnerCode(page: Page, label: string): Promise<void> {
+// the checkout makes a name code as it opens, which Your names lists as pending
+async function openCheckout(page: Page, label: string): Promise<void> {
   await search(page, label)
   await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByTestId("owner-code")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
 }
 
 const OLD = "data-old"
@@ -36,8 +37,8 @@ const focusOnPage = (page: Page) => expect.poll(() => page.evaluate(() => docume
 test("removing a pending name code leaves focus on the page, so a second Enter removes nothing", async ({ page }) => {
   const older = uniqueLabel("rmold")
   const newer = uniqueLabel("rmnew")
-  await showOwnerCode(page, older)
-  await showOwnerCode(page, newer)
+  await openCheckout(page, older)
+  await openCheckout(page, newer)
   await page.goto("/#/names")
   const newest = page.locator(".row-item").first()
   await expect(newest).toContainText(`${newer}.simplex`)
@@ -57,7 +58,7 @@ test("Your names keeps focus in its row when another tab adds a row above it", a
   await row.getByText("Open", { exact: true }).focus()
   await markDrawn(page)
   const other = await page.context().newPage()
-  await showOwnerCode(other, uniqueLabel("above"))
+  await openCheckout(other, uniqueLabel("above"))
   await expect(page.locator(".row-item").first()).toContainText("Checkout not finished")
   await expect(page.locator(`main[${OLD}]`)).toHaveCount(1)
   await expect(row.getByText("Open", { exact: true })).toBeFocused()
@@ -119,10 +120,9 @@ test("a restore refused for the code itself puts focus back in the code's field"
   await expect(page.getByLabel("Name code")).toBeFocused()
 })
 
-test("a restore the service refuses puts focus back in the code's field, and the name code's lead keeps its period on its line", async ({ page }) => {
-  await showOwnerCode(page, uniqueLabel("noorder"))
-  await expect(page.locator(".inline-name").first()).toHaveText(/\.simplex\.$/)
-  const ownerCode = (await page.getByTestId("owner-code").textContent())!.trim()
+test("a restore the service refuses puts focus back in the code's field", async ({ page }) => {
+  await openCheckout(page, uniqueLabel("noorder"))
+  const ownerCode = await page.evaluate(() => Object.keys(localStorage).find((k) => k.startsWith("simplex-names:pending:"))!.split(":").pop()!)
   await page.goto("/#/restore")
   await page.getByLabel("Name code").fill(ownerCode)
   await page.getByRole("button", { name: "Restore" }).focus()
@@ -132,7 +132,7 @@ test("a restore the service refuses puts focus back in the code's field, and the
 })
 
 test("a pending code with no order leaves focus on the page when its Find link goes", async ({ page }) => {
-  await showOwnerCode(page, uniqueLabel("nofind"))
+  await openCheckout(page, uniqueLabel("nofind"))
   await page.goto("/#/names")
   const row = page.locator(".row-item").first()
   await row.getByText("Find the order").focus()
@@ -142,7 +142,7 @@ test("a pending code with no order leaves focus on the page when its Find link g
 })
 
 test("Forget everything asks first with focus on Keep them, and keeping them gives focus back to the link", async ({ page }) => {
-  await showOwnerCode(page, uniqueLabel("forget"))
+  await openCheckout(page, uniqueLabel("forget"))
   await page.goto("/#/names")
   await page.getByText("Forget everything in this browser").focus()
   await page.keyboard.press("Enter")

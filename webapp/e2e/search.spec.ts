@@ -3,7 +3,7 @@ import { labelHash } from "../src/crypto/registration.ts"
 import { hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import { GRACE_S } from "../src/screens/names.ts"
-import { contactLink, control, payButton, SAVED, savedCode, search, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { control, payButton, search, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 test.afterEach(async ({ request }) => {
   await control(request, "search", { chainDown: false, limitSeconds: 0, invoiceError: null, cancelStillOpen: false, findLimitSeconds: 0 })
@@ -73,20 +73,7 @@ test("the checkout explains every refusal and keeps the order", async ({ page, r
   const label = uniqueLabel("ref")
   await search(page, label)
   await page.getByRole("button", { name: "Register" }).click()
-  const pay = async () => {
-    await savedCode(page)
-    await payButton(page).click()
-  }
-
-  await page.getByLabel("Address").fill("https://smp8.simplex.im/c#notacontact")
-  await expect(page.getByText("This is a channel link: paste it in the Channel field.")).toBeVisible()
-  await shot(page, "N3g-link-wrong-kind")
-  await savedCode(page)
-  await payButton(page).click()
-  await expect(page.getByLabel("Address")).toBeFocused()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
-  await page.getByLabel("Address").fill(contactLink("R1"))
-  await expect(page.locator(".link-field .entity")).toBeVisible()
+  const pay = () => payButton(page).click()
 
   await control(request, "search", { invoiceError: "provider_unavailable" })
   await pay()
@@ -175,8 +162,6 @@ test("a double click acts once, whatever the redrawn page puts under the pointer
   await page.getByRole("button", { name: "Register" }).dblclick()
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
   await expect(page.getByRole("radio", { checked: true })).toContainText("Bitcoin")
-  await page.getByText(SAVED).dblclick()
-  await expect(page.getByRole("checkbox", { name: SAVED })).toBeChecked()
   await expect(payButton(page)).toBeEnabled()
 })
 

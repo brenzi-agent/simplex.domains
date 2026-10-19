@@ -236,9 +236,6 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
 .panel { background: var(--surface); border: 1px solid var(--surface-line); border-radius: 24px; }
 .panel-sec { padding: 26px 28px; }
 .panel-sec + .panel-sec { border-top: 1px solid var(--surface-line); }
-.sec-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
-.sec-title h2 { font-family: var(--display); font-size: 21px; line-height: 1.2; letter-spacing: -.015em; }
-.sec-title .opt { color: var(--ink-soft); font-weight: 700; font-size: 13px; }
 .sec-note { color: var(--ink-soft); font-size: 14.5px; margin-bottom: 16px; }
 .input { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--surface-line); background: var(--chip); }
 .input + .input { margin-top: 10px; }
@@ -246,16 +243,15 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
 .input input { flex: 1; min-width: 0; text-overflow: ellipsis; border: 0; background: none; outline: none; color: var(--ink); font: 600 15px var(--body); }
 .input input::placeholder { color: var(--ink-soft); font-weight: 500; }
 .input .kind { color: var(--ink-soft); font-weight: 700; font-size: 12.5px; }
-/* checkout: one column of blocks, the summary and the name code in cards */
+/* checkout: one column of blocks, as the badges checkout (badges screens.ts:466-505) */
 .summary-card { display: grid; gap: 16px; }
-.summary-card .rows { display: grid; gap: 10px; margin: 0; }
-.summary-card .row { display: flex; justify-content: space-between; gap: 16px; color: var(--ink-soft); }
-.summary-card .row b { color: var(--ink); font-weight: 600; text-align: right; }
+.summary-card .term-line { color: var(--ink-soft); }
 .summary-card .total { display: flex; justify-content: space-between; border-top: 1px solid var(--surface-line); padding-top: 14px; margin: 0; font-weight: 600; font-size: 20px; }
 .pay-with, .name-code, .code-entry, .pay-block, .add-code { display: grid; gap: 12px; }
 .add-code { justify-items: start; }
 .add-code .code-entry { width: 100%; }
-:is(.pay-with, .name-code) :is(.sec-title, .sec-note, .code-display, .check) { margin: 0; }
+.name-code :is(.code-display, .check) { margin: 0; }
+.code-link { font-size: var(--fs-small); }
 .methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .method { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 12px; border: 1px solid var(--surface-line); border-radius: 20px; background: var(--surface); cursor: pointer; text-align: center; }
 .method svg { width: 28px; height: 28px; }
@@ -268,9 +264,6 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
 .verdict:empty { display: none; }
 .verdict.ok { color: var(--ok-fg); }
 .verdict.bad { color: var(--danger-fg); }
-.fine { display: flex; gap: 8px; color: var(--ink-soft); font-size: 13px; font-weight: 600; }
-.fine svg.i { width: 16px; height: 16px; margin-top: 1px; }
-@media (max-width: 480px) { .methods { grid-template-columns: 1fr; } }
 
 .summary { padding: 24px; }
 .rows { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
