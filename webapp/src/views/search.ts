@@ -73,6 +73,8 @@ export function searchPage(params: URLSearchParams): void {
     shown = null
     opens += 1
   }
+  // a popup open on the page closes once the page is left
+  if (!isRedraw()) whenDropped(() => investDialog?.close(LEFT))
   pageRoute = currentRoute()
   dispatch({ type: "opened", opening, name, fromApp, retarget, hold: tabHold() })
   if (opening === "bad-app-link") return
@@ -404,13 +406,10 @@ function investPopup(): HTMLDialogElement {
   if (investDialog) return investDialog
   const dialog = el("dialog", { class: "modal", "aria-labelledby": INVEST_TITLE_ID })
   const close = () => dialog.close()
-  const closeLink = link(icon("close"), close)
-  closeLink.className = "modal-close"
-  closeLink.setAttribute("aria-label", "Close")
   dialog.append(
     el("div", { class: "modal-backdrop", onclick: close }),
     el("div", { class: "modal-panel" },
-      closeLink,
+      el("button", { class: "modal-close", type: "button", "aria-label": "Close", onclick: close }, icon("close")),
       el("h2", { id: INVEST_TITLE_ID }, INVEST_TITLE),
       el("p", {}, `If you invest ${INVEST_AMOUNT} or more in the SimpleX Chat crowdfunding, you will receive `, el("strong", {}, "a free SimpleX domain as a perk"),
         ", and will be able to register it before the sale starts."),
@@ -429,5 +428,4 @@ function openInvest(): void {
   // Escape closes without a value, so the last close's value is cleared first
   dialog.returnValue = ""
   dialog.showModal()
-  whenDropped(() => dialog.close(LEFT))
 }

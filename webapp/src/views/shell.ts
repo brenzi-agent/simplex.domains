@@ -273,7 +273,17 @@ function frame(): HTMLElement {
   document.body.dataset.framed = "1"
   document.querySelector(".theme-switch")!.addEventListener("click", toggleTheme)
   paintBars()
+  measureFrame()
   return main
+}
+
+// The header's and footer's height, which wrap on a narrow screen, so the home fills what is left of the window. Rounded
+// up, as the track rounds its height up too and a fraction more would scroll the page.
+function measureFrame(): void {
+  const parts = [...document.querySelectorAll<HTMLElement>("body > header, body > footer")]
+  const fit = () => document.documentElement.style.setProperty("--frame-h", `${Math.ceil(parts.reduce((h, p) => h + p.getBoundingClientRect().height, 0))}px`)
+  const resized = new ResizeObserver(fit)
+  for (const part of parts) resized.observe(part)
 }
 
 // Escape closes the popup, and Tab cycles within it

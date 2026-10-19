@@ -56,6 +56,19 @@ test("search answers every kind of name", async ({ page, request }) => {
   await shot(page, "N2e-rate-limited")
 })
 
+test("the home fills the window between its header and footer without scrolling, as the landing does", async ({ page }) => {
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport)
+    await page.goto("/")
+    await page.evaluate(() => document.fonts.ready)
+    const fit = () => page.evaluate(() => ({
+      scroll: document.documentElement.scrollHeight,
+      gap: Math.round(document.querySelector("body > footer")!.getBoundingClientRect().top - document.querySelector(".home")!.getBoundingClientRect().bottom),
+    }))
+    await expect.poll(fit, `${viewport.width} px: the page's height, and the room between the home and the footer`).toEqual({ scroll: viewport.height, gap: 0 })
+  }
+})
+
 test("the checkout explains every refusal and keeps the order", async ({ page, request }) => {
   const label = uniqueLabel("ref")
   await search(page, label)

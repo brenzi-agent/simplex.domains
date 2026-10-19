@@ -183,15 +183,14 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
 .chip .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
 
 /* the landing's first screen (landing:144-168), its countdown replaced by the search */
-/* the header's and footer's height on a desktop, so the home fills the first screen as the landing's hero does */
-:root { --frame-h: 260px; }
+/* --frame-h is the header's and footer's height, which shell.ts measures, so the home fills the first screen as the landing's hero does */
 .home { display: flex; flex-direction: column; align-items: center; text-align: center; padding-inline: 16px;
   min-height: calc(100dvh - var(--frame-h)); }
 .home .vspace { flex: 1; }
 .home .vspace.cap { min-height: 18px; max-height: 108px; }
 .headline { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 600px; container-type: inline-size; }
-.headline h1 { font-size: clamp(28px, 10.3cqw, 66px); line-height: 1.02; white-space: nowrap; }
-.headline .sub { font-size: clamp(11px, 3.92cqw, 26px); margin-top: 3cqw; white-space: nowrap; color: var(--ink-soft); }
+.headline h1 { font-size: clamp(28px, 10.3cqw, 66px); line-height: 1.02; white-space: nowrap; font-kerning: none; }
+.headline .sub { font-size: clamp(11px, 3.92cqw, 26px); margin-top: 3cqw; white-space: nowrap; color: var(--ink-soft); font-kerning: none; }
 .home > .notice { width: 100%; max-width: var(--column); margin-bottom: 14px; }
 .search-row { display: flex; gap: 10px; width: 100%; max-width: var(--column); }
 .search-row .field { flex: 1; }
@@ -219,7 +218,7 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
 .modal-backdrop { position: absolute; inset: 0; background: var(--backdrop); backdrop-filter: blur(3px); }
 .modal-panel { position: relative; z-index: 1; width: clamp(min(440px, 100%), 62vw, 720px); max-height: calc(100dvh - 48px); overflow: auto;
   background: var(--surface); color: var(--ink); border-radius: 24px; box-shadow: var(--surface-shadow); padding: clamp(42px, 6vw, 60px); }
-.modal-close { position: absolute; top: 24px; right: 24px; width: 20px; height: 20px; color: var(--ink-soft); }
+.modal-close { position: absolute; top: 24px; right: 24px; width: 20px; height: 20px; padding: 0; border: 0; background: none; color: var(--ink-soft); cursor: pointer; }
 .modal-close svg.i { display: block; width: 100%; height: 100%; stroke-width: 1.5; }
 .modal-close:hover { color: var(--ink); }
 .modal-panel h2 { padding-right: 30px; }
@@ -326,7 +325,7 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
    name longer than its room is cut short on its one line, with its whole in a tooltip. */
 .entity .who { flex: 1 1 auto; min-width: 0; }
 .entity .who b { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.entity .who span { color: var(--ink-soft); font-size: 13px; font-weight: 600; }
+.entity .who span { color: var(--ink-soft); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .entity .url { color: var(--ink-soft); font: 500 12.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; min-width: 0; flex: 0 100 auto; }
 .entity > a { white-space: nowrap; }
 /* a card too narrow for both keeps the name whole and drops the link, as on a phone */
