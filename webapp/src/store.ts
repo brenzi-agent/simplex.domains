@@ -30,7 +30,7 @@ export interface OrderRecord {
   codeRefusal?: CodeRefusal
   // the link of the order that replaced this one with a new invoice; its old link leads there
   replacedBy?: string
-  // when a tab of this browser last saved the name's links, so every tab reads them again
+  // when this browser last saved the name's links, so Your names drops the links it read before
   linksSavedAt?: string
   // the buyer ticked that they keep a copy of the name code
   codeSaved?: boolean
@@ -148,9 +148,6 @@ export function canPersist(): boolean {
     return false
   }
 }
-
-// whether a storage event from another tab changed one of this store's records
-export const isRecordKey = (key: string | null) => key === null || key.startsWith(PREFIX)
 
 // the storage key of an order, to tell another tab's change to it from any other change
 export const orderKey = (registrationId: string) => `${PREFIX}order:${registrationId}`

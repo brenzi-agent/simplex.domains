@@ -172,8 +172,8 @@ body > main { flex: 1 0 auto; }
 .outcome { text-align: center; }
 .outcome .btn { align-self: center; }
 .outcome .actions { justify-content: center; }
-/* a popup keeps the page behind it still */
-html.modal-open, html:has(.modal[open]) { overflow: hidden; }
+/* the invest popup keeps the page behind it still */
+html:has(.modal[open]) { overflow: hidden; }
 
 .grad { background: var(--heading); -webkit-background-clip: text; background-clip: text; color: transparent; }
 /* balance would break a name before its TLD to even the lines; a name that fits its line stays whole */
@@ -235,10 +235,6 @@ h1:has(.grad) { text-wrap: pretty; }
   .modal-close { width: 16px; height: 16px; }
 }
 
-.panel { background: var(--surface); border: 1px solid var(--surface-line); border-radius: 24px; }
-.panel-sec { padding: 26px 28px; }
-.panel-sec + .panel-sec { border-top: 1px solid var(--surface-line); }
-.sec-note { color: var(--ink-soft); font-size: 14.5px; margin-bottom: 16px; }
 .input { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--surface-line); background: var(--chip); }
 .input + .input { margin-top: 10px; }
 .input svg.i { color: var(--ink-soft); }
@@ -249,7 +245,7 @@ h1:has(.grad) { text-wrap: pretty; }
 .summary-card { display: grid; gap: 16px; }
 .summary-card .term-line { color: var(--ink-soft); }
 .summary-card .total { display: flex; justify-content: space-between; border-top: 1px solid var(--surface-line); padding-top: 14px; margin: 0; font-weight: 600; font-size: 20px; }
-.pay-with, .name-code, .code-entry, .pay-block, .add-code { display: grid; gap: 12px; }
+.pay-with, .name-code, .code-entry, .pay-block, .add-code, .link-entry, .forget { display: grid; gap: 12px; }
 .add-code { justify-items: start; }
 .add-code .code-entry { width: 100%; }
 .name-code :is(.code-display, .check) { margin: 0; }
@@ -267,13 +263,11 @@ h1:has(.grad) { text-wrap: pretty; }
 .verdict.ok { color: var(--ok-fg); }
 .verdict.bad { color: var(--danger-fg); }
 
-.summary { padding: 24px; }
 .rows { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
 .rows .r { display: flex; justify-content: space-between; gap: 12px; font-weight: 600; font-size: 15px; }
 .rows .r > span:first-child { color: var(--ink-soft); }
 /* a long value, as a full reference, breaks within its side of the row */
 .rows .r > span:last-child { min-width: 0; text-align: right; }
-.summary .btn { margin-top: 20px; }
 
 /* payment and registration: one column */
 /* qrSvg draws its own white frame */
@@ -356,16 +350,6 @@ svg.qr { display: block; width: 132px; height: auto; }
 @container (max-width: 520px) { .entity .url { display: none; } }
 
 
-/* a popup over the page; the capture is a full page, so the overlay covers the document */
-.modal-overlay { position: fixed; inset: 0; overflow-y: auto; z-index: 20; background: var(--backdrop); backdrop-filter: blur(4px); }
-/* Centred by margins, not a transform: the popup's opening scale would turn about the moved point and drift sideways. */
-.popup { position: absolute; left: 0; right: 0; margin-inline: auto; top: 150px; width: 460px; padding: 26px; border-radius: 24px; background: var(--surface); border: 1px solid var(--surface-line); }
-/* Close stays at the top of a heading that wraps, as a long name's does */
-.modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.modal-head h3 { font-family: var(--display); font-size: 24px; letter-spacing: -.015em; }
-.modal-head .icon-btn { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: var(--ink-soft); }
-.popup .sec-note { margin-top: 6px; }
-.popup .btn { margin-top: 16px; }
 /* The longest code, a name code of 38 characters, fits whole beside the key icon and its gap (28px): a monospace
    character is a little over .6em wide, plus its letter spacing. Below 11px it would not read, so a narrower field scrolls. */
 .code-input { container-type: inline-size; }
@@ -381,41 +365,33 @@ svg.qr { display: block; width: 132px; height: auto; }
 .check .box::after { content: ""; display: block; width: 5px; height: 10px; margin: 2px auto 0; border: solid var(--surface); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); opacity: 0; }
 .check .box { width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--surface-line); background: var(--surface); flex: none; }
 .check input:checked + .box::after { opacity: 1; }
-.why { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
-.why div { display: flex; gap: 10px; color: var(--ink-soft); font-size: 14px; font-weight: 600; }
-.why svg.i { color: var(--primary); width: 17px; height: 17px; margin-top: 1px; }
 
-
-
-.toolbar { display: flex; gap: 10px; margin: 0 0 18px; }
-.list-title { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 6px; }
-.list-title h2 { font-family: var(--display); font-size: 20px; letter-spacing: -.01em; }
-.row-item { display: flex; align-items: center; gap: 16px; padding: 16px 24px; border-top: 1px solid var(--surface-line); }
-.row-item .mark { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--chip); color: var(--primary); font-weight: 800; flex: none; }
-.row-item .main { flex: 1; min-width: 0; }
-/* a long name ends in an ellipsis at every width rather than run under the row's chip and buttons */
-.row-item .main b { font-size: 16px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row-item .main .sub { color: var(--ink-soft); font-size: 13.5px; font-weight: 600; margin-top: 2px; }
-.row-item .acts { display: flex; gap: 8px; }
+/* Your names: a card per list, a row per name or code, its actions under its name (badges screens.ts:897-921) */
+.card.list { padding-bottom: 8px; }
+.list > h2 { padding-bottom: 12px; }
+.list > .note { padding-bottom: 16px; }
+.list-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px 14px; padding: 16px 0; border-top: 1px solid var(--surface-line); }
+.list-row .mark { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--chip); color: var(--primary); font-weight: 700; }
+/* a long name ends in an ellipsis at every width rather than run under the row's chip */
+.list-row .main b { font-size: 16px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-row.code-row .main b { white-space: normal; overflow-wrap: anywhere; }
+.list-row .sub { color: var(--ink-soft); font-size: 14px; margin-top: 2px; }
+.list-row .acts { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.row-code { grid-column: 1 / -1; display: grid; justify-items: center; gap: 14px; }
+.row-code .code-display { width: 100%; margin-top: 0; }
+.how { display: grid; gap: 8px; }
+.how ul { display: grid; gap: 6px; padding-left: 1.2em; }
 .small-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--surface-line); background: var(--surface); color: var(--ink); font-weight: 700; font-size: 13.5px; }
-.danger-link { display: block; margin-top: 18px; text-align: center; color: var(--danger-fg); font-size: 14px; }
+.danger-link { display: block; text-align: center; color: var(--danger-fg); font-size: 14px; }
 
 /* webapp additions to the mockups' rules */
-.mt-8 { margin-top: 8px; } .mt-14 { margin-top: 14px; }
-.mt-16 { margin-top: 16px; } .mt-18 { margin-top: 18px; } .mt-20 { margin-top: 20px; }
+.mt-14 { margin-top: 14px; } .mt-16 { margin-top: 16px; }
 .center { display: flex; justify-content: center; }
 .left { text-align: left; }
-.narrow { max-width: 760px; }
 .field-error { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--danger-fg); font-weight: 700; font-size: 14px; }
-.link-field + .link-field { margin-top: 14px; }
 .entity-wrap { margin: 10px 0; }
 
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.label.block { display: block; }
-/* a field's focus ring keeps clear of the label over it */
-.label + .link-field { margin-top: 8px; }
-.empty-list { padding: 6px 24px 22px; }
-.acts-inner { display: flex; gap: 8px; }
 
 /* a name can be 63 letters long */
 h1, .lead { overflow-wrap: anywhere; }
@@ -454,18 +430,9 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .danger-link { padding-block: 12px; }
 }
 
-/* too narrow for a row's name beside its chip and buttons, the steps in one line, or the footer in one row: they wrap */
-@media (max-width: 760px) {
-  .row-item { flex-wrap: wrap; }
-  .row-item .acts { flex-basis: 100%; flex-wrap: wrap; }
-  .row-item .main { flex-basis: calc(100% - 56px); }
-  .row-item.code-row .main b { white-space: normal; text-wrap: balance; }
-}
-
 /* a phone */
 @media (max-width: 560px) {
   .entity .url { display: none; }
-  .panel-sec { padding: 20px; }
   /* two balanced lines, broken after a dash, read better than a long one squeezed small */
   .code-display { font-size: 16px; letter-spacing: 0; padding: 16px 46px; }
   .entity { flex-wrap: wrap; }
@@ -474,9 +441,9 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .entity .who { flex-basis: 0; }
   .stages .stage > span:last-child { display: none; }
   .tx .k { width: 80px; }
-  .toolbar { flex-direction: column; }
-  .row-item { padding: 14px 18px; }
-  .popup { width: calc(100% - 32px); top: 90px; padding: 20px; }
+  /* a row's chip goes under its name, which keeps the row's width */
+  .list-row { grid-template-columns: 40px minmax(0, 1fr); }
+  .list-row .state { grid-column: 2; }
   .code-input { padding-inline: 12px; }
   .code-input > svg.i { display: none; }
   .code-input input { font-size: clamp(11px, 100cqi / 23.2, 12.5px); letter-spacing: 0; }

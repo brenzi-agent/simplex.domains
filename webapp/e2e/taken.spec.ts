@@ -58,8 +58,8 @@ test("a name taken first can become a code instead, kept under Your names", asyn
   await shot(page, "N8b-code-instead")
 
   await page.goto("/#/names")
-  await expect(page.locator(".row-item", { hasText: code }).locator(".chip")).toHaveText("Unused")
-  await expect(page.locator(".row-item", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText("Code taken")
+  await expect(page.locator(".list-row", { hasText: code }).locator(".chip")).toHaveText("Unused")
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText("Code taken")
 })
 
 test("a failed registration is retried without paying again, and another tab follows the retry", async ({ page, request }) => {
@@ -155,7 +155,7 @@ test("a late payment to a replaced invoice is kept by a restored browser after t
   await restored.goto(`/?order=${invoiceId}`)
   await expect(restored.getByText(/BTC arrived, which is not the full amount/)).toBeVisible()
   await restored.goto("/#/names")
-  await expect(restored.locator(".row-item:visible", { hasText: `${label}.simplex` })).toContainText("Part of the payment arrived")
+  await expect(restored.locator(".list-row:visible", { hasText: `${label}.simplex` })).toContainText("Part of the payment arrived")
   await restored.goto(`/?order=${invoiceId}`)
   await restored.getByRole("button", { name: "Open the new invoice" }).click()
   await restored.waitForURL((url) => url.searchParams.get("order") === second)

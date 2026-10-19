@@ -54,7 +54,7 @@ test("an order opened from the app registers to the app's wallet once the app si
   await expect(stranger.getByText("Enter your name code")).toHaveCount(0)
   await elsewhere.close()
   await page.goto("/#/names")
-  await expect(page.locator(".row-item", { hasText: `${label}.simplex` })).toContainText("Waiting for SimpleX to sign it")
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` })).toContainText("Waiting for SimpleX to sign it")
   await page.goto(`/?order=${invoiceId}`)
   await appSigns(page, request, app, label, invoiceId)
   await expect(page.getByRole("heading", { name: `${label}.simplex is yours` })).toBeVisible({ timeout: REGISTRATION_MS })

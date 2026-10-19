@@ -177,21 +177,19 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   await page.unroute("**/api/name/records")
 
   await page.goto("/#/names")
-  const row = page.locator(".row-item", { hasText: `${label}.simplex` })
+  const row = page.locator(".list-row", { hasText: `${label}.simplex` })
   await expect(row.locator(".chip")).toHaveText("Registered")
   await shot(page, "N12-history")
-  // a row's links are drawn once its reads answer, so a redraw gives focus back to them when they are
-  await row.getByText("Edit links").focus()
-  const other = await page.context().newPage()
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await other.goto("/")
-  await other.evaluate((c) => localStorage.setItem(`simplex-names:code:${c}`, JSON.stringify({ code: c, minLength: 6, years: 2, addedAt: new Date().toISOString() })), code)
-  await expect(page.locator(".row-item", { hasText: code })).toBeVisible()
-  await expect(row.getByText("Edit links")).toBeFocused()
-  await other.close()
-  await row.getByText("Show code").click()
-  await expect(page.locator(".popup .code-display")).toHaveText(ownerCode)
-  await page.keyboard.press("Escape")
+  // Show code opens the name code in its own row, focus staying on the toggle, which folds it again
+  await row.getByRole("button", { name: "Show code" }).focus()
+  await page.keyboard.press("Enter")
+  await expect(row.locator(".row-code .code-text")).toHaveText(ownerCode)
+  await expect(row.locator(".row-code svg.qr")).toBeVisible()
+  await expect(row.getByRole("button", { name: "Hide code" })).toBeFocused()
+  await shot(page, "N12g-history-code")
+  await page.keyboard.press("Enter")
+  await expect(row.locator(".row-code")).toHaveCount(0)
+  await expect(row.getByRole("button", { name: "Show code" })).toBeFocused()
 
   await expect(row.locator(".sub")).toContainText(/points at Channel\sC3/)
   await row.getByText("Edit links").click()
@@ -204,7 +202,7 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
     const w = window as unknown as { __lines: string[] }
     w.__lines = []
     new MutationObserver(() => {
-      const line = [...document.querySelectorAll("body > main .row-item")].find((r) => r.querySelector(".main b")?.textContent === name)?.querySelector(".sub")?.textContent
+      const line = [...document.querySelectorAll("body > main .list-row")].find((r) => r.querySelector(".main b")?.textContent === name)?.querySelector(".sub")?.textContent
       if (line && line !== w.__lines.at(-1)) w.__lines.push(line)
     }).observe(document.body, { childList: true, subtree: true, characterData: true })
   }, `${label}.simplex`)
@@ -376,7 +374,7 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   await expect(page.locator(".answer .card", { hasText: `${label}.simplex` }).getByRole("button", { name: "Register" })).toBeVisible()
   expect(cancels).toHaveLength(1)
   await page.goto("/#/names")
-  await expect(page.locator(".row-item", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText("Invoice cancelled")
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText("Invoice cancelled")
   const { invoiceId: second } = await startOrder(page, label, { method: "btc" })
   expect(second).not.toBe(invoiceId)
   await control(request, `expire/${second}`)
@@ -393,12 +391,12 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   await shot(page, "N4d-expired-partial")
 
   await page.goto("/#/names")
-  await expect(page.locator(".row-item", { hasText: `${label}.simplex` }).first().locator(".chip")).toHaveText(/Invoice (expired|cancelled)/)
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).first().locator(".chip")).toHaveText(/Invoice (expired|cancelled)/)
 })
 
 test("a replaced invoice leads to its new order until a late payment reaches it", async ({ page, browser, request }) => {
   const label = uniqueLabel("late")
-  const row = (p: typeof page) => p.locator(".row-item:visible", { hasText: `${label}.simplex` })
+  const row = (p: typeof page) => p.locator(".list-row:visible", { hasText: `${label}.simplex` })
   const { invoiceId, ownerCode } = await startOrder(page, label, { method: "xmr" })
   await control(request, `expire/${invoiceId}`)
   await page.getByRole("button", { name: "Get a new invoice" }).click()
@@ -453,7 +451,7 @@ test("an invoice that received part of its payment and was replaced leads on to 
   await page.goto(`/?order=${invoiceId}`)
   await expect(page.getByText("The payment arrived after this invoice had closed")).toBeVisible()
   await page.goto("/#/names")
-  await expect(page.locator(".row-item:visible", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText(["Waiting for payment", "Paid late"])
+  await expect(page.locator(".list-row:visible", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText(["Waiting for payment", "Paid late"])
   await page.goto(`/?order=${invoiceId}`)
   await page.getByRole("button", { name: "Open the new invoice" }).click()
   await page.waitForURL((url) => url.searchParams.get("order") === second)
@@ -469,7 +467,7 @@ test("an invoice that closed while its payment was confirming says a payment rea
   await expect(page.getByText("A payment did not complete before the invoice closed.")).toBeVisible()
   await shot(page, "N4e-expired-confirming")
   await page.goto("/#/names")
-  const row = page.locator(".row-item:visible", { hasText: `${label}.simplex` })
+  const row = page.locator(".list-row:visible", { hasText: `${label}.simplex` })
   await expect(row).toContainText("A payment did not complete before the invoice closed")
   await expect(row.locator(".chip")).toHaveText(["Invoice expired"])
   await shot(page, "N12f-history-expired-paid")
@@ -498,7 +496,7 @@ test("a browser restored before another browser made a new invoice carries on wi
     .map((k) => JSON.parse(localStorage.getItem(k)!)).find((o: { invoiceId: string }) => o.invoiceId === id), second)
   expect(adopted.createdAt).toBe(made)
   await restored.goto("/#/names")
-  await expect(restored.locator(".row-item:visible", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText(["Waiting for payment"])
+  await expect(restored.locator(".list-row:visible", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText(["Waiting for payment"])
   await restored.goto(`/?order=${invoiceId}`)
   await restored.waitForURL((url) => url.searchParams.get("order") === second)
   await control(request, `settle/${second}`)
@@ -558,7 +556,7 @@ test("a cancel the service answers with the invoice still open warns not to send
   // money that reached it after the cancel does not make it payable again
   await control(request, `partial/${invoiceId}`)
   await page.goto("/#/names")
-  await expect(page.locator(".row-item", { hasText: label }).locator(".chip")).toHaveText("Invoice cancelled")
+  await expect(page.locator(".list-row", { hasText: label }).locator(".chip")).toHaveText("Invoice cancelled")
 
   // a browser without the order's record keeps nothing, so it warns at once
   const fresh = await page.context().browser()!.newContext()
@@ -595,7 +593,7 @@ test("a restored browser that never opened another browser's newer invoice finds
   await restored.waitForURL((url) => url.searchParams.get("order") === second)
   await restored.unroute(`**/api/invoice/${invoiceId}*`)
   await restored.goto("/#/names")
-  await expect(restored.locator(".row-item:visible", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText(["Registered"])
+  await expect(restored.locator(".list-row:visible", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText(["Registered"])
   await other.close()
 })
 
@@ -665,14 +663,14 @@ test("a card form that does not load says so and offers a new invoice", async ({
   await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
 })
 
-test("links saved in another tab show in an open Your names, and in one opened again, never as the old ones", async ({ page, request }) => {
+test("links saved in another tab show in Your names once it is opened again, never as the old ones", async ({ page, request }) => {
   const label = uniqueLabel("xtab")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await control(request, `settle/${invoiceId}`)
   await waitRegistered(page, label)
   const registrationId = await registrationOf(request, invoiceId)
   await page.goto("/#/names")
-  const row = page.locator(".row-item", { hasText: `${label}.simplex` })
+  const row = page.locator(".list-row", { hasText: `${label}.simplex` })
   await expect(row.locator(".sub")).toContainText(/^Until /)
   await expect(row.locator(".sub")).not.toContainText("points at")
   const saveContact = async (contact: string) => {
@@ -685,6 +683,7 @@ test("links saved in another tab show in an open Your names, and in one opened a
     await other.close()
   }
   await saveContact(contactLink("A1"))
+  await page.getByRole("link", { name: "Your names" }).first().click()
   await expect(row.locator(".sub")).toContainText(/points at Contact\sA1/)
 
   await page.evaluate(() => { location.hash = "#/trademarks" })
@@ -694,7 +693,7 @@ test("links saved in another tab show in an open Your names, and in one opened a
     const w = window as unknown as { __lines: string[] }
     w.__lines = []
     new MutationObserver(() => {
-      const line = [...document.querySelectorAll("body > main .row-item")].find((r) => r.querySelector(".main b")?.textContent === name)?.querySelector(".sub")?.textContent
+      const line = [...document.querySelectorAll("body > main .list-row")].find((r) => r.querySelector(".main b")?.textContent === name)?.querySelector(".sub")?.textContent
       if (line && line !== w.__lines.at(-1)) w.__lines.push(line)
     }).observe(document.body, { childList: true, subtree: true, characterData: true })
   }, `${label}.simplex`)

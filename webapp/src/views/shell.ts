@@ -1,4 +1,4 @@
-// The page's frame: theme switch, popups, and navigation between views; index.html draws the header and footer.
+// The page's frame: theme switch and navigation between views; index.html draws the header and footer.
 import { alertBox, btn, el, icon, type Kid, liveRegion, refill, type Tone, waitOut } from "../dom.ts"
 import type { IconName } from "../icons.ts"
 import type { Hold } from "../screens/hold.ts"
@@ -20,8 +20,6 @@ export function setRenderer(render: () => void): void {
 let route = 0
 const leaving: (() => void)[] = []
 const dropping: (() => void)[] = []
-// An open popup belongs to the route it was opened on; a redraw of the same page carries it to the redrawn route.
-let popupRoute = -1
 let redrawing = false
 // the route the screen on show was drawn on; a redraw of the same page carries it to the redrawn route
 let drawnRoute = -1
@@ -35,10 +33,8 @@ const keptNodes = new Map<string, HTMLElement>()
 // A new route ends the last one's polls and timers: async work checks its token with isRoute before drawing.
 export function nextRoute(): void {
   leaving.splice(0).forEach((f) => f())
-  const keepPopup = redrawing && popupRoute === route
   const samePage = redrawing && drawnRoute === route
   route += 1
-  if (keepPopup) popupRoute = route
   if (samePage) drawnRoute = route
   else {
     dropping.splice(0).forEach((f) => f())
@@ -112,7 +108,7 @@ export function redirect(url: string): void {
   rerender()
 }
 
-// the same page drawn again, keeping a popup open over it
+// the same page drawn again in place, on a new route
 export function refresh(): void {
   redrawing = true
   try {
@@ -144,8 +140,6 @@ let lostKey: string | null = null
 /** Builds the screen for `kind` and puts it on its purchase step, or swaps it in whole; the last screen's timers end with its signal. */
 export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, step: TrackStep | null = null): void {
   const main = frame()
-  // a popup opened on this page stays over its redraw; one that led to another page closes
-  if (popupRoute !== route) closePopup(false)
   showConnection()
   const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
   const caret = active instanceof HTMLInputElement ? [active.selectionStart, active.selectionEnd] as const : null
@@ -159,7 +153,7 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, 
   if (step === null) leaveTrack(main, next)
   else placeOnTrack(main, step, next)
   shownScreen = next
-  main.inert = document.querySelector(OVERLAY) !== null
+  main.inert = false
   shownKind = kind
   drawnRoute = route
   popped = false
@@ -192,7 +186,7 @@ function settleFocus(active: HTMLElement | null, caret: readonly [number | null,
     if (caret && active instanceof HTMLInputElement) active.setSelectionRange(caret[0], caret[1])
     return
   }
-  // focus on the header, the footer or a popup stays there; focus that was in main, even in a screen now inert, goes to the new heading
+  // focus on the header, the footer or a dialog stays there; focus that was in main, even in a screen now inert, goes to the new heading
   if (active && active !== document.body && active.isConnected && !active.closest("body > main")) return
   if (toHeading) return focusHeading()
   const same = keyed(focusKey)
@@ -303,64 +297,4 @@ function measureFrame(): void {
   const fit = () => document.documentElement.style.setProperty("--frame-h", `${Math.ceil(parts.reduce((h, p) => h + p.getBoundingClientRect().height, 0))}px`)
   const resized = new ResizeObserver(fit)
   for (const part of parts) resized.observe(part)
-}
-
-// Escape closes the popup, and Tab cycles within it
-function popupKeys(e: KeyboardEvent): void {
-  if (e.key === "Escape") return closePopup()
-  const modal = document.querySelector<HTMLElement>(`${OVERLAY} .popup`)
-  if (e.key !== "Tab" || !modal) return
-  const focusable = [...modal.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input")]
-  if (focusable.length === 0) return
-  const first = focusable[0]
-  const last = focusable[focusable.length - 1]
-  const inside = modal.contains(document.activeElement)
-  if (e.shiftKey && (!inside || document.activeElement === first)) {
-    e.preventDefault()
-    last.focus()
-  } else if (!e.shiftKey && (!inside || document.activeElement === last)) {
-    e.preventDefault()
-    first.focus()
-  }
-}
-
-// where focus returns when the popup closes: the control that opened it, or the one drawn in its place
-let opener: HTMLElement | null = null
-
-const OVERLAY = ".modal-overlay"
-let behindPopup: HTMLElement[] = []
-
-export function popup(content: HTMLElement): void {
-  closePopup()
-  popupRoute = route
-  const active = document.activeElement
-  opener = active instanceof HTMLElement && active !== document.body ? active : null
-  const overlay = el("div", { class: "modal-overlay", onclick: (e: Event) => { if (e.target === overlay) closePopup() } }, content)
-  document.body.append(overlay)
-  document.documentElement.classList.add("modal-open")
-  content.setAttribute("aria-modal", "true")
-  behindPopup = [...document.querySelectorAll<HTMLElement>("body > header.topbar, body > main, body > footer")].filter((n) => !n.inert)
-  for (const node of behindPopup) node.inert = true
-  // focus moves into the dialog; a popup with a field focuses that field itself afterwards
-  content.querySelector<HTMLElement>("a[href], button:not([disabled]), input")?.focus()
-  document.addEventListener("keydown", popupKeys)
-}
-
-// refocus false: the caller draws a new page and puts focus on it itself
-export function closePopup(refocus = true): void {
-  document.removeEventListener("keydown", popupKeys)
-  const overlay = document.querySelector<HTMLElement>(OVERLAY)
-  if (!overlay) return
-  // a click on the backdrop has already moved focus to the page itself
-  const hadFocus = overlay.contains(document.activeElement) || document.activeElement === document.body
-  overlay.remove()
-  document.documentElement.classList.remove("modal-open")
-  for (const node of behindPopup) node.inert = false
-  behindPopup = []
-  // An opener the page redrew under the popup is found again by its data-focus key; failing that, the heading takes
-  // focus, unless the redrawn page has already put focus somewhere of its own.
-  const back = opener?.isConnected ? opener : refocus ? keyed(opener?.dataset.focus) : null
-  back?.focus({ preventScroll: true })
-  if (refocus && hadFocus && document.activeElement !== back) focusHeading()
-  opener = null
 }

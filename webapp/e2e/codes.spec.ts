@@ -89,7 +89,7 @@ test("a prepaid code entered at checkout registers a name with nothing to pay", 
   await shot(page, "K8-registered-with-code")
   expect((await searchName(request, label)).status).toBe("registered")
   await page.goto("/#/names")
-  const row = page.locator(".row-item", { hasText: `${label}.simplex` })
+  const row = page.locator(".list-row", { hasText: `${label}.simplex` })
   await expect(row.locator(".chip")).toHaveText("Registered")
   await expect(row).toContainText(/paid with a code/i)
   await shot(page, "K10-names-paid-with-code")
@@ -186,7 +186,7 @@ test("a code added under Your names is listed, and forgotten", async ({ page, re
   await expect(page.locator(".verdict.ok")).toBeVisible()
   await shot(page, "N12a-add-code")
   await page.getByRole("button", { name: "Add", exact: true }).click()
-  const row = page.locator(".row-item", { hasText: code })
+  const row = page.locator(".list-row", { hasText: code })
   await expect(row.locator(".chip")).toHaveText("Unused")
   await page.getByText("Forget everything in this browser").click()
   await shot(page, "N12c-forget")
@@ -202,13 +202,13 @@ test("an owner code made at checkout is kept in Your names until its order exist
   await page.getByRole("button", { name: "Register" }).click()
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
   await page.goto("/#/names")
-  const row = page.locator(".row-item", { hasText: `${label}.simplex` })
+  const row = page.locator(".list-row", { hasText: `${label}.simplex` })
   await expect(row.locator(".chip")).toHaveText("Checkout not finished")
   await row.getByText("Find the order").click()
   await expect(row.locator(".chip")).toHaveText("No order was made")
   await shot(page, "N12d-unfinished-checkout")
   await row.getByText("Remove").click()
-  await expect(page.locator(".row-item", { hasText: `${label}.simplex` })).toHaveCount(0)
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` })).toHaveCount(0)
 })
 
 test("an order refused at checkout for a name taken meanwhile leaves no unfinished checkout in Your names", async ({ page }) => {
@@ -222,8 +222,8 @@ test("an order refused at checkout for a name taken meanwhile leaves no unfinish
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(label)
   await page.getByRole("link", { name: "Your names" }).first().click()
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
-  await expect(page.getByText("No names in this browser yet.").or(page.locator(".row-item").first())).toBeVisible()
-  await expect(page.locator(".row-item", { hasText: `${label}.simplex` })).toHaveCount(0)
+  await expect(page.getByText("No names in this browser yet.").or(page.locator(".list-row").first())).toBeVisible()
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` })).toHaveCount(0)
 })
 
 test("a code order taken first gives its code back, ready for another name", async ({ page, request }) => {
@@ -235,7 +235,7 @@ test("a code order taken first gives its code back, ready for another name", asy
   await expect(page.locator(".outcome .code-display")).toHaveText(code)
   await shot(page, "K9-code-released")
   await page.goto("/#/names")
-  await expect(page.locator(".row-item", { hasText: code }).locator(".chip")).toHaveText("Unused")
+  await expect(page.locator(".list-row", { hasText: code }).locator(".chip")).toHaveText("Unused")
 })
 
 test("a retry refused for a code used elsewhere says the code is gone and offers no Try again, also once reopened", async ({ page, request }) => {
@@ -387,23 +387,9 @@ test("Your names reads a revoked code as not valid and offers no Use", async ({ 
   await page.goto("/")
   await page.evaluate((c) => localStorage.setItem(`simplex-names:code:${c}`, JSON.stringify({ code: c, minLength: 6, years: 2, addedAt: new Date().toISOString() })), code)
   await page.goto("/#/names")
-  const row = page.locator(".row-item", { hasText: code })
+  const row = page.locator(".list-row", { hasText: code })
   await expect(row.locator(".chip")).toHaveText("Not valid")
   await expect(row.getByText("Use", { exact: true })).toHaveCount(0)
-})
-
-test("Your names keeps keyboard focus when another tab saves", async ({ page, request }) => {
-  await startOrder(page, uniqueLabel("focus"), { method: "btc" })
-  await page.goto("/#/names")
-  const open = page.locator(".row-item").first().getByText("Open", { exact: true })
-  await open.focus()
-  const other = await page.context().newPage()
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await other.goto("/")
-  await other.evaluate((c) => localStorage.setItem(`simplex-names:code:${c}`, JSON.stringify({ code: c, minLength: 6, years: 2, addedAt: new Date().toISOString() })), code)
-  await expect(page.locator(".row-item", { hasText: code })).toBeVisible()
-  await expect(page.locator(".row-item").first().getByText("Open", { exact: true })).toBeFocused()
-  await other.close()
 })
 
 test("a restore that fails on the network gives focus back to its button", async ({ page }) => {

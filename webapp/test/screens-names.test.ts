@@ -4,7 +4,7 @@ import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
   changesOf, CODE_CHIPS, editable, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
   GRACE_S, initialList, initialRestore, lapsed, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
-  againLine, ranOut, registrableAgain, screenOfEdit, settled, type Stored, unsent, waitsToSign,
+  againLine, ranOut, registrableAgain, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../src/screens/names.ts"
 import type { CodeRecord, OrderRecord, PendingCode } from "../src/store.ts"
 
@@ -110,13 +110,6 @@ describe("list helpers", () => {
     expect(reduceList(answered, storedEvent({ orders: [record()] })).seen).toEqual(answered.seen)
     const unanswered = reduceList(one, { type: "row-read", id: "reg-1", view, invoice: null, now: NOW })
     expect(reduceList(unanswered, storedEvent({ orders: [record({ linksSavedAt: "2026-10-17T12:01:00Z" })] })).seen).toEqual(unanswered.seen)
-  })
-  it("settled: a final phase, or an invoice that closed unpaid, changes no more by itself", () => {
-    expect(settled(undefined)).toBe(false)
-    expect(settled({ view: registeredView(), invoice: null })).toBe(true)
-    expect(settled({ view: registration({ phase: "committing" }), invoice: null })).toBe(false)
-    expect(settled({ view: registration(), invoice: invoice({ status: "expired" }) })).toBe(true)
-    expect(settled({ view: registration(), invoice: invoice() })).toBe(false)
   })
   it("waitsToSign: a commit whose wait is over and whose name is still hidden", () => {
     const view = registration({ phase: "committed", revealAfter: NOW / 1000 - 1 })
@@ -289,6 +282,28 @@ describe("list", () => {
     const a = events.reduce(reduceList, one)
     const b = [events[2], events[0], events[1]].reduce(reduceList, one)
     expect(a).toEqual(b)
+  })
+})
+
+describe("show code", () => {
+  const two = stored({ orders: [record(), record({ registrationId: "reg-2" })] })
+  const shown = (id: string) => reduceList(initialList(two, null, {}, {}, NOW), { type: "code-toggled", id })
+  it("starts with no row expanded", () => {
+    expect(initialList(two, null, {}, {}, NOW).shownCode).toBeNull()
+  })
+  it("expands one row at a time and collapses it when toggled again", () => {
+    const one = shown("reg-1")
+    expect(one.shownCode).toBe("reg-1")
+    expect(reduceList(one, { type: "code-toggled", id: "reg-2" }).shownCode).toBe("reg-2")
+    expect(reduceList(one, { type: "code-toggled", id: "reg-1" }).shownCode).toBeNull()
+  })
+  it("a row no longer stored is not expanded, and a toggle for an unknown row changes nothing", () => {
+    expect(reduceList(shown("reg-2"), { type: "stored", ...two, orders: [record()], hold: null }).shownCode).toBeNull()
+    expect(reduceList(shown("reg-2"), { type: "stored", ...two, hold: null }).shownCode).toBe("reg-2")
+    expect(reduceList(shown("reg-1"), { type: "code-toggled", id: "reg-gone" }).shownCode).toBe("reg-1")
+  })
+  it("forgetting everything collapses the row", () => {
+    expect(reduceList(shown("reg-1"), { type: "forget-confirmed" }).shownCode).toBeNull()
   })
 })
 

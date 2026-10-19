@@ -13,8 +13,8 @@ test("a second tab's order survives a write from a tab opened earlier", async ({
   await early.getByRole("textbox", { name: "Add a code" }).fill(code)
   await early.getByRole("button", { name: "Add", exact: true }).click()
   await early.reload()
-  await expect(early.locator(".row-item", { hasText: `${label}.simplex` })).toBeVisible()
-  await expect(early.locator(".row-item", { hasText: code })).toBeVisible()
+  await expect(early.locator(".list-row", { hasText: `${label}.simplex` })).toBeVisible()
+  await expect(early.locator(".list-row", { hasText: code })).toBeVisible()
   await context.close()
 })
 
@@ -215,7 +215,7 @@ test("Your names tells part-paid and confirming orders from unpaid ones, and a n
   await page.getByRole("button", { name: "Get a new invoice" }).click()
   await page.waitForURL((url) => url.searchParams.get("order") !== plainOrder.invoiceId)
   await page.goto("/#/names")
-  const chipOf = (label: string) => page.locator(".row-item:visible", { hasText: `${label}.simplex` }).locator(".chip")
+  const chipOf = (label: string) => page.locator(".list-row:visible", { hasText: `${label}.simplex` }).locator(".chip")
   await expect(chipOf(part)).toHaveText("Waiting for the rest")
   await expect(chipOf(seen)).toHaveText("Confirming payment")
   await expect(chipOf(plain)).toHaveText("Waiting for payment")
@@ -288,8 +288,8 @@ test("a payment that arrives after expiry turns the open page into the refund pa
   await expect(page.getByText("The payment arrived after this invoice had closed")).toBeVisible()
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await page.goto("/#/names")
-  await expect(page.locator(".row-item", { hasText: `${label}.simplex` })).toHaveCount(1)
-  await expect(page.locator(".row-item", { hasText: `${label}.simplex` }).locator(".sub")).toContainText("support refunds it")
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` })).toHaveCount(1)
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).locator(".sub")).toContainText("support refunds it")
 })
 
 test("an order left before its wait ends asks for this browser in Your names", async ({ page, request }) => {
@@ -302,7 +302,7 @@ test("an order left before its wait ends asks for this browser in Your names", a
     return phase === "committed" && revealAfter !== null && Date.now() / 1000 >= revealAfter
   }, { timeout: REGISTRATION_MS }).toBe(true)
   await page.goto("/#/names")
-  const row = page.locator(".row-item", { hasText: `${label}.simplex` })
+  const row = page.locator(".list-row", { hasText: `${label}.simplex` })
   await expect(row.locator(".chip")).toHaveText("Open to finish")
   await row.locator(".small-btn", { hasText: /^Open$/ }).click()
   await waitRegistered(page, label)
@@ -323,7 +323,7 @@ test("a row Your names could not read is read again while the page stays open", 
   let refused = true
   await page.route(`**/api/invoice/${invoiceId}*`, (route) => refused ? route.fulfill({ status: 503, json: { error: "provider_unavailable" } }) : route.continue())
   await page.goto("/#/names")
-  const chip = page.locator(".row-item .chip")
+  const chip = page.locator(".list-row .chip")
   await expect(chip).toHaveText("Not checked")
   refused = false
   await expect(chip, "the row read again by itself").toHaveText("Waiting for payment", { timeout: UNREAD_ROUND_MS })
@@ -370,17 +370,17 @@ test("Your names keeps a long name clear of its row's chip at every width", asyn
   for (const width of [600, 1024]) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto("/#/names")
-    const title = page.locator(".row-item .main b", { hasText: label })
+    const title = page.locator(".list-row .main b", { hasText: label })
     await expect(title).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
     // beside the chip on a wide screen, above it once the row stacks: the name never runs under it
     // read once the row's state is in, as the chip widens from "Checking" and the name gives way to it
-    const chip = page.locator(".row-item", { hasText: label }).locator(".chip")
+    const chip = page.locator(".list-row", { hasText: label }).locator(".chip")
     await expect(chip).toHaveText("Waiting for payment")
     // read together, once the brand font is in: the fallback's widths differ a little, and a page under load swaps late
     await page.evaluate(() => document.fonts.ready)
     const [t, c] = await page.evaluate((label) => {
-      const row = [...document.querySelectorAll(".row-item")].find((r) => r.textContent!.includes(label))!
+      const row = [...document.querySelectorAll(".list-row")].find((r) => r.textContent!.includes(label))!
       return [row.querySelector(".main b")!.getBoundingClientRect(), row.querySelector(".chip")!.getBoundingClientRect()].map((r) => ({ x: r.x, y: r.y, width: r.width, height: r.height }))
     }, label)
     expect(t.x + t.width <= c.x || t.y + t.height <= c.y, `${width}px: name ${JSON.stringify(t)}, chip ${JSON.stringify(c)}`).toBe(true)
@@ -416,7 +416,7 @@ test("a rate-limited cancel holds, and the hold outlives the page drawing itself
   await page.getByRole("link", { name: "SimpleX names" }).click()
   await expect(page.getByText(/Searching is paused: try again in \d+ seconds/).first()).toBeVisible()
   await page.getByRole("link", { name: "Your names" }).click()
-  await page.getByRole("button", { name: /Restore with a name code/ }).click()
+  await page.getByRole("link", { name: /Restore with a name code/ }).click()
   await expect(page.getByRole("button", { name: "Restore" })).toBeDisabled()
 })
 
@@ -466,7 +466,7 @@ test("Find the order shows a wait met elsewhere in the tab", async ({ page, requ
   await page.getByRole("button", { name: "Restore" }).click()
   await expect(page.getByText("Too many attempts")).toBeVisible()
   await page.getByRole("link", { name: "Your names" }).click()
-  await expect(page.locator(".row-item .chip", { hasText: /Try again in \d+ seconds/ })).toBeVisible()
+  await expect(page.locator(".list-row .chip", { hasText: /Try again in \d+ seconds/ })).toBeVisible()
   await expect(page.getByText("Find the order")).toHaveAttribute("aria-disabled", "true")
   await control(request, "search", { findLimitSeconds: 0 })
 })

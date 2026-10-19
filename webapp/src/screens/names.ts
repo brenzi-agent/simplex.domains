@@ -17,6 +17,8 @@ export interface ListState extends Stored {
   checked: Record<string, CodeCheck>
   finding: Record<string, Finding>
   asking: boolean
+  // the registered row expanded with its name code
+  shownCode: string | null
 }
 
 export type ListEvent =
@@ -24,6 +26,7 @@ export type ListEvent =
   | { type: "row-read"; id: string; view: RegistrationView; invoice: InvoiceView | null; now: number }
   | { type: "row-answered"; id: string; answer: SearchAnswer | null; linksSavedAt: string | undefined }
   | { type: "row-unread"; id: string }
+  | { type: "code-toggled"; id: string }
   | { type: "code-read"; code: string; state: CodeCheck }
   | { type: "find-started"; ownerCode: string }
   | { type: "find-ended"; ownerCode: string; outcome: "none" | "unchecked" }
@@ -39,7 +42,7 @@ const idsOf = (s: Stored) => s.orders.map((o) => o.registrationId)
 export function initialList(stored: Stored, hold: Hold | null, seen: Record<string, RowSeen>, checked: Record<string, CodeCheck>, now: number): ListState {
   const known = stored.codes.map((c) => c.code).filter((c) => checked[c] !== "unchecked")
   const unreplaced = stored.orders.filter((o) => !o.replacedBy).map((o) => o.registrationId)
-  return { ...stored, hold, now, seen: linksCurrent(keep(seen, unreplaced), stored.orders), unread: [], checked: keep(checked, known), finding: {}, asking: false }
+  return { ...stored, hold, now, seen: linksCurrent(keep(seen, unreplaced), stored.orders), unread: [], checked: keep(checked, known), finding: {}, asking: false, shownCode: null }
 }
 
 export const hasRecords = (s: Stored) => s.orders.length > 0 || s.pending.length > 0 || s.codes.length > 0
@@ -53,7 +56,8 @@ export function reduceList(s: ListState, e: ListEvent): ListState {
       const unreplaced = new Set(s.orders.filter((o) => !o.replacedBy).map((o) => o.registrationId))
       const ids = idsOf(stored).filter((id) => !(unreplaced.has(id) && stored.orders.find((o) => o.registrationId === id)?.replacedBy))
       return { ...s, ...stored, seen: linksCurrent(keep(s.seen, ids), stored.orders), unread: s.unread.filter((id) => ids.includes(id)),
-        checked: keep(s.checked, stored.codes.map((c) => c.code)), finding: keep(s.finding, stored.pending.map((p) => p.ownerCode)), asking: s.asking && hasRecords(stored) }
+        checked: keep(s.checked, stored.codes.map((c) => c.code)), finding: keep(s.finding, stored.pending.map((p) => p.ownerCode)), asking: s.asking && hasRecords(stored),
+        shownCode: s.shownCode !== null && ids.includes(s.shownCode) ? s.shownCode : null }
     }
     case "row-read": {
       const o = s.orders.find((r) => r.registrationId === e.id)
@@ -68,6 +72,7 @@ export function reduceList(s: ListState, e: ListEvent): ListState {
       return s.seen[e.id] && current ? { ...s, seen: { ...s.seen, [e.id]: { ...s.seen[e.id], answer: e.answer, linksSavedAt: e.linksSavedAt } } } : s
     }
     case "row-unread": return ordered(e.id) && !s.unread.includes(e.id) ? { ...s, unread: [...s.unread, e.id] } : s
+    case "code-toggled": return { ...s, shownCode: s.shownCode === e.id ? null : ordered(e.id) ? e.id : s.shownCode }
     case "code-read": return s.codes.some((c) => c.code === e.code) ? { ...s, checked: { ...s.checked, [e.code]: e.state } } : s
     case "find-started": return pendingFor(e.ownerCode) ? { ...s, finding: { ...s.finding, [e.ownerCode]: "finding" } } : s
     case "find-ended": return pendingFor(e.ownerCode) ? { ...s, finding: { ...s.finding, [e.ownerCode]: e.outcome } } : s
@@ -78,7 +83,7 @@ export function reduceList(s: ListState, e: ListEvent): ListState {
     case "hold-ended": return { ...s, hold: null }
     case "forget-asked": return hasRecords(s) ? { ...s, asking: true } : s
     case "forget-kept": return { ...s, asking: false }
-    case "forget-confirmed": return { ...s, orders: [], pending: [], codes: [], seen: {}, unread: [], checked: {}, finding: {}, asking: false }
+    case "forget-confirmed": return { ...s, orders: [], pending: [], codes: [], seen: {}, unread: [], checked: {}, finding: {}, asking: false, shownCode: null }
   }
 }
 
@@ -114,10 +119,6 @@ function linksCurrent(seen: Record<string, RowSeen>, orders: OrderRecord[]): Rec
   return stale.length ? { ...seen, ...Object.fromEntries(stale.map((o) => [o.registrationId, { ...seen[o.registrationId], answer: null }])) } : seen
 }
 
-const SETTLED: Phase[] = ["registered", "taken", "failed", "code_issued"]
-export const settled = (seen: RowSeen | undefined) => seen !== undefined
-  && (SETTLED.includes(seen.view.phase) || (seen.view.phase === "unpaid" && seen.invoice !== null && seen.invoice.status !== "open"))
-
 export const waitsToSign = (view: RegistrationView, now: number) =>
   view.phase === "committed" && view.label === null && view.revealAfter !== null && now / 1000 >= view.revealAfter
 
@@ -152,7 +153,7 @@ type RefusalKind = "invalid" | "prepaid" | "none" | "unasked" | "other"
 export interface Refusal { verdict: boolean; title: string; text: string; again: boolean }
 export const REFUSALS: Record<RefusalKind, Refusal> = {
   invalid: { verdict: true, title: "This code is not valid", text: "Check it for a mistyped character.", again: false },
-  prepaid: { verdict: true, title: "This is a prepaid code", text: "It pays for a name rather than owning one. Add it under Your names, or use it on search.", again: false },
+  prepaid: { verdict: true, title: "This is a prepaid code", text: "It pays for a name rather than owning one. Add it under Your names, or use it at checkout.", again: false },
   none: { verdict: false, title: "No order was found for this code", text: "The service has no order registered to its wallet.", again: false },
   unasked: { verdict: false, title: "The service could not be asked now", text: "Your code is fine to try again in a moment.", again: true },
   other: { verdict: false, title: "This code does not open the order", text: "The order found for it was made with another code.", again: false },
