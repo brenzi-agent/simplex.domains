@@ -1,15 +1,14 @@
 import { expect, type Page } from "@playwright/test"
-import { control, search, startOrder, test, uniqueLabel } from "./helpers.ts"
+import { control, search, startOrder, test, toCodeStep, toReview, uniqueLabel } from "./helpers.ts"
 
 // EIP-55's own example, and the same wallet with one letter's case changed
 const APP_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 const DAMAGED_WALLET = "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 
-// the checkout makes a name code as it opens, which Your names lists as pending
-async function openCheckout(page: Page, label: string): Promise<void> {
+// the name code step makes a name code as it opens, which Your names lists as pending
+async function openCodeStep(page: Page, label: string): Promise<void> {
   await search(page, label)
-  await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await toCodeStep(page)
 }
 
 const OLD = "data-old"
@@ -37,8 +36,8 @@ const focusOnPage = (page: Page) => expect.poll(() => page.evaluate(() => docume
 test("removing a pending name code leaves focus on the page, so a second Enter removes nothing", async ({ page }) => {
   const older = uniqueLabel("rmold")
   const newer = uniqueLabel("rmnew")
-  await openCheckout(page, older)
-  await openCheckout(page, newer)
+  await openCodeStep(page, older)
+  await openCodeStep(page, newer)
   await page.goto("/#/names")
   const newest = page.locator(".list-row").first()
   await expect(newest).toContainText(`${newer}.simplex`)
@@ -67,7 +66,7 @@ test("a checkout drawn again for the tab's open order keeps focus on its heading
   await startOrder(page, uniqueLabel("headopen"), { method: "btc" })
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   await search(page, uniqueLabel("headnext"))
-  await page.getByRole("button", { name: "Register" }).click()
+  await toReview(page)
   await expect(page.getByText(/is waiting for its payment/)).toBeVisible()
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeFocused()
 })
@@ -106,7 +105,7 @@ test("a restore refused for the code itself puts focus back in the code's field"
 })
 
 test("a restore the service refuses puts focus back in the code's field", async ({ page }) => {
-  await openCheckout(page, uniqueLabel("noorder"))
+  await openCodeStep(page, uniqueLabel("noorder"))
   const ownerCode = await page.evaluate(() => Object.keys(localStorage).find((k) => k.startsWith("simplex-names:pending:"))!.split(":").pop()!)
   await page.goto("/#/restore")
   await page.getByLabel("Name code").fill(ownerCode)
@@ -117,7 +116,7 @@ test("a restore the service refuses puts focus back in the code's field", async 
 })
 
 test("a pending code with no order leaves focus on the page when its Find link goes", async ({ page }) => {
-  await openCheckout(page, uniqueLabel("nofind"))
+  await openCodeStep(page, uniqueLabel("nofind"))
   await page.goto("/#/names")
   const row = page.locator(".list-row").first()
   await row.getByText("Find the order").focus()
@@ -127,7 +126,7 @@ test("a pending code with no order leaves focus on the page when its Find link g
 })
 
 test("Forget everything asks first with focus on Keep them, and keeping them gives focus back to the link", async ({ page }) => {
-  await openCheckout(page, uniqueLabel("forget"))
+  await openCodeStep(page, uniqueLabel("forget"))
   await page.goto("/#/names")
   await page.getByText("Forget everything in this browser").focus()
   await page.keyboard.press("Enter")

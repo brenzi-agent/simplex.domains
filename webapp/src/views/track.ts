@@ -1,11 +1,13 @@
-// Search, checkout and payment: three slides on one rail that moves a step at a time, as the badges wizard does.
+// The purchase steps, from the search to the payment: slides on one rail that moves a step at a time, as the badges wizard does.
 import { el, reducedMotion } from "../dom.ts"
 
-export type TrackStep = 0 | 1 | 2
+export type TrackStep = 0 | 1 | 2 | 3 | 4
 export const SEARCH_STEP: TrackStep = 0
-export const CHECKOUT_STEP: TrackStep = 1
-export const PAYMENT_STEP: TrackStep = 2
-const STEPS = 3
+export const LINKS_STEP: TrackStep = 1
+export const CODE_STEP: TrackStep = 2
+export const REVIEW_STEP: TrackStep = 3
+export const PAYMENT_STEP: TrackStep = 4
+const STEPS = 5
 // the badges wizard's slide (simplex-badge-service/web/src/main.ts:423)
 const SLIDE_MS = 320
 

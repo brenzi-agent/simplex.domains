@@ -1,16 +1,19 @@
 import type { Method } from "../api.ts"
+import type { LinkKind } from "../names.ts"
 import type { AppliedCode, Checkout } from "../session.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
+import type { CheckoutStep } from "./routes.ts"
 
 export const FALLBACK_METHOD: Record<Method, Method> = { card: "btc", btc: "xmr", xmr: "btc" }
 
 export type Refusal = "price-changed" | "too-many" | "failed"
-export type CheckoutKind = "checkout" | `status:${Refusal}`
+export type CheckoutKind = CheckoutStep | `status:${Refusal}`
 
 export interface WaitingOrder { registrationId: string; invoiceId: string }
 interface OpenOrder { invoiceId: string; label: string; tld: string; confirming: boolean }
 
 export interface CheckoutState {
+  step: CheckoutStep
   checkout: Checkout
   sending: boolean
   busy: boolean
@@ -23,7 +26,10 @@ export interface CheckoutState {
 }
 
 export type CheckoutEvent =
-  | { type: "opened"; checkout: Checkout; sending: boolean; waiting: WaitingOrder | null; hold: Hold | null }
+  | { type: "opened"; step: CheckoutStep; checkout: Checkout; sending: boolean; waiting: WaitingOrder | null; hold: Hold | null }
+  | { type: "link-set"; kind: LinkKind; link: string }
+  | { type: "links-skipped" }
+  | { type: "saved"; saved: boolean }
   | { type: "method-chosen"; method: Method }
   | { type: "code-applied"; code: AppliedCode }
   | { type: "code-removed" }
@@ -37,13 +43,16 @@ export type CheckoutEvent =
   | { type: "hold-started"; until: number }
   | { type: "hold-ended" }
 
-export function initialState(checkout: Checkout): CheckoutState {
-  return { checkout, sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null,
+export function initialState(checkout: Checkout, step: CheckoutStep): CheckoutState {
+  return { step, checkout, sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null,
     codeOpen: checkout.code !== null || checkout.codeError !== undefined }
 }
 
 export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial<Checkout> | null {
   switch (e.type) {
+    case "link-set": return e.kind === "contact" ? { contact: e.link } : { channel: e.link }
+    case "links-skipped": return { contact: "", channel: "" }
+    case "saved": return { saved: e.saved }
     case "method-chosen": return e.method === checkout.method || e.method === checkout.unavailable ? null : { method: e.method }
     case "code-applied": return { code: e.code, codeError: undefined }
     case "code-removed": return { code: null, codeError: undefined }
@@ -61,7 +70,10 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
   const change = changeOf(s, e)
   const checkout = change ? { ...s.checkout, ...change } : s.checkout
   switch (e.type) {
-    case "opened": return { ...s, checkout: e.checkout, sending: e.sending, busy: false, waiting: e.waiting, hold: e.hold, refusal: null }
+    case "opened": return { ...s, step: e.step, checkout: e.checkout, sending: e.sending, busy: false, waiting: e.waiting, hold: e.hold, refusal: null }
+    case "link-set":
+    case "links-skipped":
+    case "saved":
     case "method-chosen":
     case "code-applied":
     case "code-removed": return change ? { ...s, checkout } : s
@@ -77,5 +89,5 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
 }
 
 export function screenOf(s: CheckoutState): CheckoutKind {
-  return s.refusal ? `status:${s.refusal}` : "checkout"
+  return s.refusal ? `status:${s.refusal}` : s.step
 }

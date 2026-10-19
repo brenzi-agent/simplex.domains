@@ -1,6 +1,6 @@
 // The router: one page per route, redrawn on navigation.
 import "./styles.css"
-import { EDIT_PATH, viewOf } from "./screens/routes.ts"
+import { checkoutStepOf, EDIT_PATH, viewOf } from "./screens/routes.ts"
 import { checkoutPage } from "./views/checkout.ts"
 import { editPage, historyPage, restorePage, trademarksPage } from "./views/names.ts"
 import { orderPage } from "./views/order.ts"
@@ -14,7 +14,7 @@ function render(): void {
   nextRoute()
   switch (view) {
     case "order": return orderPage(query.get("order"), query.get("registration"))
-    case "checkout": return checkoutPage()
+    case "checkout": return checkoutPage(checkoutStepOf(path))
     case "names": return historyPage()
     case "restore": return restorePage()
     case "trademarks": return trademarksPage()

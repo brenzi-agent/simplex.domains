@@ -1,9 +1,10 @@
 import { expect, type Locator } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
+import { dateOf } from "../src/format.ts"
 import {
-  channelLink, checkoutOwnerCode, contactLink, control, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, SAVED, search, searchName, shot, startOrder, test,
-  uniqueLabel, waitRegistered,
+  channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, contactLink, control, LINKS_HEADING, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, SAVED,
+  savedToReview, search, searchName, shot, startOrder, test, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
@@ -95,13 +96,13 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   // a long poll the rewrite holds is answered before it goes, or the page would wait on it
   await page.unrouteAll({ behavior: "wait" })
   await waitRegistered(page, label)
-  await expect(page.getByTestId("owner-code")).toHaveText(ownerCode)
+  await expect(page.getByTestId("owner-code"), "the code was saved before paying").toHaveCount(0)
   await shot(page, "N7-registered")
 
   const answer = await searchName(request, label)
   expect(answer.status).toBe("registered")
   expect(answer.owner).toBe(checksumAddress(walletOf(ownerCode)!.address))
-  expect(answer.records, "a name is registered with no links").toEqual({ contact: "", channel: "" })
+  expect(answer.records, "a name whose links were skipped is registered with none").toEqual({ contact: "", channel: "" })
   const registrationId = await registrationOf(request, invoiceId)
 
   // edit links: both links, signed in the page, sent by the mock's relayer
@@ -227,46 +228,82 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   expect(lines.filter((l) => /points at Channel\sC3/.test(l)), lines.join(" | ")).toEqual([])
 })
 
-test("a purchase checks the order, pays, then shows the name code and Set links, which opens Edit links", async ({ page, request }) => {
+test("a purchase walks the steps a buyer expects, and the links set before paying are on chain", async ({ page, request }) => {
   const label = uniqueLabel("flow")
+  const contact = contactLink("F1")
   await search(page, label)
   await page.getByRole("button", { name: "Register" }).click()
-  const checkout = onStep(page)
-  await expect(checkout.getByRole("heading", { name: "Check your order" })).toBeFocused()
-  // one concern per block: the order, how it pays, a code instead, and Pay
-  const blocks = await checkout.locator(".screen > *").evaluateAll((nodes) => nodes.map((n) => n.tagName === "H1" ? "h1" : n.className))
-  expect(blocks).toEqual(["back", "h1", "card summary-card", "pay-with", "code-link", "pay-block"])
-  await expect(checkout.locator(".summary-card .name")).toHaveText(`${label}.simplex`)
-  await expect(checkout.locator(".summary-card .term-line")).toHaveText(/^2 years \+ 30 days\s·\suntil \d{1,2}\s\w{3} \d{4}$/)
-  await expect(checkout.locator(".summary-card .total")).toHaveText(/^Total\$[\d,]+\.\d\d$/)
-  await expect(checkout.getByRole("radio")).toHaveText(["Card", "Bitcoin", "Monero"])
-  await expect(checkout.locator(".link-field, .name-code, input[type=checkbox]")).toHaveCount(0)
-  await expect(checkout.getByTestId("owner-code")).toHaveCount(0)
-  await expect(checkout.getByRole("textbox")).toHaveCount(0)
-  await expect(payButton(page)).toBeEnabled()
+  const step = onStep(page)
+
+  await expect(step.getByRole("heading", { name: `What should ${label}.simplex open?` })).toBeFocused()
+  await expect(step.getByText("You can change this later on Edit links.")).toBeVisible()
+  await step.getByLabel("Address").fill(contact)
+  await expect(step.locator(".link-field").first()).toHaveAttribute("data-state", "ok")
+  await expect(step.locator(".link-field").first().locator(".entity:not(.skeleton)")).toBeVisible()
+  await step.getByRole("button", { name: "Continue" }).click()
+
+  await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeFocused()
   const ownerCode = await checkoutOwnerCode(page)
+  await expect(step.getByTestId("owner-code")).toHaveText(ownerCode)
+  expect(await page.evaluate((c) => localStorage.getItem(`simplex-names:pending:${c}`) !== null, ownerCode), "the code is kept in this browser as its step opens").toBe(true)
+  await expect(step.getByText(`It is the only key to ${label}.simplex. If you lose it, nothing can recover it.`)).toBeVisible()
+  const next = step.getByRole("button", { name: "Continue" })
+  await expect(next, "Continue waits for the box").toBeDisabled()
+  await step.getByText(SAVED).click()
+  await expect(next).toBeEnabled()
+  await next.click()
+
+  await expect(step.getByRole("heading", { name: "Check your order" })).toBeFocused()
+  // the order, then how it pays, a code instead, and Pay
+  expect(await step.locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["card summary-card", "review-pay"])
+  expect(await step.locator(".review-pay > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["pay-with", "code-link", "pay-block"])
+  await expect(step.locator(".summary-card .name")).toHaveText(`${label}.simplex`)
+  await expect(step.locator(".summary-card .term-line")).toHaveText(/^2 years \+ 30 days\s·\suntil \d{1,2}\s\w{3} \d{4}$/)
+  await expect(step.locator(".link-line")).toHaveText([`Address${contact}Change`])
+  await expect(step.locator(".summary-card .total")).toHaveText(/^Total\$[\d,]+\.\d\d$/)
+  await expect(step.getByRole("radio")).toHaveText(["Card", "Bitcoin", "Monero"])
+  await expect(step.getByRole("checkbox")).toHaveCount(0)
+
+  // Change goes back to the links as typed; the name code step keeps its box ticked
+  await step.getByRole("link", { name: "Change the address" }).click()
+  await expect(step.getByRole("heading", { name: LINKS_HEADING })).toBeFocused()
+  await expect(step.getByLabel("Address")).toHaveValue(contact)
+  await step.getByRole("button", { name: "Continue" }).click()
+  await expect(step.getByRole("checkbox", { name: SAVED })).toBeChecked()
+  await step.getByRole("button", { name: "Continue" }).click()
+  // Back walks the same steps in reverse, and Continue walks them again
+  await step.getByRole("link", { name: "Back" }).click()
+  await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeFocused()
+  await step.getByRole("link", { name: "Back" }).click()
+  await expect(step.getByRole("heading", { name: LINKS_HEADING })).toBeFocused()
+  await step.getByRole("button", { name: "Continue" }).click()
+  await step.getByRole("button", { name: "Continue" }).click()
+  await expect(step.getByRole("heading", { name: "Check your order" })).toBeFocused()
+
   await payButton(page).click()
   await page.waitForURL(/\?order=/)
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-  await expect(page.getByTestId("owner-code"), "the name code shows once the order is paid").toHaveCount(0)
   const invoiceId = new URL(page.url()).searchParams.get("order")!
-
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByRole("heading", { name: `Registering ${label}.simplex` })).toBeVisible({ timeout: REGISTRATION_MS })
-  await expect(page.getByTestId("owner-code")).toHaveText(ownerCode)
-  const saved = page.getByRole("checkbox", { name: SAVED })
-  await expect(saved).not.toBeChecked()
-  await page.getByText(SAVED).click()
-  await expect(saved).toBeChecked()
-  await page.reload()
-  await expect(saved, "the order remembers the box").toBeChecked()
+  await expect(page.getByTestId("owner-code"), "the code was saved before paying").toHaveCount(0)
+  await expect(page.getByRole("checkbox")).toHaveCount(0)
 
   await waitRegistered(page, label)
-  await expect(page.getByTestId("owner-code")).toHaveText(ownerCode)
-  await expect(saved).toBeChecked()
-  await page.getByRole("link", { name: "Set links" }).click()
+  const main = page.locator("body > main")
+  await expect(main.locator(".lead")).toHaveText(`Registered until ${dateOf((await searchName(request, label)).expiresAt as number)}.`)
+  await expect(main.getByRole("heading", { name: "Redeem it in the app" })).toBeVisible()
+  await expect(main.getByTestId("owner-code")).toHaveCount(0)
+  await expect(main.getByRole("checkbox")).toHaveCount(0)
+  await expect(main.getByRole("link", { name: "Your names" })).toHaveAttribute("href", "/#/names")
+  const answer = await searchName(request, label)
+  expect(answer.owner, "the code saved before paying owns the name").toBe(checksumAddress(walletOf(ownerCode)!.address))
+  expect(answer.records, "the link set before paying is on chain").toEqual({ contact, channel: "" })
+
+  await main.getByRole("link", { name: "Edit links" }).click()
   await expect(page.getByRole("heading", { name: `Edit links for ${label}.simplex` })).toBeVisible()
   expect(new URL(page.url()).hash).toBe(`#/edit/${await registrationOf(request, invoiceId)}`)
+  await expect(page.getByLabel("Address")).toHaveValue(contact)
 
   // a link of the wrong kind is refused, and Save takes focus to it
   await page.getByLabel("Address").fill("https://smp8.simplex.im/c#notacontact")
@@ -284,6 +321,35 @@ test("a purchase checks the order, pays, then shows the name code and Set links,
   await expect(page.locator(".field-error [aria-hidden=true]", { hasText: /The link could not be checked now/ })).toBeVisible()
   await expect(page.locator(".link-field").first().locator(".entity")).toBeVisible({ timeout: 10_000 })
   await page.unrouteAll({ behavior: "wait" })
+})
+
+test("Skip for now leaves the links empty, and the review says the order has none", async ({ page }) => {
+  await search(page, uniqueLabel("skip"))
+  await page.getByRole("button", { name: "Register" }).click()
+  const step = onStep(page)
+  await step.getByLabel("Address").fill(contactLink("S1"))
+  await expect(step.locator(".link-field").first()).toHaveAttribute("data-state", "ok")
+  await step.getByRole("button", { name: "Skip for now" }).click()
+  await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeFocused()
+  expect(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!), CHECKOUT_KEY)).toMatchObject({ contact: "", channel: "" })
+  await step.getByRole("link", { name: "Back" }).click()
+  await expect(step.getByLabel("Address"), "a skipped link is not kept").toHaveValue("")
+  await step.getByRole("button", { name: "Skip for now" }).click()
+  await savedToReview(page)
+  await expect(step.locator(".link-line")).toHaveText(["LinksNoneAdd"])
+  await step.getByRole("link", { name: "Add links" }).click()
+  await expect(step.getByRole("heading", { name: LINKS_HEADING })).toBeFocused()
+})
+
+test("Continue on the links step waits for a link being checked, and takes focus to one refused", async ({ page }) => {
+  await search(page, uniqueLabel("linkbad"))
+  await page.getByRole("button", { name: "Register" }).click()
+  const step = onStep(page)
+  await step.getByLabel("Channel").fill(contactLink("W1"))
+  await expect(step.getByText("This is a contact address link: paste it in the Address field.")).toBeVisible()
+  await step.getByRole("button", { name: "Continue" }).click()
+  await expect(step.getByLabel("Channel")).toBeFocused()
+  await expect(step.getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
 })
 
 test("the owner code restores an order in another browser, and a bad code is refused", async ({ page, browser, request }) => {
@@ -313,7 +379,10 @@ test("the owner code restores an order in another browser, and a bad code is ref
   await page2.getByRole("button", { name: "Restore" }).click()
   await page2.waitForURL(/\?order=/)
   await waitRegistered(page2, label)
-  await expect(page2.getByTestId("owner-code")).toHaveText(ownerCode)
+  await page2.goto("/#/names")
+  const row = page2.locator(".list-row", { hasText: `${label}.simplex` })
+  await row.getByRole("button", { name: "Show code" }).click()
+  await expect(row.locator(".row-code .code-text"), "the restored browser keeps the code").toHaveText(ownerCode)
   await other.close()
 })
 
@@ -329,7 +398,7 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   await page.goto("/")
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("second"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
-  await page.getByRole("button", { name: "Register" }).click()
+  await toReview(page)
   await expect(page.getByText("You have an order waiting to be confirmed")).toBeVisible()
   await expect(payButton(page)).toBeDisabled()
   await shot(page, "N3e-open-card-order")

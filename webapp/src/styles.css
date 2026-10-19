@@ -20,14 +20,15 @@
   --body: "Manrope", "Manrope fallback", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", monospace;
 
-  --fs-h1: clamp(28px, 5vw, 48px);
+  --fs-h1: clamp(28px, 3.2vw, 40px);
   --fs-h2: clamp(20px, 2.3vw, 24px);
-  --fs-lead: clamp(19px, 2.3vw, 24px);
+  --fs-lead: clamp(17px, 1.6vw, 20px);
   --fs-body: 18px;
   --fs-small: clamp(14px, 1.5vw, 16px);
   --fs-label: clamp(12px, 1.6vw, 16px);
   --frame-pad: clamp(18px, 3.5vw, 44px);
   --column: 640px;
+  --wide-column: 880px;
 
   --page-color: #F3FAFF;
   --page-image:
@@ -164,11 +165,18 @@ body > main { flex: 1 0 auto; }
 .chip.warn { background: var(--warn-bg); color: var(--warn-fg); }
 .chip.bad { background: var(--danger-bg); color: var(--danger-fg); }
 
-/* inner pages: one centred column with Back above the heading (badges screens.ts:35-43) */
-.screen { --screen-gap: 22px; width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: 12px 16px 48px; display: flex; flex-direction: column; gap: var(--screen-gap); }
+/* inner pages: one centred column with Back above the heading (badges screens.ts:35-43), or beside it on a wide window,
+   centred between the header and the footer as the home is, so a purchase step fits the window */
+.screen { --screen-gap: 16px; width: 100%; max-width: calc(var(--column) + 32px); min-height: calc(100dvh - var(--frame-h)); margin-inline: auto;
+  padding: 16px; display: flex; flex-direction: column; justify-content: center; gap: var(--screen-gap); }
 /* an empty live region keeps its place in the column without adding a gap */
 .screen > [role="status"]:empty { margin-top: calc(-1 * var(--screen-gap)); }
-.back { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-small); align-self: flex-start; }
+.screen-head { position: relative; display: grid; gap: 8px; }
+.back { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-small); justify-self: start; }
+/* a wide window has room for Back left of the column, on the heading's first line */
+@media (min-width: 900px) {
+  .screen-head .back { position: absolute; right: calc(100% + 24px); top: calc(var(--fs-h1) * .525); translate: 0 -50%; }
+}
 .outcome { text-align: center; }
 .outcome .btn { align-self: center; }
 .outcome .actions { justify-content: center; }
@@ -188,7 +196,7 @@ h1:has(.grad) { text-wrap: pretty; }
 .home { display: flex; flex-direction: column; align-items: center; text-align: center; padding-inline: 16px;
   min-height: calc(100dvh - var(--frame-h)); }
 .home .vspace { flex: 1; }
-.home .vspace.cap { min-height: 18px; max-height: 108px; }
+.home .vspace.cap { min-height: 16px; max-height: 108px; }
 .headline { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 600px; container-type: inline-size; }
 .headline h1 { font-size: clamp(28px, 10.3cqw, 66px); line-height: 1.02; white-space: nowrap; font-kerning: none; }
 .headline .sub { font-size: clamp(11px, 3.92cqw, 26px); margin-top: 3cqw; white-space: nowrap; color: var(--ink-soft); font-kerning: none; }
@@ -238,17 +246,28 @@ h1:has(.grad) { text-wrap: pretty; }
   .modal-close { width: 16px; height: 16px; }
 }
 
-/* checkout: one column of blocks, as the badges checkout (badges screens.ts:466-505) */
-.summary-card { display: grid; gap: 16px; }
-.summary-card .term-line { color: var(--ink-soft); }
+/* checkout steps: blocks in one column, as the badges checkout (badges screens.ts:466-505), the review in two where it fits */
+.summary-card { display: grid; gap: 12px; padding: 20px 24px; }
+.summary-card .term-line { color: var(--ink-soft); font-size: var(--fs-small); }
 .summary-card .total { display: flex; justify-content: space-between; border-top: 1px solid var(--surface-line); padding-top: 14px; margin: 0; font-weight: 600; font-size: 20px; }
-.pay-with, .name-code, .code-entry, .pay-block, .link-entry, .forget { display: grid; gap: 12px; }
-.name-code :is(.code-display, .check) { margin: 0; }
+.pay-with, .code-entry, .pay-block, .link-fields, .forget { display: grid; gap: 12px; }
+.link-entry, .link-field { display: grid; gap: 8px; }
+.link-lines { display: grid; gap: 6px; }
+.link-line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; font-size: var(--fs-small); }
+.link-line .k { color: var(--ink-soft); font-weight: 600; }
+.link-line .v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-actions { display: grid; gap: 12px; justify-items: center; }
+/* the order beside how it pays where the window is wide enough for both */
+.review, .review-pay { display: grid; gap: var(--screen-gap); align-items: start; }
+@media (min-width: 900px) {
+  .screen.wide { max-width: calc(var(--wide-column) + 32px); }
+  .review, .link-fields { grid-template-columns: 1fr 1fr; align-items: start; }
+}
 .code-link { font-size: var(--fs-small); }
-.methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.method { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 12px; border: 1px solid var(--surface-line); border-radius: 20px; background: var(--surface); cursor: pointer; text-align: center; }
-.method svg { width: 28px; height: 28px; }
-.method span { color: var(--ink-soft); font-size: var(--fs-small); }
+.methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.method { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px; padding: 14px 12px; border: 1px solid var(--surface-line); border-radius: 18px; background: var(--surface); cursor: pointer; text-align: center; }
+.method svg { width: 24px; height: 24px; }
+.method span { flex-basis: 100%; color: var(--ink-soft); font-size: var(--fs-small); }
 .method[aria-checked="true"] { border-color: var(--primary); color: var(--primary); }
 .method[aria-disabled="true"] { color: var(--ink-soft); background: var(--chip); cursor: default; }
 .method[aria-disabled="true"] span { color: var(--danger-fg); }
@@ -258,11 +277,14 @@ h1:has(.grad) { text-wrap: pretty; }
 .verdict.ok { color: var(--ok-fg); }
 .verdict.bad { color: var(--danger-fg); }
 
-/* payment and registration: one column */
+/* payment: the QR beside the amount and the address; registration: one column */
 /* qrSvg draws its own white frame */
 svg.qr { display: block; width: 132px; height: auto; }
-.card.qr { display: grid; place-items: center; }
-.card.qr svg.qr { width: min(220px, 100%); }
+/* a phone puts the address under the QR and the amount, across the column */
+.pay-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px 16px; align-items: start; }
+.pay-grid > .qr { grid-row: span 2; }
+.card.qr { display: grid; place-items: center; padding: 12px; }
+.card.qr svg.qr { width: 160px; }
 .copy-field .label { display: block; margin-bottom: 6px; }
 .copy-field .val { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 16px; background: var(--chip); border: 1px solid var(--surface-line);
   font: 600 15px var(--mono); overflow-wrap: anywhere; text-wrap: balance; }
@@ -287,7 +309,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .stripe .f { display: block; margin-top: 12px; }
 .stripe .f span { display: block; font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 6px; }
 .stripe .box { padding: 13px 14px; border-radius: 12px; border: 1px solid var(--surface-line); background: var(--surface); color: var(--ink-soft); font-weight: 600; }
-.stripe .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stripe .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 
 /* --done is the wait's share gone by, which the registering page sets each second */
 .stages { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 16px; list-style: none; }
@@ -301,20 +323,20 @@ svg.qr { display: block; width: 132px; height: auto; }
 .stage.done .node { background: var(--ok-fg); border-color: var(--ok-fg); color: var(--page-color); }
 .stage.active .node { border-color: var(--primary); color: var(--primary); box-shadow: 0 0 0 6px var(--chip); }
 .stage.failed .node { background: var(--danger-fg); border-color: var(--danger-fg); color: var(--page-color); }
-.stage b { display: block; margin-top: 10px; font-size: 16px; }
-.stage > span:last-child { display: block; color: var(--ink-soft); font-size: var(--fs-small); }
-.countdown { display: flex; align-items: center; gap: 18px; padding: 18px 20px; border-radius: 18px; background: var(--chip); border: 1px solid var(--chip-line); }
+.stage b { display: block; margin-top: 8px; font-size: 16px; }
+.countdown { display: flex; align-items: center; gap: 18px; padding: 10px 18px; border-radius: 18px; background: var(--chip); border: 1px solid var(--chip-line); }
 /* the clock and the icon after it take the same room */
 .countdown b { display: inline-grid; place-items: center; min-height: 1em; font: 700 var(--fs-h2)/1 var(--display); color: var(--primary); font-variant-numeric: tabular-nums; }
 .countdown b svg.i { width: .8em; height: .8em; }
 .countdown p { color: var(--ink-soft); font-size: var(--fs-small); }
-.tx { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid var(--surface-line); font-size: var(--fs-small); }
+.card.txs { padding-block: 12px; }
+.tx { display: flex; align-items: center; gap: 14px; padding: 8px 0; border-top: 1px solid var(--surface-line); font-size: var(--fs-small); }
 .tx:first-child { border-top: 0; padding-top: 0; }
 .tx:last-child { padding-bottom: 0; }
 .tx .k { width: 140px; color: var(--ink-soft); font-weight: 600; }
 .tx .v { flex: 1; font-family: var(--mono); font-size: 13.5px; white-space: nowrap; }
 
-.code-display { position: relative; margin-top: 18px; padding: 22px 52px; border-radius: 18px; background: var(--chip); border: 1px dashed var(--chip-line); text-align: center;
+.code-display { position: relative; padding: 22px 52px; border-radius: 18px; background: var(--chip); border: 1px dashed var(--chip-line); text-align: center;
   font: 700 19px var(--mono); letter-spacing: .02em; text-wrap: balance; }
 .code-display > .corner-copy { position: absolute; top: 8px; right: 8px; margin: 0; }
 .notice svg.i { margin-top: 1px; }
@@ -345,7 +367,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .code-input input { font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(11px, (100cqi - 28px) / 23.8, 15px); }
 
 .total s { color: var(--ink-soft); font-size: 20px; margin-right: 8px; }
-.check { display: flex; align-items: center; gap: 12px; margin-top: 18px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--surface-line); font-weight: 700; position: relative; cursor: pointer; }
+.check { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--surface-line); font-weight: 700; position: relative; cursor: pointer; }
 .check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .check input:focus-visible + .box { outline: 2px solid var(--primary); outline-offset: 2px; }
 .check input:checked + .box { background: var(--primary); border-color: var(--primary); }
@@ -366,7 +388,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .list-row .acts { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
 .list > .code-entry { padding: 16px 0; border-top: 1px solid var(--surface-line); }
 .row-code { grid-column: 1 / -1; display: grid; justify-items: center; gap: 14px; }
-.row-code .code-display { width: 100%; margin-top: 0; }
+.row-code .code-display { width: 100%; }
 .how { display: grid; gap: 8px; }
 .how ul { display: grid; gap: 6px; padding-left: 1.2em; }
 .small-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--surface-line); background: var(--surface); color: var(--ink); font-weight: 700; font-size: 13.5px; }
@@ -377,9 +399,10 @@ svg.qr { display: block; width: 132px; height: auto; }
 .center { display: flex; justify-content: center; }
 .left { text-align: left; }
 .field-error { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--danger-fg); font-weight: 700; font-size: 14px; }
-.entity-wrap { margin: 10px 0; }
 
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.actions.pair { display: grid; grid-template-columns: 1fr 1fr; }
+.pair .btn { padding-inline: 16px; }
 
 /* a name can be 63 letters long */
 h1, .lead { overflow-wrap: anywhere; }
@@ -410,7 +433,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 @media (pointer: coarse) {
   .small-btn, .field-copy { position: relative; }
   .small-btn::before, .field-copy::before { content: ""; position: absolute; inset: -6px; }
-  .waiting a, .next-step a, .answer .yours a, .entity > a { padding-block: 12px; margin-block: -12px; }
+  .waiting a, .answer .yours a, .entity > a { padding-block: 12px; margin-block: -12px; }
   .danger-link { padding-block: 12px; }
 }
 
@@ -424,7 +447,6 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .entity > a { flex-basis: 100%; padding-left: 56px; }
   /* the link has its own line, so the name takes the rest of the first beside its avatar, however long */
   .entity .who { flex-basis: 0; }
-  .stages .stage > span:last-child { display: none; }
   .tx .k { width: 80px; }
   /* a row's chip goes under its name, which keeps the row's width */
   .list-row { grid-template-columns: 40px minmax(0, 1fr); }
@@ -432,6 +454,21 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .code-input { padding-inline: 12px; }
   .code-input > svg.i { display: none; }
   .code-input input { font-size: clamp(11px, 100cqi / 23.2, 12.5px); letter-spacing: 0; }
+  /* a purchase step fits the phone's window: smaller cards, methods and fields */
+  .summary-card { padding: 16px 18px; }
+  .summary-card .name { font-size: 24px; }
+  .method { flex-direction: column; padding: 10px 6px; gap: 4px; font-size: 16px; }
+  .method span { flex-basis: auto; }
+  .method svg { width: 22px; height: 22px; }
+  .field { padding-block: 12px; }
+  .entity { padding: 10px 12px; }
+  .entity .avatar { width: 36px; height: 36px; border-radius: 11px; }
+  .step-actions { gap: 8px; }
+  .entity.skeleton { height: 62px; }
+  .pay-grid > .qr { grid-row: auto; }
+  .pay-grid > :last-child { grid-column: 1 / -1; }
+  .card.qr svg.qr { width: 120px; }
+  .screen { --screen-gap: 14px; padding-block: 12px; }
 }
 
 /* a reader who asked for less motion gets the states without the easing */
@@ -439,7 +476,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
 }
 
-/* .track clips and takes the height of the slide in view; .rail is the row of three slides and is what moves */
+/* .track clips and takes the height of the slide in view; .rail is the row of slides and is what moves */
 .track { overflow: clip; transition: height var(--slide, 320ms) cubic-bezier(.22, .61, .36, 1); }
 .rail { display: flex; align-items: flex-start; width: 100%; transition: transform var(--slide, 320ms) cubic-bezier(.22, .61, .36, 1); }
 .slide { flex: 0 0 100%; min-width: 0; }

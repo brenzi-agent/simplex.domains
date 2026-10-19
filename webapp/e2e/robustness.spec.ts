@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  checkoutCode, checkoutOwnerCode, control, mockRegistration, onStep, openCode, payButton, REGISTRATION_MS, registrationOf, search, shot, startOrder, test, uniqueLabel, waitRegistered,
+  checkoutCode, checkoutOwnerCode, CODE_HEADING, control, mockRegistration, onStep, openCode, payButton, REGISTRATION_MS, registrationOf, savedToReview, search, shot, startOrder, test,
+  toCodeStep, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 test("a second tab's order survives a write from a tab opened earlier", async ({ browser, request }) => {
@@ -51,7 +52,7 @@ test("Back from an order page keeps it reachable with Forward", async ({ page })
 
 test("a payment method is chosen with the keyboard, as one radio group", async ({ page }) => {
   await search(page, uniqueLabel("key"))
-  await page.getByRole("button", { name: "Register" }).click()
+  await toReview(page)
   const method = (m: string) => page.locator(`.method[data-method="${m}"]`)
   await expect(method("btc")).toHaveAttribute("tabindex", "0")
   await expect(method("xmr")).toHaveAttribute("tabindex", "-1")
@@ -104,7 +105,7 @@ test("a card payment settled while its page was closed frees checkout", async ({
   await page.goto("/")
   await control(request, `settle/${invoiceId}`)
   await search(page, uniqueLabel("next"))
-  await page.getByRole("button", { name: "Register" }).click()
+  await toReview(page)
   await expect(page.getByText("You have an order waiting to be confirmed")).toHaveCount(0)
   await expect(payButton(page)).toBeEnabled()
 })
@@ -113,7 +114,7 @@ test("an unpaid invoice is pointed at from checkout without blocking a new order
   const first = uniqueLabel("open")
   const { invoiceId } = await startOrder(page, first, { method: "btc" })
   await search(page, uniqueLabel("second"))
-  await page.getByRole("button", { name: "Register" }).click()
+  await toReview(page)
   await expect(page.getByText(`${first}.simplex is waiting for its payment`)).toBeVisible()
   await expect(page.getByRole("link", { name: "Open that order" })).toHaveAttribute("href", `/?order=${invoiceId}`)
   await expect(payButton(page)).toBeEnabled()
@@ -173,7 +174,7 @@ test("a registered order opened in a browser without its code offers restore", a
   await page2.getByLabel("Name code").fill(ownerCode)
   await page2.getByRole("button", { name: "Restore" }).click()
   await waitRegistered(page2, label)
-  await expect(page2.getByTestId("owner-code")).toHaveText(ownerCode)
+  await expect(page2.getByRole("link", { name: "Edit links" }), "the restored code lets this browser edit the name's links").toBeVisible()
   await other.close()
 })
 
@@ -240,7 +241,7 @@ test("after taking a code, the other-name search says the payment became a code"
   await expect(page.getByText("Covered by your payment")).toHaveCount(0)
 })
 
-test("full storage that still reads is warned about at checkout, and the payment page shows the name code to save", async ({ browser }) => {
+test("full storage that still reads is warned about on the name code step, which shows the only copy of the code", async ({ browser }) => {
   const context = await browser.newContext()
   await context.addInitScript(() => {
     const setItem = Storage.prototype.setItem
@@ -251,28 +252,26 @@ test("full storage that still reads is warned about at checkout, and the payment
   })
   const page = await context.newPage()
   await search(page, uniqueLabel("full"))
-  await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByText("This browser will not keep your name code")).toBeVisible()
-  await expect(page.getByText("It is shown on the payment page: save it there before paying.")).toBeVisible()
-  await expect(page.getByTestId("owner-code")).toHaveCount(0)
-  const ownerCode = await checkoutOwnerCode(page)
+  await toCodeStep(page)
+  await expect(onStep(page).getByText("This code could not be saved in this browser")).toBeVisible()
+  await expect(onStep(page).getByText("Save a copy now: it will be the only one.")).toBeVisible()
+  await expect(onStep(page).getByTestId("owner-code")).toHaveText(await checkoutOwnerCode(page))
+  await savedToReview(page)
   await payButton(page).click()
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-  await expect(page.getByTestId("owner-code"), "a reload would lose the order, so its code shows before it is paid").toHaveText(ownerCode)
-  await expect(page.getByText("This code could not be saved in this browser")).toBeVisible()
+  await expect(onStep(page).getByTestId("owner-code"), "the code was saved before paying, so the payment page leaves it out").toHaveCount(0)
   await context.close()
 })
 
 test("Forget everything also drops the tab's unfinished checkout", async ({ page }) => {
   await search(page, uniqueLabel("forget"))
-  await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await toCodeStep(page)
   await page.goto("/#/names")
   await page.getByText("Forget everything in this browser").click()
   await page.getByRole("button", { name: "Forget everything" }).click()
   await page.goto("/#/checkout")
   await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
-  // the name code's own page is gone: its old address is a search
+  // each step's address leads to the search once its checkout is gone
   await page.goto("/#/checkout/code")
   await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
   await page.goto("/#/names")
@@ -344,8 +343,7 @@ test("a code Your names could not check is checked again while the page stays op
 
 test("Forget everything asks over the records stored now, another tab's included", async ({ page, request }) => {
   await search(page, uniqueLabel("fgt"))
-  await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await toCodeStep(page)
   await page.goto("/#/names")
   await expect(page.locator(".list-row")).toHaveCount(1)
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
@@ -385,8 +383,7 @@ test("the checkout and the payment page fit a tablet's width rather than scroll 
   const width = () => page.evaluate(() => document.documentElement.scrollWidth)
   await page.setViewportSize({ width: 700, height: 900 })
   await search(page, uniqueLabel("tab"))
-  await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await toReview(page)
   expect(await width()).toBeLessThanOrEqual(700)
   await page.goto("/")
   await startOrder(page, uniqueLabel("tab2"), { method: "btc" })
@@ -453,12 +450,12 @@ test("a rate-limited cancel holds, and the hold outlives the page drawing itself
 
 test("Back from a paused order keeps the order paused", async ({ page }) => {
   await search(page, uniqueLabel("pause"))
-  await page.getByRole("button", { name: "Register" }).click()
+  await toReview(page)
   await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": "20" }, json: { error: "rate_limited" } }) : route.continue())
   await payButton(page).click()
   await expect(page.locator(".outcome .notice span[aria-hidden=true]")).toHaveText(/^Too many orders were tried from here\. Try again in \d+ seconds\.$/)
   await page.goBack()
-  await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
   await page.goForward()
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
   await expect(payButton(page)).toBeDisabled()
@@ -467,7 +464,7 @@ test("Back from a paused order keeps the order paused", async ({ page }) => {
 
 test("an order on its way keeps its method and code as sent until it is answered", async ({ page }) => {
   await search(page, uniqueLabel("lock"))
-  await page.getByRole("button", { name: "Register" }).click()
+  await toReview(page)
   await openCode(page)
   let answer: () => void = () => undefined
   const answered = new Promise<void>((resolve) => { answer = resolve })
@@ -489,8 +486,7 @@ test("an order on its way keeps its method and code as sent until it is answered
 
 test("Find the order shows a wait met elsewhere in the tab", async ({ page, request }) => {
   await search(page, uniqueLabel("findh"))
-  await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await toCodeStep(page)
   await control(request, "search", { findLimitSeconds: 20 })
   await page.goto("/#/restore")
   await page.getByLabel("Name code").fill((await page.evaluate(() => Object.keys(localStorage).find((k) => k.startsWith("simplex-names:pending:"))!.split(":").pop()))!)
@@ -528,11 +524,13 @@ test("Back returns to where a page was left, a slow page included, and a reload 
   await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
   await scrolledNear(page, place)
 
-  await page.setViewportSize({ width: 1280, height: 600 })
+  await page.setViewportSize({ width: 1280, height: 500 })
   const { invoiceId } = await startOrder(page, uniqueLabel("place"), { method: "btc" })
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-  const orderPlace = await page.evaluate(() => Math.min(400, document.documentElement.scrollHeight - innerHeight))
-  expect(orderPlace).toBeGreaterThan(100)
+  const scrollRoom = () => page.evaluate(() => Math.min(400, document.documentElement.scrollHeight - innerHeight))
+  // the track takes the payment's full height once its QR and fields are drawn
+  await expect.poll(scrollRoom).toBeGreaterThan(100)
+  const orderPlace = await scrollRoom()
   await page.evaluate((y) => scrollTo(0, y), orderPlace)
   await page.locator("header nav a[href='/#/names']").dispatchEvent("click")
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()

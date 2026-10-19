@@ -6,7 +6,7 @@ export const SCREENSHOTS = process.env.SCREENSHOTS_DIR ?? "screenshots"
 const TAKE_SHOTS = process.env.SHOTS === "1"
 const SLOT = Number(process.env.TEST_PARALLEL_INDEX ?? "0")
 export const MOCK = process.env.MOCK_URL ?? mockUrl(SLOT)
-const DESKTOP = { width: 1280, height: 900 }
+const DESKTOP = { width: 1280, height: 800 }
 const PHONE = { width: 390, height: 844 }
 // commit age plus mining, signing and the register transaction, with room for a slow chain
 export const REGISTRATION_MS = 120_000
@@ -109,11 +109,38 @@ export async function openCode(page: Page): Promise<void> {
 export const CHECKOUT_KEY = "simplex-names-checkout"
 export const checkoutOwnerCode = (page: Page) => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).ownerCode as string, CHECKOUT_KEY)
 
+export const LINKS_HEADING = /^What should .+ open\?$/
+export const CODE_HEADING = "Save your name code"
+export const SAVED = "I have saved my name code"
+
+// An available name's Register, then Skip for now, up to the name code step, which makes the code.
+export async function toCodeStep(page: Page): Promise<void> {
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
+  await onStep(page).getByRole("button", { name: "Skip for now" }).click()
+  await expect(onStep(page).getByRole("heading", { name: CODE_HEADING })).toBeVisible()
+}
+
+// On from the name code step, its box ticked, to Check your order.
+export async function savedToReview(page: Page): Promise<void> {
+  const box = onStep(page).getByRole("checkbox", { name: SAVED })
+  // a code step gone back to keeps its box ticked
+  if (!await box.isChecked()) await onStep(page).getByText(SAVED).click()
+  await expect(box).toBeChecked()
+  await onStep(page).getByRole("button", { name: "Continue" }).click()
+  await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
+}
+
+// An available name's Register, through the links skipped and the name code saved, to Check your order.
+export async function toReview(page: Page): Promise<void> {
+  await toCodeStep(page)
+  await savedToReview(page)
+}
+
 // Search and checkout, up to the order's page; returns the invoice and the owner code the browser made for it.
 export async function startOrder(page: Page, label: string, opts: OrderOptions = {}): Promise<{ invoiceId: string; ownerCode: string }> {
   await search(page, label)
-  await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await toReview(page)
   await page.getByRole("radio", { name: METHOD_NAMES[opts.method ?? "btc"] }).click()
   const pay = payButton(page)
   await expect(pay).toBeEnabled()
@@ -125,8 +152,6 @@ export async function startOrder(page: Page, label: string, opts: OrderOptions =
   await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toHaveCount(0)
   return { invoiceId: new URL(page.url()).searchParams.get("order")!, ownerCode }
 }
-
-export const SAVED = "I have saved my name code"
 
 export const test = base.extend<{}>({
   baseURL: async ({ baseURL }, use) => use(baseURL ?? pageUrl(SLOT)),

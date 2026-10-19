@@ -9,6 +9,7 @@ import type { IconName } from "../icons.ts"
 import { foldLabel, MAX_LABEL_LENGTH } from "../names.ts"
 import type { Hold } from "../screens/hold.ts"
 import { againLine, ranOut } from "../screens/names.ts"
+import { checkoutUrl } from "../screens/routes.ts"
 import {
   type Answer, initialSearch, type Mine, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent, type SearchKind, type SearchState,
 } from "../screens/search.ts"
@@ -187,13 +188,13 @@ function register(): void {
   const started = session.checkout()
   if (started && started.label === label && started.appOwner === s.fromApp && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started)) {
     session.updateCheckout(label, { chain })
-    return go("/#/checkout")
+    return go(checkoutUrl("links"))
   }
   session.setCheckout({
-    label, price: answer.price, chain, method: "btc", code: null, ownerCode: null,
+    label, price: answer.price, chain, contact: "", channel: "", method: "btc", code: null, ownerCode: null, saved: false,
     appOwner: s.fromApp, appSecret: null,
   })
-  go("/#/checkout")
+  go(checkoutUrl("links"))
 }
 
 async function retarget(record: store.OrderRecord, label: string, chain: session.Checkout["chain"]): Promise<void> {

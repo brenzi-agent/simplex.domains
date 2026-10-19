@@ -32,8 +32,6 @@ export interface OrderRecord {
   replacedBy?: string
   // when this browser last saved the name's links, so Your names drops the links it read before
   linksSavedAt?: string
-  // the buyer ticked that they keep a copy of the name code
-  codeSaved?: boolean
   createdAt: string
 }
 

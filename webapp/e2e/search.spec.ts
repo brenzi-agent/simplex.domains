@@ -3,7 +3,7 @@ import { labelHash } from "../src/crypto/registration.ts"
 import { hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import { GRACE_S } from "../src/screens/names.ts"
-import { control, payButton, search, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { control, LINKS_HEADING, onStep, payButton, search, shot, startOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 test.afterEach(async ({ request }) => {
   await control(request, "search", { chainDown: false, limitSeconds: 0, invoiceError: null, cancelStillOpen: false, findLimitSeconds: 0 })
@@ -72,7 +72,7 @@ test("the home fills the window between its header and footer without scrolling,
 test("the checkout explains every refusal and keeps the order", async ({ page, request }) => {
   const label = uniqueLabel("ref")
   await search(page, label)
-  await page.getByRole("button", { name: "Register" }).click()
+  await toReview(page)
   const pay = () => payButton(page).click()
 
   await control(request, "search", { invoiceError: "provider_unavailable" })
@@ -98,7 +98,7 @@ test("the checkout explains every refusal and keeps the order", async ({ page, r
   await shot(page, "N3b-price-changed")
 })
 
-test("without storage the page warns that the code is kept nowhere else", async ({ browser, request }) => {
+test("without storage the name code step says the code shown is the only copy, and the order still registers", async ({ browser, request }) => {
   const context = await browser.newContext()
   await context.addInitScript(() => {
     Object.defineProperty(window, "localStorage", { get() { throw new DOMException("blocked", "SecurityError") } })
@@ -106,15 +106,14 @@ test("without storage the page warns that the code is kept nowhere else", async 
   const page = await context.newPage()
   const label = uniqueLabel("nos")
   await search(page, label)
-  await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByText("This browser will not keep your name code")).toBeVisible()
+  await toCodeStep(page)
+  await expect(onStep(page).getByText("This code could not be saved in this browser")).toBeVisible()
+  await expect(onStep(page).getByText("Save a copy now: it will be the only one.")).toBeVisible()
   await shot(page, "N3f-no-storage")
   await page.goto("/")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await control(request, `settle/${invoiceId}`)
   await waitRegistered(page, label)
-  await expect(page.getByText("This code could not be saved in this browser")).toBeVisible()
-  await shot(page, "N7a-not-saved")
   await context.close()
 })
 
@@ -160,9 +159,11 @@ test("a double click acts once, whatever the redrawn page puts under the pointer
   await page.setViewportSize({ width: 840, height: 900 })
   await search(page, uniqueLabel("dbl"))
   await page.getByRole("button", { name: "Register" }).dblclick()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
-  await expect(page.getByRole("radio", { checked: true })).toContainText("Bitcoin")
-  await expect(payButton(page)).toBeEnabled()
+  await expect(page.getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
+  // the second click did not go on to the name code step, nor into a link field
+  expect(new URL(page.url()).hash).toBe("#/checkout/links")
+  await expect(onStep(page).getByRole("textbox", { name: "Address" })).not.toBeFocused()
+  await expect(onStep(page).getByRole("button", { name: "Continue" })).toBeEnabled()
 })
 
 test("restore waits out a rate limit on finding a code's orders", async ({ page, request }) => {
@@ -204,10 +205,10 @@ test("a rate limit answered by a proxy pauses search like the service's own", as
   await expect(page.locator(".answer [aria-hidden=true]", { hasText: /try again in \d+ seconds/ })).toBeVisible()
 })
 
-test("Back to a search from checkout shows its answer at once", async ({ page }) => {
+test("Back to a search from the links step shows its answer at once", async ({ page }) => {
   await search(page, uniqueLabel("back"))
   await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
   await page.evaluate(() => {
     const w = window as unknown as { __seen: string[] }
     w.__seen = []
@@ -232,7 +233,7 @@ for (const [failure, change, shown] of [
   test(`Back to a search whose check fails because ${failure} no longer offers the remembered answer`, async ({ page, request }) => {
     await search(page, uniqueLabel("backfail"))
     await page.getByRole("button", { name: "Register" }).click()
-    await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
     await control(request, "search", change)
     const rechecked = page.waitForResponse(/\/api\/name\/(0x)?[0-9a-f]{64}/)
     await page.goBack()

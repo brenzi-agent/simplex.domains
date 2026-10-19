@@ -375,7 +375,7 @@ function rateLine(invoice: api.InvoiceView, signal: AbortSignal): HTMLElement {
   const turn = () => { time.textContent = clock((end - api.serviceNow()) / 1000) }
   turn()
   every(1000, turn, signal)
-  return el("p", { class: "note" }, "Rate held ", time)
+  return el("span", {}, "Rate held ", time)
 }
 
 const partSentence = (invoice: api.InvoiceView, coin: "btc" | "xmr") =>
@@ -399,15 +399,15 @@ function payCryptoScreen(s: OrderState, signal: AbortSignal): HTMLElement {
   return screen({ title: `Pay with ${methodName(coin)}`, lead: "Bookmark this page: the address and the countdown live on its link." },
     partial ? alertBox("warn", "alert", "Part of the payment arrived", partSentence(inv, coin)) : null,
     orderLine(s),
-    unkeptCode(s),
-    uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`)) : null,
-    copyField(partial ? "Send the rest" : "Amount", `${due} ${TICKER[coin]}`, due),
-    copyField(`${methodName(coin)} address`, inv.address!),
-    copyField("Reference", inv.invoiceId, false),
-    rateLine(inv, signal),
-    el("p", { class: "note waiting" }, partial ? "Waiting for the rest of the payment" : "Waiting for payment", partial ? null : cancelLink(s)),
+    el("div", { class: "pay-grid" },
+      uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`)) : null,
+      copyField(partial ? "Send the rest" : "Amount", `${due} ${TICKER[coin]}`, due),
+      copyField(`${methodName(coin)} address`, inv.address!)),
+    el("p", { class: "note waiting" }, el("span", {}, partial ? "Waiting for the rest of the payment" : "Waiting for payment", SEP, rateLine(inv, signal)),
+      partial ? null : cancelLink(s)),
     // a wait the tab is in shows why the link does nothing until it is over
-    actionNote(s, partial ? null : signal))
+    actionNote(s, partial ? null : signal),
+    referenceLine(inv.invoiceId))
 }
 
 // The Stripe frame reloads, losing what was typed, whenever its form moves in the page; so while the card screen stays
@@ -479,13 +479,13 @@ function payCardScreen(s: OrderState): HTMLElement {
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
   const forgetful = store.canPersist() ? null : alertBox("warn", "alert", "This browser cannot remember a card payment",
     "After paying, keep this page open until it moves on. Reloading would show the card form again.")
-  return screen({ title: "Pay by card" }, orderLine(s), unkeptCode(s), forgetful, form, actionNote(s, null), payButton)
+  return screen({ title: "Pay by card" }, orderLine(s), forgetful, form, actionNote(s, null), payButton)
 }
 
 function cardStandIn(form: HTMLElement): void {
   const f = (text: string, value: string) => el("label", { class: "f" }, el("span", {}, text), el("div", { class: "box" }, value))
   form.append(el("div", { class: "label" }, el("span", {}, "Stripe's payment form"), el("span", {}, "Development stand-in")),
-    f("Card number", "4242 4242 4242 4242"), el("div", { class: "two" }, f("Expiry", "12 / 30"), f("CVC", "123")), f("Country", "Portugal"))
+    f("Card number", "4242 4242 4242 4242"), el("div", { class: "cols" }, f("Expiry", "12 / 30"), f("CVC", "123"), f("Country", "Portugal")))
 }
 
 // a new search from an order opened from the app stays the app's, so a name found there registers to its wallet
@@ -633,7 +633,7 @@ function confirmingScreen(s: OrderState): HTMLElement {
     ? alertBox("info", "clock", confirmations(invoice.requiredConfirmations ?? 1),
       `${invoice.cryptoAmount} ${TICKER[coin]} arrived. Registration starts once it confirms; this page moves on by itself.`)
     : alertBox("info", "clock", "Waiting for Stripe to\u00a0confirm", "Stripe usually confirms within a minute. Registration starts by itself; this page moves on.")
-  return screen({ title: coin ? "Confirming your payment" : "Paying by card" }, orderLine(s), notice, unkeptCode(s), referenceLine(invoice.invoiceId))
+  return screen({ title: coin ? "Confirming your payment" : "Paying by card" }, orderLine(s), notice, referenceLine(invoice.invoiceId))
 }
 
 function enterCardAgain(): void {
@@ -694,15 +694,15 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
 
 type StageState = "done" | "active" | "failed" | ""
 const STAGES = [
-  { n: "1", going: "Committing", done: "Committed", text: "The name, hidden, goes on\u00a0chain" },
-  { n: "2", going: "Waiting", done: "Waiting", text: "Every registration waits after its commit" },
-  { n: "3", going: "Registering", done: "Registered", text: "Then it is yours" },
+  { n: "1", going: "Committing", done: "Committed" },
+  { n: "2", going: "Waiting", done: "Waiting" },
+  { n: "3", going: "Registering", done: "Registered" },
 ]
 
 function stages(states: StageState[]): HTMLElement {
   return el("ol", { class: "stages", role: "list" }, ...STAGES.map((stage, i) => el("li", { class: `stage ${states[i]}`.trim() },
     el("span", { class: "node" }, states[i] === "done" ? "✓" : states[i] === "failed" ? "✕" : stage.n),
-    el("b", {}, states[i] === "done" ? stage.done : stage.going), el("span", {}, stage.text))))
+    el("b", {}, states[i] === "done" ? stage.done : stage.going))))
 }
 
 // block explorers by chain id; a chain without one, as a local test chain, shows its hashes as text
@@ -783,13 +783,11 @@ function registeringScreen(s: OrderState, signal: AbortSignal): HTMLElement {
     else say(note, REGISTERING_NOTE)
   }
   onTheSecond(() => waitLeft(view), tick, signal)
-  return screen({ title: headingOf(s), lead },
-    orderLine(s),
+  return screen({ title: headingOf(s), lead, wide: true },
     steps,
     el("div", { class: "countdown" }, clockNode, note),
     refused ? alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration.") : null,
     refused ? btn("Try again", "quiet block", tryAgain, icon("refresh")) : null,
-    record?.ownerCode ? nameCodeCard(record, record.ownerCode) : null,
     txRows(view, states, s.now, view.label === null && refused),
     referenceLine(s.invoice?.invoiceId ?? view.id))
 }
@@ -825,26 +823,13 @@ function buildNotOnDevice({ view, invoice }: OrderState): HTMLElement {
     action: btn("Enter your name code", "", () => go("/#/restore"), icon("arrow")), reference: invoice?.invoiceId ?? view!.id })
 }
 
-const SAVED_LABEL = "I have saved my name code"
-
-// The name code, shown once the order is paid, with a box the buyer ticks once they keep a copy elsewhere.
-function nameCodeCard(record: store.OrderRecord, code: string): HTMLElement {
-  const box = el("input", { type: "checkbox", checked: record.codeSaved === true, "data-focus": "saved" })
-  box.addEventListener("change", () => markSaved(record.registrationId, box.checked))
-  return el("div", { class: "card name-code" }, el("span", { class: "label" }, "Your name code"), codeDisplay(code, "owner-code"),
-    store.canPersist() ? alertBox("warn", "shield", null, "Whoever has this code controls the name. If you lose it, nothing can recover it.")
-      : alertBox("danger", "alert", "This code could not be saved in this browser", "Save a copy now: it will be the only one."),
-    el("label", { class: "check" }, box, el("span", { class: "box" }), SAVED_LABEL))
-}
-
-// An order this browser cannot keep shows its code while it is paid too, as a reload would lose it.
-const unkeptCode = ({ record }: OrderState) => !store.canPersist() && record?.ownerCode ? nameCodeCard(record, record.ownerCode) : null
-
-// read from the module's state, which may have moved on to another order since the box was drawn
-function markSaved(registrationId: string, codeSaved: boolean): void {
-  store.updateOrder(registrationId, { codeSaved })
-  if (state.record?.registrationId !== registrationId) return
-  dispatch({ type: "record-changed", record: { ...state.record, codeSaved }, cardSubmittedAt: state.cardSubmittedAt })
+// what is next once the name is registered: its names, and its links or the app it was ordered from
+function registeredActions(view: api.RegistrationView, record: store.OrderRecord | null): HTMLElement {
+  if (!record) return withoutRecord(view, "quiet block", "Restore with your name code")
+  const names = el("a", { class: record.ownerCode ? "btn" : "btn quiet", href: "/#/names" }, "Your names")
+  return el("div", { class: "actions pair" }, record.ownerCode
+    ? [names, el("a", { class: "btn quiet", href: `/#/edit/${view.id}` }, icon("link"), "Edit links")]
+    : [btn("Back to SimpleX", "", () => { location.href = "simplex:/" }), names])
 }
 
 function registeredScreen(s: OrderState): HTMLElement {
@@ -852,16 +837,14 @@ function registeredScreen(s: OrderState): HTMLElement {
   const label = labelOf(view, s.record)
   const code = s.record?.ownerCode ?? null
   return screen({ title: [label ? gradName(label, view.tld) : "The name", " is yours"], lead: registeredLead(view, s.record) },
-    code ? nameCodeCard(s.record!, code) : null,
     code ? el("div", { class: "card next-step" }, el("div", { class: "qr" }, qrSvg(code, "name code")),
       el("div", {}, el("h2", {}, "Redeem it in the app"), el("p", { class: "note" }, "Scan or enter the code in SimpleX: the name moves to the app's wallet."))) : null,
-    code ? el("a", { class: "btn block", href: `/#/edit/${view.id}` }, icon("link"), "Set links")
-      : s.record ? btn("Back to SimpleX", "block", () => { location.href = "simplex:/" }) : withoutRecord(view, "quiet block", "Restore with your name code"))
+    registeredActions(view, s.record))
 }
 
 function registeredLead(view: api.RegistrationView, record: store.OrderRecord | null): string {
   const until = view.expiresAt ? dateOf(view.expiresAt) : ""
-  if (record?.ownerCode) return `Registered for ${termText(view.years)}, until ${until}, to ${shortAddress(view.owner)}, the wallet of your name code.`
+  if (record?.ownerCode) return `Registered until ${until}.`
   if (record) return `Registered for ${termText(view.years)}, until ${until}, to your app's wallet, ${shortAddress(view.owner)}.`
   return view.sealed === null ? `Registered until ${until} to the wallet of the app it was ordered from, ${shortAddress(view.owner)}.`
     : `Registered until ${until} to ${shortAddress(view.owner)}. Its name code is not in this browser.`

@@ -2,7 +2,7 @@ import { expect, type APIRequestContext, type Locator, type Page } from "@playwr
 import { randomBytes } from "node:crypto"
 import { durationFor, registerIntentDigest, type Registration } from "../src/crypto/registration.ts"
 import { checksumAddress, fromHex, hex, signDigest, walletFromEntropy, type Wallet } from "../src/crypto/wallet.ts"
-import { control, MOCK, REGISTRATION_MS, registrationOf, searchName, shot, startOrder, test, uniqueLabel } from "./helpers.ts"
+import { control, MOCK, onStep, REGISTRATION_MS, registrationOf, search, searchName, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
 
 const APP_SIGNS = "Waiting for SimpleX to sign the registration with your app's wallet."
 
@@ -11,8 +11,11 @@ async function orderFromApp(page: Page, app: Wallet, label: string, shots = fals
   await expect(page.getByText("Opened from SimpleX.")).toBeVisible()
   if (shots) await shot(page, "L1-from-app")
   await page.getByRole("button", { name: "Register" }).click()
+  // the app holds the wallet, so its order skips the links and the name code
+  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  expect(new URL(page.url()).hash).toBe("#/checkout")
   await expect(page.getByText("I have a code")).toHaveCount(0)
-  await expect(page.locator(".name-code")).toHaveCount(0)
+  await expect(page.locator(".link-lines, .code-display")).toHaveCount(0)
   if (shots) await shot(page, "L2-checkout-from-app")
   await page.getByRole("button", { name: "Continue" }).click()
   await page.waitForURL(/\?order=/)
@@ -59,7 +62,8 @@ test("an order opened from the app registers to the app's wallet once the app si
   await appSigns(page, request, app, label, invoiceId)
   await expect(page.getByRole("heading", { name: `${label}.simplex is yours` })).toBeVisible({ timeout: REGISTRATION_MS })
   await expect(page.getByRole("button", { name: "Back to SimpleX" })).toBeVisible()
-  await expect(page.getByRole("link", { name: "Set links" }), "the app sets the links of a name in its wallet").toHaveCount(0)
+  await expect(page.locator("body > main").getByRole("link", { name: "Your names" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Edit links" }), "the app sets the links of a name in its wallet").toHaveCount(0)
   await shot(page, "L3-registered-to-app")
   expect((await searchName(request, label)).owner).toBe(checksumAddress(app.address))
 })
@@ -150,13 +154,11 @@ const lineStarts = (text: Locator) => text.evaluate((root) => {
   return starts
 })
 
-test("a name code too long for its line breaks after a hyphen, so no line starts with one", async ({ page, request }) => {
+test("a name code too long for its line breaks after a hyphen, so no line starts with one", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 })
-  const label = uniqueLabel("wrap")
-  const { invoiceId } = await startOrder(page, label, { method: "btc" })
-  await control(request, `settle/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: `Registering ${label}.simplex` })).toBeVisible({ timeout: REGISTRATION_MS })
-  const starts = await lineStarts(page.getByTestId("owner-code").locator(".code-text"))
+  await search(page, uniqueLabel("wrap"))
+  await toCodeStep(page)
+  const starts = await lineStarts(onStep(page).getByTestId("owner-code").locator(".code-text"))
   expect(starts.length, "the code wraps at this width").toBeGreaterThan(1)
   expect(starts.slice(1), "the first character of each later line").not.toContain("-")
 })

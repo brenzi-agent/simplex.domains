@@ -1,25 +1,30 @@
-// Check your order: the name, its term and total, how it pays or the code that pays it, and Pay.
+// The checkout's steps: the links the name opens, its name code, and Check your order, with how it pays or the code
+// that pays it, and Pay.
 import * as api from "../api.ts"
-import { alertBox, btn, el, icon, link, nameText, nameTitle, setAction } from "../dom.ts"
+import { alertBox, btn, codeDisplay, el, gradName, icon, link, nameText, nameTitle, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, methodName, SEP, termText, untilFromNow } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
-import { PRICED_YEARS, priceFor } from "../names.ts"
+import { type LinkKind, PRICED_YEARS, priceFor } from "../names.ts"
 import { changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, initialState, reduce, screenOf, type WaitingOrder } from "../screens/checkout.ts"
+import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { CODE_ERRORS, codeField, type CodeVerdict, refuseCode } from "./codes.ts"
-import { type Builder, currentRoute, draw, focusOn, go, isRedraw, isRoute, keptLive, limitScreen, outcome, redirect, refresh, screen, searchLink, whenLeaving } from "./shell.ts"
+import { focusUnsettled, linkEntry, linkField } from "./links.ts"
+import { type Builder, currentRoute, draw, focusOn, go, isRedraw, isRoute, kept, keptLive, limitScreen, outcome, redirect, refresh, screen, searchLink, whenLeaving } from "./shell.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./hold.ts"
-import { CHECKOUT_STEP } from "./track.ts"
+import { CODE_STEP, LINKS_STEP, REVIEW_STEP, type TrackStep } from "./track.ts"
 
 const METHOD_ORDER: Method[] = ["card", "btc", "xmr"]
 const CODE_FIELD = "checkout-code"
 const CODE_LABEL = "I have a code"
 const CHECKOUT_NOTE = "checkout-note"
 const PAY_WITH_ID = "pay-with-label"
-// a name is registered with no links; they are set afterwards on Edit links
-const NO_LINKS: api.Links = { contact: "", channel: "" }
+const SAVED_LABEL = "I have saved my name code"
+const LINK_KINDS: LinkKind[] = ["contact", "channel"]
+const LINK_LABELS: Record<LinkKind, string> = { contact: "Address", channel: "Channel" }
+const TRACK_STEPS: Record<CheckoutStep, TrackStep> = { links: LINKS_STEP, code: CODE_STEP, review: REVIEW_STEP }
 
 const years = (c: session.Checkout) => c.code?.years ?? PRICED_YEARS
 // a card order waiting for Stripe holds a second paid order; a code pays nothing, so it holds none
@@ -39,21 +44,31 @@ let pageRoute = -1
 // a code verdict that came while the order was on its way, heard once the order comes back to the checkout
 let unheard: CodeVerdict | null | undefined
 
-// The name code is made as the checkout opens and kept as pending, so Your names lists it before any order exists.
-export function checkoutPage(): void {
+// An order opened from the app brings its wallet, so it has no links or name code to set. Any other order reaches its
+// review only once its name code is saved.
+function stepFor(c: session.Checkout, asked: CheckoutStep): CheckoutStep {
+  if (c.appOwner) return "review"
+  return asked === "review" && !(c.ownerCode && c.saved) ? "code" : asked
+}
+
+// The name code is made as its step opens and kept as pending, so Your names lists it before any order exists.
+export function checkoutPage(asked: CheckoutStep): void {
   const stored = session.checkout()
   if (!stored) return redirect("/#/")
-  if (!stored.appOwner && !stored.ownerCode) session.setCheckout({ ...stored, ownerCode: flow.newOwnerCode() })
+  const step = stepFor(stored, asked)
+  if (step !== asked) return redirect(checkoutUrl(step))
+  if (step === "code" && !stored.ownerCode) session.setCheckout({ ...stored, ownerCode: flow.newOwnerCode() })
   const c = session.checkout()!
   if (c.ownerCode) store.addPending({ ownerCode: c.ownerCode, label: c.label, tld: c.chain.tld, createdAt: new Date().toISOString() })
   if (!isRedraw() || shown === null || state.checkout.label !== c.label) {
-    state = initialState(c)
+    state = initialState(c, step)
     shown = null
     unheard = undefined
   }
   pageRoute = currentRoute()
   // a wait met elsewhere in the tab holds this page's actions too
-  dispatch({ type: "opened", checkout: c, sending: session.isSending(c), waiting: waitingCardOrder(), hold: tabHold() })
+  dispatch({ type: "opened", step, checkout: c, sending: session.isSending(c), waiting: waitingCardOrder(), hold: tabHold() })
+  if (step !== "review") return
   const reads = new AbortController()
   whenLeaving(() => reads.abort())
   if (state.waiting) void settleWaiting(state.waiting, reads.signal)
@@ -67,8 +82,8 @@ function dispatch(event: CheckoutEvent): void {
   if (!isRoute(pageRoute)) return
   const kind = screenOf(state)
   shown = kind
-  draw(kind, (signal) => BUILDERS[kind](state, signal), CHECKOUT_STEP)
-  if (kind !== "checkout" || state.sending || unheard === undefined) return
+  draw(kind, (signal) => BUILDERS[kind](state, signal), TRACK_STEPS[state.step])
+  if (kind !== "review" || state.sending || unheard === undefined) return
   const late = unheard
   unheard = undefined
   heed(late)
@@ -79,12 +94,17 @@ const holdEnds = (signal: AbortSignal) => holdEnder(signal, () => dispatch({ typ
 
 // A change of the order is written to the tab's checkout before the page takes it; a page whose checkout the tab has
 // moved on from changes nothing. False when it did not take it.
-function act(event: CheckoutEvent): boolean {
+function act(event: CheckoutEvent, take: (event: CheckoutEvent) => void = dispatch): boolean {
   const change = changeOf(state, event)
   if (change && !session.updateCheckout(state.checkout.label, change)) return false
-  dispatch(event)
+  take(event)
   return true
 }
+
+// a change the page shows already, or leaves at once, is taken without drawing
+const take = (event: CheckoutEvent) => { state = reduce(state, event) }
+// a link typed is shown by its own field
+const setLink = (kind: LinkKind, link: string) => void act({ type: "link-set", kind, link }, take)
 
 const RETRY_MS = 3000
 
@@ -126,10 +146,24 @@ async function showOpenOrder(signal: AbortSignal): Promise<void> {
   dispatch({ type: "open-order-seen", order: { invoiceId: invoiceId!, label, tld, confirming: invoices[at]!.paidInFull === true } })
 }
 
+const linkLine = (key: string, value: string, action: string, name: string) => el("div", { class: "link-line" },
+  el("span", { class: "k" }, key), el("span", { class: "v" }, value),
+  el("a", { href: checkoutUrl("links"), "aria-label": name, "data-focus": `change-${key.toLowerCase()}` }, action))
+
+// each link set, or that none is; an order opened from the app sets none
+function linkLines(c: session.Checkout): HTMLElement | null {
+  if (c.appOwner) return null
+  const set = LINK_KINDS.filter((kind) => c[kind])
+  return el("div", { class: "link-lines" }, set.length
+    ? set.map((kind) => linkLine(LINK_LABELS[kind], c[kind], "Change", `Change the ${LINK_LABELS[kind].toLowerCase()}`))
+    : linkLine("Links", "None", "Add", "Add links"))
+}
+
 function summaryCard(c: session.Checkout): HTMLElement {
   const y = years(c)
   return el("section", { class: "card summary-card" }, nameTitle(c.label, "name", c.chain.tld),
     el("p", { class: "term-line" }, termText(y), SEP, el("span", { class: "nowrap" }, `until ${dateOf(untilFromNow(y), true)}`)),
+    linkLines(c),
     el("div", { class: "total" }, el("span", {}, "Total"),
       el("span", {}, ...(c.code ? [el("s", {}, dollars(priceFor(c.price, y), true)), "$0.00"] : [dollars(c.price, true)]))))
 }
@@ -218,23 +252,66 @@ function payBlock(s: CheckoutState, blocked: boolean, signal: AbortSignal): HTML
   return el("div", { class: "pay-block" }, pay, keptLive(CHECKOUT_NOTE, undefined, held && holdNotice(held, signal)))
 }
 
-function storageWarning(fromApp: boolean): HTMLElement | null {
-  if (store.canPersist()) return null
-  return fromApp
-    ? alertBox("warn", "alert", "This browser will not keep this order", "Keep this page open until the name is registered; a reload loses it.")
-    : alertBox("warn", "alert", "This browser will not keep your name code", "It is shown on the payment page: save it there before paying.")
+// an order from the app has no name code step to say that this browser keeps nothing
+const unkeptOrder = () => store.canPersist() ? null
+  : alertBox("warn", "alert", "This browser will not keep this order", "Keep this page open until the name is registered; a reload loses it.")
+
+function continueButton(onclick: () => void, held = false): HTMLButtonElement {
+  const next = setAction(btn("Continue", "block", onclick, icon("arrow")), false, held)
+  next.dataset.focus = "continue"
+  return next
 }
 
-function buildCheckout(s: CheckoutState, signal: AbortSignal): HTMLElement {
+// a link refused or still being checked takes focus rather than going on without it
+function linksDone(fields: HTMLElement[]): void {
+  if (!focusUnsettled(fields)) go(checkoutUrl("code"))
+}
+
+// an order on its way keeps the links it was sent with
+function skipLinks(): void {
+  if (state.sending || act({ type: "links-skipped" }, take)) go(checkoutUrl("code"))
+}
+
+// The link fields are kept through every draw of the step, with what is typed and any preview still loading.
+function buildLinks(s: CheckoutState): HTMLElement {
+  const c = s.checkout
+  const fields = [
+    locked(kept("link-contact", () => linkField("contact", "Paste your address", "Address", c.contact, (link) => setLink("contact", link))), s.sending),
+    locked(kept("link-channel", () => linkField("channel", "Paste your channel", "Channel", c.channel, (link) => setLink("channel", link))), s.sending),
+  ]
+  const skip = link("Skip for now", skipLinks)
+  skip.dataset.focus = "skip"
+  return screen({ title: ["What should ", gradName(c.label, c.chain.tld), " open?"], lead: "You can change this later on Edit links.", back: searchLink(c.label, null) },
+    el("div", { class: "link-fields" }, linkEntry("Contact address", fields[0]), linkEntry("Channel", fields[1])),
+    el("div", { class: "step-actions" }, continueButton(() => linksDone(fields)), skip))
+}
+
+function markSaved(saved: boolean): void {
+  if (!state.sending && !act({ type: "saved", saved })) refresh()
+}
+
+function buildCode(s: CheckoutState): HTMLElement {
+  const c = s.checkout
+  const box = el("input", { type: "checkbox", checked: c.saved, disabled: s.sending, "data-focus": "saved" })
+  box.addEventListener("change", () => markSaved(box.checked))
+  return screen({ title: "Save your name code", lead: ["It is the only key to ", nameText(c.label, c.chain.tld), ". If you lose it, nothing can recover it."], back: checkoutUrl("links") },
+    codeDisplay(c.ownerCode!, "owner-code"),
+    store.canPersist() ? null : alertBox("danger", "alert", "This code could not be saved in this browser", "Save a copy now: it will be the only one."),
+    el("label", { class: "check" }, box, el("span", { class: "box" }), SAVED_LABEL),
+    continueButton(() => go(checkoutUrl("review")), !c.saved))
+}
+
+function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   const c = s.checkout
   const fromApp = c.appOwner !== null
   const blocked = blockedBy(s)
-  return screen({ title: "Check your order", back: searchLink(c.label, c.appOwner) },
-    summaryCard(c),
-    storageWarning(fromApp),
-    c.code ? coveredLine(c.code) : blocked ? waitingNotice(blocked) : methodsBlock(s),
-    fromApp ? null : codeBlock(s),
-    payBlock(s, blocked !== null, signal))
+  return screen({ title: "Check your order", back: fromApp ? searchLink(c.label, c.appOwner) : checkoutUrl("code"), wide: true },
+    el("div", { class: "review" }, summaryCard(c),
+      el("div", { class: "review-pay" },
+        fromApp ? unkeptOrder() : null,
+        c.code ? coveredLine(c.code) : blocked ? waitingNotice(blocked) : methodsBlock(s),
+        fromApp ? null : codeBlock(s),
+        payBlock(s, blocked !== null, signal))))
 }
 
 function buildPriceChanged({ checkout: c }: CheckoutState): HTMLElement {
@@ -258,7 +335,9 @@ function buildFailed(s: CheckoutState): HTMLElement {
 }
 
 const BUILDERS: Record<CheckoutKind, Builder<CheckoutState>> = {
-  checkout: buildCheckout,
+  links: buildLinks,
+  code: buildCode,
+  review: buildReview,
   "status:price-changed": buildPriceChanged,
   "status:too-many": buildTooMany,
   "status:failed": buildFailed,
@@ -287,7 +366,7 @@ async function sendOrder(): Promise<void> {
   const appSecret = fromApp ? c.appSecret ?? `0x${[...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("")}` : null
   if (fromApp && !c.appSecret) session.setCheckout({ ...c, appSecret })
   const draft: flow.Draft = {
-    label: c.label, links: NO_LINKS, chain: c.chain, years: years(c), ownerCode: c.ownerCode,
+    label: c.label, links: { contact: c.contact, channel: c.channel }, chain: c.chain, years: years(c), ownerCode: c.ownerCode,
     ...(fromApp ? { appOwner: c.appOwner!, appSecret: appSecret! } : {}),
   }
   // The order is kept whatever the buyer did meanwhile. Its checkout ends, and the order opens, only while this checkout
