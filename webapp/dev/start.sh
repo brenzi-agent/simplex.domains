@@ -6,6 +6,11 @@
 #   ANVIL              Foundry's anvil (default: anvil)
 #   MIN_COMMITMENT_AGE seconds every registration waits after its commit (default: 60, as the PR's deploy scripts)
 #   ANVIL_HOST         the address anvil listens on (default: 127.0.0.1)
+#   SLOTS              backends side by side, one per e2e worker: slot i has its chain on 8545+i, its deployment in
+#                      dev/local-chain-i.json and its mock on 8099+i (default: one, in dev/local-chain.json)
+#   MOCK_RESEND_MS     how often the mock tries again a transaction that did not go out (default: 5000)
+#   MOCK_RESENDS       how many times it tries (default: 12)
+#   MOCK_RETRY_AFTER_SECONDS  the wait the mock names for a rate limit injected with invoiceError (default: 30)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -13,20 +18,35 @@ cd "$(dirname "$0")/.."
 ANVIL="${ANVIL:-anvil}"
 export ENS_CONTRACTS_DIR MIN_COMMITMENT_AGE="${MIN_COMMITMENT_AGE:-60}"
 RPC_PORT="${RPC_PORT:-8545}"
-export RPC_URL="http://127.0.0.1:$RPC_PORT"
+MOCK_PORT="${MOCK_PORT:-8099}"
+SLOTS="${SLOTS:-}"
+count="${SLOTS:-1}"
 
-pids=()
-cleanup() { kill "${pids[@]}" 2>/dev/null || true; }
+# only jobs still running are stopped, so a PID reused since one ended is never killed
+cleanup() { kill $(jobs -p) 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 
-# One block a second, as a real chain moves on without transactions. Old states are dropped, not written to disk:
-# anvil otherwise keeps every block's state under ~/.foundry, gigabytes an hour, and leaves it there if killed.
-"$ANVIL" --chain-id 31337 --host "${ANVIL_HOST:-127.0.0.1}" --port "$RPC_PORT" --block-time 1 --prune-history --silent &
-pids+=($!)
-until curl -s -o /dev/null -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}' "$RPC_URL"; do sleep 0.2; done
+rpc_url() { echo "http://127.0.0.1:$((RPC_PORT + $1))"; }
+chain_file() { echo "dev/local-chain${SLOTS:+-$1}.json"; }
 
-node dev/deploy.ts
+# One block a second, as a real chain moves on. Old states are dropped rather than kept under ~/.foundry, gigabytes an
+# hour; a few stay in memory, as a call for the latest block fails with none while the next one is mined.
+MEMORY_STATES=8
+for ((i = 0; i < count; i++)); do
+  "$ANVIL" --chain-id 31337 --host "${ANVIL_HOST:-127.0.0.1}" --port "$((RPC_PORT + i))" --block-time 1 --prune-history "$MEMORY_STATES" --silent &
+done
+for ((i = 0; i < count; i++)); do
+  until curl -s -o /dev/null -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}' "$(rpc_url "$i")"; do sleep 0.2; done
+done
 
-node dev/mock.ts &
-pids+=($!)
+deploys=()
+for ((i = 0; i < count; i++)); do
+  RPC_URL="$(rpc_url "$i")" LOCAL_CHAIN_OUT="$(chain_file "$i")" node dev/deploy.ts &
+  deploys+=($!)
+done
+for pid in "${deploys[@]}"; do wait "$pid"; done
+
+for ((i = 0; i < count; i++)); do
+  MOCK_PORT="$((MOCK_PORT + i))" LOCAL_CHAIN_OUT="$(chain_file "$i")" node dev/mock.ts &
+done
 wait

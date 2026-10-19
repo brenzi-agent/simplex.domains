@@ -11,6 +11,7 @@ import { labelProblem, linkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH
 import {
   baseRegistrar, chainNow, controller, deployment, holder, NotSent, ownerOf, read, registry, resolver, Reverted, send, sponsor,
 } from "./chain.ts"
+import { untilChainTime } from "../chain-time.ts"
 
 const YEARS = 2
 // the page's price for a name, in cents, by length: 8 and more is one tier
@@ -26,6 +27,14 @@ function addressFor(method: "btc" | "xmr", invoiceId: string): string {
   return prefix + Array.from({ length }, (_, i) => alphabet[bytes[i % bytes.length] % alphabet.length]).join("")
 }
 const INVOICE_MINUTES = 60
+
+function wholeEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (raw === undefined) return fallback
+  if (!/^\d+$/.test(raw)) throw new Error(`${name} must be a whole number, not "${raw}"`)
+  return Number(raw)
+}
+
 // how long a long poll holds before answering unchanged
 const HOLD_MS = 20_000
 const SIGNED_REQUEST_SECONDS = 600
@@ -35,9 +44,8 @@ const PENDING_CHECK_MS = 5000
 // a registered name's expiry is read a few times, inside a request the page waits 60 s for
 const EXPIRY_READS = 3
 const EXPIRY_READ_MS = 1000
-// a transaction the chain did not answer before it went out is tried again this often, for about a minute
-const RESEND_MS = 5000
-const RESENDS = 12
+const RESEND_MS = wholeEnv("MOCK_RESEND_MS", 5000)
+const RESENDS = wholeEnv("MOCK_RESENDS", 12)
 // what an order shows for a chain that failed it; the provider's own error carries its URL, which can hold an API key
 const CHAIN_FAILED = "The blockchain did not answer"
 // a contract's revert name is no message for a buyer
@@ -119,7 +127,7 @@ const sendTx: typeof send = (...args) => Date.now() < control.unsentUntil ? Prom
 const INVOICE_ERRORS: Record<string, number> = { provider_unavailable: 503, rate_limited: 429, catalog_changed: 409, internal: 500 }
 // the raised price an injected catalog_changed reports, in cents
 const RAISED_PRICE_CENTS = 5000
-const RETRY_AFTER_SECONDS = 30
+const RETRY_AFTER_SECONDS = wholeEnv("MOCK_RETRY_AFTER_SECONDS", 30)
 
 export class HttpError extends Error {
   readonly status: number
@@ -578,9 +586,7 @@ function registrationTuple(reg: Registration) {
 }
 
 async function register(reg: Registration): Promise<void> {
-  // the node mines about once a second, so wait for a block past revealAfter
-  const wait = reg.revealAfter! * 1000 - Date.now() + 2500
-  if (wait > 0) await sleep(wait)
+  await untilChainTime(reg.revealAfter!, chainNow)
   await taking.get(reg.label!)
   if (reg.failNext) {
     reg.failNext = false
@@ -900,8 +906,9 @@ export function controlTake(label: unknown): Record<string, unknown> {
   if (typeof label !== "string" || labelProblem(label) !== null) throw badRequest()
   const done = (async () => {
     const tuple = { label, owner: holder.address, duration: durationFor(YEARS), secret: toHex(randomBytes(32)), resolver: deployment.resolver, data: [] as Hex[], reverseRecord: 0, referrer: zeroHash }
-    await send(controller, "commit", [await read<Hex>(controller, "makeCommitment", [tuple])])
-    await sleep((deployment.minCommitmentAge + 1) * 1000)
+    const commitment = await read<Hex>(controller, "makeCommitment", [tuple])
+    await send(controller, "commit", [commitment])
+    await untilChainTime(Number(await read<bigint>(controller, "commitments", [commitment])) + deployment.minCommitmentAge, chainNow)
     const turn = holderTurn.then(() => registerForHolder(tuple))
     holderTurn = turn.catch(() => undefined)
     await turn

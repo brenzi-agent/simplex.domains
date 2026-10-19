@@ -4,5 +4,5 @@ webapp/dist
 webapp/test-results
 webapp/playwright-report
 webapp/screenshots
-webapp/dev/local-chain.json
+webapp/dev/local-chain*.json
 webapp/dev/*.log

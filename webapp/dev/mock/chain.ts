@@ -7,6 +7,7 @@ import {
 } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { foundry } from "viem/chains"
+import { BLOCK_POLL_MS } from "../chain-time.ts"
 
 export interface Deployment {
   rpcUrl: string
@@ -50,9 +51,9 @@ export const holder = privateKeyToAccount(deployment.holderKey)
 const chain = { ...foundry, id: deployment.chainId }
 // one quick retry for a read, as a provider drops a request now and then; a send is never retried, which could send twice
 const readTransport = http(deployment.rpcUrl, { timeout: READ_TIMEOUT_MS, retryCount: 1 })
-const publicClient = createPublicClient({ chain, transport: readTransport })
+const publicClient = createPublicClient({ chain, transport: readTransport, pollingInterval: BLOCK_POLL_MS })
 const walletClient = createWalletClient({ chain, transport: readTransport })
-const sender = createPublicClient({ chain, transport: http(deployment.rpcUrl, { timeout: SEND_TIMEOUT_MS, retryCount: 0 }) })
+const sender = createPublicClient({ chain, transport: http(deployment.rpcUrl, { timeout: SEND_TIMEOUT_MS, retryCount: 0 }), pollingInterval: BLOCK_POLL_MS })
 
 type Contract = { address: Address; abi: Abi }
 

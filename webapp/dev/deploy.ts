@@ -9,6 +9,7 @@ import {
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts"
 import { foundry } from "viem/chains"
 import { durationFor } from "../src/crypto/registration.ts"
+import { BLOCK_POLL_MS, untilChainTime } from "./chain-time.ts"
 
 const RPC_URL = process.env.RPC_URL ?? "http://127.0.0.1:8545"
 const ENS_CONTRACTS_DIR = process.env.ENS_CONTRACTS_DIR
@@ -41,7 +42,7 @@ const [owner, guardian, registrar, holder] = [0, 1, 2, 3].map((i) => mnemonicToA
 const registrarKey = toHex(registrar.getHdKey().privateKey!)
 const holderKey = toHex(holder.getHdKey().privateKey!)
 const transport = http(RPC_URL)
-const publicClient = createPublicClient({ chain: foundry, transport })
+const publicClient = createPublicClient({ chain: foundry, transport, pollingInterval: BLOCK_POLL_MS })
 const wallet = createWalletClient({ chain: foundry, transport })
 
 interface Contract { address: Address; abi: Abi }
@@ -124,11 +125,15 @@ const seeds = [
   }),
   seedRegistration("harbour", {}),
 ]
+// the controller makes every registration wait after its commit, by block time; the last commit is the latest
+let revealAfter = 0
 for (const registration of seeds) {
-  await write(registrar, controller, "commit", [await publicClient.readContract({ ...controller, functionName: "makeCommitment", args: [registration] })])
+  const commitment = await publicClient.readContract({ ...controller, functionName: "makeCommitment", args: [registration] }) as Hex
+  await write(registrar, controller, "commit", [commitment])
+  const committedAt = await publicClient.readContract({ ...controller, functionName: "commitments", args: [commitment] }) as bigint
+  revealAfter = Number(committedAt + MIN_COMMITMENT_AGE)
 }
-// the controller makes every registration wait after its commit; the node mines in real time, so wait it out
-await new Promise((resolve) => setTimeout(resolve, (Number(MIN_COMMITMENT_AGE) + 2) * 1000))
+await untilChainTime(revealAfter, async () => Number((await publicClient.getBlock()).timestamp))
 for (const registration of seeds) {
   const nonce = await publicClient.readContract({ ...sponsor, functionName: "nonces", args: [holder.address] }) as bigint
   const deadline = (await publicClient.getBlock()).timestamp + 3600n

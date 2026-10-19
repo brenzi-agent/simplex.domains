@@ -2,6 +2,6 @@ node_modules/
 dist/
 test-results/
 playwright-report/
-dev/local-chain.json
+dev/local-chain*.json
 dev/*.log
 screenshots/
