@@ -3,6 +3,7 @@ import { alertBox, el, icon, type Kid, liveRegion, refill, type Tone } from "../
 import type { IconName } from "../icons.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
+import { leaveTrack, placeOnTrack, type TrackStep } from "./track.ts"
 
 export const WEFUNDER_URL = "https://wefunder.com/simplex.chat?utm_source=domains"
 export const CONTACT_EMAIL = "chat@simplex.chat"
@@ -24,6 +25,8 @@ let redrawing = false
 // the route the screen on show was drawn on; a redraw of the same page carries it to the redrawn route
 let drawnRoute = -1
 let shownKind: string | null = null
+// the screen in view: the track keeps the purchase steps beside it, out of reach
+let shownScreen: HTMLElement | null = null
 let screenStop: AbortController | null = null
 // nodes a reader types into, kept for the route so a redraw moves them rather than rebuilding them
 const keptNodes = new Map<string, HTMLElement>()
@@ -137,8 +140,8 @@ const LOADING = "loading"
 // the key of a control a redraw turned off, whose focus dropped to the page: a later redraw that offers it gives it back
 let lostKey: string | null = null
 
-/** Builds the screen for `kind` and swaps it in whole; the last screen's timers end with its signal. */
-export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement): void {
+/** Builds the screen for `kind` and puts it on its purchase step, or swaps it in whole; the last screen's timers end with its signal. */
+export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, step: TrackStep | null = null): void {
   const main = frame()
   // a popup opened on this page stays over its redraw; one that led to another page closes
   if (popupRoute !== route) closePopup(false)
@@ -151,7 +154,9 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement):
   screenStop?.abort()
   screenStop = new AbortController()
   const next = build(screenStop.signal)
-  main.replaceChildren(next)
+  if (step === null) leaveTrack(main, next)
+  else placeOnTrack(main, step, next)
+  shownScreen = next
   main.inert = document.querySelector(OVERLAY) !== null
   shownKind = kind
   drawnRoute = route
@@ -166,12 +171,12 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement):
   }
 }
 
-const keyed = (key: string | null | undefined) => key ? frame().querySelector<HTMLElement>(`[data-focus="${CSS.escape(key)}"]:not([disabled])`) : null
+const keyed = (key: string | null | undefined) => key ? shownScreen?.querySelector<HTMLElement>(`[data-focus="${CSS.escape(key)}"]:not([disabled])`) : null
 
 export const focusOn = (key: string) => keyed(key)?.focus({ preventScroll: true })
 
 function focusHeading(): void {
-  const heading = frame().querySelector<HTMLElement>("h1")
+  const heading = shownScreen?.querySelector<HTMLElement>("h1")
   if (!heading) return
   heading.tabIndex = -1
   heading.focus({ preventScroll: true })
@@ -180,7 +185,7 @@ function focusHeading(): void {
 // A new kind of screen gives its heading focus; the same kind drawn again gives it back to the keyed control it was on, or
 // leaves it where it is.
 function settleFocus(active: HTMLElement | null, caret: readonly [number | null, number | null] | null, changed: boolean, focusKey: string | null): void {
-  if (active?.isConnected && frame().contains(active)) {
+  if (active?.isConnected && shownScreen?.contains(active)) {
     active.focus({ preventScroll: true })
     if (caret && active instanceof HTMLInputElement) active.setSelectionRange(caret[0], caret[1])
     return

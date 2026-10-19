@@ -16,6 +16,7 @@ import { useCode } from "./codes.ts"
 import { every } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
 import { type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
+import { PAYMENT_STEP } from "./track.ts"
 
 const RETRY_MS = 3000
 // The badge service's words for a cancel the provider took while the service still shows the invoice open; a card
@@ -72,7 +73,7 @@ function dispatch(event: OrderEvent): void {
   const kind = screenOf(state)
   document.querySelector("main")?.removeAttribute("aria-busy")
   if (cardStays(before, kind)) showCard()
-  else draw(kind, (signal) => BUILDERS[kind](state, signal))
+  else draw(kind, (signal) => BUILDERS[kind](state, signal), kind === "pay-crypto" || kind === "pay-card" ? PAYMENT_STEP : null)
   if (kind !== "pay-card") dropCard()
   if (revealDue(state)) reveal(state.view!, state.record!)
   // keepCodes dispatches record-changed itself, so it runs only when the screen or the record moved
@@ -711,8 +712,8 @@ const STAGES = [
   { n: "3", going: "Registering", done: "Registered", text: "Then it is yours" },
 ]
 
-function track(states: StageState[]): HTMLElement {
-  return el("div", { class: "track" }, ...STAGES.map((stage, i) => el("div", { class: `stage ${states[i]}`.trim() },
+function stages(states: StageState[]): HTMLElement {
+  return el("div", { class: "stages" }, ...STAGES.map((stage, i) => el("div", { class: `stage ${states[i]}`.trim() },
     el("span", { class: "node" }, states[i] === "done" ? "✓" : states[i] === "failed" ? "✕" : stage.n),
     el("b", {}, states[i] === "done" ? stage.done : stage.going), el("span", {}, stage.text))))
 }
@@ -774,7 +775,7 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
   const view = s.view!
   const states = stagesOf(view)
   const refused = refusalsOf(s) >= REVEAL_ATTEMPTS
-  const steps = track(states)
+  const steps = stages(states)
   const clockNode = el("b", {})
   const note = el("p", {})
   const tryAgain = () => {
@@ -865,7 +866,7 @@ function registeredBody(view: api.RegistrationView, record: store.OrderRecord | 
       ? btn("Back to SimpleX", "block", () => { location.href = "simplex:/" }, icon("arrow"))
       : withoutRecord(view, "quiet block", "Restore with your name code")
     return el("div", { class: "wrap narrow" }, el("div", { class: "panel" },
-      el("div", { class: "panel-sec" }, track(states)), txRows(view, states, now), el("div", { class: "panel-sec" }, back)))
+      el("div", { class: "panel-sec" }, stages(states)), txRows(view, states, now), el("div", { class: "panel-sec" }, back)))
   }
   const next = (ic: IconName, title: string, text: string, action: Node | null) =>
     el("div", { class: "item" }, el("span", { class: "ic" }, icon(ic)), el("div", {}, el("b", {}, title), el("p", {}, text), action))
@@ -916,7 +917,7 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
     : alertBox("info", "key", "The name code is not in this browser", "Restore it in Your names to choose another name or take a code."))
   return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."] },
     el("div", { class: "panel" },
-      el("div", { class: "panel-sec" }, track(["done", "done", "failed"]),
+      el("div", { class: "panel-sec" }, stages(["done", "done", "failed"]),
         el("p", { class: "sec-note mt-18 mb-0" }, "Another registration of this name went through first, so ours could not."),
         cannot,
         el("div", { class: "options" },
@@ -980,7 +981,7 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
   return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s) },
     el("div", { class: "panel" },
-      el("div", { class: "panel-sec" }, track(failedAt),
+      el("div", { class: "panel-sec" }, stages(failedAt),
         el("div", { class: "mt-22" }, alertBox("danger", "alert", view.error ?? "The registration did not go through", "The service's own retries gave up.")),
         keptLive(ORDER_NOTE, undefined, noteOf(s, "mt-14", signal)), el("div", { class: "mt-18" }, action))),
     orderCard(cardName(label, view.tld), [...paidRows(view, invoice).slice(0, 1), ["Charged again", "Never"], ["Reference", fullRef(invoice?.invoiceId ?? view.id)]]))

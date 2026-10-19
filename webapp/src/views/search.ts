@@ -18,6 +18,7 @@ import { codePopup } from "./codes.ts"
 import { type Builder, closePopup, CONTACT_EMAIL, currentRoute, draw, go, INVEST_LINE, isRedraw, isRoute, kept, keptLive, outcome, popup, searchLink, throughHistory, WEFUNDER_URL } from "./shell.ts"
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
+import { SEARCH_STEP } from "./track.ts"
 
 // links from the service come from records on chain, which anyone can write: only SimpleX and https links are followed
 const SAFE_LINK = /^(simplex:\/|https:\/\/)/
@@ -85,7 +86,7 @@ function dispatch(event: SearchEvent): void {
   if (!isRoute(pageRoute)) return
   const kind = screenOf(state)
   shown = kind
-  draw(kind, (signal) => BUILDERS[kind](state, signal))
+  draw(kind, (signal) => BUILDERS[kind](state, signal), kind === "status:bad-app-link" ? null : SEARCH_STEP)
 }
 
 // what is typed is shown by the field itself, so the page takes it without drawing

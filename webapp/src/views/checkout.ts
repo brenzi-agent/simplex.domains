@@ -15,6 +15,7 @@ import { entityCard } from "./search.ts"
 import { type Builder, currentRoute, draw, focusOn, go, INVEST_LINE, isRedraw, isRoute, kept, keptLive, outcome, redirect, refresh, screen, searchLink, WEFUNDER_URL, whenDropped, whenLeaving } from "./shell.ts"
 import { every } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, secondsLeft, tabHold } from "./hold.ts"
+import { CHECKOUT_STEP } from "./track.ts"
 
 const METHOD_ORDER: Method[] = ["card", "btc", "xmr"]
 const METHODS: Record<Method, string> = { card: "Processed by Stripe", btc: "On-chain", xmr: "Private by default" }
@@ -75,7 +76,7 @@ function dispatch(event: CheckoutEvent): void {
   if (!isRoute(pageRoute)) return
   const kind = screenOf(state)
   shown = kind
-  draw(kind, (signal) => BUILDERS[kind](state, signal))
+  draw(kind, (signal) => BUILDERS[kind](state, signal), CHECKOUT_STEP)
 }
 
 // a screen that holds an action for the tab's wait hears when it is over
