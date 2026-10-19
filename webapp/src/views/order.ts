@@ -60,7 +60,7 @@ export function orderPage(invoiceId: string | null, registrationId: string | nul
   if (!redraw) whenDropped(dropCard)
   // the same order drawn again stays on screen until it is read, rather than blanking to a loading line
   if (redraw) document.querySelector("main")?.setAttribute("aria-busy", "true")
-  else drawLoading("Opening the order…")
+  else drawLoading("Opening the order…", asStep)
   void follow(mine, invoiceId, registrationId, polls.signal)
 }
 

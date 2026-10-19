@@ -267,10 +267,10 @@ export function limitScreen(hold: Hold | null, again: () => void, back: string, 
 
 export const referenceLine = (reference: string) => el("p", { class: "note ref" }, "Reference ", el("span", { class: "mono" }, reference))
 
-// shown only in a document that has drawn nothing yet, while its first read is on its way
-export function drawLoading(title: string): void {
+// shown only before a document's first draw, placed as the screen after it will be, so its heading stays put
+export function drawLoading(title: string, place = (screen: HTMLElement) => screen): void {
   if (frame().childElementCount) return
-  draw(LOADING, () => el("section", { class: "screen" }, el("h1", {}, title)))
+  draw(LOADING, () => place(el("section", { class: "screen" }, el("h1", {}, title))))
 }
 
 export function isDark(): boolean {

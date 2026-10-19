@@ -20,6 +20,7 @@ import {
   whenDropped,
 } from "./shell.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
+import { linkName } from "./links.ts"
 
 // links from the service come from records on chain, which anyone can write: only SimpleX and https links are followed
 const SAFE_LINK = /^(simplex:\/|https:\/\/)/
@@ -386,7 +387,7 @@ export function entityCard(e: { type: "address" | "channel"; displayName: string
   const avatar = e.image ? el("img", { class: "avatar", src: e.image, alt: "" }) : initialsAvatar(e.displayName)
   return el("div", { class: "entity" },
     avatar,
-    el("div", { class: "who" }, el("b", { title: e.displayName }, e.displayName), el("span", {}, e.type === "address" ? "Contact address" : "Channel")),
+    el("div", { class: "who" }, el("b", { title: e.displayName }, e.displayName), el("span", {}, linkName(e.type === "address" ? "contact" : "channel"))),
     el("span", { class: "url" }, e.link),
     openable && e.deepLink && SAFE_LINK.test(e.deepLink) ? el("a", { href: e.deepLink }, "Open in SimpleX") : null)
 }

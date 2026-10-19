@@ -267,6 +267,8 @@ h1 .long { font-size: inherit; }
 .link-line .entity.skeleton { height: 28px; background: var(--chip); }
 .link-line .entity .avatar { width: 28px; height: 28px; border-radius: 9px; font-size: 12px; }
 .link-line .entity :is(.who span, .url) { display: none; }
+/* a field's label already says what its preview is */
+.link-field .entity .who span { display: none; }
 .step-actions { display: grid; gap: 12px; justify-items: center; }
 /* Skip would drop a link typed, so it shows only while both fields are empty */
 .link-fields:has(input:not(:placeholder-shown)) + .step-actions .skip { display: none; }
@@ -467,20 +469,30 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .code-input > svg.i { display: none; }
   .code-input input { font-size: clamp(11px, 100cqi / 23.2, 12.5px); letter-spacing: 0; }
   /* a purchase step fits the phone's window: smaller cards, methods and fields */
-  .summary-card { padding: 16px 18px; }
+  .summary-card { padding: 16px 18px; gap: 10px; }
   .summary-card .name { font-size: 24px; }
   .method { flex-direction: column; padding: 10px 6px; gap: 4px; font-size: 16px; }
   .method span { flex-basis: auto; }
   .method svg { width: 22px; height: 22px; }
-  .field { padding-block: 12px; }
-  .entity { padding: 10px 12px; }
-  .entity .avatar { width: 36px; height: 36px; border-radius: 11px; }
+  .field { padding-block: 9px; }
+  .entity { padding: 8px 12px; gap: 10px; }
+  .entity .avatar { width: 32px; height: 32px; border-radius: 10px; }
+  .entity .who :is(b, span) { display: block; line-height: 1.35; }
+  .entity .who b { font-size: 14px; }
+  .entity .who span { font-size: 12px; }
   .step-actions { gap: 8px; }
-  .entity.skeleton { height: 62px; }
+  .entity.skeleton { height: 50px; }
+  .link-fields { gap: 8px; }
+  .link-entry, .link-field { gap: 6px; }
+  /* a review line's label goes above its profile, so the name has the line and the avatars align */
+  .link-line { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+  .link-line .k { grid-column: 1 / -1; font-size: 13px; line-height: 1.3; }
+  .link-lines { gap: 6px; }
   .qr-grid > .qr { grid-row: auto; }
   .qr-grid > :last-child { grid-column: 1 / -1; }
   .qr-grid svg.qr { width: 120px; }
-  .screen.step { --screen-gap: 14px; padding-block: 12px; }
+  .screen.step { --screen-gap: 12px; padding-block: 12px; }
+  .screen.step .lead { font-size: 15px; line-height: 1.4; }
 }
 
 /* a reader who asked for less motion gets the states without the easing */

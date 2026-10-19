@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, REGISTRATION_MS, savedToReview, search, shot, startOrder, test, uniqueLabel, waitRegistered,
+  channelLink, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, REGISTRATION_MS, savedToReview, search, shot, startOrder, test, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // the rail's shift in slides: its translateX over the track's width
@@ -137,7 +137,8 @@ test("every purchase step fits a laptop's and a phone's window without scrolling
   await page.getByRole("button", { name: "Register" }).click()
   const step = onStep(page)
   await step.getByLabel("Address").fill(contactLink("F2"))
-  await expect(step.locator(".link-field").first().locator(".entity:not(.skeleton)")).toBeVisible()
+  await step.getByLabel("Channel").fill(channelLink("G2"))
+  for (const field of await step.locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
   await fitsWindow(page, "2-links")
   await backInView(page, "links")
   await step.getByRole("button", { name: "Continue" }).click()
@@ -162,7 +163,7 @@ test("every purchase step fits a laptop's and a phone's window without scrolling
   await fitsWindow(page, "5b-pay-card")
 })
 
-test("a name of 63 letters keeps the home's answer and the links step inside the window", async ({ page }) => {
+test("a name of 63 letters keeps the home's answer, the links step and registering inside the window", async ({ page, request }) => {
   const short = uniqueLabel("long")
   const label = `${short}${"x".repeat(MAX_LABEL_LENGTH - short.length)}`
   await search(page, label)
@@ -171,4 +172,11 @@ test("a name of 63 letters keeps the home's answer and the links step inside the
   await page.getByRole("button", { name: "Register" }).click()
   await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
   await fitsWindow(page, "2b-links-long-name")
+  await onStep(page).getByRole("button", { name: "Skip for now" }).click()
+  await savedToReview(page)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  await control(request, `settle/${new URL(page.url()).searchParams.get("order")}`)
+  await expect(page.locator(".stage.active", { hasText: "Waiting" })).toBeVisible({ timeout: REGISTRATION_MS })
+  await fitsWindow(page, "6b-registering-long-name")
 })
