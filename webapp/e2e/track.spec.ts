@@ -31,13 +31,18 @@ test("search, checkout and payment move along one track a step at a time, the ot
   await expect.poll(() => shift(page)).toBe(0)
 })
 
-test("a payment screen is the track's third step, and Your names swaps the whole page", async ({ page }) => {
+test("a payment screen is the track's third step, and Your names, restore and trademarks swap the whole page", async ({ page }) => {
   await startOrder(page, uniqueLabel("trackpay"), { method: "btc" })
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   await expect.poll(() => shift(page)).toBe(-2)
   await page.getByRole("link", { name: "Your names" }).click()
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
   await expect(page.locator(".track")).toHaveCount(0)
+  for (const [path, heading] of [["/#/restore", "Restore with a name code"], ["/#/trademarks", "Trademark owners"]]) {
+    await page.goto(path)
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible()
+    await expect(page.locator(".track")).toHaveCount(0)
+  }
 })
 
 test("a move to the next step slides; a first mount, a jump over a step and reduced motion move at once", async ({ page }) => {
@@ -56,7 +61,7 @@ test("a move to the next step slides; a first mount, a jump over a step and redu
   await page.emulateMedia({ reducedMotion: "reduce" })
   await search(page, uniqueLabel("trackrm"))
   await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Check your order" })).toBeFocused()
   expect(await slideMs(page)).toBe("0ms")
   await expect.poll(() => shift(page)).toBe(-1)
 })

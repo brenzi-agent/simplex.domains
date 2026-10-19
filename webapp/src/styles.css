@@ -635,6 +635,6 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 }
 
 /* .track clips and takes the height of the slide in view; .rail is the row of three slides and is what moves */
-.track { overflow: hidden; transition: height var(--slide, 320ms) cubic-bezier(.22, .61, .36, 1); }
+.track { overflow: clip; transition: height var(--slide, 320ms) cubic-bezier(.22, .61, .36, 1); }
 .rail { display: flex; align-items: flex-start; width: 100%; transition: transform var(--slide, 320ms) cubic-bezier(.22, .61, .36, 1); }
 .slide { flex: 0 0 100%; min-width: 0; }

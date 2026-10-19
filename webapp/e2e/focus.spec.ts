@@ -96,6 +96,15 @@ test("a name typed but not searched stays when a code is applied from the popup"
   await expect(page.getByLabel("Name", { exact: true })).toBeFocused()
 })
 
+test("a checkout drawn again for the tab's open order keeps focus on its heading", async ({ page }) => {
+  await startOrder(page, uniqueLabel("headopen"), { method: "btc" })
+  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await search(page, uniqueLabel("headnext"))
+  await page.getByRole("button", { name: "Register" }).click()
+  await expect(page.getByText(/is waiting for its payment/)).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Check your order" })).toBeFocused()
+})
+
 test("an app link whose wallet fails its checksum does not work", async ({ page }) => {
   const label = uniqueLabel("cksum")
   await page.goto(`/#/?name=${label}&owner=${APP_WALLET}`)

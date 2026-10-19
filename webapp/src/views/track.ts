@@ -37,10 +37,7 @@ function moveTrack(smooth: boolean): void {
 export function placeOnTrack(main: HTMLElement, step: TrackStep, screen: HTMLElement): void {
   const mounted = main.firstChild === track
   const adjacent = Math.abs(step - index) === 1
-  if (!mounted) {
-    for (const s of slides) s.replaceChildren()
-    main.replaceChildren(track)
-  }
+  if (!mounted) main.replaceChildren(track)
   slides[step].replaceChildren(screen)
   // a redraw of the step in view moves nothing, so a slide still on its way is not cut short
   if (mounted && step === index) return
@@ -56,5 +53,6 @@ export function placeOnTrack(main: HTMLElement, step: TrackStep, screen: HTMLEle
 
 export function leaveTrack(main: HTMLElement, screen: HTMLElement): void {
   resized.disconnect()
+  for (const s of slides) s.replaceChildren()
   main.replaceChildren(screen)
 }

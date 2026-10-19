@@ -150,7 +150,8 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, 
   const caret = active instanceof HTMLInputElement ? [active.selectionStart, active.selectionEnd] as const : null
   const focusKey = active === null || active === document.body ? lostKey : active.dataset.focus ?? null
   const first = shownKind === null
-  const changed = kind !== shownKind || drawnRoute !== route
+  // the heading the last draw focused is replaced with its screen, so the redrawn screen's heading takes focus
+  const toHeading = kind !== shownKind || drawnRoute !== route || (active !== null && active === shownScreen?.querySelector("h1"))
   screenStop?.abort()
   screenStop = new AbortController()
   const next = build(screenStop.signal)
@@ -163,7 +164,7 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, 
   popped = false
   document.title = titleOf(next)
   lostKey = null
-  if (!first) settleFocus(active, caret, changed, focusKey)
+  if (!first) settleFocus(active, caret, toHeading, focusKey)
   // the place a page was left at is kept for the page itself, not for the loading line before it
   if (scrollTarget !== null && kind !== LOADING) {
     scrollTo(0, scrollTarget)
@@ -182,9 +183,9 @@ function focusHeading(): void {
   heading.focus({ preventScroll: true })
 }
 
-// A new kind of screen gives its heading focus; the same kind drawn again gives it back to the keyed control it was on, or
-// leaves it where it is.
-function settleFocus(active: HTMLElement | null, caret: readonly [number | null, number | null] | null, changed: boolean, focusKey: string | null): void {
+// A new kind of screen, or one whose heading had focus, gives its heading focus; the same kind drawn again gives it back
+// to the keyed control it was on, or leaves it where it is.
+function settleFocus(active: HTMLElement | null, caret: readonly [number | null, number | null] | null, toHeading: boolean, focusKey: string | null): void {
   if (active?.isConnected && shownScreen?.contains(active)) {
     active.focus({ preventScroll: true })
     if (caret && active instanceof HTMLInputElement) active.setSelectionRange(caret[0], caret[1])
@@ -192,7 +193,7 @@ function settleFocus(active: HTMLElement | null, caret: readonly [number | null,
   }
   // focus on the header, the footer or a popup stays there; focus that was in main, even in a screen now inert, goes to the new heading
   if (active && active !== document.body && active.isConnected && !active.closest("body > main")) return
-  if (changed) return focusHeading()
+  if (toHeading) return focusHeading()
   const same = keyed(focusKey)
   if (!same) {
     lostKey = focusKey
