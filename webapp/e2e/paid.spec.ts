@@ -240,6 +240,40 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   await waitRegistered(page, label)
 })
 
+// The Stripe frame reloads whenever its form is taken out of the page, so the card screen takes another tab's writes in place.
+test("the card form stays in place while another tab writes the order, the same record and a changed one", async ({ page }) => {
+  const { invoiceId } = await startOrder(page, uniqueLabel("cardstay"), { method: "card" })
+  await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
+  await page.evaluate(() => {
+    const form = document.querySelector(".stripe")!
+    const w = window as unknown as { __moved: number; __parent: Element }
+    w.__moved = 0
+    w.__parent = form.parentElement!
+    new MutationObserver((records) => {
+      for (const r of records) for (const n of r.removedNodes) if (n === form || n.contains(form)) w.__moved++
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+  const key = await page.evaluate((id) => Object.keys(localStorage).find((k) => k.startsWith("simplex-names:order:") && localStorage.getItem(k)!.includes(id))!, invoiceId)
+  const other = await page.context().newPage()
+  await other.goto("/")
+  const writes: ((k: string) => void)[] = [
+    (k) => localStorage.setItem(k, `${localStorage.getItem(k)!} `),
+    (k) => localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k)!), linksSavedAt: new Date().toISOString() })),
+  ]
+  for (const write of writes) {
+    const read = page.waitForResponse((r) => new URL(r.url()).pathname === `/api/invoice/${invoiceId}` && !r.url().includes("?"))
+    await other.evaluate(write, key)
+    await read
+    await expect(page.locator("main[aria-busy]")).toHaveCount(0)
+  }
+  expect(await page.evaluate(() => {
+    const w = window as unknown as { __moved: number; __parent: Element }
+    return { moved: w.__moved, sameParent: document.querySelector(".stripe")?.parentElement === w.__parent }
+  })).toEqual({ moved: 0, sameParent: true })
+  await expect(page.getByRole("button", { name: /^Pay \$/ })).toBeEnabled()
+  await other.close()
+})
+
 test("a cancelled invoice leads back to its name to order again, and expired invoices are replaced and say what arrived", async ({ page, request }) => {
   const label = uniqueLabel("exp")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })

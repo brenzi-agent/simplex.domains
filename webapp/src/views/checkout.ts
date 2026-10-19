@@ -12,7 +12,7 @@ import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { CODE_ERRORS, verdictNode, watchCode } from "./codes.ts"
 import { entityCard } from "./search.ts"
-import { type Builder, currentRoute, draw, focusOn, go, INVEST_LINE, isRedraw, isRoute, kept, outcome, redirect, refresh, screen, searchLink, WEFUNDER_URL, whenLeaving } from "./shell.ts"
+import { type Builder, currentRoute, draw, focusOn, go, INVEST_LINE, isRedraw, isRoute, kept, keptLive, outcome, redirect, refresh, screen, searchLink, WEFUNDER_URL, whenDropped, whenLeaving } from "./shell.ts"
 import { every } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, secondsLeft, tabHold } from "./hold.ts"
 
@@ -204,8 +204,13 @@ function payPart(s: CheckoutState, fromApp: boolean, blocked: WaitingOrder | nul
 }
 
 const CODE_ENTRY = "checkout-code"
+const CHECKOUT_NOTE = "checkout-note"
 
+// the kept entry opens empty, as a code it held was applied or refused since
 function openEntry(): void {
+  const input = kept(CODE_ENTRY, codeEntry).querySelector("input")!
+  input.value = ""
+  input.dispatchEvent(new Event("input"))
   act({ type: "entry-opened" })
   focusOn(CODE_ENTRY)
 }
@@ -222,7 +227,7 @@ function removeCode(): void {
 
 function codeArea(s: CheckoutState): HTMLElement {
   const error = s.checkout.codeError
-  return el("div", {}, s.entry ? kept(CODE_ENTRY, () => codeEntry(s.checkout.label))
+  return el("div", {}, s.entry ? kept(CODE_ENTRY, codeEntry)
     : error ? el("div", { class: "code-entry" }, el("span", { class: "label" }, "Your code"), el("div", { class: "line bad" }, icon("x"), error)) : null)
 }
 
@@ -258,7 +263,7 @@ function buildCheckout(s: CheckoutState, signal: AbortSignal): HTMLElement {
   // an order opened from the app is sent from here, so a wait met in this tab holds it as the code page's would
   const held = fromApp && !blocked && !s.sending ? s.hold : null
   holdEnds(signal)(s.hold !== null)
-  const side = sideCard(c, rowsOf(c, blocked !== null), codeArea(s), totalLine(c), onward, liveRegion(undefined, held && holdNotice(held)), codeLink(s, fromApp, blocked),
+  const side = sideCard(c, rowsOf(c, blocked !== null), codeArea(s), totalLine(c), onward, keptLive(CHECKOUT_NOTE, undefined, held && holdNotice(held, signal)), codeLink(s, fromApp, blocked),
     el("p", { class: "fine" }, icon("shield"), fromApp
       ? el("span", {}, "Registered to your app's wallet, ", el("span", { class: "nowrap" }, shortAddress(c.appOwner!)), ".")
       : "Registered to a wallet made in this browser; nobody else holds its key."),
@@ -266,7 +271,7 @@ function buildCheckout(s: CheckoutState, signal: AbortSignal): HTMLElement {
   return screen({ title: "Check your order", back: searchLink(c.label, c.appOwner) }, main, side)
 }
 
-function codeEntry(label: string): HTMLElement {
+function codeEntry(): HTMLElement {
   const input = el("input", { type: "text", "aria-label": "Code", spellcheck: "false", placeholder: "SN6-…", autocomplete: "off", "data-focus": CODE_ENTRY })
   const box = el("div", { class: "input code-input mt-8" }, icon("key"), input)
   const line = liveRegion()
@@ -275,6 +280,7 @@ function codeEntry(label: string): HTMLElement {
       box.className = "input code-input mt-8"
       return line.replaceChildren()
     }
+    const { label } = state.checkout
     if (v.ok && label.length < v.code.minLength) {
       box.className = "input code-input mt-8 bad"
       return line.replaceChildren(el("div", { class: "line bad" }, icon("x"), `This code covers names of ${v.code.minLength} or more letters; ${label} has ${label.length}.`))
@@ -302,7 +308,7 @@ function buildOwnerCode(s: CheckoutState, signal: AbortSignal): HTMLElement {
       store.canPersist() ? null : el("div", { class: "mb-14" }, alertBox("warn", "alert", "This browser will not keep your name code", "Your saved copy will be the only one.")),
       codeDisplay(c.ownerCode!, "owner-code"),
       el("label", { class: "check" }, box, el("span", { class: "box" }), "I have saved my code"))),
-    sideCard(c, rowsOf(c, false), totalLine(c), action, liveRegion(undefined, s.hold && holdNotice(s.hold)),
+    sideCard(c, rowsOf(c, false), totalLine(c), action, keptLive(CHECKOUT_NOTE, undefined, s.hold && holdNotice(s.hold, signal)),
       el("div", { class: "why" },
         el("div", {}, icon("key"), "The code owns the name once registered."),
         el("div", {}, icon("shield"), "The service never sees it; nobody else has a copy."),
@@ -356,15 +362,17 @@ type Preview = Awaited<ReturnType<typeof api.previewLink>>
 // a link's profile as shown, so a field drawn again for it, as a step gone back to, shows it at once
 const previews = new Map<string, Preview>()
 
-// A field checks its link while its route is shown, as it is kept through every screen the route draws.
 export function linkField(kind: LinkKind, placeholder: string, label: string, value: string, save: (v: string) => void): HTMLElement {
   const errorId = `link-error-${++linkFields}`
   const input = el("input", { type: "text", placeholder, value, "aria-label": label, spellcheck: "false", autocomplete: "off" })
   const box = el("div", { class: "input" }, icon("link"), input, el("span", { class: "kind" }, label))
   const card = el("div", {})
   const field = el("div", { class: "link-field" }, box, card)
-  const route = currentRoute()
-  const shown = () => isRoute(route)
+  // the field lives as long as the route keeps it; a check started anew ends the last one's wait
+  const life = new AbortController()
+  whenDropped(() => life.abort())
+  const shown = () => !life.signal.aborted
+  let waiting = new AbortController()
   let seq = 0
   // the card's place is held while the link is checked, so the page is laid out at its height from the start
   const holdCardPlace = () => {
@@ -380,6 +388,8 @@ export function linkField(kind: LinkKind, placeholder: string, label: string, va
   }
   const check = async () => {
     const mine = ++seq
+    waiting.abort()
+    waiting = new AbortController()
     const link = input.value.trim()
     save("")
     box.className = "input"
@@ -433,7 +443,7 @@ export function linkField(kind: LinkKind, placeholder: string, label: string, va
         const notice = el("p", { class: "field-error", id: errorId }, icon("clock"), line)
         input.setAttribute("aria-describedby", errorId)
         waitOut(line, e instanceof api.ApiError && e.retryAfter ? e.retryAfter : PREVIEW_RETRY_S,
-          (left) => `The link could not be checked now. Checking again in ${left}.`, () => { if (mine === seq) void check() })
+          (left) => `The link could not be checked now. Checking again in ${left}.`, () => { if (mine === seq) void check() }, AbortSignal.any([life.signal, waiting.signal]))
         return card.replaceChildren(notice)
       }
       refuse("This link could not be opened.")

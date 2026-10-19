@@ -16,6 +16,14 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs =
   return node
 }
 
+export function refill<T extends Element>(node: T, ...kids: Kid[]): T {
+  node.replaceChildren()
+  append(node, kids)
+  return node
+}
+
+export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches
+
 function append(node: Node, kids: Kid[]): void {
   for (const kid of kids) {
     if (kid === null || kid === undefined || kid === false) continue
@@ -26,9 +34,9 @@ function append(node: Node, kids: Kid[]): void {
 
 const COUNT_MARK = "\u0000"
 
-// A wait the service asked for, counted down in node; done runs when it is over. It stops once node leaves the page.
+// A wait the service asked for, counted down in node until signal ends it; done runs when it is over.
 // A screen reader hears the wait once rather than every second: the countdown is hidden from it, a still copy is not.
-export function waitOut(node: HTMLElement, waitSeconds: number, text: (left: string) => string, done: () => void): void {
+export function waitOut(node: HTMLElement, waitSeconds: number, text: (left: string) => string, done: () => void, signal: AbortSignal): void {
   node.setAttribute("aria-hidden", "true")
   node.before(el("span", { class: "sr-only" }, text(seconds(waitSeconds))))
   const [before, after] = text(COUNT_MARK).split(COUNT_MARK)
@@ -36,12 +44,8 @@ export function waitOut(node: HTMLElement, waitSeconds: number, text: (left: str
   const unit = document.createTextNode("")
   node.replaceChildren(before, count, unit, after)
   const until = Date.now() + waitSeconds * 1000
-  // a count started before its notice goes into the page writes its first line at once, so the notice comes in whole;
-  // one taken out of the page stops
-  let shown = false
+  // a count started before its notice goes into the page writes its first line at once, so the notice comes in whole
   const tick = () => {
-    if (node.isConnected) shown = true
-    else if (shown) return clearInterval(timer)
     const left = Math.ceil((until - Date.now()) / 1000)
     if (left > 0) {
       count.textContent = String(left)
@@ -52,7 +56,9 @@ export function waitOut(node: HTMLElement, waitSeconds: number, text: (left: str
     // a wait already over ends after the caller has put its notice in, so the end clears it
     queueMicrotask(done)
   }
+  if (signal.aborted) return
   const timer = setInterval(tick, 1000)
+  signal.addEventListener("abort", () => clearInterval(timer), { once: true })
   tick()
 }
 
@@ -90,8 +96,8 @@ export function gradName(label: string, tld = "simplex"): HTMLSpanElement {
 }
 
 // where a page writes the answer to an action, announced by screen readers when it changes
-export function liveRegion(cls?: string, ...kids: Kid[]): HTMLDivElement {
-  return el("div", { class: cls, role: "status", "aria-live": "polite" }, ...kids)
+export function liveRegion(cls?: string): HTMLDivElement {
+  return el("div", { class: cls, role: "status", "aria-live": "polite" })
 }
 
 export function disabled<T extends HTMLElement>(node: T): T {

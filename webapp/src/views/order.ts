@@ -1,7 +1,7 @@
 // An order's page (?order=<invoice>) or a code registration's (?registration=<id>): payment, registration, and every ending.
 import * as api from "../api.ts"
 import { codeTier, LONGEST_TIER, parseNameCode } from "../crypto/code.ts"
-import { alertBox, btn, chip, codeDisplay, copyButton, el, gradName, icon, type Kid, link, liveRegion, nameText, nameTitle, setAction } from "../dom.ts"
+import { alertBox, btn, chip, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, nameTitle, refill, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, shortAddress, shortHash, termText } from "../format.ts"
 import type { IconName } from "../icons.ts"
@@ -15,7 +15,7 @@ import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
 import { useCode } from "./codes.ts"
 import { every } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
-import { type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, outcome, redirect, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
+import { type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
 
 const RETRY_MS = 3000
 // The badge service's words for a cancel the provider took while the service still shows the invoice open; a card
@@ -29,6 +29,7 @@ const confirmations = (n: number) => (n === 1 ? "Waiting for 1\u00a0confirmation
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+const ORDER_NOTE = "order-note"
 const warning = (text: string): Note => ({ tone: "warn", icon: "alert", title: null, text })
 
 let state: OrderState = initialState("", null)
@@ -70,7 +71,8 @@ function dispatch(event: OrderEvent): void {
   if (!isRoute(pageRoute)) return
   const kind = screenOf(state)
   document.querySelector("main")?.removeAttribute("aria-busy")
-  draw(kind, (signal) => BUILDERS[kind](state, signal))
+  if (cardStays(before, kind)) showCard()
+  else draw(kind, (signal) => BUILDERS[kind](state, signal))
   if (kind !== "pay-card") dropCard()
   if (revealDue(state)) reveal(state.view!, state.record!)
   // keepCodes dispatches record-changed itself, so it runs only when the screen or the record moved
@@ -320,9 +322,10 @@ function noteNode(note: Note, cls: string): HTMLElement {
   return el("div", { class: cls }, alertBox(note.tone, note.icon, note.title, text))
 }
 
-function noteOf(s: OrderState, cls: string, holds: boolean): HTMLElement | null {
-  const hold = holds ? s.hold : null
-  return hold ? holdNotice(hold) : s.note ? noteNode(s.note, cls) : null
+// holdsFor is the screen's signal where the screen holds an action for the tab's wait
+function noteOf(s: OrderState, cls: string, holdsFor: AbortSignal | null): HTMLElement | null {
+  if (holdsFor && s.hold) return holdNotice(s.hold, holdsFor)
+  return s.note ? noteNode(s.note, cls) : null
 }
 
 function buildUnreadable({ reference }: OrderState): HTMLElement {
@@ -409,13 +412,13 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
     el("div", { class: "pay-body" }, el("div", { class: "qr" }, code), el("div", {}, copyField("Amount", `${due} ${coin}`, due), copyField(`${name} address`, invoice.address!), copyField("Reference", invoice.invoiceId, false))),
     el("div", { class: "waiting" }, el("span", { class: "awaiting" }, partial ? "Waiting for the rest of the payment" : "Waiting for payment"), partial ? null : cancel),
     // a wait the tab is in shows why the link does nothing until it is over
-    liveRegion(undefined, noteOf(s, "mt-14", !partial))))
+    keptLive(ORDER_NOTE, undefined, noteOf(s, "mt-14", partial ? null : signal))))
   return screen({ title: `Pay with ${name}`, lead: "Bookmark this page: the address and the countdown live on its link." },
     main, orderCard(cardName(labelOf(view!, record), view!.tld), [["Term", termText(view!.years)], ["Paying with", name]], total(invoice.amount)))
 }
 
-// The Stripe frame reloads, losing what was typed, whenever its form moves in the page; so the card's own events change
-// Pay and its note where they are, as the badge store's card form does, rather than drawing the screen again.
+// The Stripe frame reloads, losing what was typed, whenever its form moves in the page; so while the card screen stays
+// for the same invoice, a change shows on Pay and its note where they are, as the badge store's card form does.
 let card: MountedCard | null = null
 // the form a card is mounted in, or being mounted in; a mount that answers after it was dropped is destroyed
 let cardIn: HTMLElement | null = null
@@ -446,26 +449,27 @@ function mountInto(form: HTMLElement, invoice: api.InvoiceView): void {
     if (mine !== cardMounts) return mounted?.destroy()
     if (!mounted) return dispatch({ type: "card-failed" })
     card = mounted
-    if (payParts) setAction(payParts.pay, false, false)
+    showCard()
   })
 }
 
-function takeCardEvent(event: OrderEvent): void {
-  state = reduce(state, event)
+const cardStays = (before: OrderState, kind: OrderKind) =>
+  payParts !== null && kind === "pay-card" && screenOf(before) === "pay-card" && before.invoice?.invoiceId === state.invoice?.invoiceId
+
+function showCard(): void {
   if (!payParts) return
   setAction(payParts.pay, state.busy === "card", card === null)
-  const note = noteOf(state, "mt-14", false)
-  payParts.note.replaceChildren(...(note ? [note] : []))
+  refill(payParts.note, noteOf(state, "mt-14", null))
 }
 
 async function payByCard(): Promise<void> {
   if (state.busy || !card) return
   const gen = opened
   const { invoice, record } = state
-  takeCardEvent({ type: "card-started" })
+  dispatch({ type: "card-started" })
   const confirmed = await card.confirm()
   if (!isOpen(gen)) return
-  if (confirmed.kind === "error") return takeCardEvent({ type: "card-refused", note: { tone: "danger", icon: "alert", title: null, text: confirmed.message } })
+  if (confirmed.kind === "error") return dispatch({ type: "card-refused", note: { tone: "danger", icon: "alert", title: null, text: confirmed.message } })
   // The page knows the card was submitted without asking the service, so it shows that at once, in an outage too.
   const at = new Date(api.serviceNow()).toISOString()
   store.markCardSubmitted(invoice!.invoiceId, at)
@@ -480,7 +484,7 @@ function buildPayCard(s: OrderState): HTMLElement {
   if (cardIn !== form) mountInto(form, invoice)
   const pay = setAction(btn(`Pay ${dollars(invoice.amount, true)}`, "block", () => void payByCard()), s.busy === "card", card === null)
   pay.dataset.focus = "pay"
-  const note = el("div", {}, noteOf(s, "mt-14", false))
+  const note = el("div", {}, noteOf(s, "mt-14", null))
   payParts = { pay, note }
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
   const forgetful = store.canPersist() ? null : el("div", { class: "mb-14" }, alertBox("warn", "alert", "This browser cannot remember a card payment",
@@ -521,7 +525,7 @@ function buildCardFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   again.dataset.focus = "reorder"
   holdEnds(signal)(s.hold !== null)
   return outcome({ tone: "warn", icon: "alert", title: "The card form did not load", text: "Stripe's form was blocked or failed to load. Nothing was charged.",
-    extra: liveRegion(undefined, noteOf(s, "left mt-18", s.record !== null)),
+    extra: keptLive(ORDER_NOTE, undefined, noteOf(s, "left mt-18", s.record !== null ? signal : null)),
     action: el("div", { class: "actions" }, btn("Load the card form again", "", () => dispatch({ type: "card-retried" })), s.record ? again : withoutRecord(s.view!, "quiet")),
     reference: inv.invoiceId })
 }
@@ -635,7 +639,7 @@ function buildExpired(s: OrderState, signal: AbortSignal): HTMLElement {
     return outcome({ tone: "info", icon: "x", title: "Invoice cancelled", text: "This invoice was cancelled and nothing was received.",
       action: btn("Order the name again", "", () => go(searchLink(label, ownerCode === null ? owner : null)), icon("arrow")), reference: inv.invoiceId })
   }
-  const note = liveRegion(undefined, noteOf(s, "left mt-18", record !== null && !record.replacedBy))
+  const note = keptLive(ORDER_NOTE, undefined, noteOf(s, "left mt-18", record !== null && !record.replacedBy ? signal : null))
   const again = setAction(btn("Get a new invoice", received && !record?.cancelled ? "quiet" : "", reorder), s.busy === "reorder", s.hold !== null)
   again.dataset.focus = "reorder"
   holdEnds(signal)(s.hold !== null)
@@ -918,7 +922,7 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
         el("div", { class: "options" },
           el("div", { class: "option" }, el("b", {}, "Choose another name"), el("p", {}, `Any name of up to ${worth}, registered to the same wallet, so your code owns it.`), other),
           el("div", { class: "option" }, el("b", {}, "Take a code instead"), el("p", {}, `A code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for 2 years, to use here or in the app.`), code)),
-        liveRegion(undefined, noteOf(s, "mt-14", canAct)))),
+        keptLive(ORDER_NOTE, undefined, noteOf(s, "mt-14", canAct ? signal : null)))),
     orderCard(cardName(label, view.tld), [["Paid", `${paid} · ${methodName(invoice.cryptoCurrency ?? "card")}`], ["Kept", worth], ["Reference", fullRef(invoice.invoiceId)]]))
 }
 
@@ -978,7 +982,7 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
     el("div", { class: "panel" },
       el("div", { class: "panel-sec" }, track(failedAt),
         el("div", { class: "mt-22" }, alertBox("danger", "alert", view.error ?? "The registration did not go through", "The service's own retries gave up.")),
-        liveRegion(undefined, noteOf(s, "mt-14", true)), el("div", { class: "mt-18" }, action))),
+        keptLive(ORDER_NOTE, undefined, noteOf(s, "mt-14", signal)), el("div", { class: "mt-18" }, action))),
     orderCard(cardName(label, view.tld), [...paidRows(view, invoice).slice(0, 1), ["Charged again", "Never"], ["Reference", fullRef(invoice?.invoiceId ?? view.id)]]))
 }
 

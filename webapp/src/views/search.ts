@@ -2,7 +2,7 @@
 import * as api from "../api.ts"
 import { labelHash } from "../crypto/registration.ts"
 import { checksumAddress, fromHex, hex } from "../crypto/wallet.ts"
-import { alertBox, btn, chip, el, icon, link, liveRegion, nameText, nameTitle, setAction, waitOut } from "../dom.ts"
+import { alertBox, btn, chip, el, icon, link, nameText, nameTitle, reducedMotion, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dollars, letters, methodName, shortAddress, termText } from "../format.ts"
 import { methodMark, wefunderMark } from "../icons.ts"
@@ -15,7 +15,7 @@ import {
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { codePopup } from "./codes.ts"
-import { type Builder, closePopup, CONTACT_EMAIL, currentRoute, draw, go, INVEST_LINE, isRedraw, isRoute, kept, outcome, popup, searchLink, throughHistory, WEFUNDER_URL } from "./shell.ts"
+import { type Builder, closePopup, CONTACT_EMAIL, currentRoute, draw, go, INVEST_LINE, isRedraw, isRoute, kept, keptLive, outcome, popup, searchLink, throughHistory, WEFUNDER_URL } from "./shell.ts"
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
 
@@ -283,10 +283,10 @@ function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
     el("span", { class: "eyebrow" }, el("span", { class: "tag" }, "NEW"), "Names for SimpleX channels and addresses"),
     el("h1", { class: "display" }, "Own your name", el("br"), "on ", el("span", { class: "grad" }, "SimpleX")),
     el("p", { class: "lead" }, "One name for your public channel and contact address, registered to a wallet only you hold."),
-    banner, box, liveRegion("results", resultsOf(s, retry))))
+    banner, box, keptLive("search-results", "results", resultsOf(s, retry, signal))))
   // a search under way dims the answer it replaces
   hero.querySelector(".result")?.classList.toggle("busy", s.searching !== null)
-  return el("section", { class: "home" }, hero, s.opening === "plain" ? bento() : null)
+  return el("section", { class: "home" }, hero, s.opening === "plain" ? bento(signal) : null)
 }
 
 function bannerOf(s: SearchState): HTMLElement | null {
@@ -307,8 +307,8 @@ function movedBanner(moved: Moved): HTMLElement {
     : el("div", { class: "banner" }, icon("info"), el("span", {}, el("b", {}, "Your payment already went to another name. "), el("a", { href: moved.url }, "Open ", nameText(moved.label, moved.tld))))
 }
 
-function resultsOf(s: SearchState, retry: () => void): HTMLElement | null {
-  if (s.paused && s.hold) return pauseNotice(s.hold)
+function resultsOf(s: SearchState, retry: () => void, signal: AbortSignal): HTMLElement | null {
+  if (s.paused && s.hold) return pauseNotice(s.hold, signal)
   if (s.searching?.card) return el("div", { class: "skeleton result-shape" }, el("span", { class: "sr-only" }, "Searching…"))
   const answer = s.answer
   if (answer?.kind === "rule") return ruleLine(answer)
@@ -316,7 +316,7 @@ function resultsOf(s: SearchState, retry: () => void): HTMLElement | null {
     return el("div", { class: "under-search" }, alertBox("warn", "alert", "This name could not be checked", "The name service did not answer."),
       el("div", { class: "mt-14" }, btn("Try again", "quiet", retry, icon("refresh"))))
   }
-  if (answer?.kind === "found") return resultFor(s, answer)
+  if (answer?.kind === "found") return resultFor(s, answer, signal)
   const code = codeFor(s)
   if (code) {
     return el("p", { class: "hint applied" }, `Code applied: names of ${code.minLength} or more letters, for ${code.years}\u00a0years. Search a name to use it. `,
@@ -331,16 +331,16 @@ function ruleLine({ label, problem }: Extract<Answer, { kind: "rule" }>): HTMLEl
   return el("p", { class: "rule" }, icon("alert"), text)
 }
 
-function pauseNotice(hold: Hold): HTMLElement {
+function pauseNotice(hold: Hold, signal: AbortSignal): HTMLElement {
   const title = el("b", {})
   const notice = el("div", { class: "under-search" }, el("div", { class: "notice warn" }, icon("clock"), el("div", {}, title, "Too many requests were sent from here. Searching is paused until then.")))
-  waitOut(title, secondsLeft(hold), (left) => `Try again in ${left}`, () => undefined)
+  waitOut(title, secondsLeft(hold), (left) => `Try again in ${left}`, () => undefined, signal)
   return notice
 }
 
-function resultFor(s: SearchState, found: Found): HTMLElement {
+function resultFor(s: SearchState, found: Found, signal: AbortSignal): HTMLElement {
   const { label, answer } = found
-  if (answer.status === "available") return availableResult(s, label, answer)
+  if (answer.status === "available") return availableResult(s, label, answer, signal)
   if (answer.status === "reserved") {
     return takenResult(label, chip("Reserved", "warn", true), [
       el("p", { class: "note" }, "Reserved names are not sold here. If it is yours to use, contact the SimpleX team."),
@@ -372,7 +372,7 @@ function registeredResult(label: string, answer: Extract<api.SearchAnswer, { sta
   ])
 }
 
-function availableResult(s: SearchState, label: string, answer: Available): HTMLElement {
+function availableResult(s: SearchState, label: string, answer: Available, signal: AbortSignal): HTMLElement {
   const applied = codeFor(s)
   const coded = coveredBy(s, label)
   const retarget = s.retarget
@@ -391,14 +391,14 @@ function availableResult(s: SearchState, label: string, answer: Available): HTML
   const action = coded ? "Register with code" : retarget ? "Register with your payment" : "Register"
   const unpayable = unaffordable(s, answer)
   const button = setAction(btn(action, "", register, icon("arrow")), s.register.busy, unpayable || s.ownOrder !== null || s.hold !== null)
-  return el("div", {}, el("div", { class: "result" }, what, el("div", { class: "deal" }, price, button)), el("div", { class: "under-search" }, registerNote(s, unpayable)))
+  return el("div", {}, el("div", { class: "result" }, what, el("div", { class: "deal" }, price, button)), el("div", { class: "under-search" }, registerNote(s, unpayable, signal)))
 }
 
-function registerNote(s: SearchState, unpayable: boolean): HTMLElement | null {
+function registerNote(s: SearchState, unpayable: boolean, signal: AbortSignal): HTMLElement | null {
   const { ownOrder, hold, register: { refusal } } = s
   if (unpayable) return null
   if (ownOrder) return ownOrderNote(ownOrder)
-  if (hold) return holdNotice(hold)
+  if (hold) return holdNotice(hold, signal)
   if (!refusal) return null
   if (refusal.why === "other") return ownOrderNote(store.invoiceUrl(refusal.invoiceId))
   const words = refusal.why === "taken" ? "This name was taken just now. Search another one." : "Nothing changed. Try again in a moment."
@@ -455,8 +455,9 @@ const SCENE_OUT_MS = 350
 const SCENE_PLAYS = 3
 let scenePlayed = false
 
-function playWhenSeen(scene: HTMLElement): HTMLElement {
-  if (scenePlayed) return scene
+// a reader who asks for less motion sees the scene's last frame at once
+function playWhenSeen(scene: HTMLElement, signal: AbortSignal): HTMLElement {
+  if (scenePlayed || reducedMotion() || signal.aborted) return scene
   scene.dataset.step = "empty"
   scene.querySelector(".nm")!.textContent = ""
   const seen = new IntersectionObserver((entries) => {
@@ -465,6 +466,7 @@ function playWhenSeen(scene: HTMLElement): HTMLElement {
     if (!scenePlayed) void playScene(scene)
   }, { threshold: 0.6 })
   seen.observe(scene)
+  signal.addEventListener("abort", () => seen.disconnect(), { once: true })
   return scene
 }
 
@@ -496,7 +498,7 @@ async function playScene(scene: HTMLElement): Promise<void> {
   typed.style.removeProperty("width")
 }
 
-function bento(): HTMLElement {
+function bento(signal: AbortSignal): HTMLElement {
   const step = (n: string, title: string, text: string, extra: Node | null = null) =>
     el("article", { class: "tile" }, el("span", { class: "n" }, n), el("h3", {}, title), el("p", {}, text), extra)
   return el("section", { class: "section" }, el("div", { class: "wrap" },
@@ -513,7 +515,7 @@ function bento(): HTMLElement {
           el("span", { class: "typed" }, icon("search"), el("span", { class: "nm grad" }, PREVIEW_NAME)),
           el("span", { class: "opens" }, el("span", { class: "word" }, "opens"), el("i", { class: "line" })),
           el("div", { class: "contact" }, initialsAvatar(PREVIEW_PROFILE),
-            el("div", { class: "who" }, el("b", {}, PREVIEW_PROFILE), el("span", { class: "mono" }, PREVIEW_LINK)))))),
+            el("div", { class: "who" }, el("b", {}, PREVIEW_PROFILE), el("span", { class: "mono" }, PREVIEW_LINK)))), signal)),
       el("article", { class: "tile invest" },
         el("h3", {}, "Investors get a name free"),
         el("p", {}, INVEST_LINE),

@@ -31,7 +31,10 @@ async function touchRecord(other: Page, key: string): Promise<void> {
   }, key)
 }
 
-test("removing a pending name code puts focus on the heading, so a second Enter removes nothing", async ({ page }) => {
+// a redraw of the same screen moves focus only back to the control it was on, which is gone here
+const focusOnPage = (page: Page) => expect.poll(() => page.evaluate(() => document.activeElement === document.body)).toBe(true)
+
+test("removing a pending name code leaves focus on the page, so a second Enter removes nothing", async ({ page }) => {
   const older = uniqueLabel("rmold")
   const newer = uniqueLabel("rmnew")
   await showOwnerCode(page, older)
@@ -42,7 +45,7 @@ test("removing a pending name code puts focus on the heading, so a second Enter 
   await newest.getByText("Remove", { exact: true }).focus()
   await page.keyboard.press("Enter")
   await expect(page.locator(".row-item", { hasText: `${newer}.simplex` })).toHaveCount(0)
-  await expect(page.getByRole("heading", { name: "Your names" })).toBeFocused()
+  await focusOnPage(page)
   await page.keyboard.press("Enter")
   await expect(page.locator(".row-item", { hasText: `${older}.simplex` })).toHaveCount(1)
 })
@@ -158,14 +161,14 @@ test("a restore the service refuses puts focus back in the code's field, and the
   await expect(page.getByLabel("Name code")).toBeFocused()
 })
 
-test("a pending code with no order puts focus on the heading when its Find link goes", async ({ page }) => {
+test("a pending code with no order leaves focus on the page when its Find link goes", async ({ page }) => {
   await showOwnerCode(page, uniqueLabel("nofind"))
   await page.goto("/#/names")
   const row = page.locator(".row-item").first()
   await row.getByText("Find the order").focus()
   await page.keyboard.press("Enter")
   await expect(row.getByText("No order was made")).toBeVisible()
-  await expect(page.getByRole("heading", { name: "Your names" })).toBeFocused()
+  await focusOnPage(page)
 })
 
 test("Forget everything asks first with focus on Keep them, and keeping them gives focus back to the link", async ({ page }) => {

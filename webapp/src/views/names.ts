@@ -1,7 +1,7 @@
 // Your names: this browser's orders and codes, restoring an order with its name code, and editing a name's links.
 import * as api from "../api.ts"
 import { parseNameCode } from "../crypto/code.ts"
-import { alertBox, btn, chip, codeDisplay, copyButton, el, gradName, icon, type Kid, liveRegion, nameText, setAction, waitOut } from "../dom.ts"
+import { alertBox, btn, chip, codeDisplay, copyButton, el, gradName, icon, type Kid, nameText, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, methodName, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
@@ -16,7 +16,7 @@ import * as store from "../store.ts"
 import { linkField } from "./checkout.ts"
 import { codePopup, useCode, verdictNode } from "./codes.ts"
 import {
-  type Builder, closePopup, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusOn, go, isRedraw, isRoute, kept, popup, redirect, screen, whenDropped, whenLeaving,
+  type Builder, closePopup, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusOn, go, isRedraw, isRoute, kept, keptLive, popup, redirect, screen, whenDropped, whenLeaving,
 } from "./shell.ts"
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, secondsLeft, tabHold } from "./hold.ts"
@@ -210,7 +210,7 @@ function forgetPart(s: ListState): HTMLElement | null {
 
 function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
-  const orderRows = [...s.pending.map((p) => pendingRow(p, s)), ...listedOrders(s).map((o) => orderRow(o, s))]
+  const orderRows = [...s.pending.map((p) => pendingRow(p, s, signal)), ...listedOrders(s).map((o) => orderRow(o, s))]
   const codeRows = s.codes.map((c) => codeRow(c, s))
   const empty = (text: string) => el("p", { class: "sec-note empty-list" }, text)
   const addCode = btn([icon("key"), "Add a code"], "quiet", () => codePopup("add"))
@@ -285,7 +285,7 @@ function rowChip(s: ListState, o: store.OrderRecord, seen: RowSeen | undefined):
   return chip(text, tone, tone !== "bad")
 }
 
-function pendingRow(p: store.PendingCode, s: ListState): HTMLElement {
+function pendingRow(p: store.PendingCode, s: ListState, signal: AbortSignal): HTMLElement {
   const key = pendingKey(p)
   const finding = s.finding[p.ownerCode]
   const hold = finding === "none" ? null : s.hold
@@ -294,7 +294,7 @@ function pendingRow(p: store.PendingCode, s: ListState): HTMLElement {
   const state = el("span", {}, hold ? chip("", "warn")
     : finding === "none" ? chip("No order was made", "bad")
       : finding === "unchecked" ? chip("Not checked", "bad") : chip("Checkout not finished", "warn"))
-  if (hold) waitOut(state.firstElementChild as HTMLElement, secondsLeft(hold), (left) => `Try again in ${left}`, () => undefined)
+  if (hold) waitOut(state.firstElementChild as HTMLElement, secondsLeft(hold), (left) => `Try again in ${left}`, () => undefined, signal)
   return row(key, markOf(p.label), `${p.label}.${p.tld}`, `Name code shown ${dateOf(Date.parse(p.createdAt) / 1000, true)}`, state,
     find, small("Remove", `${key}-remove`, () => removePending(p)))
 }
@@ -387,12 +387,12 @@ function buildRestore(s: RestoreState, signal: AbortSignal): HTMLElement {
   action.dataset.focus = RESTORE
   holdEnder(signal, () => dispatchRestore({ type: "hold-ended" }))(s.hold !== null)
   const note = s.busy ? el("p", { class: "hint" }, "Finding the code's orders…")
-    : s.hold ? holdNotice(s.hold)
+    : s.hold ? holdNotice(s.hold, signal)
       : refusal ? el("div", { class: "mt-14" }, refusal.verdict ? verdictNode({ ok: false, title: refusal.title, line: refusal.text }) : alertBox("danger", "alert", refusal.title, refusal.text))
         : null
   return screen({ title: "Restore with a name code", lead: "The code stays in this browser. The service sees only a signature from the name's key." },
     el("div", { class: "panel" }, el("div", { class: "panel-sec" },
-      el("span", { class: "label" }, "Name code"), box, liveRegion(undefined, note), el("div", { class: "mt-20" }, action))),
+      el("span", { class: "label" }, "Name code"), box, keptLive("restore-note", undefined, note), el("div", { class: "mt-20" }, action))),
     el("aside", { class: "panel summary" },
       el("span", { class: "label" }, "How it works"),
       el("div", { class: "why" },
@@ -487,9 +487,9 @@ function buildUnreadable(s: EditState, signal: AbortSignal): HTMLElement {
     el("div", { class: "mt-14" }, setAction(btn("Try again", "quiet", readAgain, icon("refresh")), s.reading, false)))
 }
 
-function resultNode(f: EditForm): HTMLElement | null {
+function resultNode(f: EditForm, signal: AbortSignal): HTMLElement | null {
   const box = (node: HTMLElement) => el("div", { class: "mt-14" }, node)
-  if (f.hold) return holdNotice(f.hold)
+  if (f.hold) return holdNotice(f.hold, signal)
   switch (f.result) {
     case null: return null
     case "sending": return el("p", { class: "hint" }, "Signing and sending…")
@@ -558,7 +558,7 @@ function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {
   ]
   const save = setAction(btn("Save links", "block", () => void saveLinks(fields)), f.saving, f.hold !== null || f.unanswered || f.settled)
   save.dataset.focus = "save"
-  const answer = resultNode(f)
+  const answer = resultNode(f, signal)
   // Save, turned off by its answer, hands focus to the answer, which shares its key
   if (answer?.firstElementChild instanceof HTMLElement && ((f.result === "saved" && f.settled) || f.result === "unanswered")) {
     answer.firstElementChild.tabIndex = -1
@@ -573,7 +573,7 @@ function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {
       el("div", { class: "why" },
         el("div", {}, icon("key"), "This browser signs the change with the name's key, from your name code."),
         el("div", {}, icon("shield"), "SimpleX sends it and pays the fee.")),
-      el("div", { class: "mt-20" }, save), liveRegion(undefined, answer)))
+      el("div", { class: "mt-20" }, save), keptLive("edit-answer", undefined, answer)))
 }
 
 const EDIT_BUILDERS: Record<EditKind, Builder<EditState>> = {

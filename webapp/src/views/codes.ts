@@ -2,7 +2,7 @@
 import * as api from "../api.ts"
 import { codeProgress, parseNameCode } from "../crypto/code.ts"
 import { seconds } from "../format.ts"
-import { btn, disabled, el, icon, liveRegion } from "../dom.ts"
+import { btn, disabled, el, icon, liveRegion, reducedMotion } from "../dom.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { shownSearch } from "./search.ts"
@@ -109,7 +109,7 @@ export function codePopup(mode: "check" | "add" = "check"): void {
     if (location.hash.startsWith("#/checkout")) return
     const input = document.querySelector<HTMLInputElement>("body > main .search input")
     if (!input) return
-    input.closest(".search")!.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    input.closest(".search")!.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" })
     input.focus({ preventScroll: true })
   }))
   const restore = el("a", { href: "/#/restore", class: "restore-link", onclick: () => closePopup() }, "Restore in Your names")
