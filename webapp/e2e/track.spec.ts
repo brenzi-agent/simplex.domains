@@ -163,20 +163,38 @@ test("every purchase step fits a laptop's and a phone's window without scrolling
   await fitsWindow(page, "5b-pay-card")
 })
 
-test("a name of 63 letters keeps the home's answer, the links step and registering inside the window", async ({ page, request }) => {
-  const short = uniqueLabel("long")
-  const label = `${short}${"x".repeat(MAX_LABEL_LENGTH - short.length)}`
-  await search(page, label)
-  await expect(page.getByRole("button", { name: "Register" })).toBeEnabled()
-  await fitsWindow(page, "1b-home-long-name", false)
-  await page.getByRole("button", { name: "Register" }).click()
-  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
-  await fitsWindow(page, "2b-links-long-name")
-  await onStep(page).getByRole("button", { name: "Skip for now" }).click()
-  await savedToReview(page)
-  await payButton(page).click()
-  await page.waitForURL(/\?order=/)
-  await control(request, `settle/${new URL(page.url()).searchParams.get("order")}`)
-  await expect(page.locator(".stage.active", { hasText: "Waiting" })).toBeVisible({ timeout: REGISTRATION_MS })
-  await fitsWindow(page, "6b-registering-long-name")
-})
+// A name of the widest letters breaks its lines as early as any name of its length can; drawn at random from two
+// letters, it is still new to the chain on each run.
+const wideLabel = (length: number) => Array.from({ length }, () => (Math.random() < 0.5 ? "m" : "w")).join("")
+
+for (const length of [15, 25, MAX_LABEL_LENGTH]) {
+  test(`every purchase step fits both windows for a name of ${length} wide letters`, async ({ page, request }) => {
+    const label = wideLabel(length)
+    const shots = `long-${length}`
+    await search(page, label)
+    await expect(page.getByRole("button", { name: "Register" })).toBeEnabled()
+    await fitsWindow(page, `${shots}-1-home`, false)
+    await page.getByRole("button", { name: "Register" }).click()
+    const step = onStep(page)
+    await step.getByLabel("Address").fill(contactLink("W1"))
+    await step.getByLabel("Channel").fill(channelLink("W2"))
+    for (const field of await step.locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
+    await fitsWindow(page, `${shots}-2-links`)
+    await step.getByRole("button", { name: "Continue" }).click()
+    await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
+    await fitsWindow(page, `${shots}-3-code`)
+    await savedToReview(page)
+    await fitsWindow(page, `${shots}-4-review`)
+    await openCode(page)
+    await fitsWindow(page, `${shots}-4b-review-code`)
+    await payButton(page).click()
+    await page.waitForURL(/\?order=/)
+    await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+    await fitsWindow(page, `${shots}-5-pay-bitcoin`)
+    await control(request, `settle/${new URL(page.url()).searchParams.get("order")}`)
+    await expect(page.locator(".stage.active", { hasText: "Waiting" })).toBeVisible({ timeout: REGISTRATION_MS })
+    await fitsWindow(page, `${shots}-6-registering`)
+    await waitRegistered(page, label)
+    await fitsWindow(page, `${shots}-7-registered`)
+  })
+}

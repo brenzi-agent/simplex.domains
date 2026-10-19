@@ -832,7 +832,7 @@ function registeredScreen(s: OrderState): HTMLElement {
   const view = s.view!
   const label = labelOf(view, s.record)
   const code = s.record?.ownerCode ?? null
-  return screen({ title: [label ? gradName(label, view.tld) : "The name", " is\u00a0yours"], lead: registeredLead(view, s.record) },
+  return screen({ title: [label ? gradName(label, view.tld) : "The name", " is\u00a0yours"], lead: registeredLead(view, s.record), wide: true },
     code ? el("div", { class: "card next-step qr-grid" }, el("div", { class: "qr" }, qrSvg(code, "name code")),
       el("div", {}, el("h2", {}, "Redeem it in the app"), el("p", { class: "note" }, "Scan or enter the code in SimpleX: the name moves to the app's wallet.")),
       codeDisplay(code, "owner-code")) : null,

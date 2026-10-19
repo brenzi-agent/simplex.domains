@@ -469,9 +469,14 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .code-input > svg.i { display: none; }
   .code-input input { font-size: clamp(11px, 100cqi / 23.2, 12.5px); letter-spacing: 0; }
   /* a purchase step fits the phone's window: smaller cards, methods and fields */
-  .summary-card { padding: 16px 18px; gap: 10px; }
-  .summary-card .name { font-size: 24px; }
-  .method { flex-direction: column; padding: 10px 6px; gap: 4px; font-size: 16px; }
+  /* a name of wide letters takes two lines here, which the review's tighter blocks make room for */
+  .summary-card { padding: 14px 18px; gap: 8px; }
+  .summary-card .name { font-size: 22px; }
+  .summary-card .name.long { font-size: 16px; }
+  .summary-card .total { padding-top: 10px; }
+  .review-pay :is(.pay-with, .code-entry) { gap: 6px; }
+  .review-pay .btn { padding-block: 14px; }
+  .method { flex-direction: column; padding: 8px 6px; gap: 2px; font-size: 16px; }
   .method span { flex-basis: auto; }
   .method svg { width: 22px; height: 22px; }
   .field { padding-block: 9px; }
@@ -491,7 +496,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .qr-grid > .qr { grid-row: auto; }
   .qr-grid > :last-child { grid-column: 1 / -1; }
   .qr-grid svg.qr { width: 120px; }
-  .screen.step { --screen-gap: 12px; padding-block: 12px; }
+  .screen.step { --screen-gap: 12px; padding-block: 8px; }
   .screen.step .lead { font-size: 15px; line-height: 1.4; }
 }
 
