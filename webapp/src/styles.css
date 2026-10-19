@@ -151,7 +151,8 @@ body > main { flex: 1 0 auto; }
 .field { display: flex; align-items: center; gap: 10px; padding: 16px 24px; border: 1px solid var(--surface-line); border-radius: 999px;
   background: var(--chip); transition: border-color .15s ease; }
 .field:focus-within { border-color: var(--primary); }
-.field input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font: 500 var(--fs-body) var(--body); color: var(--ink); }
+/* Firefox draws a text input no shorter than its font's own line height, a pixel over Chromium's for this font, so the height is set */
+.field input { flex: 1; min-width: 0; height: 24px; border: 0; background: none; outline: none; font: 500 var(--fs-body) var(--body); color: var(--ink); }
 .field input::placeholder { color: var(--ink-soft); }
 .field.bad { border-color: var(--danger-fg); }
 .field.ok { border-color: var(--ok-fg); }
@@ -198,9 +199,10 @@ h1 .long { font-size: inherit; }
 .chip .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
 
 /* the landing's first screen (landing:144-168), its countdown replaced by the search */
-/* --frame-h is the header's and footer's height, which shell.ts measures, so the home fills the first screen as the landing's hero does */
+/* --frame-h is the header's and footer's height, which shell.ts measures, so the home fills the first screen as the landing's hero does.
+   WebKit rounds each spacer's share of the room up to its 1/64 px unit, up to 1/32 px over in all, which would scroll the page a pixel. */
 .home { display: flex; flex-direction: column; align-items: center; text-align: center; padding-inline: 16px;
-  min-height: calc(100dvh - var(--frame-h)); }
+  min-height: calc(100dvh - var(--frame-h) - 1px / 32); }
 .home .vspace { flex: 1; }
 .home .vspace.cap { min-height: 12px; max-height: 108px; }
 .headline { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 600px; container-type: inline-size; }
@@ -377,7 +379,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 /* The longest code, a name code of 38 characters, fits whole beside the key icon and its gap (28px): a monospace
    character is a little over .6em wide, plus its letter spacing. Below 11px it would not read, so a narrower field scrolls. */
 .code-input { container-type: inline-size; }
-.code-input input { font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(11px, (100cqi - 28px) / 23.8, 15px); }
+.code-input input { height: auto; font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(11px, (100cqi - 28px) / 23.8, 15px); }
 
 .total s { color: var(--ink-soft); font-size: 20px; margin-right: 8px; }
 .check { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--surface-line); font-weight: 700; position: relative; cursor: pointer; }

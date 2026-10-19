@@ -84,7 +84,7 @@ test("a payment method is chosen with the keyboard, as one radio group", async (
   await expect(page.locator(".method:focus")).toHaveCount(0)
 })
 
-test("the invest popup closes by Escape, its backdrop and its Close, giving focus back to what opened it, and by leaving the page", async ({ page }) => {
+test("the invest dialog closes by Escape, its backdrop and its Close, giving focus back to what opened it, and by leaving the page", async ({ page }) => {
   await page.goto("/#/names")
   await page.getByRole("link", { name: "SimpleX names" }).click()
   const invest = page.getByRole("button", { name: "Invest to claim your name" })
@@ -98,7 +98,7 @@ test("the invest popup closes by Escape, its backdrop and its Close, giving focu
     await invest.focus()
     await page.keyboard.press("Enter")
     await expect(dialog, closer).toBeVisible()
-    if (closer === "Escape") await shot(page, "N1d-invest-popup")
+    if (closer === "Escape") await shot(page, "N1d-invest")
     await expect(dialog.getByRole("link", { name: "Learn more on Wefunder" })).toHaveAttribute("href", /^https:\/\/wefunder\.com\/simplex\.chat/)
     expect(await page.evaluate(() => document.querySelector("body > main")!.contains(document.activeElement)), `${closer}: focus inside the page behind`).toBe(false)
     await close()
@@ -164,7 +164,7 @@ test("Get a new invoice keeps an invoice the service would not cancel", async ({
   await page.getByRole("button", { name: "Get a new invoice" }).click()
   await expect(page.getByText("This invoice was cancelled, but the service still shows it open. Do not pay it again.")).toBeVisible()
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
-  await expect(page.getByRole("button", { name: "Load the card form again" })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Get a new invoice" })).toHaveCount(0)
   await shot(page, "N10a2-cancel-still-open")
 })
 

@@ -2,7 +2,7 @@ import { expect, test as base, type APIRequestContext, type Page } from "@playwr
 import { mkdirSync } from "node:fs"
 import { mockUrl, pageUrl } from "./slots.ts"
 
-export const SCREENSHOTS = process.env.SCREENSHOTS_DIR ?? "screenshots"
+const SCREENSHOTS = process.env.SCREENSHOTS_DIR ?? "screenshots"
 const TAKE_SHOTS = process.env.SHOTS === "1"
 const SLOT = Number(process.env.TEST_PARALLEL_INDEX ?? "0")
 export const MOCK = process.env.MOCK_URL ?? mockUrl(SLOT)
@@ -58,8 +58,8 @@ export async function shot(page: Page, name: string): Promise<void> {
   await painted()
   // the pointer is moved off the page's controls, so no capture shows a hover
   await page.mouse.move(0, 0)
-  // a popup holds the page still, so a person sees the window, which its backdrop covers whole
-  const popupOpen = await page.locator(".modal[open]").count() > 0
+  // an open dialog holds the page still, so a person sees the window, which its backdrop covers whole
+  const dialogOpen = await page.locator(".modal[open]").count() > 0
   // Playwright's WebKit on Linux, drawing in software, takes each capture after a theme switch slower than the last,
   // past a test's time; its captures are a comparison set, so it keeps the light ones
   const themes = browser === "webkit" ? [false] : [false, true]
@@ -76,7 +76,7 @@ export async function shot(page: Page, name: string): Promise<void> {
     for (const dark of themes) {
       await page.evaluate((d) => document.documentElement.classList.toggle("dark", d), dark)
       await painted()
-      await page.screenshot({ path: `${dir}/${name}-${device}-${dark ? "dark" : "light"}.png`, fullPage: !popupOpen, animations: "disabled" })
+      await page.screenshot({ path: `${dir}/${name}-${device}-${dark ? "dark" : "light"}.png`, fullPage: !dialogOpen, animations: "disabled" })
     }
   }
   await page.evaluate(() => {
@@ -92,7 +92,7 @@ export async function search(page: Page, label: string): Promise<void> {
   await page.getByLabel("Name", { exact: true }).press("Enter")
 }
 
-export interface OrderOptions {
+interface OrderOptions {
   method?: "card" | "btc" | "xmr"
   shots?: string
 }

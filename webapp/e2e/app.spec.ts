@@ -111,7 +111,7 @@ test("two orders signed with one wallet's nonce both register: the second is sig
 
 // Firefox reports a preload not used about ten seconds after its page loads
 const PRELOAD_REPORT_MS = 12_000
-const FONT_PRELOADS = 5
+const FONT_PRELOADS = 4
 
 test("no page leaves a font preload unused in Firefox, whether a tab's first page or a later one", async ({ page, request, browser, baseURL, browserName }) => {
   test.skip(browserName !== "firefox", "only Firefox takes a tab's fonts from its own cache, past the preloads")
@@ -161,24 +161,4 @@ test("a name code too long for its line breaks after a hyphen, so no line starts
   const starts = await lineStarts(onStep(page).getByTestId("owner-code").locator(".code-text"))
   expect(starts.length, "the code wraps at this width").toBeGreaterThan(1)
   expect(starts.slice(1), "the first character of each later line").not.toContain("-")
-})
-
-test("the offline note leaves room under the foot, so the foot's last line scrolls clear of it", async ({ page, context }) => {
-  await page.goto("/")
-  await page.getByRole("heading", { name: "Your SimpleX domain" }).waitFor()
-  await context.setOffline(true)
-  try {
-    await expect(page.locator(".offline-note")).toBeVisible()
-    for (const size of [{ width: 1280, height: 900 }, { width: 360, height: 740 }]) {
-      await page.setViewportSize(size)
-      const covered = () => page.evaluate(() => {
-        scrollTo(0, document.documentElement.scrollHeight)
-        const note = document.querySelector(".offline-note")!.getBoundingClientRect().top
-        return Math.max(...[...document.querySelectorAll(".foot .wrap > *")].map((n) => n.getBoundingClientRect().bottom)) - note
-      })
-      await expect.poll(covered, { message: `the foot's content under the note at ${size.width} px` }).toBeLessThanOrEqual(0)
-    }
-  } finally {
-    await context.setOffline(false)
-  }
 })

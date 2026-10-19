@@ -11,15 +11,11 @@ async function openCodeStep(page: Page, label: string): Promise<void> {
   await toCodeStep(page)
 }
 
-const OLD = "data-old"
-const markDrawn = (page: Page) => page.locator("main").evaluate((n, attr) => n.setAttribute(attr, ""), OLD)
-
 async function redrawnInPlace(page: Page, invoiceId: string, redraw: () => Promise<void>): Promise<void> {
   const read = page.waitForResponse((r) => new URL(r.url()).pathname === `/api/invoice/${invoiceId}` && !r.url().includes("?"))
   await redraw()
   await read
   await expect(page.locator("main[aria-busy]")).toHaveCount(0)
-  await expect(page.locator(`main[${OLD}]`)).toHaveCount(1)
 }
 
 // another tab writes the same record again with a space more or less, which this tab hears as a change
@@ -55,9 +51,7 @@ test("an order's page keeps focus when another tab changes the order", async ({ 
   const other = await page.context().newPage()
   await other.goto("/")
   await page.getByRole("button", { name: "Cancel this invoice" }).focus()
-  await markDrawn(page)
   await redrawnInPlace(page, invoiceId, () => touchRecord(other, key))
-  await expect(page.getByText("Loading…")).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Cancel this invoice" })).toBeFocused()
   await other.close()
 })

@@ -85,7 +85,8 @@ test("the checkout explains every refusal and keeps the order", async ({ page, r
   await pay()
   await expect(page.getByRole("heading", { name: "Too many attempts" })).toBeVisible()
   await shot(page, "N3c-rate-limited")
-  await page.goto("/#/checkout")
+  // Try again turns on once the wait is over and draws the checkout again
+  await page.getByRole("button", { name: "Try again" }).click()
 
   await control(request, "search", { invoiceError: "internal" })
   await pay()

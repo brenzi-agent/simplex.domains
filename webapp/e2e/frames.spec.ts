@@ -1,0 +1,110 @@
+import { expect, type Page } from "@playwright/test"
+import { CODE_HEADING, control, LINKS_HEADING, onStep, payButton, SAVED, search, test, uniqueLabel } from "./helpers.ts"
+
+// the slide runs at full length, as for a reader who has not asked for less movement
+test.use({ reducedMotion: "no-preference" })
+
+// The main column is sampled on a grid each frame. A frame whose drawn points fall below this share of the fewer of its
+// two ends is near empty.
+const COLUMNS = 12
+const ROWS = 24
+const NEAR_EMPTY_SHARE = 0.4
+
+async function startRecording(page: Page): Promise<void> {
+  await page.evaluate(([columns, rows]) => {
+    const w = window as unknown as { drawnFrames: number[]; recording: boolean }
+    w.drawnFrames = []
+    w.recording = true
+    const main = document.querySelector<HTMLElement>("body > main")!
+    const drawn = (x: number, y: number) => {
+      const hit = document.elementFromPoint(x, y)
+      return hit !== null && main.contains(hit) && !hit.matches("main, .track, .rail, .slide, .screen, .home")
+    }
+    const look = () => {
+      if (!w.recording) return
+      // hit testing skips inert content, which is still drawn, so inert is lifted for the reads and put back before anything else runs
+      const inert = [main, ...main.querySelectorAll<HTMLElement>("[inert]")].filter((n) => n.inert)
+      for (const n of inert) n.inert = false
+      const box = main.getBoundingClientRect()
+      const top = Math.max(box.top, 0)
+      const bottom = Math.min(box.bottom, innerHeight)
+      let hits = 0
+      for (let i = 0; i < columns; i++) {
+        for (let j = 0; j < rows; j++) if (drawn(box.left + (i + 0.5) * box.width / columns, top + (j + 0.5) * (bottom - top) / rows)) hits++
+      }
+      for (const n of inert) n.inert = true
+      w.drawnFrames.push(hits)
+      requestAnimationFrame(look)
+    }
+    requestAnimationFrame(look)
+  }, [COLUMNS, ROWS] as const)
+}
+
+// A slide is a pair of CSS transitions, which the document lists among its animations until they end; a check that the
+// new screen is visible has already made the browser start them.
+async function stopRecording(page: Page): Promise<number[]> {
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
+  return page.evaluate(() => {
+    const w = window as unknown as { drawnFrames: number[]; recording: boolean }
+    w.recording = false
+    return w.drawnFrames
+  })
+}
+
+async function expectNoEmptyFrame(page: Page, change: string, act: () => Promise<void>): Promise<void> {
+  await startRecording(page)
+  await act()
+  const frames = await stopRecording(page)
+  expect(frames.length, `${change}: frames recorded`).toBeGreaterThan(1)
+  const floor = Math.min(frames[0], frames[frames.length - 1]) * NEAR_EMPTY_SHARE
+  expect(Math.min(...frames), `${change}: drawn points per frame ${frames.join(",")}`).toBeGreaterThanOrEqual(floor)
+}
+
+const heading = (page: Page, name: string | RegExp) => expect(onStep(page).getByRole("heading", { name })).toBeVisible()
+
+test("the purchase track slides and other screens swap without a near-empty frame", async ({ page, request }) => {
+  await search(page, uniqueLabel("frames"))
+  const register = page.getByRole("button", { name: "Register" })
+  await expect(register).toBeEnabled()
+
+  await expectNoEmptyFrame(page, "search to links", async () => {
+    await register.click()
+    await heading(page, LINKS_HEADING)
+  })
+  await expectNoEmptyFrame(page, "links to name code", async () => {
+    await onStep(page).getByRole("button", { name: "Skip for now" }).click()
+    await heading(page, CODE_HEADING)
+  })
+  await onStep(page).getByText(SAVED).click()
+  await expectNoEmptyFrame(page, "name code to review", async () => {
+    await onStep(page).getByRole("button", { name: "Continue" }).click()
+    await heading(page, "Check your order")
+  })
+  await expectNoEmptyFrame(page, "review back to name code", async () => {
+    await page.goBack()
+    await heading(page, CODE_HEADING)
+  })
+  await expectNoEmptyFrame(page, "name code forward to review", async () => {
+    await page.goForward()
+    await heading(page, "Check your order")
+  })
+  await expectNoEmptyFrame(page, "review to payment", async () => {
+    await payButton(page).click()
+    await heading(page, "Pay with Bitcoin")
+  })
+
+  const invoiceId = new URL(page.url()).searchParams.get("order")!
+  await expectNoEmptyFrame(page, "payment to confirming", async () => {
+    await control(request, `confirming/${invoiceId}`)
+    await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible()
+  })
+  await expectNoEmptyFrame(page, "order to Your names", async () => {
+    await page.locator("body > header").getByRole("link", { name: "Your names" }).click()
+    await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
+  })
+  await expectNoEmptyFrame(page, "Your names back to the order", async () => {
+    await page.goBack()
+    await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible()
+  })
+})

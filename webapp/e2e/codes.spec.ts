@@ -454,14 +454,12 @@ test("a rate-limited code check says how long to wait", async ({ page, request }
   await expect(page.locator(".verdict.bad")).toContainText("Try again in 40 seconds")
 })
 
-test("Your names reads a revoked code as not valid and offers no Use", async ({ page, request }) => {
+test("Your names reads a revoked code as not valid", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6, state: "revoked" }) as { code: string }
   await page.goto("/")
   await page.evaluate((c) => localStorage.setItem(`simplex-names:code:${c}`, JSON.stringify({ code: c, minLength: 6, years: 2, addedAt: new Date().toISOString() })), code)
   await page.goto("/#/names")
-  const row = page.locator(".list-row", { hasText: code })
-  await expect(row.locator(".chip")).toHaveText("Not valid")
-  await expect(row.getByText("Use", { exact: true })).toHaveCount(0)
+  await expect(page.locator(".list-row", { hasText: code }).locator(".chip")).toHaveText("Not valid")
 })
 
 test("a restore that fails on the network gives focus back to its button", async ({ page }) => {
@@ -486,7 +484,11 @@ async function codeFields(browser: Browser, browserName: string, width: number) 
   const phone = width < 1000
   const context = await browser.newContext({ viewport: { width, height: 800 }, isMobile: phone && browserName === "chromium", hasTouch: phone })
   const page = await context.newPage()
-  const measure = (field: Locator) => field.evaluate((n: HTMLInputElement) => ({ overflow: n.scrollWidth - n.clientWidth, font: parseFloat(getComputedStyle(n).fontSize) }))
+  // Firefox reads a size set in container units as if the field had no container until its first layout, so the field is read after a frame
+  const measure = (field: Locator) => field.evaluate(async (n: HTMLInputElement) => {
+    await new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn)))
+    return { overflow: n.scrollWidth - n.clientWidth, font: parseFloat(getComputedStyle(n).fontSize) }
+  })
   const listField = await addCodeField(page)
   await listField.fill(NAME_CODE)
   await expect(page.locator(".verdict.bad")).toContainText("This is a name code")

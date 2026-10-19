@@ -62,8 +62,8 @@ test("a payment screen is the track's last step, and Your names, restore and tra
   }
 })
 
-test("a move to the next step slides; a first mount, a jump over a step and reduced motion move at once", async ({ page }) => {
-  // the config asks every page for reduced motion
+test("a move to the next step slides; a first mount, a jump over a step and a reader asking for less movement move at once", async ({ page }) => {
+  // the config sets reducedMotion "reduce" for every page
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await startOrder(page, uniqueLabel("trackms"), { method: "btc" })
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()

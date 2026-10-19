@@ -778,7 +778,7 @@ test("a card form that does not load, in a browser without the order, leads to t
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
-  await expect(page.getByRole("button", { name: "Load the card form again" })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Get a new invoice" })).toHaveCount(0)
   await page.getByRole("button", { name: "Enter your name code" }).click()
   await expect(page.getByLabel("Name code", { exact: true })).toBeVisible()
 })

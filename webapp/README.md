@@ -9,10 +9,13 @@ The page talks only to the names service under `/api`. In development that servi
 - `src/crypto/`: owner and prepaid codes, the wallet, the commitment and the signed messages, the sealed order.
 - `src/flow.ts`: building an order, revealing it, another name or a code after `taken`, restore, link edits.
 - `src/api.ts`, `src/store.ts`, `src/session.ts`: the service's API, what this browser keeps, and the tab's checkout.
-- `src/views/`: search, checkout, the order page, Your names, restore and edit links.
+- `src/screens/`: each view's state and the reducer that moves it, with no clock, DOM, storage or network.
+- `src/views/`: `shell.ts`, the frame between `index.html`'s header and footer (`draw` puts a screen in, `kept` keeps a node a reader types into across redraws, `screen` and `outcome` build the two kinds of screen); `track.ts`, the purchase track; and the five views: `search.ts` (the home, with the landing's invest dialog), `checkout.ts` (the Links, name code and Check your order steps), `order.ts` (payment, registration and every ending), `names.ts` (Your names, restore and edit links) and `codes.ts` (the prepaid code field that checkout and Your names share). `links.ts` holds the link fields that the Links step and Edit links share.
 - `src/stripe.ts`: Stripe's Payment Element, mounted when the page carries a publishable key.
 - `dev/`: the local chain deployment, the mock service and `start.sh`.
 - `test/`: unit tests (vitest). `e2e/`: browser tests (Playwright) against the dev backend.
+
+The purchase steps (search, Links, name code, Check your order, payment) are five slides on the track's rail, which slides one step at a time (320 ms, at once for a reader who asks for reduced motion) and moves at once over a jump of two steps or more. An order opened from the app skips Links and the name code. Every other screen, such as Your names, an order's outcome, restore or edit links, replaces the whole page between the header and footer.
 
 ## Run everything with Docker
 
@@ -34,7 +37,7 @@ Node 24 runs the dev scripts' TypeScript directly.
 
 ```
 npm install
-npx playwright install chromium firefox
+npx playwright install chromium firefox webkit
 ```
 
 The backend needs two things outside this repo:
@@ -86,17 +89,31 @@ Tests and manual checks move orders along with `POST` requests to the mock:
 ```
 npm test          # unit tests
 npm run build     # type check and production build into dist/
-npm run e2e       # browser tests; the backend must be running
 ```
 
-The browser tests run in parallel workers, each with a backend slot of its own: a chain, its deployment and a mock, as orders on one chain go one at a time. Start as many slots as workers (4 by default), with a short commitment age, quick resends and a short injected rate limit:
+The browser tests run in parallel workers, each with a backend slot of its own: a chain, its deployment and a mock, as orders on one chain go one at a time. Start as many slots as workers, with a short commitment age, quick resends and a short injected rate limit; `start.sh` runs until stopped, so the tests run from another shell:
 
 ```
-SLOTS=4 MIN_COMMITMENT_AGE=5 MOCK_RESEND_MS=1000 MOCK_RETRY_AFTER_SECONDS=2 ENS_CONTRACTS_DIR=<ens-contracts> ANVIL=<anvil> dev/start.sh
-npm run e2e
+ulimit -c 0
+SLOTS=3 MIN_COMMITMENT_AGE=5 MOCK_RESEND_MS=1000 MOCK_RETRY_AFTER_SECONDS=2 ENS_CONTRACTS_DIR=<ens-contracts> ANVIL=<anvil> dev/start.sh
+SLOTS=3 npx playwright test
+FIREFOX_158=<Firefox 158 executable> SLOTS=3 npx playwright test --project=firefox158
 ```
 
-Slot i has its chain on port 8545+i, its deployment in `dev/local-chain-i.json` and its mock on 8099+i; Playwright starts its page server on 5173+i, or uses one already there. `SLOTS` sets the workers too (`SLOTS=2 npm run e2e`); against a single backend, such as Docker Compose's, run `SLOTS=1 npm run e2e`. A slot takes about 1 GB of memory with its browser. The tests run in Chromium, Firefox and WebKit in one pool. Motion, layout and scroll checks miss frames on a busy machine, so `e2e/motion.spec.ts`, `e2e/crossing.spec.ts`, `e2e/inplace*.spec.ts`, `e2e/cuts.spec.ts` and tests tagged `@motion` are the `chromium-motion`, `firefox-motion` and `webkit-motion` projects: they run once the rest has passed, two browsers at a time: Chromium's and Firefox's side by side, then WebKit, which draws in software here, two of its own. Playwright's Firefox is older than 158, so it checks the page's fade through; `FIREFOX_158=<path to a Firefox 158 or later executable>` adds the `firefox158-motion` project, which checks the view transitions as a current Firefox draws them, beside the other two. `e2e/crossing.spec.ts` sweeps each place where one thing gives way to another, the animations paused and set to each moment in turn (`e2e/sweep.ts`): the two are never both read clearly and never both thin out. For one browser, `npm run e2e -- --project=firefox` runs its other tests and `npm run e2e -- --project=firefox-motion --no-deps` its motion tests. They run with reduced motion, as a reader who asks for less motion sees the page, so fading content is never matched twice; `e2e/motion.spec.ts` runs with motion and fails on any cut that `e2e/cuts.ts` records: content shown for a blink, content that appears or goes without easing, a height that jumps for a frame, a layout jump, a scroll jump, or a view transition the browser refused. A page opened or drawn again is the browser's own view transition, which `e2e/cuts.ts` also lists, with the parts it moved. With `SHOTS=1` they write every screen they reach to `screenshots/`, on a desktop and a phone, light and dark; Firefox's go to `screenshots/firefox/`. `BASE_URL=http://127.0.0.1:4173 npm run e2e` runs them against `npx vite preview` of the production build, and only then `e2e/offline.spec.ts`, as the service worker is in the production build only.
+`ulimit -c 0`, in each shell, keeps a browser or chain that crashes from leaving a core file. Slot i has its chain on port 8545+i, its deployment in `dev/local-chain-i.json` and its mock on 8099+i; Playwright starts its page server on 5173+i, or uses one already there. `SLOTS` sets the workers too (4 by default); against a single backend, such as Docker Compose's, run with `SLOTS=1`. A slot takes about 1 GB of memory with its browser. A long run grows each chain's memory, so restart `start.sh` between full runs.
+
+`npx playwright test` runs the `chromium`, `firefox` and `webkit` projects in one pool; `--project=chromium` (or `firefox`, `webkit`) runs one browser. Where memory is short, run the three one after another.
+
+The tests run with reduced motion, so the track moves at once, except `e2e/frames.spec.ts`, which samples each frame of the track's slide and of whole-screen swaps and fails on a near-empty one. It runs in Chromium and, with `FIREFOX_158`, in Firefox 158: the `firefox158` project runs only this spec and exists only when `FIREFOX_158` names a Firefox 158 or later executable, launched through Playwright's `moz-firefox` channel with its own libraries. The `firefox` and `webkit` projects skip it.
+
+With `SHOTS=1` the tests write every screen they reach to `screenshots/` (or `SCREENSHOTS_DIR`), on a desktop and a phone, light and dark; Firefox's and WebKit's go to `screenshots/firefox/` and `screenshots/webkit/`, WebKit's in light only.
+
+The service worker is in the production build only, so `e2e/offline.spec.ts` runs only against it and is skipped otherwise. With slot 0 of the backend up, serve the build, which proxies `/api` to slot 0's mock, and point the tests at it from another shell; they then run in one worker:
+
+```
+npm run build && npx vite preview --host 127.0.0.1
+BASE_URL=http://127.0.0.1:4173 npx playwright test e2e/offline.spec.ts
+```
 
 ## Hosting
 
