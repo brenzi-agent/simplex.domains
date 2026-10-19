@@ -854,7 +854,6 @@ function buildRegistering(state: OrderState, signal: AbortSignal): Built<OrderSt
     dispatch({ type: "reveal-retried" })
     refresh()
   }
-  let filling: number | null = null
   const show = (next: OrderState) => {
     const { record } = next
     const view = next.view!
@@ -864,10 +863,6 @@ function buildRegistering(state: OrderState, signal: AbortSignal): Built<OrderSt
     changeTo(named, cardName(labelOf(view, record), view.tld))
     changeTo(problem, ...(refusalsOf(next) >= REVEAL_ATTEMPTS ? [el("div", { class: "mt-18" }, alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration."),
       el("div", { class: "mt-14" }, btn("Try again", "quiet", tryAgain, icon("refresh"))))] : []))
-    if (view.phase === "committed" && filling !== view.revealAfter) {
-      filling = view.revealAfter
-      fillWait(steps.node.children[1] as HTMLElement, view)
-    }
   }
   const tick = () => {
     const { record } = shown
@@ -875,6 +870,7 @@ function buildRegistering(state: OrderState, signal: AbortSignal): Built<OrderSt
     const refused = refusalsOf(shown) >= REVEAL_ATTEMPTS
     changeTo(lead, leadOf(shown))
     txs.set(view, stagesOf(view), view.label === null && refused, shown.now)
+    if (view.phase === "committed") fillWait(steps.node.children[1] as HTMLElement, view)
     const left = waitLeft(view)
     if (view.phase === "committed" && left > 0) {
       rollTo(clockNode, clock(left), true)
@@ -905,8 +901,8 @@ function fillWait(stage: HTMLElement, view: api.RegistrationView): void {
   const end = (view.revealAfter ?? 0) * 1000
   if (!waitsSeen.has(view.id)) waitsSeen.set(view.id, now)
   const start = waitsSeen.get(view.id)!
-  if (end <= now) return stage.style.setProperty("--done", "1")
-  stage.animate([{ "--done": 0 }, { "--done": 1 }], { duration: end - start, fill: "forwards" }).currentTime = now - start
+  const done = end > start ? Math.min(1, (now - start) / (end - start)) : 1
+  stage.style.setProperty("--done", String(done))
 }
 
 const TURN_SLACK_MS = 20

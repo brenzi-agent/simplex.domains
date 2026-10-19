@@ -322,7 +322,7 @@ a.crumb:not([href], .on) { cursor: not-allowed; }
 .stage { position: relative; padding-top: 34px; }
 .stage::before { content: ""; position: absolute; top: 13px; left: 0; right: 0; height: 4px; border-radius: 4px; background: var(--chip); }
 .stage.done::before { background: var(--ok-fg); }
-.stage.active::before { background: linear-gradient(90deg, var(--accent) 0%, var(--primary) 60%, var(--chip) 60%); }
+.stage.active::before { background: linear-gradient(90deg, var(--accent) 0%, var(--primary) calc(var(--done, .6) * 100%), var(--chip) calc(var(--done, .6) * 100%)); }
 .stage.failed::before { background: var(--danger-fg); }
 .stage .node { position: absolute; top: 0; left: 0; width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; background: var(--surface); border: 2px solid var(--surface-line); font-weight: 800; font-size: 13px; color: var(--ink-soft); }
 .stage.done .node { background: var(--ok-fg); border-color: var(--ok-fg); color: var(--page-color); }

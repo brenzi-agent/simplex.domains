@@ -1,10 +1,28 @@
 import { expect } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
-import { channelLink, contactLink, control, mockRegistration, registrationOf, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { channelLink, contactLink, control, mockRegistration, REGISTRATION_MS, registrationOf, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
 const RING_ROOM_PX = 6
+
+test("the wait's line fills as the wait goes, and is full when it ends", async ({ page, request }) => {
+  const { invoiceId } = await startOrder(page, uniqueLabel("fill"), { method: "btc" })
+  await control(request, `settle/${invoiceId}`)
+  const wait = page.locator("body > main .stage", { hasText: "Waiting" })
+  await expect(wait).toHaveClass(/\bactive\b/, { timeout: REGISTRATION_MS })
+  // the drawn line: where the bar's gradient turns from the fill to the track
+  const filled = () => wait.evaluate((stage) => {
+    if (stage.classList.contains("done")) return 1
+    const stops = getComputedStyle(stage, "::before").backgroundImage.match(/[\d.]+%/g)!
+    return parseFloat(stops[1]) / 100
+  })
+  const first = await filled()
+  expect(first, "the line starts short of full").toBeLessThan(1)
+  await expect.poll(filled, { message: "the line fills as the wait goes" }).toBeGreaterThan(first)
+  await page.locator(".countdown b > svg").waitFor({ timeout: REGISTRATION_MS })
+  expect(await filled(), "the line is full when the wait ends").toBe(1)
+})
 
 test("a Bitcoin order pays in two parts, registers on chain with its links, and the code owns it", async ({ page, request }) => {
   const label = uniqueLabel("btc")

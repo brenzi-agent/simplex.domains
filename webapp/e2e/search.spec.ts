@@ -115,6 +115,13 @@ test("without storage the page warns that the code is kept nowhere else", async 
   await context.close()
 })
 
+test("the footer's Trademark owners link opens the trademark page", async ({ page }) => {
+  await page.goto("/")
+  await page.locator("body > footer").getByRole("link", { name: "Trademark owners" }).click()
+  await expect(page.getByRole("heading", { name: "Trademark owners" })).toBeVisible()
+  expect(new URL(page.url()).hash).toBe("#/trademarks")
+})
+
 test("without storage two expired invoices of one order do not lead to each other", async ({ browser, request }) => {
   const context = await browser.newContext()
   await context.addInitScript(() => {
