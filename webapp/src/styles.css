@@ -317,7 +317,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .stage { position: relative; padding-top: 34px; }
 .stage::before { content: ""; position: absolute; top: 13px; left: 0; right: 0; height: 4px; border-radius: 4px; background: var(--surface-line); }
 .stage.done::before { background: var(--ok-fg); }
-.stage.active::before { background: linear-gradient(90deg, var(--primary) 0%, var(--primary) calc(var(--done, 1) * 100%), var(--surface-line) calc(var(--done, 1) * 100%)); }
+.stage.active::before { background: linear-gradient(90deg, var(--primary) 0%, var(--primary) calc(var(--done, 0) * 100%), var(--surface-line) calc(var(--done, 0) * 100%)); }
 .stage.failed::before { background: var(--danger-fg); }
 .stage .node { position: absolute; top: 0; left: 0; width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; background: var(--surface);
   border: 2px solid var(--surface-line); font-weight: 700; font-size: 13px; color: var(--ink-soft); }
@@ -335,7 +335,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .tx:first-child { border-top: 0; padding-top: 0; }
 .tx:last-child { padding-bottom: 0; }
 .tx .k { width: 140px; color: var(--ink-soft); font-weight: 600; }
-.tx .v { flex: 1; font: 13.5px var(--mono); white-space: nowrap; }
+.tx .v { flex: 1; font-family: var(--mono); font-size: 13.5px; white-space: nowrap; }
 
 .code-display { position: relative; margin-top: 18px; padding: 22px 52px; border-radius: 18px; background: var(--chip); border: 1px dashed var(--chip-line); text-align: center;
   font: 700 19px var(--mono); letter-spacing: .02em; text-wrap: balance; }

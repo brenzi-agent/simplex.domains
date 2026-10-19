@@ -710,7 +710,7 @@ const STAGES = [
 ]
 
 function stages(states: StageState[]): HTMLElement {
-  return el("ol", { class: "stages" }, ...STAGES.map((stage, i) => el("li", { class: `stage ${states[i]}`.trim() },
+  return el("ol", { class: "stages", role: "list" }, ...STAGES.map((stage, i) => el("li", { class: `stage ${states[i]}`.trim() },
     el("span", { class: "node" }, states[i] === "done" ? "✓" : states[i] === "failed" ? "✕" : stage.n),
     el("b", {}, states[i] === "done" ? stage.done : stage.going), el("span", {}, stage.text))))
 }

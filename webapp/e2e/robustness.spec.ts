@@ -569,6 +569,7 @@ test("Back returns to where a page was left, a slow page included, and a reload 
   }))
   await page.evaluate(() => history.back())
   await heldInert
+  await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   await scrolledNear(page, orderPlace)
   await page.unroute(`**/api/invoice/${invoiceId}*`)

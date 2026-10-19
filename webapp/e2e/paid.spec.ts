@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test"
+import { expect, type Locator } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
 import {
@@ -8,22 +8,42 @@ import {
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
 const RING_ROOM_PX = 6
 
+// a stage's drawn line: where the bar's gradient turns from the fill to the track
+const drawnFill = (stage: Locator) => stage.evaluate((node) => {
+  if (node.classList.contains("done")) return 1
+  const stops = getComputedStyle(node, "::before").backgroundImage.match(/[\d.]+%/g)!
+  return parseFloat(stops[1]) / 100
+})
+
 test("the wait's line fills as the wait goes, and is full when it ends", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("fill"), { method: "btc" })
   await control(request, `settle/${invoiceId}`)
   const wait = page.locator("body > main .stage", { hasText: "Waiting" })
   await expect(wait).toHaveClass(/\bactive\b/, { timeout: REGISTRATION_MS })
-  // the drawn line: where the bar's gradient turns from the fill to the track
-  const filled = () => wait.evaluate((stage) => {
-    if (stage.classList.contains("done")) return 1
-    const stops = getComputedStyle(stage, "::before").backgroundImage.match(/[\d.]+%/g)!
-    return parseFloat(stops[1]) / 100
-  })
+  const filled = () => drawnFill(wait)
   const first = await filled()
   expect(first, "the line starts short of full").toBeLessThan(1)
   await expect.poll(filled, { message: "the line fills as the wait goes" }).toBeGreaterThan(first)
   await page.locator(".countdown b > svg").waitFor({ timeout: REGISTRATION_MS })
   expect(await filled(), "the line is full when the wait ends").toBe(1)
+})
+
+test("a stage with no timed wait, as the register transaction being mined, draws no fill", async ({ page, request }) => {
+  const label = uniqueLabel("mined")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await control(request, `settle/${invoiceId}`)
+  await expect(page.getByRole("heading", { name: `Registering ${label}.simplex` })).toBeVisible({ timeout: REGISTRATION_MS })
+  // the order is held at its register transaction, whatever the chain does meanwhile
+  await page.route(`**/api/invoice/${invoiceId}*`, async (route) => {
+    const response = await route.fetch()
+    const json = await response.json()
+    await route.fulfill({ response, json: { ...json, registration: { ...json.registration, phase: "registering" } } })
+  })
+  await page.reload()
+  const mined = page.locator("body > main .stage.active")
+  await expect(mined).toContainText("Registering")
+  expect(await drawnFill(mined), "the untimed stage's drawn fill").toBe(0)
+  await page.unrouteAll({ behavior: "wait" })
 })
 
 test("a Bitcoin order pays in two parts, registers on chain with its links, and the code owns it", async ({ page, request }) => {
