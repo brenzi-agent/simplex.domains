@@ -18,12 +18,7 @@ test("a name taken first moves the paid order to another name, owned by the same
 
   await page.getByRole("button", { name: "Choose another name" }).click()
   await expect(page.getByText(/Your payment is kept: \$100\.00/)).toBeVisible()
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await page.getByRole("button", { name: "Use this code" }).click()
-  await expect(page.locator(".verdict.bad")).toContainText("Your paid order covers the name you move it to; no code is needed.")
-  await page.getByLabel("Close").click()
+  await expect(page.getByRole("button", { name: "Invest to claim your name" })).toHaveCount(0)
   const next = uniqueLabel("tk2")
   await page.getByLabel("Name", { exact: true }).fill(next)
   await page.getByLabel("Name", { exact: true }).press("Enter")
@@ -36,9 +31,10 @@ test("a name taken first moves the paid order to another name, owned by the same
   await expect(page.getByRole("button", { name: "Register with your payment" })).toBeDisabled()
   // searching again during the wait says searching is paused, rather than sending anything
   await page.getByLabel("Name", { exact: true }).press("Enter")
-  await expect(page.getByText("Searching is paused until then")).toBeVisible()
+  const paused = page.locator(".answer .line", { hasText: "Searching is paused" })
+  await expect(paused).toBeVisible()
   await page.unroute("**/name")
-  await expect(page.getByText("Searching is paused until then")).toHaveCount(0, { timeout: 10_000 })
+  await expect(paused).toHaveCount(0, { timeout: 10_000 })
   await page.getByLabel("Name", { exact: true }).press("Enter")
   await page.getByRole("button", { name: "Register with your payment" }).click()
   await page.waitForURL(/\?order=/)

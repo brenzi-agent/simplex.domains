@@ -279,7 +279,7 @@ function frame(): HTMLElement {
 // Escape closes the popup, and Tab cycles within it
 function popupKeys(e: KeyboardEvent): void {
   if (e.key === "Escape") return closePopup()
-  const modal = document.querySelector<HTMLElement>(`${OVERLAY} .modal`)
+  const modal = document.querySelector<HTMLElement>(`${OVERLAY} .popup`)
   if (e.key !== "Tab" || !modal) return
   const focusable = [...modal.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input")]
   if (focusable.length === 0) return

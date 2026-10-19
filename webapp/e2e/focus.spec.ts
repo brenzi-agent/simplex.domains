@@ -78,24 +78,6 @@ test("an order's page keeps focus when another tab changes the order", async ({ 
   await other.close()
 })
 
-test("a name typed but not searched stays when a code is applied from the popup", async ({ page, request }) => {
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await search(page, uniqueLabel("shown"))
-  await expect(page.locator(".result")).toBeVisible()
-  const typed = uniqueLabel("typed")
-  await page.getByLabel("Name", { exact: true }).fill(typed)
-  await page.getByRole("button", { name: "Check your code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await expect(page.locator(".verdict.ok")).toBeVisible()
-  await markDrawn(page)
-  await page.getByRole("button", { name: "Use this code" }).click()
-  await expect(page.getByText(/^Code applied/)).toBeVisible()
-  await expect(page.locator(`main[${OLD}]`)).toHaveCount(1)
-  await expect(page.getByLabel("Name", { exact: true })).toHaveValue(typed)
-  await expect(page.locator(".result")).toHaveCount(0)
-  await expect(page.getByLabel("Name", { exact: true })).toBeFocused()
-})
-
 test("a checkout drawn again for the tab's open order keeps focus on its heading", async ({ page }) => {
   await startOrder(page, uniqueLabel("headopen"), { method: "btc" })
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
@@ -135,27 +117,6 @@ test("a restore refused for the code itself puts focus back in the code's field"
   await expect(page.getByText("This code is not valid")).toBeVisible()
   await expect(page.getByRole("button", { name: "Restore" })).toBeDisabled()
   await expect(page.getByLabel("Name code")).toBeFocused()
-})
-
-test("removing the code from a result searches again without it, with focus in the search box", async ({ page, request }) => {
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.goto("/")
-  await page.getByRole("button", { name: "Check your code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await expect(page.locator(".verdict.ok")).toBeVisible()
-  await page.getByRole("button", { name: "Use this code" }).click()
-  const label = uniqueLabel("rmcode")
-  await page.getByLabel("Name", { exact: true }).fill(label)
-  await page.getByLabel("Name", { exact: true }).press("Enter")
-  await expect(page.getByText("Covered by your code")).toBeVisible()
-  const entries = await page.evaluate(() => history.length)
-  await page.locator(".covered").getByText("Remove").focus()
-  await page.keyboard.press("Enter")
-  await expect(page.getByRole("button", { name: "Register", exact: true })).toBeVisible()
-  await expect(page.getByText("Covered by your code")).toHaveCount(0)
-  await expect(page.getByLabel("Name", { exact: true })).toBeFocused()
-  expect(await page.getByLabel("Name", { exact: true }).evaluate((n: HTMLInputElement) => n.selectionStart === n.value.length)).toBe(true)
-  expect(await page.evaluate(() => history.length)).toBe(entries)
 })
 
 test("a restore the service refuses puts focus back in the code's field, and the name code's lead keeps its period on its line", async ({ page }) => {

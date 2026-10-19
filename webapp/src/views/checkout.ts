@@ -223,7 +223,6 @@ function applyCode(code: session.AppliedCode): void {
 
 function removeCode(): void {
   act({ type: "code-removed" })
-  session.setAppliedCode(null)
 }
 
 function codeArea(s: CheckoutState): HTMLElement {
@@ -489,10 +488,7 @@ async function sendOrder(): Promise<void> {
   const done = (url: string) => {
     const current = session.checkout()
     const ours = current?.label === c.label && current.ownerCode === c.ownerCode
-    if (ours) {
-      session.setCheckout(null)
-      if (c.code) session.setAppliedCode(null)
-    }
+    if (ours) session.setCheckout(null)
     if (!isRoute(mine) && !(ours && location.hash.startsWith("#/checkout"))) return
     // Back from the order returns to its search, still opened from the app, rather than to a checkout that has ended
     if (location.hash.startsWith("#/checkout")) history.replaceState(history.state, "", search)
@@ -537,10 +533,7 @@ function orderError(e: unknown, c: session.Checkout): void {
     if (c.ownerCode) store.dropPending(c.ownerCode)
     return go(searchLink(c.label, c.appOwner))
   }
-  if (code in CODE_ERRORS) {
-    session.setAppliedCode(null)
-    return answer({ type: "order-refused", reason: "code", error: CODE_ERRORS[code] })
-  }
+  if (code in CODE_ERRORS) return answer({ type: "order-refused", reason: "code", error: CODE_ERRORS[code] })
   if (code === "provider_unavailable") return answer({ type: "order-refused", reason: "method" })
   if (code === "catalog_changed" && e instanceof api.ApiError && typeof e.body.price === "number") return void act({ type: "price-changed", price: e.body.price })
   // the tab's wait started as the order was refused; the page holds for what is left of it

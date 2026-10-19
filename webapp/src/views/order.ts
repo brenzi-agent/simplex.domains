@@ -12,7 +12,6 @@ import {
 } from "../screens/order.ts"
 import * as store from "../store.ts"
 import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
-import { useCode } from "./codes.ts"
 import { every } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
 import { type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
@@ -894,7 +893,7 @@ function buildTakenWithCode({ view: taken, record }: OrderState): HTMLElement {
   return outcome({ tone: "info", icon: "key", title: "Someone registered it first",
     text: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your code was not spent: use it for another name."],
     extra: released ? codeDisplay(released.code) : null,
-    action: released ? btn("Use it for another name", "", () => useCode({ ...released, addedAt: "" }), icon("arrow")) : btn("Search another name", "", () => go("/#/")),
+    action: btn("Search another name", "", () => go("/#/")),
     reference: view.id })
 }
 

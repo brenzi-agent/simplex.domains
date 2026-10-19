@@ -67,8 +67,8 @@ test("a Bitcoin order pays in two parts, registers on chain with its links, and 
   const registrationId = await registrationOf(request, invoiceId)
 
   await page.goto(`/#/?name=${label}`)
-  await expect(page.locator(".result .entity")).toContainText("Contact A1Y8m3")
-  await expect(page.locator(".result .chip", { hasText: "Yours" })).toBeVisible()
+  await expect(page.locator(".answer .entity")).toContainText("Contact A1Y8m3")
+  await expect(page.locator(".answer .chip", { hasText: "Yours" })).toBeVisible()
   await shot(page, "N2a-taken-own")
 
   // edit links: add a channel, signed in the page, sent by the mock's relayer
@@ -163,7 +163,7 @@ test("a Bitcoin order pays in two parts, registers on chain with its links, and 
   await expect(row.getByText("Edit links")).toBeFocused()
   await other.close()
   await row.getByText("Show code").click()
-  await expect(page.locator(".modal .code-display")).toHaveText(ownerCode)
+  await expect(page.locator(".popup .code-display")).toHaveText(ownerCode)
   await page.keyboard.press("Escape")
 
   await expect(row.locator(".sub")).toContainText(/points at Channel\sC3/)
@@ -286,7 +286,7 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
 
   // nothing is ordered again until the buyer chooses, from the name, how to pay
   await page.getByRole("button", { name: "Order the name again" }).click()
-  await expect(page.locator(".result", { hasText: `${label}.simplex` }).getByRole("button", { name: "Register" })).toBeVisible()
+  await expect(page.locator(".answer .card", { hasText: `${label}.simplex` }).getByRole("button", { name: "Register" })).toBeVisible()
   expect(cancels).toHaveLength(1)
   await page.goto("/#/names")
   await expect(page.locator(".row-item", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText("Invoice cancelled")

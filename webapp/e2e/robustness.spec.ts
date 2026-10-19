@@ -33,16 +33,16 @@ test("a slow answer to an earlier search never replaces the latest one", async (
   await name.press("Enter")
   await name.fill("bakery")
   await name.press("Enter")
-  await expect(page.locator(".result .chip", { hasText: "Taken" })).toBeVisible()
+  await expect(page.locator(".answer .chip", { hasText: "Taken" })).toBeVisible()
   await page.waitForTimeout(2500)
-  await expect(page.locator(".result .chip", { hasText: "Taken" })).toBeVisible()
-  await expect(page.locator(".result", { hasText: slow })).toHaveCount(0)
+  await expect(page.locator(".answer .chip", { hasText: "Taken" })).toBeVisible()
+  await expect(page.locator(".answer", { hasText: slow })).toHaveCount(0)
 })
 
 test("Back from an order page keeps it reachable with Forward", async ({ page }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("back"), { method: "btc" })
   await page.goBack()
-  await expect(page.getByRole("heading", { name: "Own your name" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
   await page.goForward()
   await expect(page).toHaveURL(new RegExp(`order=${invoiceId}`))
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
@@ -66,14 +66,34 @@ test("a payment method is chosen with the keyboard, as one radio group", async (
   await expect(page.locator(".method:focus")).toHaveCount(0)
 })
 
-test("Escape closes the code popup and returns focus to what opened it", async ({ page }) => {
-  await page.goto("/")
-  await page.getByRole("button", { name: "Check a code" }).focus()
-  await page.keyboard.press("Enter")
-  await expect(page.getByRole("dialog")).toBeVisible()
-  await page.keyboard.press("Escape")
-  await expect(page.getByRole("dialog")).toHaveCount(0)
-  await expect(page.getByRole("button", { name: "Check a code" })).toBeFocused()
+test("the invest popup closes by Escape, its backdrop and its Close, giving focus back to what opened it, and by leaving the page", async ({ page }) => {
+  await page.goto("/#/names")
+  await page.getByRole("link", { name: "SimpleX names" }).click()
+  const invest = page.getByRole("button", { name: "Invest to claim your name" })
+  const dialog = page.getByRole("dialog", { name: "Invest to claim your name before the sale" })
+  const closers: [string, () => Promise<void>][] = [
+    ["Escape", () => page.keyboard.press("Escape")],
+    ["the backdrop", () => page.mouse.click(10, 10)],
+    ["Close", () => dialog.getByRole("button", { name: "Close" }).click()],
+  ]
+  for (const [closer, close] of closers) {
+    await invest.focus()
+    await page.keyboard.press("Enter")
+    await expect(dialog, closer).toBeVisible()
+    if (closer === "Escape") await shot(page, "N1d-invest-popup")
+    await expect(dialog.getByRole("link", { name: "Learn more on Wefunder" })).toHaveAttribute("href", /^https:\/\/wefunder\.com\/simplex\.chat/)
+    expect(await page.evaluate(() => document.querySelector("body > main")!.contains(document.activeElement)), `${closer}: focus inside the page behind`).toBe(false)
+    await close()
+    await expect(dialog, closer).toBeHidden()
+    await expect(invest, closer).toBeFocused()
+  }
+  await invest.click()
+  await expect(dialog).toBeVisible()
+  await page.evaluate(() => history.back())
+  await expect(page.getByRole("heading", { name: "Your names" })).toBeFocused()
+  await expect(dialog).toBeHidden()
+  await page.waitForTimeout(500)
+  await expect(page.getByRole("heading", { name: "Your names" }), "focus stays on the page gone back to").toBeFocused()
 })
 
 test("a card payment settled while its page was closed frees checkout", async ({ page, request }) => {
@@ -170,7 +190,7 @@ test("a failed retarget shows one message below the result, however often it is 
     await page.getByRole("button", { name: "Register with your payment" }).click()
     await expect(page.getByText("That did not go through")).toHaveCount(1)
   }
-  await expect(page.locator(".result .notice")).toHaveCount(0)
+  await expect(page.locator(".answer .card .notice")).toHaveCount(0)
   await shot(page, "N8a2-retarget-failed")
 })
 
@@ -214,15 +234,11 @@ test("after taking a code, the other-name search says the payment became a code"
   await expect(page.getByRole("heading", { name: "Here is a code instead" })).toBeVisible()
   await page.goto(`/#/?retarget=${registrationId}`)
   await expect(page.getByText("Your payment already became a code.")).toBeVisible()
-  // the search is a plain one now, so a prepaid code applies
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await page.getByRole("button", { name: "Use this code" }).click()
-  await expect(page.getByRole("dialog")).toHaveCount(0)
+  // the search is a plain one now: a name found is registered as a new order
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("tcn"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
-  await expect(page.getByText("Code applied")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Register", exact: true })).toBeEnabled()
+  await expect(page.getByText("Covered by your payment")).toHaveCount(0)
 })
 
 test("full storage that still reads is warned about before the name code is shown", async ({ browser }) => {
@@ -253,7 +269,7 @@ test("Forget everything also drops the tab's unfinished checkout", async ({ page
   await page.getByText("Forget everything in this browser").click()
   await page.getByRole("button", { name: "Forget everything" }).click()
   await page.goto("/#/checkout/code")
-  await expect(page.getByRole("heading", { name: "Own your name" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
   await page.goto("/#/names")
   await expect(page.getByText("No names in this browser yet.")).toBeVisible()
 })
@@ -288,7 +304,7 @@ test("an order left before its wait ends asks for this browser in Your names", a
 
 test("a name typed with .simplex is searched without it, and the field shows the name searched with its caret at the end", async ({ page }) => {
   await search(page, "Bakery.simplex")
-  await expect(page.locator(".result .entity")).toHaveCount(2)
+  await expect(page.locator(".answer .entity")).toHaveCount(2)
   const field = page.getByLabel("Name", { exact: true })
   await expect(field).toHaveValue("bakery")
   expect(await field.evaluate((n: HTMLInputElement) => [n.selectionStart, n.selectionEnd])).toEqual([6, 6])
@@ -315,17 +331,6 @@ test("search points at this browser's open order for a name instead of a second 
   await expect(page.getByRole("button", { name: "Register" })).toBeDisabled()
   await expect(page.getByRole("link", { name: "Open that order" })).toHaveAttribute("href", `/?order=${invoiceId}`)
   await shot(page, "N2f-own-order")
-})
-
-test("a code checked from the header applies to the checkout in progress", async ({ page, request }) => {
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await search(page, uniqueLabel("hdr"))
-  await page.getByRole("button", { name: "Register" }).click()
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await page.getByRole("button", { name: "Use this code" }).click()
-  await expect(page.getByText("Paid with your code")).toBeVisible()
-  await expect(page.locator(".total")).toContainText("$0.00")
 })
 
 test("an old invoice link leads to the invoice that replaced it", async ({ page, request }) => {
@@ -450,8 +455,8 @@ test("a rate-limited cancel holds, and the hold outlives the page drawing itself
   await expect(page.getByRole("button", { name: "Get a new invoice" })).toBeDisabled()
   await expect(page.getByText("Too many attempts")).toBeVisible()
   // the other actions of the tab wait too: search is paused, and a restore would wait
-  await page.getByRole("link", { name: "Search" }).click()
-  await expect(page.getByText("Searching is paused until then")).toBeVisible()
+  await page.getByRole("link", { name: "SimpleX names" }).click()
+  await expect(page.getByText(/Searching is paused: try again in \d+ seconds/).first()).toBeVisible()
   await page.getByRole("link", { name: "Your names" }).click()
   await page.getByRole("button", { name: /Restore with a name code/ }).click()
   await expect(page.getByRole("button", { name: "Restore" })).toBeDisabled()
@@ -469,35 +474,6 @@ test("Back from a paused order keeps the order paused", async ({ page }) => {
   await page.getByRole("button", { name: "Continue" }).click()
   await expect(page.getByRole("button", { name: "Continue to payment" })).toBeDisabled()
   await expect(page.getByText("Too many attempts")).toBeVisible()
-})
-
-test("a popup stays open while its page draws itself again", async ({ page, request }) => {
-  const { invoiceId } = await startOrder(page, uniqueLabel("pop"), { method: "btc" })
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill("SN6-")
-  await control(request, `partial/${invoiceId}`)
-  await expect(page.getByText(/BTC is seen/)).toBeVisible()
-  await expect(page.getByRole("dialog")).toBeVisible()
-  await expect(page.getByRole("textbox", { name: "Code", exact: true })).toHaveValue("SN6-")
-  // typing carries on in the field: the redraw kept its focus
-  await page.keyboard.type("AB")
-  await expect(page.getByRole("textbox", { name: "Code", exact: true })).toHaveValue("SN6-AB")
-})
-
-test("a link still being checked is kept when a code is applied from the header popup", async ({ page, request }) => {
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.route("**/api/link/preview", async (route) => { await new Promise((r) => setTimeout(r, 3000)); await route.continue() })
-  await search(page, uniqueLabel("keep"))
-  await page.getByRole("button", { name: "Register" }).click()
-  const link = contactLink("keep")
-  await page.getByLabel("Address").fill(link)
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await expect(page.locator(".verdict.ok")).toBeVisible()
-  await page.getByRole("button", { name: "Use this code" }).click()
-  await expect(page.getByText("Paid with your code")).toBeVisible()
-  await expect(page.getByLabel("Address")).toHaveValue(link)
-  await expect(page.locator(".link-field").first().locator(".entity")).toBeVisible({ timeout: 10_000 })
 })
 
 test("Find the order shows a wait met elsewhere in the tab", async ({ page, request }) => {
@@ -520,31 +496,35 @@ test("Find the order shows a wait met elsewhere in the tab", async ({ page, requ
 const PLACE_PX = 4
 const scrolledNear = (page: Page, y: number) => expect.poll(() => page.evaluate((t) => Math.abs(scrollY - t), y)).toBeLessThanOrEqual(PLACE_PX)
 
+const HOME_PLACE_PX = 150
 // The page goes Back itself, as Playwright's Back from Your names here never returns in Firefox driven over WebDriver BiDi.
 test("Back returns to where a page was left, a slow page included, and a reload keeps the place", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 600 })
+  // The home fills one screen, so a short window leaves it room to scroll. The dev server draws a reload's first frame
+  // before its styles, so the place is one that unstyled frame reaches too.
+  await page.setViewportSize({ width: 1280, height: 300 })
   await page.goto("/")
-  const place = await page.evaluate(() => Math.min(700, document.documentElement.scrollHeight - innerHeight))
-  expect(place).toBeGreaterThan(100)
+  const place = await page.evaluate((most) => Math.min(most, document.documentElement.scrollHeight - innerHeight), HOME_PLACE_PX)
+  expect(place).toBe(HOME_PLACE_PX)
   await page.evaluate((y) => scrollTo(0, y), place)
   // clicked from inside the page: a pointer click first scrolls the header's link into view, which WebKit does even
   // for a link always in view, moving the place it then leaves
-  await page.locator("nav a[data-nav=names]").dispatchEvent("click")
+  await page.locator("header nav a[href='/#/names']").dispatchEvent("click")
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
   expect(await page.evaluate(() => scrollY)).toBe(0)
   await page.evaluate(() => history.back())
-  await expect(page.getByRole("heading", { name: /Own your name/ })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
   await scrolledNear(page, place)
   await page.reload()
-  await expect(page.getByRole("heading", { name: /Own your name/ })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
   await scrolledNear(page, place)
 
+  await page.setViewportSize({ width: 1280, height: 600 })
   const { invoiceId } = await startOrder(page, uniqueLabel("place"), { method: "btc" })
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   const orderPlace = await page.evaluate(() => Math.min(400, document.documentElement.scrollHeight - innerHeight))
   expect(orderPlace).toBeGreaterThan(100)
   await page.evaluate((y) => scrollTo(0, y), orderPlace)
-  await page.locator("nav a[data-nav=names]").dispatchEvent("click")
+  await page.locator("header nav a[href='/#/names']").dispatchEvent("click")
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
   await page.route(`**/api/invoice/${invoiceId}*`, async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 900))

@@ -163,7 +163,7 @@ test("a name code too long for its line breaks after a hyphen, so no line starts
 
 test("the offline note leaves room under the foot, so the foot's last line scrolls clear of it", async ({ page, context }) => {
   await page.goto("/")
-  await page.getByRole("heading", { name: /Own your name/ }).waitFor()
+  await page.getByRole("heading", { name: "Your SimpleX domain" }).waitFor()
   await context.setOffline(true)
   try {
     await expect(page.locator(".offline-note")).toBeVisible()

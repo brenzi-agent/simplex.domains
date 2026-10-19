@@ -14,7 +14,6 @@ test("search answers every kind of name", async ({ page, request }) => {
   await shot(page, "N1-home")
   await page.getByLabel("Name", { exact: true }).pressSequentially("BaKery")
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue("bakery")
-  await expect(page.getByText("Press")).toBeVisible()
   await shot(page, "N1a-typed")
 
   await search(page, "abc")
@@ -25,31 +24,34 @@ test("search answers every kind of name", async ({ page, request }) => {
   await shot(page, "N1c-chars")
 
   await search(page, "bakery")
-  await expect(page.locator(".result .entity")).toHaveCount(2)
+  await expect(page.locator(".answer .entity")).toHaveCount(2)
+  await expect(page.locator(".answer .chip")).toHaveText("Taken")
   await expect(page.getByText("Alice's Bakery").or(page.getByText("Alice’s Bakery")).first()).toBeVisible()
   await shot(page, "N2a-taken")
   await search(page, "harbour")
   await expect(page.getByText("Registered, and not pointing at any address or channel that we know of yet.")).toBeVisible()
   await shot(page, "N2b-unlinked")
   await search(page, "support")
-  await expect(page.locator(".result .chip", { hasText: "Reserved" })).toBeVisible()
+  await expect(page.locator(".answer .line")).toHaveText("Reserved names are not sold here. If it is yours to use, write to chat@simplex.chat.")
+  await expect(page.locator(".answer").getByRole("link", { name: "chat@simplex.chat" })).toHaveAttribute("href", "mailto:chat@simplex.chat")
   await shot(page, "N2c-reserved")
-  await page.getByRole("button", { name: "Contact the SimpleX team" }).click()
-  await expect(page.locator(".modal")).toBeVisible()
-  await page.keyboard.press("Escape")
 
   const label = uniqueLabel("free")
   await search(page, label)
-  await expect(page.locator(".result .chip", { hasText: "Available" })).toBeVisible()
+  const card = page.locator(".answer .card")
+  await expect(card).toContainText(`${label}.simplex`)
+  await expect(card).toContainText("2 years + 30 days")
+  await expect(card.locator(".price")).toHaveText(/^\$\d+$/)
+  await expect(card.getByRole("button", { name: "Register" })).toBeEnabled()
   await shot(page, "N2-available")
 
   await control(request, "search", { chainDown: true })
   await search(page, uniqueLabel("down"))
-  await expect(page.getByText(/could not be checked/i)).toBeVisible()
+  await expect(page.locator(".answer .line")).toHaveText("This name could not be checked. Try again")
   await shot(page, "N2d-unchecked")
   await control(request, "search", { chainDown: false, limitSeconds: 30 })
   await search(page, uniqueLabel("lim"))
-  await expect(page.locator("b[aria-hidden=true]", { hasText: /Try again in \d+ seconds/ })).toBeVisible()
+  await expect(page.locator(".answer [aria-hidden=true]", { hasText: /^Searching is paused: try again in \d+ seconds\.$/ })).toBeVisible()
   await expect(page.getByRole("button", { name: "Search" })).toBeDisabled()
   await shot(page, "N2e-rate-limited")
 })
@@ -200,33 +202,10 @@ test("a search link's name is shown folded to lower case", async ({ page }) => {
 test("a rate limit answered by a proxy pauses search like the service's own", async ({ page }) => {
   await page.route("**/api/name/**", (route) => route.fulfill({ status: 429, headers: { "retry-after": "20" }, contentType: "text/html", body: "<html>Too Many Requests</html>" }))
   await search(page, uniqueLabel("proxy"))
-  await expect(page.locator("b[aria-hidden=true]", { hasText: /Try again in \d+ seconds/ })).toBeVisible()
+  await expect(page.locator(".answer [aria-hidden=true]", { hasText: /try again in \d+ seconds/ })).toBeVisible()
 })
 
-test("the home page's investors tile leads to Wefunder by its wordmark and checks a code", async ({ page }) => {
-  await page.goto("/")
-  const tile = page.locator(".tile.invest")
-  const wefunder = tile.getByRole("link", { name: "Learn more on Wefunder" })
-  await expect(wefunder).toHaveAttribute("href", /^https:\/\/wefunder\.com\/simplex\.chat/)
-  await expect(wefunder.locator("svg.wefunder")).toBeVisible()
-  await tile.getByRole("button", { name: "Check your code" }).click()
-  await expect(page.getByRole("dialog")).toBeVisible()
-})
-
-test("on a touch phone the investors tile's two actions keep their gap and their size", async ({ browser }) => {
-  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true })
-  const page = await phone.newPage()
-  await page.goto("/")
-  expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches), "a touch screen's pointer").toBe(true)
-  const tile = page.locator(".tile.invest")
-  const [wefunder, check] = [await tile.locator(".wefunder-btn").boundingBox(), await tile.locator(".check-code-btn").boundingBox()]
-  const gap = parseFloat(await tile.locator(".links").evaluate((n) => getComputedStyle(n).rowGap))
-  expect(check!.y - (wefunder!.y + wefunder!.height), "the room between the two actions").toBeGreaterThanOrEqual(gap)
-  expect([wefunder!.height, check!.height], "each action's drawn height").toEqual([44, 44])
-  await phone.close()
-})
-
-test("Back to a search from checkout shows its answer at once, with no hint, empty card or search in sight", async ({ page }) => {
+test("Back to a search from checkout shows its answer at once", async ({ page }) => {
   await search(page, uniqueLabel("back"))
   await page.getByRole("button", { name: "Register" }).click()
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
@@ -234,16 +213,10 @@ test("Back to a search from checkout shows its answer at once, with no hint, emp
     const w = window as unknown as { __seen: string[] }
     w.__seen = []
     new MutationObserver((records) => {
-      for (const r of records) {
-        if (r.type === "attributes" && r.target instanceof Element && r.target.matches(".result.busy")) w.__seen.push("the answer dimmed for a search")
-        for (const n of r.addedNodes) {
-          if (!(n instanceof Element)) continue
-          if (n.matches("body > main") && !n.querySelector(".result")) w.__seen.push("a page without the answer")
-          const shown = n.matches(".hint.keys, .result-shape") ? n : n.querySelector(".hint.keys, .result-shape")
-          if (shown) w.__seen.push(`${shown.className} drawn`)
-        }
+      for (const n of records.flatMap((r) => [...r.addedNodes])) {
+        if (n instanceof Element && n.matches(".home") && !n.querySelector(".answer .card")) w.__seen.push("a home without the answer")
       }
-    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] })
+    }).observe(document.body, { childList: true, subtree: true })
   })
   const rechecked = page.waitForResponse(/\/api\/name\/(0x)?[0-9a-f]{64}/)
   await page.goBack()
@@ -255,7 +228,7 @@ test("Back to a search from checkout shows its answer at once, with no hint, emp
 
 for (const [failure, change, shown] of [
   ["the service is down", { chainDown: true }, "This name could not be checked"],
-  ["searching is rate limited", { limitSeconds: 10 }, "Too many requests were sent from here."],
+  ["searching is rate limited", { limitSeconds: 10 }, "Searching is paused"],
 ] as const) {
   test(`Back to a search whose check fails because ${failure} no longer offers the remembered answer`, async ({ page, request }) => {
     await search(page, uniqueLabel("backfail"))
@@ -265,9 +238,9 @@ for (const [failure, change, shown] of [
     const rechecked = page.waitForResponse(/\/api\/name\/(0x)?[0-9a-f]{64}/)
     await page.goBack()
     await rechecked
-    await expect(page.getByText(shown)).toBeVisible()
+    await expect(page.locator(".answer .line", { hasText: shown })).toBeVisible()
     await expect(page.getByRole("button", { name: "Register" })).toHaveCount(0)
-    await expect(page.locator(".result .chip", { hasText: "Available" })).toHaveCount(0)
+    await expect(page.locator(".answer .card")).toHaveCount(0)
   })
 }
 
@@ -276,14 +249,14 @@ test("a search pause reads the same after leaving the page and coming back", asy
   await control(request, "search", { limitSeconds: 30 })
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("pauseback"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
-  const notice = page.locator(".under-search .notice")
-  await expect(notice).toContainText("Too many requests were sent from here. Searching is paused until then.")
-  const before = (await notice.innerText()).replace(/Try again in \d+ seconds?/, "")
+  const notice = page.locator(".answer .line")
+  await expect(notice).toContainText("Searching is paused: try again in")
+  const before = (await notice.innerText()).replace(/try again in \d+ seconds?/g, "")
   await page.getByRole("link", { name: "Your names" }).first().click()
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
   await page.goBack()
   await expect(notice).toBeVisible()
-  expect((await notice.innerText()).replace(/Try again in \d+ seconds?/, "")).toBe(before)
+  expect((await notice.innerText()).replace(/try again in \d+ seconds?/g, "")).toBe(before)
 })
 
 // an expiry ten days ago, well inside the chain's grace period
@@ -304,6 +277,6 @@ test("search shows an expired name of yours with when it ran out and when it can
     status: "registered", entities: [], owner: OWNER, records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt, tld: "simplex",
   } }))
   await page.goto(`/#/?name=${label}`)
-  await expect(page.locator(".result .chip", { hasText: "Expired" })).toBeVisible()
-  await expect(page.locator(".result .note")).toHaveText(`Its registration ran out on ${dateOf(expiresAt)}. It can be registered again from ${dateOf(expiresAt + GRACE_S)}.`)
+  await expect(page.locator(".answer .chip", { hasText: "Expired" })).toBeVisible()
+  await expect(page.locator(".answer .note")).toHaveText(`Its registration ran out on ${dateOf(expiresAt)}. It can be registered again from ${dateOf(expiresAt + GRACE_S)}.`)
 })

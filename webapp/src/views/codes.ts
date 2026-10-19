@@ -1,18 +1,15 @@
-// The prepaid code popup: check a code, use it on search, or add it to Your names.
+// The prepaid code popup that adds a code to Your names, and the code checks the checkout shares.
 import * as api from "../api.ts"
 import { codeProgress, parseNameCode } from "../crypto/code.ts"
 import { seconds } from "../format.ts"
-import { btn, disabled, el, icon, liveRegion, reducedMotion } from "../dom.ts"
+import { btn, disabled, el, icon, liveRegion } from "../dom.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
-import { shownSearch } from "./search.ts"
-import { closePopup, go, popup, refresh } from "./shell.ts"
+import { closePopup, popup, refresh } from "./shell.ts"
 
 export type CodeVerdict =
   | { ok: true; code: session.AppliedCode; line: string }
   | { ok: false; title: string; line: string }
-
-const FROM_APP = "An order opened from SimpleX is paid here, not with a code."
 
 const STATE_LINES: Record<Exclude<api.CodeState, "unused">, [string, string]> = {
   reserved: ["This code is being used for a name now", "Each code registers one name; this one is held by an unfinished registration."],
@@ -88,32 +85,20 @@ export function verdictNode(v: CodeVerdict): HTMLElement {
     : el("div", { class: "verdict bad" }, icon("x"), el("div", {}, el("b", {}, v.title), el("span", {}, v.line)))
 }
 
-export function codePopup(mode: "check" | "add" = "check"): void {
+export function codePopup(): void {
   const input = el("input", { type: "text", "aria-label": "Code", spellcheck: "false", placeholder: "SN6-…", autocomplete: "off" })
   const box = el("div", { class: "input code-input" }, icon("key"), input)
   const verdict = liveRegion()
   let current: CodeVerdict | null = null
-  const action = disabled(btn(mode === "add" ? "Add to your codes" : "Use this code", "block", () => {
+  const action = disabled(btn("Add to your codes", "block", () => {
     if (!current?.ok) return
-    if (mode === "add") {
-      store.addCode({ code: current.code.display, minLength: current.code.minLength, years: current.code.years, addedAt: new Date().toISOString() })
-      // the list is drawn again first, so focus lands on the redrawn page rather than on a button it replaced
-      refresh()
-      return closePopup()
-    }
-    const refusal = applyCode(current.code)
-    if (refusal) return void verdict.replaceChildren(verdictNode({ ok: false, title: "Not for this order", line: refusal }))
+    store.addCode({ code: current.code.display, minLength: current.code.minLength, years: current.code.years, addedAt: new Date().toISOString() })
+    // the list is drawn again first, so focus lands on the redrawn page rather than on a button it replaced
+    refresh()
     closePopup()
-    // A code applied on the search page is said under its search box, which may be far above a phone's screen, as when the
-    // popup was opened from the investors' tile: the box comes into view, if it is not, with focus, once the page is drawn.
-    if (location.hash.startsWith("#/checkout")) return
-    const input = document.querySelector<HTMLInputElement>("body > main .search input")
-    if (!input) return
-    input.closest(".search")!.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" })
-    input.focus({ preventScroll: true })
   }))
   const restore = el("a", { href: "/#/restore", class: "restore-link", onclick: () => closePopup() }, "Restore in Your names")
-  // the last verdict belongs to the last text: nothing is applied until this one is judged
+  // the last verdict belongs to the last text: nothing is added until this one is judged
   input.addEventListener("input", () => {
     current = null
     disabled(action)
@@ -124,7 +109,7 @@ export function codePopup(mode: "check" | "add" = "check"): void {
       return verdict.replaceChildren()
     }
     // a code already listed is said so, rather than offered for adding again
-    const listed = mode === "add" && judged.ok && store.codes().some((c) => c.code === judged.code.display)
+    const listed = judged.ok && store.codes().some((c) => c.code === judged.code.display)
     const v: CodeVerdict = listed ? { ok: false, title: "Already in your codes", line: "It is listed under Codes in Your names." } : judged
     current = v
     box.className = `input code-input ${v.ok ? "ok" : "bad"}`
@@ -137,42 +122,11 @@ export function codePopup(mode: "check" | "add" = "check"): void {
     e.preventDefault()
     action.click()
   })
-  popup(el("div", { class: "modal", role: "dialog", "aria-label": mode === "add" ? "Add a code" : "Check your code" },
+  popup(el("div", { class: "popup", role: "dialog", "aria-label": "Add a code" },
     el("div", { class: "modal-head" },
-      el("h3", {}, mode === "add" ? "Add a code" : "Check your code"),
+      el("h3", {}, "Add a code"),
       el("a", { class: "icon-btn", href: "#", role: "button", "aria-label": "Close", onclick: (e: Event) => { e.preventDefault(); closePopup() } }, icon("x"))),
     el("p", { class: "sec-note" }, "A code from SimpleX, for example for investors. Nothing is spent until a name is registered with it."),
     box, verdict, action))
   input.focus()
-}
-
-// A code is used where the buyer is: the checkout in progress takes it, the search applies it to the names it
-// covers, and anywhere else leads to search. Returns why the page cannot take it.
-function applyCode(code: session.AppliedCode): string | null {
-  const c = session.checkout()
-  if (c && location.hash.startsWith("#/checkout")) {
-    if (c.appOwner) return FROM_APP
-    if (session.isSending(c)) return "This order is on its way already; the code can pay for your next name."
-    if (c.label.length < code.minLength) return `This code covers names of ${code.minLength} or more letters; ${c.label} has ${c.label.length}.`
-    session.updateCheckout(c.label, { code, codeError: undefined })
-    session.setAppliedCode(code)
-    // on the checkout itself it changes in place, as its own code entry does, so links still being checked are kept
-    if (location.hash === "#/checkout") refresh()
-    else go("/#/checkout")
-    return null
-  }
-  // an order's page has its own query and no hash
-  const onSearch = location.search === "" && (location.hash === "" || location.hash === "#/" || location.hash.startsWith("#/?"))
-  const search = onSearch ? shownSearch() : null
-  if (search?.fromApp) return FROM_APP
-  if (search?.retarget) return "Your paid order covers the name you move it to; no code is needed."
-  session.setAppliedCode(code)
-  if (search) refresh()
-  else go("/#/")
-  return null
-}
-
-export function useCode(code: store.CodeRecord): void {
-  session.setAppliedCode({ display: code.code, minLength: code.minLength, years: code.years })
-  go("/#/")
 }

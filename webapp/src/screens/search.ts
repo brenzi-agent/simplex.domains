@@ -1,6 +1,5 @@
 import type { SearchAnswer } from "../api.ts"
 import { foldLabel, type LabelProblem, labelProblem } from "../names.ts"
-import type { AppliedCode } from "../session.ts"
 import type { OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
 
@@ -22,10 +21,9 @@ export interface SearchState {
   typed: string
   searched: string | null
   seq: number
-  searching: { label: string; card: boolean } | null
+  searching: { label: string } | null
   answer: Answer | null
   bad: boolean
-  applied: AppliedCode | null
   fromApp: string | null
   retarget: OrderRecord | null
   moved: Moved | null
@@ -36,15 +34,13 @@ export interface SearchState {
 }
 
 export type SearchEvent =
-  | { type: "opened"; opening: Opening; name: string; fromApp: string | null; retarget: OrderRecord | null; applied: AppliedCode | null; hold: Hold | null }
+  | { type: "opened"; opening: Opening; name: string; fromApp: string | null; retarget: OrderRecord | null; hold: Hold | null }
   | { type: "typed"; text: string }
   | { type: "searched"; label: string; hold: Hold | null }
-  | { type: "card-due"; seq: number }
   | { type: "answered"; seq: number; label: string; answer: SearchAnswer; mine: Mine | null; now: number }
   | { type: "unanswered"; seq: number }
   | { type: "search-held"; seq: number; until: number }
   | { type: "hold-ended" }
-  | { type: "code-removed" }
   | { type: "own-order-seen"; label: string; url: string | null }
   | { type: "retarget-read"; record: OrderRecord; moved: Moved | null }
   | { type: "register-started" }
@@ -55,7 +51,7 @@ const IDLE = { busy: false, refusal: null }
 export const REGISTER_LEAD = "Nothing changed. "
 
 export const initialSearch = (): SearchState => ({
-  opening: "plain", name: "", typed: "", searched: null, seq: 0, searching: null, answer: null, bad: false, applied: null, fromApp: null,
+  opening: "plain", name: "", typed: "", searched: null, seq: 0, searching: null, answer: null, bad: false, fromApp: null,
   retarget: null, moved: null, hold: null, paused: false, ownOrder: null, register: IDLE,
 })
 
@@ -63,15 +59,13 @@ export function returnedTo(s: SearchState, opening: Opening, name: string): Sear
   return s.opening === opening && s.name === name && s.answer?.kind === "found" ? { ...s, searching: null, register: IDLE } : initialSearch()
 }
 
-export const codeFor = (s: SearchState): AppliedCode | null => s.fromApp || s.retarget ? null : s.applied
-
 const unsearched = (s: SearchState) => foldLabel(s.typed) !== s.name
 
 export const searchDue = (s: SearchState): boolean => !s.paused && s.name !== "" && s.name !== s.searched && !unsearched(s)
 
 function opened(s: SearchState, e: Extract<SearchEvent, { type: "opened" }>): SearchState {
   const typed = e.name === s.name ? s.typed : e.name
-  const next = { ...s, opening: e.opening, name: e.name, typed, fromApp: e.fromApp, applied: e.applied, register: { ...s.register, refusal: null } }
+  const next = { ...s, opening: e.opening, name: e.name, typed, fromApp: e.fromApp, register: { ...s.register, refusal: null } }
   next.retarget = s.moved ? null : e.retarget
   const dropped = unsearched(next) ? { answer: null, searching: null, bad: false, seq: s.seq + 1 } : {}
   if (s.hold || e.hold === null) return { ...next, ...dropped }
@@ -86,7 +80,7 @@ function searched(s: SearchState, e: Extract<SearchEvent, { type: "searched" }>)
   const started = { ...s, seq, name: e.label, searched: e.label, typed: e.label, register: IDLE }
   const problem = labelProblem(e.label)
   if (problem) return { ...started, searching: null, answer: { kind: "rule", label: e.label, problem }, bad: true }
-  return { ...started, searching: { label: e.label, card: false } }
+  return { ...started, searching: { label: e.label } }
 }
 
 export function reduce(s: SearchState, e: SearchEvent): SearchState {
@@ -94,7 +88,6 @@ export function reduce(s: SearchState, e: SearchEvent): SearchState {
     case "opened": return opened(s, e)
     case "typed": return { ...s, typed: e.text, bad: false }
     case "searched": return searched(s, e)
-    case "card-due": return e.seq === s.seq && s.searching && s.answer?.kind !== "found" ? { ...s, searching: { ...s.searching, card: true } } : s
     case "answered": {
       if (e.seq !== s.seq) return s
       const same = s.answer?.kind === "found" && s.answer.label === e.label
@@ -103,7 +96,6 @@ export function reduce(s: SearchState, e: SearchEvent): SearchState {
     case "unanswered": return e.seq === s.seq ? { ...s, searching: null, answer: { kind: "unchecked" } } : s
     case "search-held": return e.seq === s.seq ? { ...s, searching: null, answer: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: NO_LEAD }, paused: true } : s
     case "hold-ended": return { ...s, hold: null, paused: false }
-    case "code-removed": return { ...s, applied: null }
     case "own-order-seen": return s.answer?.kind === "found" && s.answer.label === e.label ? { ...s, ownOrder: e.url } : s
     case "retarget-read":
       if (s.retarget?.registrationId !== e.record.registrationId) return s

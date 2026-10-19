@@ -2,14 +2,13 @@ import { describe, expect, it } from "vitest"
 import type { SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
-  codeFor, initialSearch, type Opening, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent, type SearchKind, type SearchState, screenOf,
+  initialSearch, type Opening, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent, type SearchKind, type SearchState, screenOf,
 } from "../src/screens/search.ts"
 import type { OrderRecord } from "../src/store.ts"
 
 const NOW = Date.parse("2026-10-17T12:00:00Z")
 const OWNER = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
-const CODE = { display: "SN6-AAAAA-BBBBB-CCCCC", minLength: 6, years: 3 }
 const AVAILABLE: SearchAnswer = { status: "available", price: 1500, currency: "usd", years: 2, ...CHAIN }
 const TAKEN: SearchAnswer = { status: "registered", entities: [], owner: OWNER, tld: "simplex" }
 const MINE = { registrationId: "reg-1", withCode: true }
@@ -23,7 +22,7 @@ function record(change: Partial<OrderRecord> = {}): OrderRecord {
 }
 
 const openedEvent = (change: Partial<Extract<SearchEvent, { type: "opened" }>> = {}): Extract<SearchEvent, { type: "opened" }> =>
-  ({ type: "opened", opening: "plain", name: "", fromApp: null, retarget: null, applied: null, hold: null, ...change })
+  ({ type: "opened", opening: "plain", name: "", fromApp: null, retarget: null, hold: null, ...change })
 const open = (change: Partial<Extract<SearchEvent, { type: "opened" }>> = {}) => reduce(initialSearch(), openedEvent(change))
 const run = (s: SearchState, ...events: SearchEvent[]) => events.reduce(reduce, s)
 const wait = (until: number): Hold => ({ until, lead: NO_LEAD })
@@ -46,19 +45,6 @@ describe("screenOf", () => {
   })
 })
 
-describe("codeFor", () => {
-  it("applies the code to a plain search only", () => {
-    expect(codeFor(open({ applied: CODE }))).toEqual(CODE)
-    expect(codeFor(open({ opening: "fromApp", fromApp: OWNER, applied: CODE }))).toBeNull()
-    expect(codeFor(open({ opening: "retarget", retarget: record(), applied: CODE }))).toBeNull()
-    expect(codeFor(open())).toBeNull()
-  })
-  it("applies it once a retarget search's order has gone elsewhere", () => {
-    const s = open({ opening: "retarget", retarget: record(), applied: CODE })
-    expect(codeFor(reduce(s, { type: "retarget-read", record: record(), moved: { to: "code", url: "/?order=inv-1" } }))).toEqual(CODE)
-  })
-})
-
 describe("searchDue", () => {
   it("is due for a name the link names and the field holds, not searched yet", () => {
     expect(searchDue(open({ name: "alice1" }))).toBe(true)
@@ -78,29 +64,29 @@ describe("searchDue", () => {
 })
 
 describe("reduce: opened", () => {
-  it("a page opened anew fills the field with the link's name and takes what the tab holds", () => {
-    const s = open({ name: "alice1", applied: CODE })
-    expect(s).toMatchObject({ opening: "plain", name: "alice1", typed: "alice1", searched: null, answer: null, applied: CODE, hold: null, paused: false })
+  it("a page opened anew fills the field with the link's name", () => {
+    const s = open({ name: "alice1" })
+    expect(s).toMatchObject({ opening: "plain", name: "alice1", typed: "alice1", searched: null, answer: null, hold: null, paused: false })
   })
   it("keeps the order a retarget search moves, and the app's wallet", () => {
     expect(open({ opening: "retarget", retarget: record() }).retarget).toEqual(record())
     expect(open({ opening: "fromApp", fromApp: OWNER }).fromApp).toBe(OWNER)
   })
-  it("drawn again with a code applied, a name searched keeps its answer and the field its name", () => {
+  it("drawn again, a name searched keeps its answer and the field its name", () => {
     const s = shown()
-    const next = reduce(s, openedEvent({ name: "alice1", applied: CODE }))
-    expect(next).toMatchObject({ typed: "alice1", searched: "alice1", answer: s.answer, applied: CODE })
+    const next = reduce(s, openedEvent({ name: "alice1" }))
+    expect(next).toMatchObject({ typed: "alice1", searched: "alice1", answer: s.answer })
   })
   it("drawn again with a name typed over the one searched, the answer gives way and the name typed stays", () => {
     const s = reduce(shown(), { type: "typed", text: "bobby1" })
-    const next = reduce(s, openedEvent({ name: "alice1", applied: CODE }))
-    expect(next).toMatchObject({ typed: "bobby1", answer: null, searching: null, bad: false, applied: CODE })
+    const next = reduce(s, openedEvent({ name: "alice1" }))
+    expect(next).toMatchObject({ typed: "bobby1", answer: null, searching: null, bad: false })
     expect(next.seq).toBeGreaterThan(s.seq)
   })
   it("drawn again during a search for the name, the search goes on", () => {
     const s = reduce(open({ name: "alice1" }), searchedEvent("alice1"))
-    const next = reduce(s, openedEvent({ name: "alice1", applied: CODE }))
-    expect(next).toMatchObject({ seq: s.seq, searching: { label: "alice1", card: false } })
+    const next = reduce(s, openedEvent({ name: "alice1" }))
+    expect(next).toMatchObject({ seq: s.seq, searching: { label: "alice1" } })
     expect(reduce(next, answered(s)).answer).toMatchObject({ kind: "found", label: "alice1" })
   })
   it("drawn again, the refusal its register showed is done with, and a register under way goes on", () => {
@@ -138,7 +124,7 @@ describe("reduce: typing and searching", () => {
   })
   it("searched starts a search, naming it in the link", () => {
     const s = open()
-    expect(reduce(s, searchedEvent("alice1"))).toMatchObject({ seq: s.seq + 1, name: "alice1", searched: "alice1", searching: { label: "alice1", card: false } })
+    expect(reduce(s, searchedEvent("alice1"))).toMatchObject({ seq: s.seq + 1, name: "alice1", searched: "alice1", searching: { label: "alice1" } })
   })
   it("a search writes the name it searched back into the field, as typed with \".simplex\" or in its own case", () => {
     const typed = reduce(open(), { type: "typed", text: "mynamehere.simplex" })
@@ -166,23 +152,17 @@ describe("reduce: typing and searching", () => {
     const refused = run(shown(), { type: "register-refused", refusal: { why: "taken" } })
     expect(reduce(refused, searchedEvent("bobby1")).register).toEqual({ busy: false, refusal: null })
   })
-  it("card-due holds the answer's place for a first search, and not over an answer shown, dimmed", () => {
-    const first = reduce(open(), searchedEvent("alice1"))
-    expect(reduce(first, { type: "card-due", seq: first.seq }).searching).toEqual({ label: "alice1", card: true })
-    const again = reduce(shown(), searchedEvent("bobby1"))
-    expect(reduce(again, { type: "card-due", seq: again.seq })).toBe(again)
+})
+
+describe("reduce: searching", () => {
+  it("a search under way keeps the last answer on screen until the new one comes", () => {
+    const found = reduce(reduce(initialSearch(), { type: "searched", label: "bakery", hold: null }), { type: "answered", seq: 1, label: "bakery", answer: AVAILABLE, mine: null, now: 0 })
+    const next = reduce({ ...found, typed: "harbour" }, { type: "searched", label: "harbour", hold: null })
+    expect(next.searching).toEqual({ label: "harbour" })
+    expect(next.answer).toEqual(found.answer)
   })
-  it("card-due holds it over an answer of another kind", () => {
-    const refused = reduce(open(), searchedEvent("abc"))
-    const next = reduce(refused, searchedEvent("alice1"))
-    expect(reduce(next, { type: "card-due", seq: next.seq }).searching).toEqual({ label: "alice1", card: true })
-  })
-  it("card-due for an earlier search, or once answered, changes nothing", () => {
-    const first = reduce(open(), searchedEvent("alice1"))
-    const second = reduce(first, searchedEvent("bobby1"))
-    expect(reduce(second, { type: "card-due", seq: first.seq })).toBe(second)
-    const done = reduce(first, answered(first))
-    expect(reduce(done, { type: "card-due", seq: first.seq })).toBe(done)
+  it("the opened event carries no code", () => {
+    expect(Object.keys(initialSearch())).not.toContain("applied")
   })
 })
 
@@ -239,11 +219,7 @@ describe("reduce: answers", () => {
   })
 })
 
-describe("reduce: codes and retargets", () => {
-  it("code-removed takes the code off, keeping the answer", () => {
-    const s = shown("alice1", AVAILABLE, { applied: CODE })
-    expect(reduce(s, { type: "code-removed" })).toMatchObject({ applied: null, answer: s.answer })
-  })
+describe("reduce: retargets", () => {
   it("retarget-read takes the order as the service has it", () => {
     const s = open({ opening: "retarget", retarget: record() })
     expect(reduce(s, { type: "retarget-read", record: record({ paid: 2500 }), moved: null }).retarget).toEqual(record({ paid: 2500 }))

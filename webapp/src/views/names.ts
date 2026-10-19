@@ -14,7 +14,7 @@ import {
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { linkField } from "./checkout.ts"
-import { codePopup, useCode, verdictNode } from "./codes.ts"
+import { codePopup, verdictNode } from "./codes.ts"
 import {
   type Builder, closePopup, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusOn, go, isRedraw, isRoute, kept, keptLive, popup, redirect, screen, whenDropped, whenLeaving,
 } from "./shell.ts"
@@ -180,7 +180,6 @@ function removePending(p: store.PendingCode): void {
 function forgetEverything(): void {
   store.forgetEverything()
   session.setCheckout(null)
-  session.setAppliedCode(null)
   dispatchList({ type: "forget-confirmed" })
 }
 
@@ -213,7 +212,7 @@ function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   const orderRows = [...s.pending.map((p) => pendingRow(p, s, signal)), ...listedOrders(s).map((o) => orderRow(o, s))]
   const codeRows = s.codes.map((c) => codeRow(c, s))
   const empty = (text: string) => el("p", { class: "sec-note empty-list" }, text)
-  const addCode = btn([icon("key"), "Add a code"], "quiet", () => codePopup("add"))
+  const addCode = btn([icon("key"), "Add a code"], "quiet", codePopup)
   addCode.dataset.focus = "add-code"
   const restoreLink = btn([icon("refresh"), "Restore with a name code"], "quiet", () => go("/#/restore"))
   restoreLink.dataset.focus = "restore-code"
@@ -305,14 +304,14 @@ function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {
   copy.dataset.focus = `${c.code}-copy`
   const [text, tone] = check === undefined ? ["Checking", ""] : check === "unchecked" ? ["Not checked", "warn"] : CODE_CHIPS[check]
   const node = row(c.code, "≡", c.code, `Names of ${c.minLength} or more letters, for ${c.years} years${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000, true)}`,
-    el("span", {}, chip(text, tone, check === undefined || check === "unused")), check === "unused" ? small("Use", `${c.code}-use`, () => useCode(c)) : null, copy)
+    el("span", {}, chip(text, tone, check === undefined || check === "unused")), copy)
   node.classList.add("code-row")
   return node
 }
 
 function showCode(o: store.OrderRecord): void {
   const code = o.ownerCode!
-  popup(el("div", { class: "modal", role: "dialog", "aria-label": "Name code" },
+  popup(el("div", { class: "popup", role: "dialog", "aria-label": "Name code" },
     el("div", { class: "modal-head" }, el("h3", {}, nameText(o.label, o.tld)),
       el("a", { class: "icon-btn", href: "#", role: "button", "aria-label": "Close", onclick: (e: Event) => { e.preventDefault(); closePopup() } }, icon("x"))),
     el("p", { class: "sec-note" }, "The name code owns the name. Scan or enter it in SimpleX to move the name to the app."),

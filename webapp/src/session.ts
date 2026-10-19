@@ -1,4 +1,4 @@
-// This tab's checkout in progress and the prepaid code applied to search; both end with the tab.
+// This tab's checkout in progress, which ends with the tab.
 import type { ChainInfo, Method } from "./api.ts"
 
 export interface AppliedCode {
@@ -27,7 +27,6 @@ export interface Checkout {
 }
 
 const CHECKOUT = "simplex-names-checkout"
-const APPLIED = "simplex-names-code"
 const SCROLLED = "simplex-names-scrolled"
 const memory = new Map<string, string>()
 // keys whose last write did not reach sessionStorage, which then holds an older value
@@ -84,6 +83,3 @@ const keyOf = (c: Checkout) => `${c.label} ${c.ownerCode ?? c.appOwner}`
 export const isSending = (c: Checkout) => sending.has(keyOf(c))
 export const startSending = (c: Checkout) => sending.add(keyOf(c))
 export const stopSending = (c: Checkout) => sending.delete(keyOf(c))
-
-export const appliedCode = () => read<AppliedCode>(APPLIED)
-export const setAppliedCode = (c: AppliedCode | null) => write(APPLIED, c)

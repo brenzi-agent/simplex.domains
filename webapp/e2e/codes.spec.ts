@@ -1,5 +1,5 @@
 import { type APIRequestContext, type Browser, expect, type Locator, type Page } from "@playwright/test"
-import { control, savedCode, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { control, savedCode, search, shot, startOrder, test, uniqueLabel } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
 const WAIT_S = 200
@@ -38,82 +38,45 @@ async function releasedAndUsed(request: APIRequestContext, code: string): Promis
 const keptRefusal = (page: Page, registrationId: string) =>
   page.evaluate((id) => JSON.parse(localStorage.getItem(`simplex-names:order:${id}`) ?? "{}").codeRefusal ?? null, registrationId)
 
-// A prepaid code applied on search registers a new name with it; the page is left on the registration.
-async function registerWithCode(page: Page, request: APIRequestContext, prefix: string): Promise<{ code: string; registrationId: string }> {
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.goto("/")
-  await page.getByRole("button", { name: "Check a code" }).click()
+// The name searched is registered with a prepaid code entered at checkout; the page is left on the registration.
+async function payWithCode(page: Page, label: string, code: string): Promise<void> {
+  await search(page, label)
+  await page.getByRole("button", { name: "Register", exact: true }).click()
+  await page.getByText("I have a code").click()
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await page.getByRole("button", { name: "Use this code" }).click()
-  await page.getByLabel("Name", { exact: true }).fill(uniqueLabel(prefix))
-  await page.getByLabel("Name", { exact: true }).press("Enter")
-  await page.getByRole("button", { name: "Register with code" }).click()
+  await expect(page.getByText("Paid with your code")).toBeVisible()
   await page.getByRole("button", { name: "Continue" }).click()
   await savedCode(page)
-  await page.getByRole("button", { name: "Register" }).click()
+  // the search's Register stays on its inert slide beside the checkout
+  await page.locator(".slide:not([inert])").getByRole("button", { name: "Register", exact: true }).click()
   await page.waitForURL(/\?registration=/)
+}
+
+async function registerWithCode(page: Page, request: APIRequestContext, prefix: string): Promise<{ code: string; registrationId: string }> {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  await payWithCode(page, uniqueLabel(prefix), code)
   return { code, registrationId: new URL(page.url()).searchParams.get("registration")! }
 }
 
-test("a prepaid code is checked, applied on search, and registers a name with nothing to pay", async ({ page, request }) => {
-  const { code } = await control(request, "code", { minLength: 6, years: 5 }) as { code: string }
-  await page.goto("/")
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code.toLowerCase())
-  await expect(page.locator(".verdict.ok")).toContainText("Covers names of 6 or more letters, for 5 years.")
-  await shot(page, "K1-code-valid")
-  await page.getByRole("button", { name: "Use this code" }).click()
-  await expect(page.getByText("Code applied: names of 6 or more letters, for 5\u00a0years. Search a name to use it.")).toBeVisible()
-  await shot(page, "K1b-code-applied-home")
-
-  const label = uniqueLabel("pre")
-  await page.getByLabel("Name", { exact: true }).fill(label)
-  await page.getByLabel("Name", { exact: true }).press("Enter")
-  await expect(page.getByText("Code applied")).toBeVisible()
-  await expect(page.locator(".result .chip", { hasText: "5 years + 30 days" })).toBeVisible()
-  await shot(page, "K2-code-applied")
-  await page.getByRole("button", { name: "Register with code" }).click()
-
-  await expect(page.getByText("Paid with your code")).toBeVisible()
-  await expect(page.locator(".crumb", { hasText: "Payment" })).toHaveCount(0)
-  await shot(page, "K3-checkout-covered")
-  await page.getByRole("button", { name: "Continue" }).click()
-  await savedCode(page)
-  await page.getByRole("button", { name: "Register" }).click()
-  await page.waitForURL(/\?registration=/)
-  await expect(page.locator(".crumb.on")).toHaveText("4Registration")
-  await waitRegistered(page, label)
-  await expect(page.getByText(/Registered for 5 years \+ 30 days/)).toBeVisible()
-  await shot(page, "K8-registered-with-code")
-  expect((await searchName(request, label)).status).toBe("registered")
+// Your names' Add a code, the one popup that checks a code
+async function addCodePopup(page: Page): Promise<Locator> {
   await page.goto("/#/names")
-  await expect(page.locator(".row-item", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText("Registered")
-  await expect(page.locator(".row-item", { hasText: `${label}.simplex` })).toContainText(/paid with a code/i)
-  await shot(page, "K10-names-paid-with-code")
-
-  // the code is spent
-  await page.goto("/")
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await expect(page.locator(".verdict.bad")).toContainText("This code was already used")
-  await shot(page, "K5-code-used")
-})
+  await page.getByRole("button", { name: "Add a code" }).click()
+  return page.getByRole("textbox", { name: "Code", exact: true })
+}
 
 test("the checkout's code entry refuses a code for longer names, and the popup refuses typos and owner codes", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 8 }) as { code: string }
-  await page.goto("/")
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill("SN7-BJTBP-29596-R3HJ8-25YM8")
+  const field = await addCodePopup(page)
+  await field.fill("SN7-BJTBP-29596-R3HJ8-25YM8")
   await expect(page.locator(".verdict.bad")).toContainText("This code is not valid")
   await shot(page, "K6-code-invalid")
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill("SN-8M7X0-8Z533-AG8DP-RBN5T-BPQ6D-YH09G")
+  await field.fill("SN-8M7X0-8Z533-AG8DP-RBN5T-BPQ6D-YH09G")
   await expect(page.locator(".verdict.bad")).toContainText("This is a name code")
   await expect(page.getByText("Restore in Your names")).toBeVisible()
   await page.getByLabel("Close").click()
 
-  const label = uniqueLabel("k7")
-  await page.getByLabel("Name", { exact: true }).fill(label.slice(0, 7))
-  await page.getByLabel("Name", { exact: true }).press("Enter")
+  await search(page, uniqueLabel("k7").slice(0, 7))
   await page.getByRole("button", { name: "Register" }).click()
   await page.getByText("I have a code").click()
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
@@ -121,7 +84,7 @@ test("the checkout's code entry refuses a code for longer names, and the popup r
   await shot(page, "K7-code-too-short")
 })
 
-test("a code added under Your names is listed, used, and forgotten", async ({ page, request }) => {
+test("a code added under Your names is listed, and forgotten", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 7 }) as { code: string }
   await page.goto("/#/names")
   await page.getByRole("button", { name: "Add a code" }).click()
@@ -131,13 +94,6 @@ test("a code added under Your names is listed, used, and forgotten", async ({ pa
   await page.getByRole("button", { name: "Add to your codes" }).click()
   const row = page.locator(".row-item", { hasText: code })
   await expect(row.locator(".chip")).toHaveText("Unused")
-  await row.getByText("Use", { exact: true }).click()
-  await expect(page).toHaveURL(/#\/$/)
-  await page.getByLabel("Name", { exact: true }).fill("sixsix")
-  await page.getByLabel("Name", { exact: true }).press("Enter")
-  await expect(page.getByText("Your code covers names of 7 or more letters.")).toBeVisible()
-
-  await page.goto("/#/names")
   await page.getByText("Forget everything in this browser").click()
   await shot(page, "N12c-forget")
   await page.getByRole("button", { name: "Forget everything" }).click()
@@ -182,17 +138,8 @@ test("an order refused at checkout for a name taken meanwhile leaves no unfinish
 test("a code order taken first gives its code back, ready for another name", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   const label = uniqueLabel("ctk")
-  await page.goto("/")
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await page.getByRole("button", { name: "Use this code" }).click()
   await control(request, "take", { label })
-  await page.getByLabel("Name", { exact: true }).fill(label)
-  await page.getByLabel("Name", { exact: true }).press("Enter")
-  await page.getByRole("button", { name: "Register with code" }).click()
-  await page.getByRole("button", { name: "Continue" }).click()
-  await savedCode(page)
-  await page.getByRole("button", { name: "Register" }).click()
+  await payWithCode(page, label, code)
   await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: 120_000 })
   await expect(page.locator(".status .code-display")).toHaveText(code)
   await shot(page, "K9-code-released")
@@ -316,68 +263,11 @@ test("the registering page's lead tells the time left from the commit's wait", a
   await page.unrouteAll({ behavior: "ignoreErrors" })
 })
 
-test("a code used on an order page leads to search, and a search opened from the app refuses it", async ({ page, request }) => {
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  const useIt = async () => {
-    await page.getByRole("button", { name: "Check a code" }).click()
-    await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-    await expect(page.locator(".verdict.ok")).toBeVisible()
-    await page.getByRole("button", { name: "Use this code" }).click()
-  }
-  await startOrder(page, uniqueLabel("cpo"), { method: "btc" })
-  await useIt()
-  await page.waitForURL((url) => url.search === "" && url.hash === "#/")
-  await expect(page.getByText("Code applied: names of 6 or more letters, for 2 years. Search a name to use it.")).toBeVisible()
-  await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("cpn"))
-  await page.getByLabel("Name", { exact: true }).press("Enter")
-  await expect(page.getByText("Code applied")).toBeVisible()
-
-  await page.goto(`/#/?name=${uniqueLabel("cpa")}&owner=0x${"11".repeat(20)}`)
-  await useIt()
-  await expect(page.locator(".verdict.bad")).toContainText("An order opened from SimpleX is paid here, not with a code.")
-})
-
-test("a code applied from the header popup at checkout gives focus back to the redrawn header's Check a code", async ({ page, request }) => {
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.goto(`/#/?name=${uniqueLabel("cfo")}`)
-  await page.getByRole("button", { name: "Register" }).click()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await expect(page.locator(".verdict.ok")).toBeVisible()
-  await page.keyboard.press("Enter")
-  await expect(page.getByText("Paid with your code")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Check a code" })).toBeFocused()
-})
-
-test("removing an applied code returns focus to the search box", async ({ page, request }) => {
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.goto("/#/names")
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await expect(page.locator(".verdict.ok")).toBeVisible()
-  await page.getByRole("button", { name: "Use this code" }).click()
-  await page.getByRole("button", { name: "Remove" }).click()
-  await expect(page.getByText(/^Code applied/)).toHaveCount(0)
-  await expect(page.getByLabel("Name", { exact: true })).toBeFocused()
-})
-
 test("a device clock three minutes slow signs as soon as the service allows", async ({ page, request }) => {
   await page.clock.install({ time: Date.now() - 3 * 60_000 })
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.goto("/")
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await expect(page.locator(".verdict.ok")).toBeVisible()
-  await page.getByRole("button", { name: "Use this code" }).click()
   const label = uniqueLabel("skew")
-  await page.getByLabel("Name", { exact: true }).fill(label)
-  await page.getByLabel("Name", { exact: true }).press("Enter")
-  await page.getByRole("button", { name: "Register with code" }).click()
-  await page.getByRole("button", { name: "Continue" }).click()
-  await savedCode(page)
-  await page.getByRole("button", { name: "Register" }).click()
-  await page.waitForURL(/\?registration=/)
+  await payWithCode(page, label, code)
   await expect(page.getByRole("heading", { name: `${label}.simplex is yours` })).toBeVisible({ timeout: 60_000 })
 })
 
@@ -396,9 +286,7 @@ test("restore on a fresh page works at once with the device clock 15 minutes off
 test("a rate-limited code check says how long to wait", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   await page.route("**/api/code/check", (route) => route.fulfill({ status: 429, headers: { "retry-after": "40" }, json: { error: "rate_limited" } }))
-  await page.goto("/")
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
+  await (await addCodePopup(page)).fill(code)
   await expect(page.locator(".verdict.bad")).toContainText("Too many checks just now")
   await expect(page.locator(".verdict.bad")).toContainText("Try again in 40 seconds")
 })
@@ -450,9 +338,7 @@ async function codeFields(browser: Browser, browserName: string, width: number) 
   const context = await browser.newContext({ viewport: { width, height: 800 }, isMobile: phone && browserName === "chromium", hasTouch: phone })
   const page = await context.newPage()
   const measure = (field: Locator) => field.evaluate((n: HTMLInputElement) => ({ overflow: n.scrollWidth - n.clientWidth, font: parseFloat(getComputedStyle(n).fontSize) }))
-  await page.goto("/")
-  await page.locator(".tile.invest").getByRole("button", { name: "Check your code" }).click()
-  const popupField = page.getByRole("textbox", { name: "Code", exact: true })
+  const popupField = await addCodePopup(page)
   await popupField.fill(NAME_CODE)
   await expect(page.locator(".verdict.bad")).toContainText("This is a name code")
   const popup = await measure(popupField)

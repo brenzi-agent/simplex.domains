@@ -15,7 +15,7 @@ test("the production build opens offline: the page, an order's link and Your nam
   try {
     const reload = await page.reload()
     expect(reload?.fromServiceWorker()).toBe(true)
-    await expect(page.getByRole("heading", { name: /Own your name/ })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
     await expect(page.getByRole("status").filter({ hasText: OFFLINE_NOTE })).toBeVisible()
     // the service's answers are never kept: a search offline says it could not check, rather than an old answer
     await page.getByLabel("Name", { exact: true }).fill("offlinename")
@@ -28,7 +28,7 @@ test("the production build opens offline: the page, an order's link and Your nam
   } finally {
     await context.setOffline(false)
   }
-  await page.locator("nav a[data-nav=search]").click()
+  await page.getByRole("link", { name: "SimpleX names" }).click()
   await expect(page.locator(".offline-note")).toHaveCount(0)
 })
 
