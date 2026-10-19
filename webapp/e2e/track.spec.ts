@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test"
+import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
   CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, REGISTRATION_MS, savedToReview, search, shot, startOrder, test, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
@@ -97,16 +98,35 @@ async function fitsWindow(page: Page, name: string, centred = true): Promise<voi
       const kids = [...shown.children].filter((k) => k.getBoundingClientRect().height > 0)
       const above = kids[0].getBoundingClientRect().top - document.querySelector("body > header")!.getBoundingClientRect().bottom
       const below = document.querySelector("body > footer")!.getBoundingClientRect().top - kids.at(-1)!.getBoundingClientRect().bottom
-      return { overflow: Math.max(0, document.scrollingElement!.scrollHeight - innerHeight), offCentre: Math.round(Math.abs(above - below)) }
+      // the track follows its step's height a frame or two after the window changes
+      const track = document.querySelector(".track")
+      const settled = !track || !shown.closest(".slide") || Math.round(track.getBoundingClientRect().height) === Math.ceil(shown.parentElement!.getBoundingClientRect().height)
+      return { settled, overflow: Math.max(0, document.scrollingElement!.scrollHeight - innerHeight), offCentre: Math.round(Math.abs(above - below)) }
     })
     // an offset within the bound reads as none, so a failure shows how far off it is
     await expect.poll(async () => {
-      const { overflow, offCentre } = await measured()
-      return { overflow, offCentre: centred && offCentre > CENTRE_PX ? offCentre : 0 }
-    }, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ overflow: 0, offCentre: 0 })
+      const { settled, overflow, offCentre } = await measured()
+      return { settled, overflow, offCentre: centred && offCentre > CENTRE_PX ? offCentre : 0 }
+    }, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ settled: true, overflow: 0, offCentre: 0 })
   }
   await page.setViewportSize(FIT_SIZES[0])
   await shot(page, `names-7c-${name}`)
+}
+
+// widths a laptop's or a tablet's window has, from where the column first leaves margins beside it
+const BACK_WIDTHS = [900, 1024, 1280]
+
+// Back stays inside the window, beside the heading or above it
+async function backInView(page: Page, name: string): Promise<void> {
+  for (const width of BACK_WIDTHS) {
+    await page.setViewportSize({ width, height: FIT_SIZES[0].height })
+    const back = onStep(page).locator(".back")
+    await expect.poll(async () => {
+      const box = (await back.boundingBox())!
+      return box.x >= 0 && box.x + box.width <= width
+    }, { message: `${name}: Back at ${width} px wide` }).toBe(true)
+  }
+  await page.setViewportSize(FIT_SIZES[0])
 }
 
 test("every purchase step fits a laptop's and a phone's window without scrolling, centred between the header and the footer", async ({ page, request }) => {
@@ -119,11 +139,13 @@ test("every purchase step fits a laptop's and a phone's window without scrolling
   await step.getByLabel("Address").fill(contactLink("F2"))
   await expect(step.locator(".link-field").first().locator(".entity:not(.skeleton)")).toBeVisible()
   await fitsWindow(page, "2-links")
+  await backInView(page, "links")
   await step.getByRole("button", { name: "Continue" }).click()
   await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
   await fitsWindow(page, "3-code")
   await savedToReview(page)
   await fitsWindow(page, "4-review")
+  await backInView(page, "review")
   await openCode(page)
   await fitsWindow(page, "4b-review-code")
   await payButton(page).click()
@@ -138,4 +160,15 @@ test("every purchase step fits a laptop's and a phone's window without scrolling
   await startOrder(page, uniqueLabel("fitcard"), { method: "card" })
   await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
   await fitsWindow(page, "5b-pay-card")
+})
+
+test("a name of 63 letters keeps the home's answer and the links step inside the window", async ({ page }) => {
+  const short = uniqueLabel("long")
+  const label = `${short}${"x".repeat(MAX_LABEL_LENGTH - short.length)}`
+  await search(page, label)
+  await expect(page.getByRole("button", { name: "Register" })).toBeEnabled()
+  await fitsWindow(page, "1b-home-long-name", false)
+  await page.getByRole("button", { name: "Register" }).click()
+  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
+  await fitsWindow(page, "2b-links-long-name")
 })

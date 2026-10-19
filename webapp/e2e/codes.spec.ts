@@ -1,12 +1,15 @@
 import { type APIRequestContext, type Browser, expect, type Locator, type Page } from "@playwright/test"
+import { durationFor } from "../src/crypto/registration.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  CHECKOUT_KEY, checkoutCode, CODE_HEADING, CODE_LABEL, control, onStep, openCode, payButton, savedToReview, search, searchName, shot, startOrder, test, toCodeStep, toReview,
+  CHECKOUT_KEY, checkoutCode, CODE_HEADING, CODE_LABEL, control, MOCK, onStep, openCode, payButton, search, searchName, shot, startOrder, test, toCodeStep, toReview,
   uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
 const WAIT_S = 200
+// how long after its wait a registration may reach the chain
+const REGISTER_SLACK_S = 600
 
 // Whether a page drawn after this ever said the code is kept, from its first frame on.
 const watchKept = () => {
@@ -91,9 +94,12 @@ test("a prepaid code entered at checkout registers a name with nothing to pay", 
   await waitRegistered(page, label)
   const registered = await searchName(request, label)
   expect(registered.status).toBe("registered")
-  // the code's 5 years, not the 2 a search prices
   await expect(page.locator("body > main .lead")).toHaveText(`Registered until ${dateOf(registered.expiresAt as number)}.`)
-  expect(new Date((registered.expiresAt as number) * 1000).getFullYear() - new Date().getFullYear()).toBeGreaterThanOrEqual(5)
+  // the code's term, 5 years and its bonus days, from the end of the commit's wait to the name's expiry
+  const view = await (await request.get(`${MOCK}/api/registration/${new URL(page.url()).searchParams.get("registration")}`)).json() as { years: number; revealAfter: number }
+  expect(view.years).toBe(5)
+  expect((registered.expiresAt as number) - view.revealAfter - Number(durationFor(5))).toBeGreaterThanOrEqual(0)
+  expect((registered.expiresAt as number) - view.revealAfter - Number(durationFor(5))).toBeLessThan(REGISTER_SLACK_S)
   await shot(page, "K8-registered-with-code")
   await page.goto("/#/names")
   const row = page.locator(".list-row", { hasText: `${label}.simplex` })
@@ -126,8 +132,10 @@ test("a code entered at checkout stays with its name through Back and Register, 
   await page.goBack()
   await page.goBack()
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(label)
-  await toCodeStep(page)
-  await savedToReview(page)
+  // the code already saved, the links step goes on to the review
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await onStep(page).getByRole("button", { name: "Skip for now" }).click()
+  await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
   await expect(checkoutCode(page)).toHaveValue(code)
   await expect(page.locator(".code-entry .verdict.ok")).toBeVisible()
   await expect(total(page)).toContainText("$0.00")

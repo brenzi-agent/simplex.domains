@@ -2,7 +2,6 @@ export type View = "search" | "checkout" | "order" | "names" | "restore" | "edit
 export type CheckoutStep = "links" | "code" | "review"
 
 export const EDIT_PATH = /^\/edit\/([\w-]+)$/
-// the review is the checkout's own path, so a link to the checkout opens it
 const CHECKOUT_PATH = /^\/checkout(?:\/(links|code))?$/
 
 export function viewOf(query: URLSearchParams, path: string): View {

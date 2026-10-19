@@ -11,7 +11,6 @@ export interface Checkout {
   label: string
   price: number
   chain: ChainInfo
-  // the links the name opens, empty when not set
   contact: string
   channel: string
   method: Method
@@ -22,6 +21,8 @@ export interface Checkout {
   // opened from the app: the app wallet's address, and the secret this page keeps for it
   appOwner: string | null
   appSecret: string | null
+  // the history entry of the search the checkout started from
+  searchAt: number
   // a method the provider refused just now
   unavailable?: Method
   // why the service refused the code this checkout carried

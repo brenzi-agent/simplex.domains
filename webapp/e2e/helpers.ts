@@ -67,6 +67,12 @@ export async function shot(page: Page, name: string): Promise<void> {
     await page.setViewportSize(size)
     // a phone's scrollbar lies over the page and takes no room
     await page.evaluate((phone) => { document.documentElement.style.scrollbarGutter = phone ? "auto" : "" }, device === "phone")
+    // the track takes its step's height for the new size a frame or two after the window changes
+    await page.waitForFunction(() => {
+      const track = document.querySelector(".track")
+      const slide = document.querySelector(".slide:not([inert])")
+      return !track || !slide || Math.round(track.getBoundingClientRect().height) === Math.ceil(slide.getBoundingClientRect().height)
+    })
     for (const dark of themes) {
       await page.evaluate((d) => document.documentElement.classList.toggle("dark", d), dark)
       await painted()

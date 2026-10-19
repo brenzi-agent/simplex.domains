@@ -5,17 +5,39 @@ import { type LinkKind, linkKind, linkProblem } from "../names.ts"
 import { entityCard } from "./search.ts"
 import { whenDropped } from "./shell.ts"
 
-// The field's data-state says whether its link is "ok", "bad", or "empty"; save gets the link only when it is ok.
+const FIELD_TEXT: Record<LinkKind, { name: string; label: string; placeholder: string }> = {
+  contact: { name: "Contact address", label: "Address", placeholder: "Paste your address" },
+  channel: { name: "Channel", label: "Channel", placeholder: "Paste your channel" },
+}
+export const linkName = (kind: LinkKind) => FIELD_TEXT[kind].name
+
 let linkFields = 0
 type Preview = Awaited<ReturnType<typeof api.previewLink>>
-// a link's profile as shown, so a field drawn again for it, as on a page opened again, shows it at once
+// a link's profile as shown, so a field or a review drawn again for it shows it at once
 const previews = new Map<string, Preview>()
-// a link preview with no answer is asked again after this long
 const PREVIEW_RETRY_S = 3
 
-export function linkField(kind: LinkKind, placeholder: string, label: string, value: string, save: (v: string) => void): HTMLElement {
+const entityOf = (profile: Preview, link: string) => entityCard({ ...profile, link }, false)
+// a preview's place is held while it is asked for, so the page is laid out at its height from the start
+const previewPlace = () => el("div", { class: "entity skeleton", "aria-hidden": "true" })
+
+export function linkPreview(link: string): HTMLElement {
+  const known = previews.get(link)
+  if (known) return entityOf(known, link)
+  const place = previewPlace()
+  void api.previewLink(link).then((profile) => {
+    previews.set(link, profile)
+    place.replaceWith(entityOf(profile, link))
+  }, () => place.replaceWith(el("span", { class: "url" }, link)))
+  return place
+}
+
+// The field's data-state says whether its link is "ok", "bad", or "empty". save hears each link that is ok and the field
+// emptied; a link being checked or refused leaves the last one saved.
+export function linkField(kind: LinkKind, value: string, save: (v: string) => void): HTMLElement {
   const errorId = `link-error-${++linkFields}`
-  const input = el("input", { type: "text", placeholder, value, "aria-label": label, spellcheck: "false", autocomplete: "off" })
+  const input = el("input", { type: "text", placeholder: FIELD_TEXT[kind].placeholder, value, "aria-label": FIELD_TEXT[kind].label, spellcheck: "false", autocomplete: "off",
+    "data-focus": `link-${kind}` })
   const box = el("label", { class: "field" }, icon("link"), input)
   const card = el("div", {})
   const field = el("div", { class: "link-field" }, box, card)
@@ -25,9 +47,8 @@ export function linkField(kind: LinkKind, placeholder: string, label: string, va
   const shown = () => !life.signal.aborted
   let waiting = new AbortController()
   let seq = 0
-  // the card's place is held while the link is checked, so the page is laid out at its height from the start
   const holdCardPlace = () => {
-    if (!card.querySelector(".skeleton")) card.replaceChildren(el("div", { class: "entity-wrap", "aria-hidden": "true" }, el("div", { class: "entity skeleton" })))
+    if (!card.querySelector(".skeleton")) card.replaceChildren(previewPlace())
   }
   const refuse = (text: string) => {
     box.className = "field bad"
@@ -42,13 +63,14 @@ export function linkField(kind: LinkKind, placeholder: string, label: string, va
     waiting.abort()
     waiting = new AbortController()
     const link = input.value.trim()
-    save("")
     box.className = "field"
     input.removeAttribute("aria-invalid")
     input.removeAttribute("aria-describedby")
     field.dataset.state = link ? "checking" : "empty"
-    if (!link) return card.replaceChildren()
-    const entity = (profile: Preview) => el("div", { class: "entity-wrap" }, entityCard({ ...profile, link }, false))
+    if (!link) {
+      save("")
+      return card.replaceChildren()
+    }
     const accept = () => {
       field.dataset.state = "ok"
       box.className = "field ok"
@@ -60,24 +82,18 @@ export function linkField(kind: LinkKind, placeholder: string, label: string, va
     const kept = field.dataset.kept ?? value
     if (link === kept) {
       accept()
-      if (kept.includes(";")) return card.replaceChildren(el("p", { class: "note" }, "Several links. SimpleX opens the first one."))
-      if (known) return card.replaceChildren(entity(known))
-      holdCardPlace()
-      const profile = await api.previewLink(link).catch(() => null)
-      if (profile) previews.set(link, profile)
-      if (mine === seq && shown() && field.isConnected) card.replaceChildren(profile ? entity(profile) : "")
-      return
+      return card.replaceChildren(kept.includes(";") ? el("p", { class: "note" }, "Several links. SimpleX opens the first one.") : linkPreview(link))
     }
     const problem = linkProblem(kind, link)
     if (problem) {
       const other = linkKind(link)
       return refuse(problem === "long" ? "This link is too long."
-        : other ? `This is a ${other === "contact" ? "contact address" : "channel"} link: paste it in the ${other === "contact" ? "Address" : "Channel"} field.`
-        : `Paste a SimpleX ${kind === "contact" ? "contact address" : "channel"} short link.`)
+        : other ? `This is a ${linkName(other).toLowerCase()} link: paste it in the ${FIELD_TEXT[other].label} field.`
+        : `Paste a SimpleX ${linkName(kind).toLowerCase()} short link.`)
     }
     if (known) {
       accept()
-      return card.replaceChildren(entity(known))
+      return card.replaceChildren(entityOf(known, link))
     }
     holdCardPlace()
     try {
@@ -85,7 +101,7 @@ export function linkField(kind: LinkKind, placeholder: string, label: string, va
       previews.set(link, profile)
       if (mine !== seq || !shown() || !field.isConnected) return
       accept()
-      card.replaceChildren(entity(profile))
+      card.replaceChildren(entityOf(profile, link))
     } catch (e) {
       if (mine !== seq || !shown() || !field.isConnected) return
       // the service refusing the link is about the link; a rate limit or no answer is not, and the field checks again
@@ -106,7 +122,7 @@ export function linkField(kind: LinkKind, placeholder: string, label: string, va
   return field
 }
 
-export const linkEntry = (label: string, field: HTMLElement) => el("div", { class: "link-entry" }, el("span", { class: "label" }, label), field)
+export const linkEntry = (kind: LinkKind, field: HTMLElement) => el("div", { class: "link-entry" }, el("span", { class: "label" }, linkName(kind)), field)
 
 export function focusUnsettled(fields: HTMLElement[]): boolean {
   const unsettled = fields.find((f) => f.dataset.state === "bad" || f.dataset.state === "checking")

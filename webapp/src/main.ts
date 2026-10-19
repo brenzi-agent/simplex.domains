@@ -25,8 +25,7 @@ function render(): void {
 
 setRenderer(render)
 window.addEventListener("popstate", (e) => {
-  historyMoved(e)
-  render()
+  if (historyMoved(e)) render()
 })
 // The second click of a double click is dropped everywhere: an action that redraws the page or opens a popup puts
 // another control under the pointer, where it would land (a checkbox, a payment method, the popup's backdrop).

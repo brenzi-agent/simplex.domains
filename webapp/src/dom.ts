@@ -80,18 +80,22 @@ export function alertBox(tone: Tone, ic: IconName, title: string | null, text: K
   return el("div", { class: `notice ${tone}` }, icon(ic), el("div", {}, title ? el("b", {}, title) : null, text))
 }
 
+// a name this long is drawn smaller and runs on in its line, so it fits a phone; a shorter one moves to the next line whole
+const LONG_NAME = 24
+const isLong = (label: string) => label.length > LONG_NAME
+const nameClass = (label: string) => isLong(label) ? "long" : "inline-name"
+
 export function nameText(label: string, tld: string): HTMLSpanElement {
-  return el("span", { class: "inline-name" }, label, el("wbr"), `.${tld}`)
+  return el("span", { class: nameClass(label) }, label, el("wbr"), `.${tld}`)
 }
 
 // a long name breaks before its top-level domain first
 export function nameTitle(label: string, cls = "name", tld = "simplex"): HTMLDivElement {
-  return el("div", { class: cls }, label, el("wbr"), el("span", {}, `.${tld}`))
+  return el("div", { class: isLong(label) ? `${cls} long` : cls }, label, el("wbr"), el("span", {}, `.${tld}`))
 }
 
-// a name moves to the next line whole; one longer than the line breaks before its top-level domain rather than inside a word
 export function gradName(label: string, tld = "simplex"): HTMLSpanElement {
-  return el("span", { class: "grad inline-name" }, label, el("wbr"), `.${tld}`)
+  return el("span", { class: `grad ${nameClass(label)}` }, label, el("wbr"), `.${tld}`)
 }
 
 // where a page writes the answer to an action, announced by screen readers when it changes

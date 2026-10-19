@@ -50,6 +50,22 @@ test("Back from an order page keeps it reachable with Forward", async ({ page })
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
 })
 
+test("Back from the payment lands once on the search, past the checkout's steps, and Forward returns to it", async ({ page }) => {
+  const label = uniqueLabel("hist")
+  await search(page, label)
+  const entries = await page.evaluate(() => history.length)
+  await toReview(page)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  expect(await page.evaluate(() => history.length), "the checkout's entries gave way to the order").toBe(entries + 1)
+  await page.goBack()
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue(label)
+  expect(new URL(page.url()).hash).toBe(`#/?name=${label}`)
+  await page.goForward()
+  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+})
+
 test("a payment method is chosen with the keyboard, as one radio group", async ({ page }) => {
   await search(page, uniqueLabel("key"))
   await toReview(page)
@@ -174,7 +190,7 @@ test("a registered order opened in a browser without its code offers restore", a
   await page2.getByLabel("Name code").fill(ownerCode)
   await page2.getByRole("button", { name: "Restore" }).click()
   await waitRegistered(page2, label)
-  await expect(page2.getByRole("link", { name: "Edit links" }), "the restored code lets this browser edit the name's links").toBeVisible()
+  await expect(page2.getByTestId("owner-code"), "the restored browser holds the code").toHaveText(ownerCode)
   await other.close()
 })
 

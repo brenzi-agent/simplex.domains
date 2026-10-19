@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
-  changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, FALLBACK_METHOD, initialState, reduce, screenOf,
+  changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, FALLBACK_METHOD, initialState, reduce, screenOf, stepFor,
 } from "../src/screens/checkout.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import type { Checkout } from "../src/session.ts"
@@ -14,7 +14,7 @@ const OPEN_ORDER = { invoiceId: "inv-9", label: "bobby", tld: "simplex", confirm
 function checkout(change: Partial<Checkout> = {}): Checkout {
   return {
     label: "alice1", price: 1500, chain: CHAIN, contact: "", channel: "", method: "btc", code: null, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF",
-    saved: true, appOwner: null, appSecret: null, ...change,
+    saved: true, appOwner: null, appSecret: null, searchAt: 0, ...change,
   }
 }
 
@@ -70,7 +70,6 @@ describe("changeOf", () => {
   it("gives each change of the stored checkout", () => {
     expect(changeOf(s, { type: "link-set", kind: "contact", link: CONTACT })).toEqual({ contact: CONTACT })
     expect(changeOf(s, { type: "link-set", kind: "channel", link: CHANNEL })).toEqual({ channel: CHANNEL })
-    expect(changeOf(s, { type: "links-skipped" })).toEqual({ contact: "", channel: "" })
     expect(changeOf(s, { type: "saved", saved: false })).toEqual({ saved: false })
     expect(changeOf(s, { type: "method-chosen", method: "xmr" })).toEqual({ method: "xmr" })
     expect(changeOf(s, { type: "code-applied", code: CODE })).toEqual({ code: CODE, codeError: undefined })
@@ -116,10 +115,6 @@ describe("reduce", () => {
     const set = reduce(links, { type: "link-set", kind: "contact", link: CONTACT })
     expect(set).toEqual({ ...links, checkout: { ...links.checkout, contact: CONTACT } })
     expect(reduce(set, { type: "link-set", kind: "contact", link: "" })).toEqual(links)
-  })
-  it("links-skipped empties both links, so the order is sent with none", () => {
-    const typed = open({ step: "links", checkout: checkout({ contact: CONTACT, channel: CHANNEL }) })
-    expect(reduce(typed, { type: "links-skipped" }).checkout).toEqual(checkout())
   })
   it("saved ticks and unticks the box that lets the buyer go on to the review", () => {
     const code = STATES.code
@@ -196,6 +191,26 @@ describe("reduce", () => {
     const sent = reduce(s, { type: "send-started" })
     const failed = reduce(reduce(sent, { type: "open-order-seen", order: OPEN_ORDER }), { type: "order-refused", reason: "failed" })
     expect(failed).toEqual({ ...s, openOrder: OPEN_ORDER, refusal: "failed" })
+  })
+})
+
+describe("stepFor", () => {
+  const APP_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
+  it("opens each step asked for once the name code is saved", () => {
+    for (const step of ["links", "code", "review"] as const) expect(stepFor(checkout(), step)).toBe(step)
+  })
+  it("sends a review asked for before the code is saved, or made, to the name code step", () => {
+    expect(stepFor(checkout({ saved: false }), "review")).toBe("code")
+    expect(stepFor(checkout({ ownerCode: null, saved: false }), "review")).toBe("code")
+    expect(stepFor(checkout({ ownerCode: null, saved: true }), "review")).toBe("code")
+  })
+  it("leaves the links and the code step open before the code is saved", () => {
+    expect(stepFor(checkout({ saved: false }), "links")).toBe("links")
+    expect(stepFor(checkout({ ownerCode: null, saved: false }), "code")).toBe("code")
+  })
+  it("opens only the review for an order from the app, which brings its wallet", () => {
+    const fromApp = checkout({ ownerCode: null, saved: false, appOwner: APP_WALLET })
+    for (const step of ["links", "code", "review"] as const) expect(stepFor(fromApp, step)).toBe("review")
   })
 })
 

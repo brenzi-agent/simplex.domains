@@ -18,7 +18,6 @@ const STATE_LINES: Record<Exclude<api.CodeState, "unused">, [string, string]> = 
   unpaid: ["This code is not paid for yet", "It works once its payment is confirmed."],
 }
 
-// what the service's code errors at checkout say, where the code was entered
 export const CODE_ERRORS: Record<string, string> = {
   code_invalid: "This code is not valid.",
   code_used: "This code was already used.",
@@ -53,9 +52,8 @@ async function judgeCode(text: string, signal: AbortSignal): Promise<CodeVerdict
 // The pause after the last key before a code typed in full is judged; one pasted whole is judged at once.
 const JUDGE_PAUSE_MS = 400
 
-// A code field judged as it is typed: each edit says nothing until its own verdict, a character no code has is refused at
-// once, and a code long enough is judged once typing pauses. Nothing is judged or shown once the signal ends.
-// The result forgets a judgement still on its way.
+// Each edit says nothing until its own verdict; a character no code has is refused at once, and a code long enough is
+// judged once typing pauses. Nothing is judged once the signal ends; the result forgets a judgement on its way.
 function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => void, signal: AbortSignal): () => void {
   let seq = 0
   let pause: ReturnType<typeof setTimeout> | undefined

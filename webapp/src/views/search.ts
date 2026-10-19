@@ -16,11 +16,10 @@ import {
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import {
-  type Builder, CONTACT_EMAIL, currentRoute, draw, focusOn, go, INVEST_AMOUNT, isRedraw, isRoute, kept, keptLive, outcome, searchLink, throughHistory, WEFUNDER_URL,
+  type Builder, CONTACT_EMAIL, currentRoute, draw, focusOn, go, historyPlace, INVEST_AMOUNT, isRedraw, isRoute, kept, keptLive, outcome, searchLink, throughHistory, WEFUNDER_URL,
   whenDropped,
 } from "./shell.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
-import { SEARCH_STEP } from "./track.ts"
 
 // links from the service come from records on chain, which anyone can write: only SimpleX and https links are followed
 const SAFE_LINK = /^(simplex:\/|https:\/\/)/
@@ -92,7 +91,7 @@ function dispatch(event: SearchEvent): void {
   if (!isRoute(pageRoute)) return
   const kind = screenOf(state)
   shown = kind
-  draw(kind, (signal) => BUILDERS[kind](state, signal), kind === "status:bad-app-link" ? null : SEARCH_STEP)
+  draw(kind, (signal) => BUILDERS[kind](state, signal), kind === "status:bad-app-link" ? null : "search")
 }
 
 // what is typed is shown by the field itself, so the page takes it without drawing
@@ -187,12 +186,12 @@ function register(): void {
   if (s.retarget) return void retarget(s.retarget, label, chain)
   const started = session.checkout()
   if (started && started.label === label && started.appOwner === s.fromApp && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started)) {
-    session.updateCheckout(label, { chain })
+    session.updateCheckout(label, { chain, searchAt: historyPlace() })
     return go(checkoutUrl("links"))
   }
   session.setCheckout({
     label, price: answer.price, chain, contact: "", channel: "", method: "btc", code: null, ownerCode: null, saved: false,
-    appOwner: s.fromApp, appSecret: null,
+    appOwner: s.fromApp, appSecret: null, searchAt: historyPlace(),
   })
   go(checkoutUrl("links"))
 }

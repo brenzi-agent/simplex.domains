@@ -14,8 +14,7 @@ import * as store from "../store.ts"
 import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
 import { every } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
-import { type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
-import { PAYMENT_STEP } from "./track.ts"
+import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
 
 const RETRY_MS = 3000
 // The badge service's words for a cancel the provider took while the service still shows the invoice open; a card
@@ -72,7 +71,7 @@ function dispatch(event: OrderEvent): void {
   const kind = screenOf(state)
   document.querySelector("main")?.removeAttribute("aria-busy")
   if (cardStays(before, kind)) showCard()
-  else draw(kind, (signal) => BUILDERS[kind](state, signal), kind === "pay-crypto" || kind === "pay-card" ? PAYMENT_STEP : null)
+  else draw(kind, (signal) => asStep(BUILDERS[kind](state, signal)), kind === "pay-crypto" || kind === "pay-card" ? "payment" : null)
   if (kind !== "pay-card") dropCard()
   if (revealDue(state)) reveal(state.view!, state.record!)
   // keepCodes dispatches record-changed itself, so it runs only when the screen or the record moved
@@ -328,7 +327,6 @@ function noteOf(s: OrderState, holdsFor: AbortSignal | null): HTMLElement | null
   return s.note ? noteNode(s.note) : null
 }
 
-// the answer to the screen's action, or the tab's wait that holds it, in the route's one live region
 const actionNote = (s: OrderState, holdsFor: AbortSignal | null) => keptLive(ORDER_NOTE, undefined, noteOf(s, holdsFor))
 
 function buildUnreadable({ reference }: OrderState): HTMLElement {
@@ -359,14 +357,13 @@ function orderLine({ view, record, invoice }: OrderState): HTMLElement {
 const TICKER: Record<"btc" | "xmr", string> = { btc: "BTC", xmr: "XMR" }
 
 // what is copied can differ from what is shown, as an amount without its unit, which a wallet's amount field refuses
-function copyField(label: string, value: string, copy: string | false = value): HTMLElement {
-  const button = copy === false ? null : copyButton(copy, null, "field-copy", `Copy ${label.toLowerCase()}`)
+function copyField(label: string, value: string, copy = value): HTMLElement {
   // A value of one long word, as an address, may break between any two letters, which the field's balance evens out:
   // WebKit balances only between the breaks it is given, Firefox only in a word that breaks anywhere (.word).
   const word = !value.includes(" ")
   const shown = word ? [...value].flatMap((ch, i) => i ? [el("wbr"), ch] : [ch]) : [value]
   return el("div", { class: "copy-field" }, el("span", { class: "label" }, label),
-    el("div", { class: "val" }, el("span", { class: word ? "word" : undefined }, ...shown), button))
+    el("div", { class: "val" }, el("span", { class: word ? "word" : undefined }, ...shown), copyButton(copy, null, "field-copy", `Copy ${label.toLowerCase()}`)))
 }
 
 function rateLine(invoice: api.InvoiceView, signal: AbortSignal): HTMLElement {
@@ -399,7 +396,7 @@ function payCryptoScreen(s: OrderState, signal: AbortSignal): HTMLElement {
   return screen({ title: `Pay with ${methodName(coin)}`, lead: "Bookmark this page: the address and the countdown live on its link." },
     partial ? alertBox("warn", "alert", "Part of the payment arrived", partSentence(inv, coin)) : null,
     orderLine(s),
-    el("div", { class: "pay-grid" },
+    el("div", { class: "qr-grid" },
       uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`)) : null,
       copyField(partial ? "Send the rest" : "Amount", `${due} ${TICKER[coin]}`, due),
       copyField(`${methodName(coin)} address`, inv.address!)),
@@ -823,7 +820,6 @@ function buildNotOnDevice({ view, invoice }: OrderState): HTMLElement {
     action: btn("Enter your name code", "", () => go("/#/restore"), icon("arrow")), reference: invoice?.invoiceId ?? view!.id })
 }
 
-// what is next once the name is registered: its names, and its links or the app it was ordered from
 function registeredActions(view: api.RegistrationView, record: store.OrderRecord | null): HTMLElement {
   if (!record) return withoutRecord(view, "quiet block", "Restore with your name code")
   const names = el("a", { class: record.ownerCode ? "btn" : "btn quiet", href: "/#/names" }, "Your names")
@@ -836,9 +832,10 @@ function registeredScreen(s: OrderState): HTMLElement {
   const view = s.view!
   const label = labelOf(view, s.record)
   const code = s.record?.ownerCode ?? null
-  return screen({ title: [label ? gradName(label, view.tld) : "The name", " is yours"], lead: registeredLead(view, s.record) },
-    code ? el("div", { class: "card next-step" }, el("div", { class: "qr" }, qrSvg(code, "name code")),
-      el("div", {}, el("h2", {}, "Redeem it in the app"), el("p", { class: "note" }, "Scan or enter the code in SimpleX: the name moves to the app's wallet."))) : null,
+  return screen({ title: [label ? gradName(label, view.tld) : "The name", " is\u00a0yours"], lead: registeredLead(view, s.record) },
+    code ? el("div", { class: "card next-step qr-grid" }, el("div", { class: "qr" }, qrSvg(code, "name code")),
+      el("div", {}, el("h2", {}, "Redeem it in the app"), el("p", { class: "note" }, "Scan or enter the code in SimpleX: the name moves to the app's wallet.")),
+      codeDisplay(code, "owner-code")) : null,
     registeredActions(view, s.record))
 }
 

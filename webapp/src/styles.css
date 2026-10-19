@@ -21,6 +21,7 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", monospace;
 
   --fs-h1: clamp(28px, 3.2vw, 40px);
+  --h1-line: 1.05;
   --fs-h2: clamp(20px, 2.3vw, 24px);
   --fs-lead: clamp(17px, 1.6vw, 20px);
   --fs-body: 18px;
@@ -98,7 +99,7 @@ button { font: inherit; color: inherit; }
 svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .mono { font-family: var(--mono); }
 .nowrap { white-space: nowrap; }
-h1 { font: 700 var(--fs-h1)/1.05 var(--display); letter-spacing: -.025em; background: var(--heading); -webkit-background-clip: text;
+h1 { font: 700 var(--fs-h1)/var(--h1-line) var(--display); letter-spacing: -.025em; background: var(--heading); -webkit-background-clip: text;
   background-clip: text; -webkit-text-fill-color: transparent; color: transparent; padding-bottom: .04em; text-wrap: balance; }
 h2 { font: 700 var(--fs-h2)/1.15 var(--display); letter-spacing: -.015em; }
 .lead { font-size: var(--fs-lead); font-weight: 500; color: var(--ink-soft); }
@@ -165,17 +166,18 @@ body > main { flex: 1 0 auto; }
 .chip.warn { background: var(--warn-bg); color: var(--warn-fg); }
 .chip.bad { background: var(--danger-bg); color: var(--danger-fg); }
 
-/* inner pages: one centred column with Back above the heading (badges screens.ts:35-43), or beside it on a wide window,
-   centred between the header and the footer as the home is, so a purchase step fits the window */
-.screen { --screen-gap: 16px; width: 100%; max-width: calc(var(--column) + 32px); min-height: calc(100dvh - var(--frame-h)); margin-inline: auto;
-  padding: 16px; display: flex; flex-direction: column; justify-content: center; gap: var(--screen-gap); }
+/* inner pages: one centred column with Back above the heading (badges screens.ts:35-43), or beside it on a wide window */
+.screen { --screen-gap: 16px; width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: 12px 16px 48px;
+  display: flex; flex-direction: column; gap: var(--screen-gap); }
+/* a purchase step or an outcome is centred between the header and the footer, as the home is, so it fits the window */
+.screen.step { min-height: calc(100dvh - var(--frame-h)); padding-block: 16px; justify-content: center; }
 /* an empty live region keeps its place in the column without adding a gap */
 .screen > [role="status"]:empty { margin-top: calc(-1 * var(--screen-gap)); }
 .screen-head { position: relative; display: grid; gap: 8px; }
 .back { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-small); justify-self: start; }
-/* a wide window has room for Back left of the column, on the heading's first line */
-@media (min-width: 900px) {
-  .screen-head .back { position: absolute; right: calc(100% + 24px); top: calc(var(--fs-h1) * .525); translate: 0 -50%; }
+/* Back sits left of the column, on the heading's first line, where the margin beside the wide column holds it */
+@media (min-width: 1100px) {
+  .screen-head .back { position: absolute; right: calc(100% + 24px); top: calc(var(--fs-h1) * var(--h1-line) / 2); translate: 0 -50%; }
 }
 .outcome { text-align: center; }
 .outcome .btn { align-self: center; }
@@ -189,6 +191,10 @@ h1:has(.grad) { text-wrap: pretty; }
 
 .answer .name, .summary-card .name { font-family: var(--display); font-weight: 700; font-size: 30px; letter-spacing: -.025em; line-height: 1.1; overflow-wrap: anywhere; }
 .answer .name span, .summary-card .name span { color: var(--ink-soft); white-space: nowrap; }
+:is(.answer, .summary-card) .name.long { font-size: 20px; }
+/* a heading with a long name in it is drawn smaller as a whole, Back beside it following */
+.screen-head:has(h1 .long) { --fs-h1: clamp(20px, 2.2vw, 28px); }
+h1 .long { font-size: inherit; }
 .chip .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
 
 /* the landing's first screen (landing:144-168), its countdown replaced by the search */
@@ -196,7 +202,7 @@ h1:has(.grad) { text-wrap: pretty; }
 .home { display: flex; flex-direction: column; align-items: center; text-align: center; padding-inline: 16px;
   min-height: calc(100dvh - var(--frame-h)); }
 .home .vspace { flex: 1; }
-.home .vspace.cap { min-height: 16px; max-height: 108px; }
+.home .vspace.cap { min-height: 12px; max-height: 108px; }
 .headline { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 600px; container-type: inline-size; }
 .headline h1 { font-size: clamp(28px, 10.3cqw, 66px); line-height: 1.02; white-space: nowrap; font-kerning: none; }
 .headline .sub { font-size: clamp(11px, 3.92cqw, 26px); margin-top: 3cqw; white-space: nowrap; color: var(--ink-soft); font-kerning: none; }
@@ -204,7 +210,7 @@ h1:has(.grad) { text-wrap: pretty; }
 .search-row { display: flex; gap: 10px; width: 100%; max-width: var(--column); }
 .search-row .field { flex: 1; }
 .search-row .tld { color: var(--ink-soft); }
-.answer { width: 100%; max-width: var(--column); margin-top: 18px; text-align: left; display: grid; gap: 12px; }
+.answer { width: 100%; max-width: var(--column); margin-top: 14px; text-align: left; display: grid; gap: 12px; }
 .answer .card { display: grid; gap: 12px; }
 .answer .head, .answer .deal { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
 .answer .price { font: 700 32px/1 var(--display); letter-spacing: -.02em; }
@@ -252,11 +258,18 @@ h1:has(.grad) { text-wrap: pretty; }
 .summary-card .total { display: flex; justify-content: space-between; border-top: 1px solid var(--surface-line); padding-top: 14px; margin: 0; font-weight: 600; font-size: 20px; }
 .pay-with, .code-entry, .pay-block, .link-fields, .forget { display: grid; gap: 12px; }
 .link-entry, .link-field { display: grid; gap: 8px; }
-.link-lines { display: grid; gap: 6px; }
-.link-line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; font-size: var(--fs-small); }
+.link-lines { display: grid; gap: 8px; }
+/* a link set shows as the profile it opens, on one line: its avatar and name */
+.link-line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; font-size: var(--fs-small); }
 .link-line .k { color: var(--ink-soft); font-weight: 600; }
-.link-line .v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-line > :nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-line .entity { padding: 0; gap: 8px; background: none; border: 0; }
+.link-line .entity.skeleton { height: 28px; background: var(--chip); }
+.link-line .entity .avatar { width: 28px; height: 28px; border-radius: 9px; font-size: 12px; }
+.link-line .entity :is(.who span, .url) { display: none; }
 .step-actions { display: grid; gap: 12px; justify-items: center; }
+/* Skip would drop a link typed, so it shows only while both fields are empty */
+.link-fields:has(input:not(:placeholder-shown)) + .step-actions .skip { display: none; }
 /* the order beside how it pays where the window is wide enough for both */
 .review, .review-pay { display: grid; gap: var(--screen-gap); align-items: start; }
 @media (min-width: 900px) {
@@ -277,12 +290,12 @@ h1:has(.grad) { text-wrap: pretty; }
 .verdict.ok { color: var(--ok-fg); }
 .verdict.bad { color: var(--danger-fg); }
 
-/* payment: the QR beside the amount and the address; registration: one column */
+/* payment: the QR beside the amount and the address; registration: one column; the name code: its QR beside the words */
 /* qrSvg draws its own white frame */
 svg.qr { display: block; width: 132px; height: auto; }
-/* a phone puts the address under the QR and the amount, across the column */
-.pay-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px 16px; align-items: start; }
-.pay-grid > .qr { grid-row: span 2; }
+/* a phone puts the address, or the code, under the QR, across the column */
+.qr-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px 16px; align-items: start; }
+.qr-grid > .qr { grid-row: span 2; }
 .card.qr { display: grid; place-items: center; padding: 12px; }
 .card.qr svg.qr { width: 160px; }
 .copy-field .label { display: block; margin-bottom: 6px; }
@@ -342,9 +355,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .notice svg.i { margin-top: 1px; }
 .notice.info svg.i { color: var(--primary); }
 .notice b { display: block; overflow-wrap: anywhere; }
-.next-step { display: flex; align-items: center; gap: 22px; }
-.next-step > div:last-child { display: grid; gap: 8px; justify-items: start; }
-@media (max-width: 480px) { .next-step { flex-direction: column; align-items: flex-start; } }
+.next-step > :nth-child(2) { display: grid; gap: 8px; align-self: center; }
 
 /* what a taken name points at */
 .entities { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
@@ -410,6 +421,7 @@ main h1:focus { outline: none; }
 .answer .yours { display: flex; gap: 18px; font-weight: 700; font-size: 14.5px; }
 /* a name in a sentence moves to the next line whole; only a name longer than the line breaks, before its TLD first */
 .inline-name { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+.long { overflow-wrap: anywhere; font-size: .85em; }
 .monero-base { fill: #4C4C4C; }
 /* Monero's mark for dark grounds has a white base */
 html.dark .monero-base { fill: #fff; }
@@ -465,10 +477,10 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .entity .avatar { width: 36px; height: 36px; border-radius: 11px; }
   .step-actions { gap: 8px; }
   .entity.skeleton { height: 62px; }
-  .pay-grid > .qr { grid-row: auto; }
-  .pay-grid > :last-child { grid-column: 1 / -1; }
-  .card.qr svg.qr { width: 120px; }
-  .screen { --screen-gap: 14px; padding-block: 12px; }
+  .qr-grid > .qr { grid-row: auto; }
+  .qr-grid > :last-child { grid-column: 1 / -1; }
+  .qr-grid svg.qr { width: 120px; }
+  .screen.step { --screen-gap: 14px; padding-block: 12px; }
 }
 
 /* a reader who asked for less motion gets the states without the easing */

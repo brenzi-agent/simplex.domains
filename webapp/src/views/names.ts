@@ -37,11 +37,9 @@ function row(key: string, mark: string, title: string, sub: Kid, state: Node, ac
 
 let list: ListState = initialList({ orders: [], pending: [], codes: [], canPersist: true }, null, {}, {}, 0)
 let listRoute = -1
-// the rows' second reads end once the list is left
 let listStop: AbortSignal = AbortSignal.abort()
 let lastSeen: Record<string, RowSeen> = {}
 let lastChecked: Record<string, CodeCheck> = {}
-// what this opening of the list has read, or read again after a failure
 const readIds = new Set<string>()
 const retried = new Set<string>()
 const readCodes = new Set<string>()
@@ -336,7 +334,6 @@ function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {
   return node
 }
 
-// a page's few sentences on what happens, under a label
 const howList = (title: string, ...lines: string[]) =>
   el("div", { class: "how" }, el("span", { class: "label" }, title), el("ul", { class: "note" }, ...lines.map((line) => el("li", {}, line))))
 
@@ -503,9 +500,9 @@ function resultNode(f: EditForm, signal: AbortSignal): HTMLElement | null {
 }
 
 // a field checks the link it opens with as it is made, which is no change to send
-function editField(kind: keyof api.Links, placeholder: string, label: string, value: string): HTMLElement {
+function editField(kind: keyof api.Links, value: string): HTMLElement {
   let made = false
-  const field = linkField(kind, placeholder, label, value, (link) => { if (made) dispatchEdit({ type: "field-changed", kind, value: link }) })
+  const field = linkField(kind, value, (link) => { if (made) dispatchEdit({ type: "field-changed", kind, value: link }) })
   made = true
   return field
 }
@@ -552,8 +549,8 @@ function showChain(records: api.Links, f: EditForm, fields: HTMLElement[]): void
 function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {
   const f = s.form!
   const fields = [
-    kept("edit-contact", () => editField("contact", "Paste your address", "Address", f.current.contact)),
-    kept("edit-channel", () => editField("channel", "Paste your channel", "Channel", f.current.channel)),
+    kept("edit-contact", () => editField("contact", f.current.contact)),
+    kept("edit-channel", () => editField("channel", f.current.channel)),
   ]
   const save = setAction(btn("Save links", "block", () => void saveLinks(fields)), f.saving, f.hold !== null || f.unanswered || f.settled)
   save.dataset.focus = "save"
@@ -565,8 +562,8 @@ function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {
   }
   holdEnder(signal, () => dispatchEdit({ type: "hold-ended" }))(f.hold !== null)
   return screen({ title: editTitle(s), back: NAMES },
-    linkEntry("Contact address", fields[0]),
-    linkEntry("Channel", fields[1]),
+    linkEntry("contact", fields[0]),
+    linkEntry("channel", fields[1]),
     howList("Saving", "This browser signs the change with the name's key, from your name code.", "SimpleX sends it and pays the fee."),
     save,
     keptLive("edit-answer", undefined, answer))

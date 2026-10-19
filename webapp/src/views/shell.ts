@@ -46,7 +46,6 @@ export function nextRoute(): void {
   }
 }
 
-// drawing the same page again, as a redraw in place does without a new route
 export const isRedraw = () => drawnRoute === route
 
 export const isRoute = (token: number) => token === route
@@ -74,19 +73,46 @@ let popped = false
 export const throughHistory = () => popped
 let scrollTarget: number | null = session.scrolled()[historyAt] ?? null
 const leftAt = () => scrollTarget ?? scrollY
-export function historyMoved(e: PopStateEvent): void {
+// the entry this document was loaded at; Back to an entry before it would load an earlier document again
+const loadedAt = historyAt
+let landing: string | null = null
+export const historyPlace = () => historyAt
+
+// Opens `url` after the entry at `at`, so Back lands there once; where that would leave the document, this entry becomes `back`.
+export function goFrom(at: number, back: string, url: string): void {
+  if (at < loadedAt || at >= historyAt) {
+    history.replaceState(history.state, "", back)
+    return go(url)
+  }
+  keepScrolled()
+  landing = url
+  history.go(at - historyAt)
+}
+
+// false when the move was a jump back that opened its page itself
+export function historyMoved(e: PopStateEvent): boolean {
+  if (landing !== null && typeof e.state?.at === "number") {
+    const url = landing
+    landing = null
+    historyAt = e.state.at as number
+    // the entry landed on keeps the place it was left at
+    scrollTarget = session.scrolled()[historyAt] ?? 0
+    go(url)
+    return false
+  }
   keepScrolled()
   if (typeof e.state?.at !== "number") {
     historyAt = nextAt()
     history.replaceState({ ...e.state, at: historyAt }, "")
     popped = false
     scrollTarget = 0
-    return
+    return true
   }
   const at = e.state.at as number
   popped = true
   historyAt = at
   scrollTarget = session.scrolled()[at] ?? 0
+  return true
 }
 
 export function go(url: string): void {
@@ -108,7 +134,6 @@ export function redirect(url: string): void {
   rerender()
 }
 
-// the same page drawn again in place, on a new route
 export function refresh(): void {
   redrawing = true
   try {
@@ -119,7 +144,6 @@ export function refresh(): void {
 }
 
 export type Builder<S> = (state: S, signal: AbortSignal) => HTMLElement
-// a wide screen takes the wider column where the window has room, for content laid out across it
 interface ScreenHead { title: Kid; lead?: Kid; back?: string; wide?: boolean }
 interface Outcome { tone: Tone; icon: IconName; title: string; text: Kid; action?: Node | null; reference?: string; extra?: Kid; back?: string }
 
@@ -206,7 +230,6 @@ const titleOf = (next: HTMLElement) => {
   return heading ? `${heading} · ${SITE_TITLE}` : SITE_TITLE
 }
 
-// Back sits above the heading, or beside it where the window leaves room
 const screenHead = (title: Kid, back: string | undefined) =>
   el("div", { class: "screen-head" }, back ? el("a", { class: "back", href: back }, icon("back"), "Back") : null, el("h1", {}, title))
 
@@ -217,9 +240,11 @@ export function screen(head: ScreenHead, ...body: Kid[]): HTMLElement {
     ...body)
 }
 
-// the badges pattern: a heading, one notice, one action
+// A purchase step or an outcome is centred so it fits the window; a list starts under the header, so rows never shift.
+export const asStep = (screen: HTMLElement) => { screen.classList.add("step"); return screen }
+
 export function outcome(o: Outcome): HTMLElement {
-  return el("section", { class: "screen outcome" },
+  return el("section", { class: "screen step outcome" },
     screenHead(o.title, o.back),
     alertBox(o.tone, o.icon, null, o.text),
     o.extra ?? null,
@@ -268,7 +293,6 @@ function toggleTheme(): void {
 
 export const OFFLINE_NOTE = "You are offline. Searches, payments and order updates need the connection."
 
-// Shown while the browser has no network, fixed over the page's foot.
 function showConnection(): void {
   const shown = document.querySelector(".offline-note")
   if (navigator.onLine) return shown?.remove()

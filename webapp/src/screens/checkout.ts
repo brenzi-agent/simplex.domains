@@ -28,7 +28,6 @@ export interface CheckoutState {
 export type CheckoutEvent =
   | { type: "opened"; step: CheckoutStep; checkout: Checkout; sending: boolean; waiting: WaitingOrder | null; hold: Hold | null }
   | { type: "link-set"; kind: LinkKind; link: string }
-  | { type: "links-skipped" }
   | { type: "saved"; saved: boolean }
   | { type: "method-chosen"; method: Method }
   | { type: "code-applied"; code: AppliedCode }
@@ -51,7 +50,6 @@ export function initialState(checkout: Checkout, step: CheckoutStep): CheckoutSt
 export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial<Checkout> | null {
   switch (e.type) {
     case "link-set": return e.kind === "contact" ? { contact: e.link } : { channel: e.link }
-    case "links-skipped": return { contact: "", channel: "" }
     case "saved": return { saved: e.saved }
     case "method-chosen": return e.method === checkout.method || e.method === checkout.unavailable ? null : { method: e.method }
     case "code-applied": return { code: e.code, codeError: undefined }
@@ -72,7 +70,6 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
   switch (e.type) {
     case "opened": return { ...s, step: e.step, checkout: e.checkout, sending: e.sending, busy: false, waiting: e.waiting, hold: e.hold, refusal: null }
     case "link-set":
-    case "links-skipped":
     case "saved":
     case "method-chosen":
     case "code-applied":
@@ -86,6 +83,12 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
     case "hold-started": return unsent(s, { hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: NO_LEAD }, refusal: "too-many" })
     case "hold-ended": return { ...s, hold: null }
   }
+}
+
+// an order from the app brings its wallet, so only its review opens; any other reaches its review once its code is saved
+export function stepFor(c: Checkout, asked: CheckoutStep): CheckoutStep {
+  if (c.appOwner) return "review"
+  return asked === "review" && !(c.ownerCode && c.saved) ? "code" : asked
 }
 
 export function screenOf(s: CheckoutState): CheckoutKind {
