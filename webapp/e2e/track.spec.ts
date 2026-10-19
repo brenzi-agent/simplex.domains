@@ -1,7 +1,8 @@
 import { expect, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  channelLink, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, REGISTRATION_MS, savedToReview, search, shot, startOrder, test, uniqueLabel, waitRegistered,
+  channelLink, checkoutCode, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, REGISTRATION_MS, savedToReview, search, shot, startOrder, test, uniqueLabel,
+  waitRegistered,
 } from "./helpers.ts"
 
 // the rail's shift in slides: its translateX over the track's width
@@ -17,7 +18,7 @@ const fit = (page: Page) => page.locator(".slide:not([inert])").evaluate((slide)
 const liveSlides = (page: Page) => page.locator(".track > .rail > .slide:not([inert])")
 
 test("search, links, name code, review and payment move along one track a step at a time, the other steps inert", async ({ page }) => {
-  // a window short enough that the review's code field makes its step taller than the window
+  // a window short enough that the review is taller than it
   await page.setViewportSize({ width: 1280, height: 600 })
   await search(page, uniqueLabel("track"))
   await expect(page.locator(".rail > .slide")).toHaveCount(5)
@@ -33,7 +34,10 @@ test("search, links, name code, review and payment move along one track a step a
   await expect.poll(() => shift(page)).toBe(-3)
   await expect(liveSlides(page)).toHaveCount(1)
   const before = await page.locator(".track").evaluate((t) => t.getBoundingClientRect().height)
+  // the code field opens in its link's place; a code no code can be gets its verdict under it, which the track makes room for
   await openCode(page)
+  await checkoutCode(page).fill("Q")
+  await expect(onStep(page).locator(".verdict.bad")).toBeVisible()
   await expect.poll(() => fit(page)).toBe(0)
   expect(await page.locator(".track").evaluate((t) => t.getBoundingClientRect().height)).toBeGreaterThan(before)
   // Back walks the steps in reverse
@@ -88,9 +92,19 @@ const FIT_SIZES = [{ width: 1280, height: 800 }, { width: 390, height: 844 }]
 // how far a step's content may sit off the middle between the header and the footer
 const CENTRE_PX = 2
 
+// Where the heading of the screen in view starts, once the track has taken its step's height, a frame after a change, and
+// moved: under reduced motion its move is a transition too, of almost no length, which starts from where the track was.
+const headingAt = (page: Page) => page.evaluate(async () => {
+  await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+  await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)))
+  const box = (document.querySelector(".slide:not([inert]) h1") ?? document.querySelector("body > main h1"))!.getBoundingClientRect()
+  return { x: Math.round(box.left), y: Math.round(box.top) }
+})
+
 // The screen in view fits the window at each size, its content centred between the header and the footer unless it is
-// the home, which lays itself out as the landing does; and is captured for review when shots are asked for.
-async function fitsWindow(page: Page, name: string, centred = true): Promise<void> {
+// the home, which lays itself out as the landing does; and is captured for review when shots are asked for. Returns where
+// its heading starts on the laptop's window.
+async function fitsWindow(page: Page, name: string, centred = true): Promise<number> {
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
     const measured = () => page.evaluate(() => {
@@ -110,7 +124,8 @@ async function fitsWindow(page: Page, name: string, centred = true): Promise<voi
     }, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ settled: true, overflow: 0, offCentre: 0 })
   }
   await page.setViewportSize(FIT_SIZES[0])
-  await shot(page, `names-7c-${name}`)
+  await shot(page, `names-g1-${name}`)
+  return (await headingAt(page)).x
 }
 
 // widths a laptop's or a tablet's window has, from where the column first leaves margins beside it
@@ -129,38 +144,77 @@ async function backInView(page: Page, name: string): Promise<void> {
   await page.setViewportSize(FIT_SIZES[0])
 }
 
-test("every purchase step fits a laptop's and a phone's window without scrolling, centred between the header and the footer", async ({ page, request }) => {
+test("every purchase step fits a laptop's and a phone's window without scrolling, centred in one column, and keeps still as it fills in", async ({ page, request }) => {
   await page.goto("/")
   await fitsWindow(page, "1-home", false)
+  // a taken name with both its links, the tallest answer the home shows
+  await search(page, "bakery")
+  await expect(page.locator(".answer .entity")).toHaveCount(2)
+  await fitsWindow(page, "1b-home-taken", false)
   const label = uniqueLabel("fit")
   await search(page, label)
   await page.getByRole("button", { name: "Register" }).click()
   const step = onStep(page)
+  const lefts: Record<string, number> = {}
+  await expect(step.getByRole("heading", { name: LINKS_HEADING })).toBeFocused()
+  await fitsWindow(page, "2a-links-empty")
+  const linksAt = await headingAt(page)
   await step.getByLabel("Address").fill(contactLink("F2"))
   await step.getByLabel("Channel").fill(channelLink("G2"))
   for (const field of await step.locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
-  await fitsWindow(page, "2-links")
+  expect(await headingAt(page), "the links step as its previews come").toEqual(linksAt)
+  lefts.links = await fitsWindow(page, "2-links")
   await backInView(page, "links")
   await step.getByRole("button", { name: "Continue" }).click()
   await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
-  await fitsWindow(page, "3-code")
+  lefts.code = await fitsWindow(page, "3-code")
   await savedToReview(page)
-  await fitsWindow(page, "4-review")
+  lefts.review = await fitsWindow(page, "4-review")
   await backInView(page, "review")
+  const reviewAt = await headingAt(page)
   await openCode(page)
+  expect(await headingAt(page), "the review as its code field opens").toEqual(reviewAt)
   await fitsWindow(page, "4b-review-code")
   await payButton(page).click()
   await page.waitForURL(/\?order=/)
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-  await fitsWindow(page, "5-pay-bitcoin")
-  await control(request, `settle/${new URL(page.url()).searchParams.get("order")}`)
+  lefts.payment = await fitsWindow(page, "5-pay-bitcoin")
+  const invoiceId = new URL(page.url()).searchParams.get("order")
+  await control(request, `confirming/${invoiceId}`)
+  await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible()
+  lefts.confirming = await fitsWindow(page, "5c-confirming")
+  await control(request, `settle/${invoiceId}`)
   await expect(page.locator(".stage.active", { hasText: "Waiting" })).toBeVisible({ timeout: REGISTRATION_MS })
-  await fitsWindow(page, "6-registering")
+  lefts.registering = await fitsWindow(page, "6-registering")
   await waitRegistered(page, label)
-  await fitsWindow(page, "7-registered")
+  lefts.registered = await fitsWindow(page, "7-registered")
+  expect(new Set(Object.values(lefts)).size, `each step's heading starts at the column's edge: ${JSON.stringify(lefts)}`).toBe(1)
   await startOrder(page, uniqueLabel("fitcard"), { method: "card" })
   await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
   await fitsWindow(page, "5b-pay-card")
+})
+
+// WebKit rounds the home's spacers to whole pixels anew as the content below them changes
+const ROUNDING_PX = 1
+
+test("the home keeps its headline and search still as each kind of answer comes, at a laptop's and a phone's size", async ({ page }) => {
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    await page.goto("/")
+    // the frame's height is measured as the page is first laid out, and the fonts change the headline's
+    await page.evaluate(() => document.fonts.ready.then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))))
+    const still = () => page.evaluate(() => ["h1", ".search-row"].map((s) => Math.round(document.querySelector(`.home ${s}`)!.getBoundingClientRect().top)))
+    const before = await still()
+    // each search on the same page, whose fonts have loaded
+    for (const [name, answer] of [["bakery", ".entity"], ["harbour", ".note"], ["support", ".line"], ["abc", ".line"], [uniqueLabel("still"), ".price"]]) {
+      await page.getByLabel("Name", { exact: true }).fill(name)
+      await page.getByLabel("Name", { exact: true }).press("Enter")
+      await expect(page.locator(`.answer ${answer}`).first()).toBeVisible()
+      const moved = (await still()).map((at, i) => Math.abs(at - before[i]))
+      expect(Math.max(...moved), `${name} at ${size.width}x${size.height}: headline and search moved ${moved}`).toBeLessThanOrEqual(ROUNDING_PX)
+      expect(await page.evaluate(() => document.scrollingElement!.scrollHeight), `${name} at ${size.width}x${size.height}`).toBe(size.height)
+    }
+  }
 })
 
 // A name of the widest letters breaks its lines as early as any name of its length can; drawn at random from two

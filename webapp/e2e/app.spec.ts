@@ -158,7 +158,7 @@ test("a name code too long for its line breaks after a hyphen, so no line starts
   await page.setViewportSize({ width: 360, height: 800 })
   await search(page, uniqueLabel("wrap"))
   await toCodeStep(page)
-  const starts = await lineStarts(onStep(page).getByTestId("owner-code").locator(".code-text"))
+  const starts = await lineStarts(onStep(page).getByTestId("owner-code"))
   expect(starts.length, "the code wraps at this width").toBeGreaterThan(1)
   expect(starts.slice(1), "the first character of each later line").not.toContain("-")
 })

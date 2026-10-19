@@ -13,10 +13,6 @@ export function letters(n: number): string {
   return n === 1 ? "1 letter" : `${n} letters`
 }
 
-export function shortHash(hash: string): string {
-  return `${hash.slice(0, 6)}…${hash.slice(-4)}`
-}
-
 // the day stays with its month on one line
 export function dateOf(seconds: number, short = false): string {
   return new Date(seconds * 1000).toLocaleDateString("en-GB", { day: "numeric", month: short ? "short" : "long", year: "numeric", timeZone: "UTC" }).replace(" ", "\u00a0")

@@ -29,7 +29,6 @@
   --fs-label: clamp(12px, 1.6vw, 16px);
   --frame-pad: clamp(18px, 3.5vw, 44px);
   --column: 640px;
-  --wide-column: 880px;
 
   --page-color: #F3FAFF;
   --page-image:
@@ -78,8 +77,8 @@ html.dark {
   --surface-line: rgba(112, 240, 249, .18);
   --surface-shadow: 0 30px 70px rgba(0, 0, 0, .5);
   --backdrop: rgba(2, 8, 26, .58);
-  --disabled: rgba(255, 255, 255, .09);
-  --on-disabled: rgba(255, 255, 255, .45);
+  --disabled: rgba(255, 255, 255, .13);
+  --on-disabled: rgba(255, 255, 255, .62);
 
   --ok-fg: #7FE3A6;     --ok-bg: rgba(127, 227, 166, .12);     --ok-line: rgba(127, 227, 166, .28);
   --warn-fg: #F5C86A;   --warn-bg: rgba(245, 200, 106, .12);   --warn-line: rgba(245, 200, 106, .28);
@@ -149,7 +148,7 @@ body > main { flex: 1 0 auto; }
 .card { background: var(--surface); border: 1px solid var(--surface-line); border-radius: 24px; padding: 24px; }
 /* pill fields, as the landing's email field (landing:231-233) */
 .field { display: flex; align-items: center; gap: 10px; padding: 16px 24px; border: 1px solid var(--surface-line); border-radius: 999px;
-  background: var(--chip); transition: border-color .15s ease; }
+  background: var(--chip); transition: border-color .15s ease; cursor: text; }
 .field:focus-within { border-color: var(--primary); }
 /* Firefox draws a text input no shorter than its font's own line height, a pixel over Chromium's for this font, so the height is
    set to Chromium's: 4/3 of the font size */
@@ -172,12 +171,12 @@ body > main { flex: 1 0 auto; }
 .screen { --screen-gap: 16px; width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: 12px 16px 48px;
   display: flex; flex-direction: column; gap: var(--screen-gap); }
 /* a purchase step or an outcome is centred between the header and the footer, as the home is, so it fits the window */
-.screen.step { min-height: calc(100dvh - var(--frame-h)); padding-block: 16px; justify-content: center; }
+.screen.step { --screen-gap: 12px; min-height: calc(100dvh - var(--frame-h)); padding-block: 8px; justify-content: center; }
 /* an empty live region keeps its place in the column without adding a gap */
 .screen > [role="status"]:empty { margin-top: calc(-1 * var(--screen-gap)); }
 .screen-head { position: relative; display: grid; gap: 8px; }
 .back { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-small); justify-self: start; }
-/* Back sits left of the column, on the heading's first line, where the margin beside the wide column holds it */
+/* Back sits left of the column, on the heading's first line, where the margin beside the column holds it */
 @media (min-width: 1100px) {
   .screen-head .back { position: absolute; right: calc(100% + 24px); top: calc(var(--fs-h1) * var(--h1-line) / 2); translate: 0 -50%; }
 }
@@ -207,15 +206,23 @@ h1 .long { font-size: inherit; }
   min-height: calc(100dvh - var(--frame-h) - var(--spacer-rounding)); }
 .home .vspace { flex: 1; }
 .home .vspace.cap { min-height: 12px; max-height: 108px; }
-.headline { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 600px; container-type: inline-size; }
-.headline h1 { font-size: clamp(28px, 10.3cqw, 66px); line-height: 1.02; white-space: nowrap; font-kerning: none; }
-.headline .sub { font-size: clamp(11px, 3.92cqw, 26px); margin-top: 3cqw; white-space: nowrap; color: var(--ink-soft); font-kerning: none; }
+/* Below the search the room is the invest block's and its two spacers' shares, as on the landing; the answer takes the
+   block's place there, so the page above it stays still while the answer fits. --invest-h is the block's button, gap and note. */
+.home { --invest-h: calc(56px + clamp(14px, 1.8vh, 20px) + 26px); }
+.home .below { flex: 2 1 var(--invest-h); display: flex; flex-direction: column; align-items: center; width: 100%; }
+.below:has(> .answer:not(:empty)) > :is(.cta, .cap) { display: none; }
+/* The landing sizes its headline in its own width's units (cqw); these are the same sizes from that width, as Firefox,
+   restyling the page around them, resolves container units against the window for a frame. */
+.headline { --headline-w: min(600px, 100vw - 32px); display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 600px; }
+.headline h1 { font-size: clamp(28px, var(--headline-w) * .103, 66px); line-height: 1.02; white-space: nowrap; font-kerning: none; }
+.headline .sub { font-size: clamp(11px, var(--headline-w) * .0392, 26px); margin-top: calc(var(--headline-w) * .03); white-space: nowrap; color: var(--ink-soft); font-kerning: none; }
 .home > .notice { width: 100%; max-width: var(--column); margin-bottom: 14px; }
 .search-row { display: flex; gap: 10px; width: 100%; max-width: var(--column); }
 .search-row .field { flex: 1; }
 .search-row .tld { color: var(--ink-soft); }
-.answer { width: 100%; max-width: var(--column); margin-top: 14px; text-align: left; display: grid; gap: 12px; }
-.answer .card { display: grid; gap: 12px; }
+.answer { width: 100%; max-width: var(--column); text-align: left; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.answer:not(:empty) { margin-top: 14px; }
+.answer .card { display: grid; gap: 12px; padding-block: 20px; }
 .answer .head, .answer .deal { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
 .answer .price { font: 700 32px/1 var(--display); letter-spacing: -.02em; }
 .answer .line { display: flex; gap: 8px; font-size: var(--fs-small); color: var(--ink-soft); }
@@ -226,7 +233,10 @@ h1 .long { font-size: inherit; }
 .cta .btn { width: 100%; max-width: 384px; }
 .perk-note { color: var(--ink-soft); line-height: 1.45; }
 .perk-br { display: none; }
-@media (max-width: 540px) { .perk-br { display: inline; } }
+@media (max-width: 540px) {
+  .perk-br { display: inline; }
+  .home { --invest-h: calc(56px + clamp(14px, 1.8vh, 20px) + 52px); }
+}
 /* a field with its action at its right end; a phone stacks them, as the code needs the field's whole width */
 .field-row { display: flex; gap: 10px; }
 .field-row .field { flex: 1; }
@@ -256,37 +266,40 @@ h1 .long { font-size: inherit; }
   .modal-close { width: 16px; height: 16px; }
 }
 
-/* checkout steps: blocks in one column, as the badges checkout (badges screens.ts:466-505), the review in two where it fits */
-.summary-card { display: grid; gap: 12px; padding: 20px 24px; }
+/* checkout steps: blocks in one column, as the badges checkout (badges screens.ts:466-505) */
+.summary-card { display: grid; gap: 10px; padding: 16px 24px; }
 .summary-card .term-line { color: var(--ink-soft); font-size: var(--fs-small); }
-.summary-card .total { display: flex; justify-content: space-between; border-top: 1px solid var(--surface-line); padding-top: 14px; margin: 0; font-weight: 600; font-size: 20px; }
+.summary-card .total { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
+.summary-card .total b { margin-left: auto; font-size: 20px; font-weight: 600; }
 .pay-with, .code-entry, .pay-block, .link-fields, .forget { --block-gap: 12px; display: grid; gap: var(--block-gap); }
-/* an empty verdict stays in the accessibility tree, so its next words are announced; in a column, unlike a grid, its
-   negative margin takes back the gap */
-.code-entry { display: flex; flex-direction: column; }
-.code-entry > .verdict:empty { margin-top: calc(-1 * var(--block-gap)); }
+/* an empty verdict or note stays in the accessibility tree, so its next words are announced; in a column, unlike a grid,
+   its negative margin takes back the gap */
+.code-entry, .pay-block { display: flex; flex-direction: column; }
+:is(.code-entry, .pay-block) > [role="status"]:empty { margin-top: calc(-1 * var(--block-gap)); }
+.link-fields, .link-entry, .link-field { grid-template-columns: minmax(0, 1fr); }
 .link-entry, .link-field { display: grid; gap: 8px; }
 .link-lines { display: grid; gap: 8px; }
 /* a link set shows as the profile it opens, on one line: its avatar and name */
 .link-line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; font-size: var(--fs-small); }
 .link-line .k { color: var(--ink-soft); font-weight: 600; }
 .link-line > :nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.link-line .entity { padding: 0; gap: 8px; background: none; border: 0; }
-.link-line .entity.skeleton { height: 28px; background: var(--chip); }
-.link-line .entity .avatar { width: 28px; height: 28px; border-radius: 9px; font-size: 12px; }
-.link-line .entity :is(.who span, .url) { display: none; }
-/* a field's label already says what its preview is */
-.link-field .entity .who span { display: none; }
-.step-actions { display: grid; gap: 12px; justify-items: center; }
-/* Skip would drop a link typed, so it shows only while both fields are empty */
-.link-fields:has(input:not(:placeholder-shown)) + .step-actions .skip { display: none; }
-/* the order beside how it pays where the window is wide enough for both */
-.review, .review-pay { display: grid; gap: var(--screen-gap); align-items: start; }
-@media (min-width: 900px) {
-  .screen.wide { max-width: calc(var(--wide-column) + 32px); }
-  .review, .link-fields { grid-template-columns: 1fr 1fr; align-items: start; }
-}
-.code-link { font-size: var(--fs-small); }
+/* a link's preview is its avatar and name on one line; the field's label, or the line's, says what it is */
+:is(.link-line, .link-field) .entity { min-width: 0; padding: 0; gap: 8px; background: none; border: 0; }
+:is(.link-line, .link-field) .entity.skeleton { height: 28px; background: var(--chip); }
+:is(.link-line, .link-field) .entity .avatar { width: 28px; height: 28px; border-radius: 9px; font-size: 12px; }
+:is(.link-line, .link-field) .entity .who span { display: none; }
+.link-field > :empty { display: none; }
+/* The profile a link opens sits at its field's end, no taller than the text, so the field keeps its height as it comes.
+   A link whose profile could not be read is already in the field, so its text is not shown again. */
+.link-field .preview { display: flex; flex: 0 1 auto; max-width: 50%; min-width: 0; }
+.link-field .preview > span { display: none; }
+.link-field .entity.skeleton { width: 120px; height: 24px; }
+.link-field .entity .avatar { width: 24px; height: 24px; border-radius: 8px; font-size: 11px; }
+/* Skip would drop a link typed, so the step's button is Skip for now only while both fields are empty */
+.link-fields:has(input:not(:placeholder-shown)) + .btn .skip, .link-fields:not(:has(input:not(:placeholder-shown))) + .btn .go { display: none; }
+.review { display: grid; gap: var(--screen-gap); }
+/* "I have a code" is drawn at a field's height, so the field opens in its place */
+.field.code-link { background: none; border-color: transparent; padding-inline: 0; font-size: var(--fs-small); line-height: calc(var(--fs-body) * 4 / 3); cursor: auto; }
 .methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .method { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px; padding: 14px 12px; border: 1px solid var(--surface-line); border-radius: 18px; background: var(--surface); cursor: pointer; text-align: center; }
 .method svg { width: 24px; height: 24px; }
@@ -299,13 +312,13 @@ h1 .long { font-size: inherit; }
 .verdict.ok { color: var(--ok-fg); }
 .verdict.bad { color: var(--danger-fg); }
 
-/* payment: the QR beside the amount and the address; registration: one column; the name code: its QR beside the words */
+/* payment: the QR, with its wallet link, beside the amount and the address; the name code: its QR beside the words */
 /* qrSvg draws its own white frame */
 svg.qr { display: block; width: 132px; height: auto; }
 /* a phone puts the address, or the code, under the QR, across the column */
 .qr-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px 16px; align-items: start; }
 .qr-grid > .qr { grid-row: span 2; }
-.card.qr { display: grid; place-items: center; padding: 12px; }
+.card.qr { display: grid; place-items: center; gap: 8px; padding: 12px; font-size: var(--fs-small); }
 .card.qr svg.qr { width: 160px; }
 .copy-field .label { display: block; margin-bottom: 6px; }
 .copy-field .val { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 16px; background: var(--chip); border: 1px solid var(--surface-line);
@@ -313,17 +326,12 @@ svg.qr { display: block; width: 132px; height: auto; }
 .copy-field .val span { flex: 1; }
 .copy-field .val .word { word-break: break-all; }
 .copy-btn { position: relative; }
-.copy-icons { display: inline-grid; flex: none; }
-.copy-icons svg.i { grid-area: 1 / 1; }
-.copy-icons svg.i:last-child { opacity: 0; scale: .4; color: var(--ok-fg); }
-.copy-btn.copied .copy-icons svg.i:first-child { opacity: 0; scale: .4; }
-.copy-btn.copied .copy-icons svg.i:last-child { opacity: 1; scale: 1; }
 .copied-note { position: absolute; left: 50%; bottom: calc(100% + 8px); translate: -50% 4px; padding: 5px 9px; border-radius: 8px; background: var(--ink); color: var(--surface); font: 700 12px/1 var(--body); white-space: nowrap; opacity: 0; pointer-events: none; }
 .copied-note::after { content: ""; position: absolute; left: 50%; top: 100%; translate: -50% 0; border: 5px solid transparent; border-top-color: var(--ink); }
 .copy-btn.copied .copied-note { opacity: 1; translate: -50% 0; }
-.field-copy { flex: none; display: grid; place-items: center; width: 32px; height: 32px; margin: -6px -6px -6px 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); cursor: pointer; }
-.field-copy:hover { background: var(--surface-line); color: var(--ink); }
-.field-copy svg.i { width: 16px; height: 16px; }
+/* a Copy text button, as the badges app's */
+.field-copy { flex: none; height: 32px; margin: -6px -8px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--primary); font: 600 var(--fs-small) var(--body); cursor: pointer; }
+.field-copy:hover { background: var(--chip); }
 .waiting { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; }
 .waiting a { color: var(--danger-fg); }
 .stripe { padding: 18px; border-radius: 16px; border: 1px dashed var(--surface-line); }
@@ -351,40 +359,31 @@ svg.qr { display: block; width: 132px; height: auto; }
 .countdown b { display: inline-grid; place-items: center; min-height: 1em; font: 700 var(--fs-h2)/1 var(--display); color: var(--primary); font-variant-numeric: tabular-nums; }
 .countdown b svg.i { width: .8em; height: .8em; }
 .countdown p { color: var(--ink-soft); font-size: var(--fs-small); }
-.card.txs { padding-block: 12px; }
-.tx { display: flex; align-items: center; gap: 14px; padding: 8px 0; border-top: 1px solid var(--surface-line); font-size: var(--fs-small); }
-.tx:first-child { border-top: 0; padding-top: 0; }
-.tx:last-child { padding-bottom: 0; }
-.tx .k { width: 140px; color: var(--ink-soft); font-weight: 600; }
-.tx .v { flex: 1; font-family: var(--mono); font-size: 13.5px; white-space: nowrap; }
 
-.code-display { position: relative; padding: 22px 52px; border-radius: 18px; background: var(--chip); border: 1px dashed var(--chip-line); text-align: center;
-  font: 700 19px var(--mono); letter-spacing: .02em; text-wrap: balance; }
-.code-display > .corner-copy { position: absolute; top: 8px; right: 8px; margin: 0; }
+.code-display { display: flex; align-items: center; gap: 12px; padding: 18px 20px 18px 24px; border-radius: 18px; background: var(--chip); border: 1px dashed var(--chip-line);
+  font: 700 19px var(--mono); letter-spacing: .02em; }
+.code-display .code-text { flex: 1; text-align: center; text-wrap: balance; }
 .notice svg.i { margin-top: 1px; }
 .notice.info svg.i { color: var(--primary); }
 .notice b { display: block; overflow-wrap: anywhere; }
 .next-step > :nth-child(2) { display: grid; gap: 8px; align-self: center; }
 
 /* what a taken name points at */
-.entities { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-.entity { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 16px; background: var(--chip); border: 1px solid var(--surface-line); container-type: inline-size; }
-.entity .avatar { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; color: #fff; font-weight: 800; flex: none; }
-/* The name asks for its own width, so the link beside it, which shrinks a hundred times faster, gives way first; a
-   name longer than its room is cut short on its one line, with its whole in a tooltip. */
+.entities { display: flex; flex-direction: column; gap: 8px; }
+.entity { display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-radius: 16px; background: var(--chip); border: 1px solid var(--surface-line); }
+.entity .avatar { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-weight: 800; flex: none; }
+/* a name longer than its room is cut short on its one line, with its whole in a tooltip */
 .entity .who { flex: 1 1 auto; min-width: 0; }
-.entity .who b { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.entity .who span { color: var(--ink-soft); font-size: 13px; font-weight: 600; white-space: nowrap; }
-.entity .url { color: var(--ink-soft); font: 500 12.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; min-width: 0; flex: 0 100 auto; }
+.entity .who b { display: block; font-size: 15px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.entity .who span { display: block; color: var(--ink-soft); font-size: 13px; font-weight: 600; line-height: 1.35; white-space: nowrap; }
 .entity > a { white-space: nowrap; }
-/* a card too narrow for both keeps the name whole and drops the link, as on a phone */
-@container (max-width: 520px) { .entity .url { display: none; } }
 
 
 /* The longest code, a name code of 38 characters, fits whole beside the key icon and its gap (28px): a monospace
-   character is a little over .6em wide, plus its letter spacing. Below 11px it would not read, so a narrower field scrolls. */
+   character is a little over .6em wide, plus its letter spacing. Below 11px it would not read, so a narrower field scrolls.
+   The field keeps the height of the others, whose text is larger. */
 .code-input { container-type: inline-size; }
-.code-input input { height: auto; font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(11px, (100cqi - 28px) / 23.8, 15px); }
+.code-input input { height: calc(var(--fs-body) * 4 / 3); font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(11px, (100cqi - 28px) / 23.8, 15px); }
 
 .total s { color: var(--ink-soft); font-size: 20px; margin-right: 8px; }
 .check { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--surface-line); font-weight: 700; position: relative; cursor: pointer; }
@@ -409,8 +408,6 @@ svg.qr { display: block; width: 132px; height: auto; }
 .list > .code-entry { padding: 16px 0; border-top: 1px solid var(--surface-line); }
 .row-code { grid-column: 1 / -1; display: grid; justify-items: center; gap: 14px; }
 .row-code .code-display { width: 100%; }
-.how { display: grid; gap: 8px; }
-.how ul { display: grid; gap: 6px; padding-left: 1.2em; }
 .small-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--surface-line); background: var(--surface); color: var(--ink); font-weight: 700; font-size: 13.5px; }
 .danger-link { display: block; text-align: center; color: var(--danger-fg); font-size: 14px; }
 
@@ -435,8 +432,6 @@ main h1:focus { outline: none; }
 /* Monero's mark for dark grounds has a white base */
 html.dark .monero-base { fill: #fff; }
 
-/* The gutter keeps the page from shifting under a popup. */
-html { scrollbar-gutter: stable; }
 @media (hover: hover) {
   .small-btn:hover, .brand:hover { text-decoration: none; }
   .small-btn:hover { background-color: var(--chip); border-color: var(--chip-line); color: var(--ink); }
@@ -447,7 +442,6 @@ html { scrollbar-gutter: stable; }
 .offline { position: sticky; bottom: 0; z-index: 15; display: flex; padding-inline: 16px; pointer-events: none; }
 .offline-note { pointer-events: auto; width: fit-content; max-width: 560px; margin: 0 auto calc(var(--note-offset) + env(safe-area-inset-bottom)); display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line); color: var(--ink); font-size: 14px; line-height: 1.4; }
 .offline-note svg.i { flex: none; width: 18px; height: 18px; color: var(--warn-fg); }
-.entity.skeleton { height: 68px; }
 /* a link at work, or held by a wait, shows it is not to be pressed */
 a[aria-disabled="true"] { opacity: .6; cursor: default; }
 
@@ -461,40 +455,29 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 
 /* a phone */
 @media (max-width: 560px) {
-  .entity .url { display: none; }
   .card.list { padding-inline: 16px; }
   /* two balanced lines, broken after a dash, read better than a long one squeezed small */
-  .code-display { font-size: 16px; letter-spacing: 0; padding: 16px 46px; }
-  .entity { flex-wrap: wrap; }
-  .entity > a { flex-basis: 100%; padding-left: 56px; }
-  /* the link has its own line, so the name takes the rest of the first beside its avatar, however long */
-  .entity .who { flex-basis: 0; }
-  .tx .k { width: 80px; }
+  .code-display { font-size: 16px; letter-spacing: 0; padding: 14px 12px 14px 16px; }
   /* a row's chip goes under its name, which keeps the row's width */
   .list-row { grid-template-columns: 40px minmax(0, 1fr); }
   .list-row .state { grid-column: 2; }
   .code-input { padding-inline: 12px; }
   .code-input > svg.i { display: none; }
-  .code-input input { font-size: clamp(11px, 100cqi / 23.2, 12.5px); letter-spacing: 0; }
+  .code-input input { font-size: clamp(11px, 100cqi / 23.2, 16px); letter-spacing: 0; }
   /* a purchase step fits the phone's window: smaller cards, methods and fields */
   /* a name of wide letters takes two lines here, which the review's tighter blocks make room for */
   .summary-card { padding: 14px 18px; gap: 8px; }
   .summary-card .name { font-size: 22px; }
+  .answer .name { font-size: 24px; }
   .summary-card .name.long { font-size: 16px; }
-  .summary-card .total { padding-top: 10px; }
-  .review-pay :is(.pay-with, .code-entry) { --block-gap: 6px; }
-  .review-pay .btn { padding-block: 14px; }
+  .review :is(.pay-with, .code-entry) { --block-gap: 6px; }
+  .review .btn { padding-block: 14px; }
   .method { flex-direction: column; padding: 8px 6px; gap: 2px; font-size: 16px; }
   .method span { flex-basis: auto; }
   .method svg { width: 22px; height: 22px; }
   .field { padding-block: 9px; }
-  .entity { padding: 8px 12px; gap: 10px; }
-  .entity .avatar { width: 32px; height: 32px; border-radius: 10px; }
-  .entity .who :is(b, span) { display: block; line-height: 1.35; }
   .entity .who b { font-size: 14px; }
   .entity .who span { font-size: 12px; }
-  .step-actions { gap: 8px; }
-  .entity.skeleton { height: 50px; }
   .link-fields { gap: 8px; }
   .link-entry, .link-field { gap: 6px; }
   /* a review line's label goes above its profile, so the name has the line and the avatars align */
@@ -503,8 +486,8 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .link-lines { gap: 6px; }
   .qr-grid > .qr { grid-row: auto; }
   .qr-grid > :last-child { grid-column: 1 / -1; }
-  .qr-grid svg.qr { width: 120px; }
-  .screen.step { --screen-gap: 12px; padding-block: 8px; }
+  /* a smaller QR leaves the amount beside it its one line */
+  .qr-grid svg.qr, .qr-grid .card.qr svg.qr { width: 120px; }
   .screen.step .lead { font-size: 15px; line-height: 1.4; }
 }
 

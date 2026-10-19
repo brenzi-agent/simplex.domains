@@ -224,4 +224,8 @@ describe("initialState", () => {
     expect(initialState(checkout({ code: CODE }), "review").codeOpen).toBe(true)
     expect(initialState(checkout({ codeError: "This code was already used." }), "review").codeOpen).toBe(true)
   })
+  it("keeps the code field open when the page it was opened on is opened again, and closed otherwise", () => {
+    expect(initialState(checkout(), "review", true).codeOpen).toBe(true)
+    expect(initialState(checkout(), "review", false).codeOpen).toBe(false)
+  })
 })

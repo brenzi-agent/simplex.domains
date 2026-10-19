@@ -274,10 +274,12 @@ function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
     el("div", { class: "vspace cap" }),
     openingLine(s),
     box,
-    keptLive("search-answer", "answer", answerOf(s, retry, signal)),
-    el("div", { class: "vspace cap" }),
-    s.opening === "plain" ? investBlock() : null,
-    el("div", { class: "vspace" }))
+    // the answer takes the invest block's place below the search, so the page above it stays still
+    el("div", { class: "below" },
+      keptLive("search-answer", "answer", answerOf(s, retry, signal)),
+      el("div", { class: "vspace cap" }),
+      s.opening === "plain" ? investBlock() : null,
+      el("div", { class: "vspace" })))
 }
 
 function openingLine(s: SearchState): HTMLElement | null {
@@ -361,7 +363,7 @@ function takenAnswer(found: Found, answer: Extract<api.SearchAnswer, { status: "
   return el("div", { class: "card" },
     el("div", { class: "head" }, nameTitle(label, "name"), status),
     note ? el("p", { class: "note" }, note) : null,
-    answer.entities.length > 0 ? [el("span", { class: "label" }, "Used by"), el("div", { class: "entities" }, ...answer.entities.map((e) => entityCard(e)))] : null,
+    answer.entities.length > 0 ? el("div", { class: "entities" }, ...answer.entities.map(entityCard)) : null,
     yours)
 }
 
@@ -383,13 +385,13 @@ function initialsAvatar(displayName: string): HTMLElement {
   return avatar
 }
 
-export function entityCard(e: { type: "address" | "channel"; displayName: string; image: string | null; link: string; deepLink?: string }, openable = true): HTMLElement {
+// a link's preview has no deep link, so it shows the profile alone
+export function entityCard(e: { type: "address" | "channel"; displayName: string; image: string | null; deepLink?: string }): HTMLElement {
   const avatar = e.image ? el("img", { class: "avatar", src: e.image, alt: "" }) : initialsAvatar(e.displayName)
   return el("div", { class: "entity" },
     avatar,
     el("div", { class: "who" }, el("b", { title: e.displayName }, e.displayName), el("span", {}, linkName(e.type === "address" ? "contact" : "channel"))),
-    el("span", { class: "url" }, e.link),
-    openable && e.deepLink && SAFE_LINK.test(e.deepLink) ? el("a", { href: e.deepLink }, "Open in SimpleX") : null)
+    e.deepLink && SAFE_LINK.test(e.deepLink) ? el("a", { href: e.deepLink }, "Open in SimpleX") : null)
 }
 
 function investBlock(): HTMLElement {

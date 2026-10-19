@@ -305,7 +305,7 @@ test("a code order taken first gives its code back, ready for another name", asy
   await control(request, "take", { label })
   await payWithCode(page, label, code)
   await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: 120_000 })
-  await expect(page.locator(".outcome .code-display")).toHaveText(code)
+  await expect(page.locator(".outcome .code-text")).toHaveText(code)
   await shot(page, "K9-code-released")
   await page.goto("/#/names")
   await expect(page.locator(".list-row", { hasText: code }).locator(".chip")).toHaveText("Unused")
@@ -423,7 +423,7 @@ test("the registering page's lead tells the time left from the commit's wait", a
     await route.fulfill({ response, json: { ...view, phase: "committed", label: null, commitTx: view.commitTx ?? `0x${"1".repeat(64)}`, revealAfter: serviceNow + WAIT_S } })
   })
   await page.reload()
-  await expect(page.locator(".screen > .lead")).toHaveText("About 3 minutes. Keep this page open: after the wait it signs the name to finish it.")
+  await expect(page.locator(".screen > .lead")).toHaveText("About 3 minutes. Keep this page open until the name is yours.")
   await page.unrouteAll({ behavior: "ignoreErrors" })
 })
 

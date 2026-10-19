@@ -65,8 +65,6 @@ export async function shot(page: Page, name: string): Promise<void> {
   const themes = browser === "webkit" ? [false] : [false, true]
   for (const [device, size] of [["desktop", DESKTOP], ["phone", PHONE]] as const) {
     await page.setViewportSize(size)
-    // a phone's scrollbar lies over the page and takes no room
-    await page.evaluate((phone) => { document.documentElement.style.scrollbarGutter = phone ? "auto" : "" }, device === "phone")
     // the track takes its step's height for the new size a frame or two after the window changes
     await page.waitForFunction(() => {
       const track = document.querySelector(".track")
@@ -79,10 +77,7 @@ export async function shot(page: Page, name: string): Promise<void> {
       await page.screenshot({ path: `${dir}/${name}-${device}-${dark ? "dark" : "light"}.png`, fullPage: !dialogOpen, animations: "disabled" })
     }
   }
-  await page.evaluate(() => {
-    document.documentElement.classList.remove("dark")
-    document.documentElement.style.scrollbarGutter = ""
-  })
+  await page.evaluate(() => document.documentElement.classList.remove("dark"))
   await page.setViewportSize(DESKTOP)
 }
 

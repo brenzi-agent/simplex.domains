@@ -1,13 +1,13 @@
 // The link fields that the Links step and Edit links share, each checked as it is typed and shown with its preview.
 import * as api from "../api.ts"
-import { el, icon, waitOut } from "../dom.ts"
+import { el, icon, refill, waitOut } from "../dom.ts"
 import { type LinkKind, linkKind, linkProblem } from "../names.ts"
 import { entityCard } from "./search.ts"
 import { whenDropped } from "./shell.ts"
 
-const FIELD_TEXT: Record<LinkKind, { name: string; label: string; placeholder: string }> = {
-  contact: { name: "Contact address", label: "Address", placeholder: "Paste your address" },
-  channel: { name: "Channel", label: "Channel", placeholder: "Paste your channel" },
+const FIELD_TEXT: Record<LinkKind, { name: string; placeholder: string }> = {
+  contact: { name: "Contact address", placeholder: "Paste your address" },
+  channel: { name: "Channel", placeholder: "Paste your channel" },
 }
 export const linkName = (kind: LinkKind) => FIELD_TEXT[kind].name
 
@@ -17,18 +17,17 @@ type Preview = Awaited<ReturnType<typeof api.previewLink>>
 const previews = new Map<string, Preview>()
 const PREVIEW_RETRY_S = 3
 
-const entityOf = (profile: Preview, link: string) => entityCard({ ...profile, link }, false)
 // a preview's place is held while it is asked for, so the page is laid out at its height from the start
 const previewPlace = () => el("div", { class: "entity skeleton", "aria-hidden": "true" })
 
 export function linkPreview(link: string): HTMLElement {
   const known = previews.get(link)
-  if (known) return entityOf(known, link)
+  if (known) return entityCard(known)
   const place = previewPlace()
   void api.previewLink(link).then((profile) => {
     previews.set(link, profile)
-    place.replaceWith(entityOf(profile, link))
-  }, () => place.replaceWith(el("span", { class: "url" }, link)))
+    place.replaceWith(entityCard(profile))
+  }, () => place.replaceWith(el("span", {}, link)))
   return place
 }
 
@@ -36,27 +35,31 @@ export function linkPreview(link: string): HTMLElement {
 // emptied; a link being checked or refused leaves the last one saved.
 export function linkField(kind: LinkKind, value: string, save: (v: string) => void): HTMLElement {
   const errorId = `link-error-${++linkFields}`
-  const input = el("input", { type: "text", placeholder: FIELD_TEXT[kind].placeholder, value, "aria-label": FIELD_TEXT[kind].label, spellcheck: "false", autocomplete: "off",
+  const input = el("input", { type: "text", placeholder: FIELD_TEXT[kind].placeholder, value, "aria-label": FIELD_TEXT[kind].name, spellcheck: "false", autocomplete: "off",
     "data-focus": `link-${kind}` })
-  const box = el("label", { class: "field" }, icon("link"), input)
+  // the profile a link opens shows at the field's end, and what is wrong with a link under it
+  const preview = el("span", { class: "preview" })
+  const box = el("label", { class: "field" }, icon("link"), input, preview)
   const card = el("div", {})
   const field = el("div", { class: "link-field" }, box, card)
+  const show = (inField: Node | null, below: Node | null = null) => {
+    refill(preview, inField)
+    refill(card, below)
+  }
   // the field lives as long as the route keeps it; a check started anew ends the last one's wait
   const life = new AbortController()
   let waiting = new AbortController()
   whenDropped(() => { life.abort(); waiting.abort() })
   const shown = () => !life.signal.aborted
   let seq = 0
-  const holdCardPlace = () => {
-    if (!card.querySelector(".skeleton")) card.replaceChildren(previewPlace())
-  }
+  const holdPreviewPlace = () => show(preview.querySelector(".skeleton") ?? previewPlace())
   const refuse = (text: string) => {
     box.className = "field bad"
     field.dataset.state = "bad"
     input.setAttribute("aria-invalid", "true")
     input.setAttribute("aria-describedby", errorId)
     // the same refusal again, as typing on in a refused link gives, keeps still
-    if (card.querySelector(".field-error")?.textContent !== text) card.replaceChildren(el("p", { class: "field-error", id: errorId }, icon("alert"), text))
+    if (card.querySelector(".field-error")?.textContent !== text) show(null, el("p", { class: "field-error", id: errorId }, icon("alert"), text))
   }
   const check = async () => {
     const mine = ++seq
@@ -69,7 +72,7 @@ export function linkField(kind: LinkKind, value: string, save: (v: string) => vo
     field.dataset.state = link ? "checking" : "empty"
     if (!link) {
       save("")
-      return card.replaceChildren()
+      return show(null)
     }
     const accept = () => {
       field.dataset.state = "ok"
@@ -82,26 +85,26 @@ export function linkField(kind: LinkKind, value: string, save: (v: string) => vo
     const kept = field.dataset.kept ?? value
     if (link === kept) {
       accept()
-      return card.replaceChildren(kept.includes(";") ? el("p", { class: "note" }, "Several links. SimpleX opens the first one.") : linkPreview(link))
+      return kept.includes(";") ? show(null, el("p", { class: "note" }, "Several links. SimpleX opens the first one.")) : show(linkPreview(link))
     }
     const problem = linkProblem(kind, link)
     if (problem) {
       const other = linkKind(link)
       return refuse(problem === "long" ? "This link is too long."
-        : other ? `This is a ${linkName(other).toLowerCase()} link: paste it in the ${FIELD_TEXT[other].label} field.`
+        : other ? `This is a ${linkName(other).toLowerCase()} link: paste it in the ${linkName(other)} field.`
         : `Paste a SimpleX ${linkName(kind).toLowerCase()} short link.`)
     }
     if (known) {
       accept()
-      return card.replaceChildren(entityOf(known, link))
+      return show(entityCard(known))
     }
-    holdCardPlace()
+    holdPreviewPlace()
     try {
       const profile = await api.previewLink(link)
       previews.set(link, profile)
       if (mine !== seq || !shown() || !field.isConnected) return
       accept()
-      card.replaceChildren(entityOf(profile, link))
+      show(entityCard(profile))
     } catch (e) {
       if (mine !== seq || !shown() || !field.isConnected) return
       // the service refusing the link is about the link; a rate limit or no answer is not, and the field checks again
@@ -111,7 +114,7 @@ export function linkField(kind: LinkKind, value: string, save: (v: string) => vo
         input.setAttribute("aria-describedby", errorId)
         waitOut(line, e instanceof api.ApiError && e.retryAfter ? e.retryAfter : PREVIEW_RETRY_S,
           (left) => `The link could not be checked now. Checking again in ${left}.`, () => { if (mine === seq) void check() }, waiting.signal)
-        return card.replaceChildren(notice)
+        return show(null, notice)
       }
       refuse("This link could not be opened.")
     }

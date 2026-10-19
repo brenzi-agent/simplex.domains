@@ -53,7 +53,7 @@ test("a name taken first can become a code instead, kept under Your names", asyn
   await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
   await page.getByRole("button", { name: "Take a code" }).click()
   await expect(page.getByRole("heading", { name: "Here is a code instead" })).toBeVisible()
-  const code = (await page.locator(".outcome .code-display").textContent())!.trim()
+  const code = (await page.locator(".outcome .code-text").textContent())!.trim()
   expect(code).toMatch(/^SN8-/)
   await shot(page, "N8b-code-instead")
 

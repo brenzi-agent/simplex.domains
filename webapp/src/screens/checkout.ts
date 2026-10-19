@@ -42,9 +42,9 @@ export type CheckoutEvent =
   | { type: "hold-started"; until: number }
   | { type: "hold-ended" }
 
-export function initialState(checkout: Checkout, step: CheckoutStep): CheckoutState {
+export function initialState(checkout: Checkout, step: CheckoutStep, codeOpen = false): CheckoutState {
   return { step, checkout, sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null,
-    codeOpen: checkout.code !== null || checkout.codeError !== undefined }
+    codeOpen: codeOpen || checkout.code !== null || checkout.codeError !== undefined }
 }
 
 export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial<Checkout> | null {

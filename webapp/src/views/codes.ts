@@ -83,7 +83,7 @@ const said = (v: CodeVerdict) => v.ok ? v.line : `${v.title}. ${v.line}`
 // a field's way to take a refusal from elsewhere, as the service's when the order is sent
 const refusers = new WeakMap<HTMLElement, (text: string) => void>()
 
-// `judged` may return a refusal to say instead of the verdict; a field given an `action` has it in place of its label.
+// `judged` may return a refusal to say instead of the verdict; `label` names the field, and an `action` goes beside it.
 export function codeField(key: string, label: string, judged: (v: CodeVerdict | null) => string | null,
   start: session.AppliedCode | null = null, refusal: string | null = null, action: HTMLElement | null = null): HTMLElement {
   return kept(key, () => {
@@ -102,7 +102,7 @@ export function codeField(key: string, label: string, judged: (v: CodeVerdict | 
     const life = new AbortController()
     whenDropped(() => life.abort())
     const forget = watchCode(input, (v) => show(v, judged(v)), life.signal)
-    const entry = el("div", { class: "code-entry" }, action ? el("div", { class: "field-row" }, box, action) : [el("span", { class: "label" }, label), box], line)
+    const entry = el("div", { class: "code-entry" }, action ? el("div", { class: "field-row" }, box, action) : box, line)
     refusers.set(entry, (text) => {
       forget()
       input.value = ""

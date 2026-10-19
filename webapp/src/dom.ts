@@ -126,7 +126,7 @@ export function codeDisplay(code: string, testId?: string): HTMLElement {
     const text = i < groups.length - 1 ? `${group}-` : group
     return i > 1 ? [el("wbr"), text] : [text]
   })
-  return el("div", { class: "code-display", "data-testid": testId }, el("span", { class: "code-text" }, ...parts), copyButton(code, null, "field-copy corner-copy", "Copy code"))
+  return el("div", { class: "code-display" }, el("span", { class: "code-text", "data-testid": testId }, ...parts), copyButton(code, "field-copy", "Copy code"))
 }
 
 let announcer: HTMLElement | null = null
@@ -144,10 +144,10 @@ function uncopy(button: HTMLElement, note: HTMLElement): void {
   copiedTimers.set(button, [setTimeout(() => { note.textContent = "" }, COPIED_FADE_MS)])
 }
 
-export function copyButton(value: string, label: string | null, cls: string, name = label ?? "Copy"): HTMLButtonElement {
+const COPY = "Copy"
+export function copyButton(value: string, cls: string, name = COPY): HTMLButtonElement {
   const note = el("span", { class: "copied-note", "aria-hidden": "true" })
-  const button = el("button", { class: `copy-btn ${cls}`.trim(), type: "button", "aria-label": name },
-    el("span", { class: "copy-icons", "aria-hidden": "true" }, icon("copy"), icon("check")), label, note)
+  const button = el("button", { class: `copy-btn ${cls}`.trim(), type: "button", "aria-label": name }, COPY, note)
   button.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(value)

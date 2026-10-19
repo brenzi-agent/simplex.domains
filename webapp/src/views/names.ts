@@ -44,6 +44,11 @@ const readIds = new Set<string>()
 const retried = new Set<string>()
 const readCodes = new Set<string>()
 
+// an order page that saw its name registered tells the list, which then draws the row registered from the start
+export function seenRegistered(view: api.RegistrationView, invoice: api.InvoiceView | null): void {
+  lastSeen = { ...lastSeen, [view.id]: { ...lastSeen[view.id], view, invoice } }
+}
+
 const storedNow = (): Stored => ({ orders: store.orders(), pending: store.pendingCodes(), codes: store.codes(), canPersist: store.canPersist() })
 const storedEvent = (): ListEvent => ({ type: "stored", ...storedNow(), hold: tabHold() })
 
@@ -186,6 +191,8 @@ function forgetBlock(s: ListState): HTMLElement | null {
       dispatchList(storedEvent())
       dispatchList({ type: "forget-asked" })
       focusOn(KEEP)
+      // the question and both its answers come into view, as focus does not scroll
+      document.querySelector(".forget")?.scrollIntoView({ block: "nearest" })
     } }, "Forget everything in this browser")
   }
   const keep = btn("Keep them", "quiet", () => {
@@ -231,7 +238,8 @@ function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   return screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME },
     el("div", { class: "card list" }, el("h2", {}, "Names"), names.length ? names : el("p", { class: "note" }, "No names in this browser yet. ", restoreLink())),
     names.length ? el("p", { class: "note" }, restoreLink()) : null,
-    el("div", { class: "card list" }, el("h2", {}, "Codes"), s.codes.map((c) => codeRow(c, s)), kept(ADD_CODE, addCodeBox)),
+    el("div", { class: "card list" }, el("h2", {}, "Codes"), el("p", { class: "note" }, "Prepaid codes that pay for a name at checkout."),
+      s.codes.map((c) => codeRow(c, s)), kept(ADD_CODE, addCodeBox)),
     forgetBlock(s))
 }
 
@@ -291,10 +299,11 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
   // the order may have moved to another name since it was stored
   const label = seen?.view.label ?? o.label
   const title = `${label}.${seen?.view.tld ?? o.tld}`
-  const answer = seen?.view.phase === "registered" ? seen.answer : undefined
-  const code = answer !== undefined ? o.ownerCode : null
+  // a registered row takes its final shape at once; its name's answer, read after it, only takes Edit links away
+  const registered = seen?.view.phase === "registered"
+  const code = registered ? o.ownerCode : null
   const shown = code !== null && s.shownCode === id
-  const edits = answer !== undefined && !lapsed(seen, s.now) && (answer === null || editable(answer, o.owner))
+  const edits = registered && !lapsed(seen, s.now) && (!seen.answer || editable(seen.answer, o.owner))
   const acts = code === null ? [small("Open", `${id}-open`, () => go(store.orderUrl(o)))]
     : [codeToggle(id, shown), edits ? small("Edit links", `${id}-edit`, () => go(`/#/edit/${id}`), "link") : null]
   return row(id, markOf(label), title, seen ? subLine(o, seen, s.now) : recordedPaid(o), rowChip(s, o, seen), acts, shown ? rowCode(code) : null)
@@ -325,7 +334,7 @@ function pendingRow(p: store.PendingCode, s: ListState, signal: AbortSignal): HT
 
 function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {
   const check = s.checked[c.code]
-  const copy = copyButton(c.code, "Copy", "small-btn")
+  const copy = copyButton(c.code, "small-btn")
   copy.dataset.focus = `${c.code}-copy`
   const [text, tone] = check === undefined ? ["Checking", ""] : check === "unchecked" ? ["Not checked", "warn"] : CODE_CHIPS[check]
   const node = row(c.code, "≡", c.code, `Names of ${c.minLength} or more letters, for ${termText(c.years)}${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000, true)}`,
@@ -333,9 +342,6 @@ function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {
   node.classList.add("code-row")
   return node
 }
-
-const howList = (title: string, ...lines: string[]) =>
-  el("div", { class: "how" }, el("span", { class: "label" }, title), el("ul", { class: "note" }, ...lines.map((line) => el("li", {}, line))))
 
 let restore: RestoreState = initialRestore(null)
 let restoreRoute = -1
@@ -359,7 +365,7 @@ function restoreBox(): HTMLElement {
   restoreField = input
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !restoreOff(restore)) void runRestore() })
   input.addEventListener("input", () => dispatchRestore({ type: "edited" }))
-  return el("div", { class: "field code-input" }, icon("key"), input)
+  return el("label", { class: "field code-input" }, icon("key"), input)
 }
 
 async function runRestore(): Promise<void> {
@@ -400,14 +406,10 @@ function buildRestore(s: RestoreState, signal: AbortSignal): HTMLElement {
     : s.hold ? holdNotice(s.hold, signal)
       : refusal ? refusal.verdict ? el("p", { class: "verdict bad" }, `${refusal.title}. ${refusal.text}`) : alertBox("danger", "alert", refusal.title, refusal.text)
         : null
-  return screen({ title: "Restore with a name code", lead: "The code stays in this browser. The service sees only a signature from the name's key.", back: NAMES },
+  return screen({ title: "Restore with a name code", lead: "Enter the name code you saved to find your order. The code never leaves this browser.", back: NAMES },
     el("div", { class: "code-entry" }, el("span", { class: "label" }, "Name code"), box),
     keptLive("restore-note", undefined, note),
-    action,
-    howList("How it works",
-      "The page rebuilds the name's key and the order's secret from the code.",
-      "It signs a request with that key and finds the code's orders; knowing the address alone finds nothing.",
-      "If the registration waits for this browser, it carries on from here."))
+    action)
 }
 
 let edit: EditState = initialEdit("", null)
@@ -564,7 +566,7 @@ function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {
   return screen({ title: editTitle(s), back: NAMES },
     linkEntry("contact", fields[0]),
     linkEntry("channel", fields[1]),
-    howList("Saving", "This browser signs the change with the name's key, from your name code.", "SimpleX sends it and pays the fee."),
+    el("p", { class: "note" }, "Saving is free: SimpleX pays the network fee."),
     save,
     keptLive("edit-answer", undefined, answer))
 }

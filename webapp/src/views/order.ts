@@ -1,9 +1,9 @@
 // An order's page (?order=<invoice>) or a code registration's (?registration=<id>): payment, registration, and every ending.
 import * as api from "../api.ts"
 import { codeTier, LONGEST_TIER, parseNameCode } from "../crypto/code.ts"
-import { alertBox, btn, chip, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, setAction, type Tone } from "../dom.ts"
+import { alertBox, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, setAction, type Tone } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { clock, dateOf, dollars, methodName, SEP, shortAddress, shortHash, termText } from "../format.ts"
+import { clock, dateOf, dollars, methodName, SEP, shortAddress, termText } from "../format.ts"
 import { PRICED_YEARS } from "../names.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
@@ -13,6 +13,7 @@ import {
 import * as store from "../store.ts"
 import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
 import { every } from "./effects.ts"
+import { seenRegistered } from "./names.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
 import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
 
@@ -73,6 +74,7 @@ function dispatch(event: OrderEvent): void {
   if (cardStays(before, kind)) showCard()
   else draw(kind, (signal) => asStep(BUILDERS[kind](state, signal)), kind === "pay-crypto" || kind === "pay-card" ? "payment" : null)
   if (kind !== "pay-card") dropCard()
+  if (kind === "registered") seenRegistered(state.view!, state.invoice)
   if (revealDue(state)) reveal(state.view!, state.record!)
   // keepCodes dispatches record-changed itself, so it runs only when the screen or the record moved
   if (kind !== screenOf(before) || state.record !== before.record) keepCodes(state)
@@ -350,20 +352,18 @@ const UNKNOWN_NAME = "The name shows once it is registered"
 
 function orderLine({ view, record, invoice }: OrderState): HTMLElement {
   const label = labelOf(view!, record)
-  return el("p", { class: "note" }, label ? nameText(label, view!.tld) : UNKNOWN_NAME, SEP, termText(view!.years), SEP,
+  return el("p", { class: "note" }, label ? nameText(label, view!.tld) : UNKNOWN_NAME, SEP, el("span", { class: "nowrap" }, termText(view!.years)), SEP,
     invoice ? dollars(invoice.amount, true) : "With a code")
 }
 
 const TICKER: Record<"btc" | "xmr", string> = { btc: "BTC", xmr: "XMR" }
 
-// what is copied can differ from what is shown, as an amount without its unit, which a wallet's amount field refuses
-function copyField(label: string, value: string, copy = value): HTMLElement {
-  // A value of one long word, as an address, may break between any two letters, which the field's balance evens out:
-  // WebKit balances only between the breaks it is given, Firefox only in a word that breaks anywhere (.word).
-  const word = !value.includes(" ")
-  const shown = word ? [...value].flatMap((ch, i) => i ? [el("wbr"), ch] : [ch]) : [value]
+function copyField(label: string, value: string): HTMLElement {
+  // A long value, as an address, may break between any two letters, which the field's balance evens out: WebKit
+  // balances only between the breaks it is given, Firefox only in a word that breaks anywhere (.word).
+  const shown = [...value].flatMap((ch, i) => i ? [el("wbr"), ch] : [ch])
   return el("div", { class: "copy-field" }, el("span", { class: "label" }, label),
-    el("div", { class: "val" }, el("span", { class: word ? "word" : undefined }, ...shown), copyButton(copy, null, "field-copy", `Copy ${label.toLowerCase()}`)))
+    el("div", { class: "val" }, el("span", { class: "word" }, ...shown), copyButton(value, "field-copy", `Copy ${label}`)))
 }
 
 function rateLine(invoice: api.InvoiceView, signal: AbortSignal): HTMLElement {
@@ -393,12 +393,12 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
   const due = partial ? inv.cryptoAmountDue! : inv.cryptoAmount!
   const uri = paymentUri(coin, inv.address!, due)
   holdEnds(signal)(s.hold !== null)
-  return screen({ title: `Pay with ${methodName(coin)}`, lead: "Bookmark this page: the address and the countdown live on its link." },
+  return screen({ title: `Pay with ${methodName(coin)}`, lead: "Bookmark this page to come back to this payment." },
     partial ? alertBox("warn", "alert", "Part of the payment arrived", partSentence(inv, coin)) : null,
     orderLine(s),
     el("div", { class: "qr-grid" },
-      uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`)) : null,
-      copyField(partial ? "Send the rest" : "Amount", `${due} ${TICKER[coin]}`, due),
+      uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`), el("a", { href: uri }, "Open in wallet")) : null,
+      copyField(`${partial ? "Rest to send" : "Amount"} in ${TICKER[coin]}`, due),
       copyField(`${methodName(coin)} address`, inv.address!)),
     el("p", { class: "note waiting" }, el("span", {}, partial ? "Waiting for the rest of the payment" : "Waiting for payment", SEP, rateLine(inv, signal)),
       partial ? null : cancelLink(s)),
@@ -702,26 +702,6 @@ function stages(states: StageState[]): HTMLElement {
     el("b", {}, states[i] === "done" ? stage.done : stage.going))))
 }
 
-// block explorers by chain id; a chain without one, as a local test chain, shows its hashes as text
-const EXPLORERS: Record<number, string> = { 1: "https://etherscan.io", 11155111: "https://sepolia.etherscan.io" }
-
-function onChain(view: api.RegistrationView, kind: "tx" | "address", value: string | null, text: string): HTMLElement {
-  const explorer = EXPLORERS[view.chainId]
-  return explorer && value
-    ? el("a", { href: `${explorer}/${kind}/${value}`, target: "_blank", rel: "noopener", title: value }, `${text}\u00a0↗`)
-    : el("span", { title: value ?? "" }, text)
-}
-
-function txRows(view: api.RegistrationView, states: StageState[], now: number, refused = false): HTMLElement {
-  const tx = (k: string, ...cells: Node[]) => el("div", { class: "tx" }, el("span", { class: "k" }, k), ...cells)
-  const hash = (h: string | null) => el("span", { class: "v mono" }, onChain(view, "tx", h, h ? shortHash(h) : "—"))
-  const commitChip = view.commitTx ? chip(states[0] === "done" ? "Confirmed" : "Sent", states[0] === "done" ? "ok" : "brand") : null
-  const registerChip = states[2] === "done" ? chip("Confirmed", "ok") : states[2] === "active" ? chip("Sent", "brand")
-    : view.revealAfter !== null && now / 1000 >= view.revealAfter ? (refused ? chip("Not signed", "bad") : chip("Signing", "brand")) : chip("After the wait")
-  return el("div", { class: "card txs" }, tx("Commit", hash(view.commitTx), el("span", {}, commitChip)), tx("Register", hash(view.registerTx), el("span", {}, registerChip)),
-    tx("Owner", el("span", { class: "v mono" }, onChain(view, "address", view.owner, shortAddress(view.owner)))))
-}
-
 const stagesOf = (view: api.RegistrationView): StageState[] => view.phase === "registering" ? ["done", "done", "active"] : view.phase === "committed" ? ["done", "active", ""] : ["active", "", ""]
 
 function headingOf({ view, record }: OrderState): Kid {
@@ -740,14 +720,14 @@ function waitEstimate(view: api.RegistrationView): string {
 
 function leadOf({ view, record }: OrderState): string {
   const keepOpen = openedFromApp(view!, record) ? "Keep this page open while SimpleX finishes it."
-    : record ? "Keep this page open: after the wait it signs the name to finish it."
+    : record ? "Keep this page open until the name is yours."
       : "The browser with its name code signed it."
   return `${waitEstimate(view!)}${keepOpen}`
 }
 
-const WAIT_NOTE = "The contract makes every registration wait after its commit, so nobody can take a name they saw being registered."
-const COMMIT_NOTE = "Waiting for the commit to be mined. The wait starts once it is."
-const REGISTERING_NOTE = "Registering the name on chain. It is yours once the transaction is mined."
+const WAIT_NOTE = "Every new name waits a little, so nobody who sees your order can take the name first."
+const COMMIT_NOTE = "Placing your order. The wait starts once it is in."
+const REGISTERING_NOTE = "Registering the name. It is yours in a moment."
 
 function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
   const { record } = s
@@ -780,12 +760,11 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
     else say(note, REGISTERING_NOTE)
   }
   onTheSecond(() => waitLeft(view), tick, signal)
-  return screen({ title: headingOf(s), lead, wide: true },
+  return screen({ title: headingOf(s), lead },
     steps,
     el("div", { class: "countdown" }, clockNode, note),
     refused ? alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration.") : null,
     refused ? btn("Try again", "quiet block", tryAgain, icon("refresh")) : null,
-    txRows(view, states, s.now, view.label === null && refused),
     referenceLine(s.invoice?.invoiceId ?? view.id))
 }
 
@@ -832,7 +811,7 @@ function buildRegistered(s: OrderState): HTMLElement {
   const view = s.view!
   const label = labelOf(view, s.record)
   const code = s.record?.ownerCode ?? null
-  return screen({ title: [label ? gradName(label, view.tld) : "The name", " is\u00a0yours"], lead: registeredLead(view, s.record), wide: true },
+  return screen({ title: [label ? gradName(label, view.tld) : "The name", " is\u00a0yours"], lead: registeredLead(view, s.record) },
     code ? el("div", { class: "card next-step qr-grid" }, el("div", { class: "qr" }, qrSvg(code, "name code")),
       el("div", {}, el("h2", {}, "Redeem it in the app"), el("p", { class: "note" }, "Scan or enter the code in SimpleX: the name moves to the app's wallet.")),
       codeDisplay(code, "owner-code")) : null,

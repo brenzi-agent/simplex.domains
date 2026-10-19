@@ -144,7 +144,7 @@ export function refresh(): void {
 }
 
 export type Builder<S> = (state: S, signal: AbortSignal) => HTMLElement
-interface ScreenHead { title: Kid; lead?: Kid; back?: string; wide?: boolean }
+interface ScreenHead { title: Kid; lead?: Kid; back?: string }
 interface Outcome { tone: Tone; icon: IconName; title: string; text: Kid; action?: Node | null; reference?: string; extra?: Kid; back?: string }
 
 export function kept<T extends HTMLElement>(key: string, make: () => T): T {
@@ -233,7 +233,7 @@ const screenHead = (title: Kid, back: string | undefined) =>
   el("div", { class: "screen-head" }, back ? el("a", { class: "back", href: back }, icon("back"), "Back") : null, el("h1", {}, title))
 
 export function screen(head: ScreenHead, ...body: Kid[]): HTMLElement {
-  return el("section", { class: head.wide ? "screen wide" : "screen" },
+  return el("section", { class: "screen" },
     screenHead(head.title, head.back),
     head.lead ? el("p", { class: "lead" }, head.lead) : null,
     ...body)

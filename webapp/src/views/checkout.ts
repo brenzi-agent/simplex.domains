@@ -1,6 +1,6 @@
 // The checkout's steps: the links the name opens, its name code, and Check your order with how it pays, and Pay.
 import * as api from "../api.ts"
-import { alertBox, btn, codeDisplay, el, gradName, icon, link, nameText, nameTitle, setAction } from "../dom.ts"
+import { alertBox, btn, codeDisplay, el, gradName, icon, type Kid, link, nameText, nameTitle, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, methodName, SEP, termText, untilFromNow } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
@@ -50,7 +50,8 @@ export function checkoutPage(asked: CheckoutStep): void {
   const c = session.checkout()!
   if (c.ownerCode) store.addPending({ ownerCode: c.ownerCode, label: c.label, tld: c.chain.tld, createdAt: new Date().toISOString() })
   if (!isRedraw() || shown === null || state.checkout.label !== c.label) {
-    state = initialState(c, step)
+    // a code field opened stays open over Change and Back within the same checkout
+    state = initialState(c, step, shown !== null && state.checkout.label === c.label && state.codeOpen)
     shown = null
     unheard = undefined
   }
@@ -146,13 +147,13 @@ function linkLines(c: session.Checkout): HTMLElement | null {
     : linkLine("contact", "Links", el("span", {}, "None"), "Add", "Add links"))
 }
 
+// the term and its price on one line, as the search answer shows them
 function summaryCard(c: session.Checkout): HTMLElement {
   const y = years(c)
   return el("section", { class: "card summary-card" }, nameTitle(c.label, "name", c.chain.tld),
-    el("p", { class: "term-line" }, termText(y), SEP, el("span", { class: "nowrap" }, `until ${dateOf(untilFromNow(y), true)}`)),
-    linkLines(c),
-    el("div", { class: "total" }, el("span", {}, "Total"),
-      el("span", {}, ...(c.code ? [el("s", {}, dollars(priceFor(c.price, y), true)), "$0.00"] : [dollars(c.price, true)]))))
+    el("div", { class: "total" }, el("span", { class: "term-line" }, termText(y), SEP, el("span", { class: "nowrap" }, `until ${dateOf(untilFromNow(y), true)}`)),
+      el("b", { class: "nowrap" }, ...(c.code ? [el("s", {}, dollars(priceFor(c.price, y), true)), "$0.00"] : [dollars(c.price, true)]))),
+    linkLines(c))
 }
 
 // an order on its way is sent as it is: its method and code stay as they are until it is answered
@@ -224,7 +225,8 @@ function openCode(): void {
   codeEntry().querySelector("input")!.focus()
 }
 
-const codeBlock = (s: CheckoutState) => s.codeOpen ? locked(codeEntry(), s.sending) : el("div", { class: "code-link" }, link(CODE_LABEL, openCode))
+// the link holds the field's place, so the field opens without moving the page
+const codeBlock = (s: CheckoutState) => s.codeOpen ? locked(codeEntry(), s.sending) : el("div", { class: "field code-link" }, link(CODE_LABEL, openCode))
 
 const actionLabel = (text: string, s: CheckoutState) => s.sending && !s.busy ? "Sending your order…" : text
 
@@ -237,8 +239,8 @@ function payBlock(s: CheckoutState, blocked: boolean, signal: AbortSignal): HTML
   return el("div", { class: "pay-block" }, pay, keptLive(CHECKOUT_NOTE, undefined, held && holdNotice(held, signal)))
 }
 
-function continueButton(onclick: () => void, held = false): HTMLButtonElement {
-  const next = setAction(btn("Continue", "block", onclick, icon("arrow")), false, held)
+function continueButton(onclick: () => void, held = false, label: Kid = "Continue"): HTMLButtonElement {
+  const next = setAction(btn(label, "block", onclick, icon("arrow")), false, held)
   next.dataset.focus = "continue"
   return next
 }
@@ -254,14 +256,11 @@ function buildLinks(s: CheckoutState): HTMLElement {
     locked(kept("link-contact", () => linkField("contact", c.contact, (link) => setLink("contact", link))), s.sending),
     locked(kept("link-channel", () => linkField("channel", c.channel, (link) => setLink("channel", link))), s.sending),
   ]
-  // shown only while both fields are empty, which leaves the links empty too
-  const skip = link("Skip for now", () => linksDone(fields))
-  skip.className = "skip"
-  skip.dataset.focus = "skip"
-  return screen({ title: ["What should ", gradName(c.label, c.chain.tld), " open?"], back: searchLink(c.label, null), wide: true,
-    lead: ["When someone opens ", nameText(c.label, c.chain.tld), " in SimpleX, it connects them to you or shows your channel. Paste the links from the app; you can change them later."] },
+  // one button, named Skip for now while both fields are empty and Continue once a link is typed, so the step keeps still
+  return screen({ title: ["What should ", gradName(c.label, c.chain.tld), " open?"], back: searchLink(c.label, null),
+    lead: "Paste your links from the SimpleX app. You can change them later." },
     el("div", { class: "link-fields" }, linkEntry("contact", fields[0]), linkEntry("channel", fields[1])),
-    el("div", { class: "step-actions" }, continueButton(() => linksDone(fields)), skip))
+    continueButton(() => linksDone(fields), false, [el("span", { class: "skip" }, "Skip for now"), el("span", { class: "go" }, "Continue")]))
 }
 
 function buildCode(s: CheckoutState): HTMLElement {
@@ -279,13 +278,12 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   const c = s.checkout
   const fromApp = c.appOwner !== null
   const blocked = blockedBy(s)
-  return screen({ title: "Check your order", back: fromApp ? searchLink(c.label, c.appOwner) : checkoutUrl("code"), wide: true },
+  return screen({ title: "Check your order", back: fromApp ? searchLink(c.label, c.appOwner) : checkoutUrl("code") },
     el("div", { class: "review" }, summaryCard(c),
-      el("div", { class: "review-pay" },
-        fromApp && !store.canPersist() ? alertBox("warn", "alert", "This browser will not keep this order", "Keep this page open until the name is registered; a reload loses it.") : null,
-        c.code ? coveredLine(c.code) : blocked ? waitingNotice(blocked) : methodsBlock(s),
-        fromApp ? null : codeBlock(s),
-        payBlock(s, blocked !== null, signal))))
+      fromApp && !store.canPersist() ? alertBox("warn", "alert", "This browser will not keep this order", "Keep this page open until the name is registered; a reload loses it.") : null,
+      c.code ? coveredLine(c.code) : blocked ? waitingNotice(blocked) : methodsBlock(s),
+      fromApp ? null : codeBlock(s),
+      payBlock(s, blocked !== null, signal)))
 }
 
 function buildPriceChanged({ checkout: c }: CheckoutState): HTMLElement {

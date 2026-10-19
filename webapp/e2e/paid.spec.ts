@@ -3,8 +3,8 @@ import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, contactLink, control, LINKS_HEADING, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, SAVED,
-  savedToReview, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
+  channelLink, CHECKOUT_KEY, checkoutCode, checkoutOwnerCode, CODE_HEADING, contactLink, control, LINKS_HEADING, mockRegistration, onStep, openCode, payButton, REGISTRATION_MS,
+  registrationOf, SAVED, savedToReview, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
@@ -83,18 +83,6 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   await expect(page.locator(".stage.done", { hasText: "Committed" })).toBeVisible({ timeout: 30_000 })
   await expect(page.locator(".countdown b")).toHaveText(/\d+:\d\d/)
   await shot(page, "N6a-waiting")
-  // on a public chain each transaction and the owner link to its block explorer
-  const onMainnet = "**/api/invoice/**"
-  await page.route(onMainnet, async (route) => {
-    const response = await route.fetch()
-    const json = await response.json()
-    await route.fulfill({ response, json: { ...json, registration: { ...json.registration, chainId: 1 } } })
-  })
-  await page.reload()
-  await expect(page.locator(".txs a").first()).toHaveAttribute("href", /^https:\/\/etherscan\.io\/tx\/0x[0-9a-f]{64}$/)
-  await expect(page.locator(".txs a").last()).toHaveAttribute("href", /^https:\/\/etherscan\.io\/address\/0x[0-9a-fA-F]{40}$/)
-  // a long poll the rewrite holds is answered before it goes, or the page would wait on it
-  await page.unrouteAll({ behavior: "wait" })
   await waitRegistered(page, label)
   await expect(page.getByTestId("owner-code"), "the code to redeem in the app").toHaveText(ownerCode)
   await shot(page, "N7-registered")
@@ -236,7 +224,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   const step = onStep(page)
 
   await expect(step.getByRole("heading", { name: `What should ${label}.simplex open?` })).toBeFocused()
-  await expect(step.locator(".lead")).toHaveText(`When someone opens ${label}.simplex in SimpleX, it connects them to you or shows your channel. Paste the links from the app; you can change them later.`)
+  await expect(step.locator(".lead")).toHaveText("Paste your links from the SimpleX app. You can change them later.")
   await expect(step.getByRole("button", { name: "Skip for now" })).toBeVisible()
   await step.getByLabel("Address").fill(contact)
   await expect(step.getByRole("button", { name: "Skip for now" }), "a typed link leaves only Continue").toHaveCount(0)
@@ -259,24 +247,25 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await next.click()
 
   await expect(step.getByRole("heading", { name: "Check your order" })).toBeFocused()
-  // the order, then how it pays, a code instead, and Pay
-  expect(await step.locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["card summary-card", "review-pay"])
-  expect(await step.locator(".review-pay > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["pay-with", "code-link", "pay-block"])
+  // the order, then how it pays, a code instead, and Pay, in one column
+  expect(await step.locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["card summary-card", "pay-with", "field code-link", "pay-block"])
   await expect(step.locator(".summary-card .name")).toHaveText(`${label}.simplex`)
   await expect(step.locator(".summary-card .term-line")).toHaveText(/^2 years \+ 30 days\s·\suntil \d{1,2}\s\w{3} \d{4}$/)
   // each link as the profile it opens, under the links step's own names
   await expect(step.locator(".link-line .k")).toHaveText(["Contact address", "Channel"])
   await expect(step.locator(".link-line .entity .who b")).toHaveText(["Contact F1Y8m3", "Channel G1Rk27"])
-  await expect(step.locator(".summary-card .total")).toHaveText(/^Total\$[\d,]+\.\d\d$/)
+  await expect(step.locator(".summary-card .total b")).toHaveText(/^\$[\d,]+\.\d\d$/)
   await expect(step.getByRole("radio")).toHaveText(["Card", "Bitcoin", "Monero"])
   await expect(step.getByRole("checkbox")).toHaveCount(0)
 
-  // Change opens the links with focus in the field chosen; the code saved, Continue returns to the review
+  // Change opens the links with focus in the field chosen; the code saved, Continue returns to the review, its code field still open
+  await openCode(page)
   await step.getByRole("button", { name: "Change the channel" }).click()
   await expect(step.getByLabel("Channel")).toBeFocused()
   await expect(step.getByLabel("Channel")).toHaveValue(channel)
   await step.getByRole("button", { name: "Continue" }).click()
   await expect(step.getByRole("heading", { name: "Check your order" })).toBeFocused()
+  await expect(checkoutCode(page)).toBeVisible()
   // Back walks the same steps in reverse, its box still ticked
   await step.getByRole("link", { name: "Back" }).click()
   await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeFocused()
@@ -308,6 +297,20 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   expect(answer.owner, "the code saved before paying owns the name").toBe(checksumAddress(walletOf(ownerCode)!.address))
   expect(answer.records, "the links set before paying are on chain").toEqual({ contact, channel })
 
+  // Your names, opened from here, draws the name as registered from its first frame, never as a row still being checked
+  await page.evaluate((name) => {
+    const w = window as unknown as { __chips: string[] }
+    w.__chips = []
+    new MutationObserver(() => {
+      for (const row of document.querySelectorAll(".list-row")) if (row.textContent!.includes(name)) w.__chips.push(row.querySelector(".chip")!.textContent!)
+    }).observe(document.body, { childList: true, subtree: true })
+  }, `${label}.simplex`)
+  await main.getByRole("link", { name: "Your names" }).click()
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: "Show code" })).toBeVisible()
+  const chips = await page.evaluate(() => (window as unknown as { __chips: string[] }).__chips)
+  expect(chips.filter((chip) => chip !== "Registered"), chips.join(" | ")).toEqual([])
+  await page.goBack()
+  await waitRegistered(page, label)
   await main.getByRole("link", { name: "Edit links" }).click()
   await expect(page.getByRole("heading", { name: `Edit links for ${label}.simplex` })).toBeVisible()
   expect(new URL(page.url()).hash).toBe(`#/edit/${await registrationOf(request, invoiceId)}`)
@@ -370,7 +373,7 @@ test("Continue on the links step waits for a link being checked, and takes focus
   await page.getByRole("button", { name: "Register" }).click()
   const step = onStep(page)
   await step.getByLabel("Channel").fill(contactLink("W1"))
-  await expect(step.getByText("This is a contact address link: paste it in the Address field.")).toBeVisible()
+  await expect(step.getByText("This is a contact address link: paste it in the Contact address field.")).toBeVisible()
   await step.getByRole("button", { name: "Continue" }).click()
   await expect(step.getByLabel("Channel")).toBeFocused()
   await expect(step.getByRole("heading", { name: LINKS_HEADING })).toBeVisible()

@@ -164,7 +164,7 @@ test("a double click acts once, whatever the redrawn page puts under the pointer
   // the second click did not go on to the name code step, nor into a link field
   expect(new URL(page.url()).hash).toBe("#/checkout/links")
   await expect(onStep(page).getByRole("textbox", { name: "Address" })).not.toBeFocused()
-  await expect(onStep(page).getByRole("button", { name: "Continue" })).toBeEnabled()
+  await expect(onStep(page).getByRole("button", { name: "Skip for now" })).toBeEnabled()
 })
 
 test("restore waits out a rate limit on finding a code's orders", async ({ page, request }) => {
