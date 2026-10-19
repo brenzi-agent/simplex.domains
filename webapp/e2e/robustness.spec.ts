@@ -329,6 +329,37 @@ test("a row Your names could not read is read again while the page stays open", 
   await expect(chip, "the row read again by itself").toHaveText("Waiting for payment", { timeout: UNREAD_ROUND_MS })
 })
 
+test("a code Your names could not check is checked again while the page stays open", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  await page.goto("/")
+  await page.evaluate((c) => localStorage.setItem(`simplex-names:code:${c}`, JSON.stringify({ code: c, minLength: 6, years: 2, addedAt: new Date().toISOString() })), code)
+  let refused = true
+  await page.route("**/api/code/check", (route) => refused ? route.fulfill({ status: 503, json: { error: "provider_unavailable" } }) : route.continue())
+  await page.goto("/#/names")
+  const chip = page.locator(".list-row", { hasText: code }).locator(".chip")
+  await expect(chip).toHaveText("Not checked")
+  refused = false
+  await expect(chip, "the code checked again by itself").toHaveText("Unused", { timeout: UNREAD_ROUND_MS })
+})
+
+test("Forget everything asks over the records stored now, another tab's included", async ({ page, request }) => {
+  await search(page, uniqueLabel("fgt"))
+  await page.getByRole("button", { name: "Register" }).click()
+  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await page.goto("/#/names")
+  await expect(page.locator(".list-row")).toHaveCount(1)
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  const other = await page.context().newPage()
+  await other.goto("/")
+  await other.evaluate((c) => localStorage.setItem(`simplex-names:code:${c}`, JSON.stringify({ code: c, minLength: 6, years: 2, addedAt: new Date().toISOString() })), code)
+  await other.close()
+  // the list was read when opened, so the other tab's code shows only once the question is asked
+  await expect(page.locator(".list-row", { hasText: code })).toHaveCount(0)
+  await page.getByText("Forget everything in this browser").click()
+  await expect(page.getByRole("button", { name: "Keep them" })).toBeFocused()
+  await expect(page.locator(".list-row", { hasText: code })).toBeVisible()
+})
+
 test("search points at this browser's open order for a name instead of a second one", async ({ page }) => {
   const label = uniqueLabel("own")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })

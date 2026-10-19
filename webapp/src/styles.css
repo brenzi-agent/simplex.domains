@@ -209,7 +209,10 @@ h1:has(.grad) { text-wrap: pretty; }
 .perk-note { color: var(--ink-soft); line-height: 1.45; }
 .perk-br { display: none; }
 @media (max-width: 540px) { .perk-br { display: inline; } }
-@media (max-width: 480px) { .search-row { flex-direction: column; } }
+/* a field with its action at its right end; a phone stacks them, as the code needs the field's whole width */
+.field-row { display: flex; gap: 10px; }
+.field-row .field { flex: 1; }
+@media (max-width: 480px) { .search-row, .field-row { flex-direction: column; } }
 
 /* the landing's invest popup (landing:196-227); the dialog is the landing's full-screen .modal */
 .modal { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 24px; border: 0;
@@ -235,19 +238,11 @@ h1:has(.grad) { text-wrap: pretty; }
   .modal-close { width: 16px; height: 16px; }
 }
 
-.input { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--surface-line); background: var(--chip); }
-.input + .input { margin-top: 10px; }
-.input svg.i { color: var(--ink-soft); }
-.input input { flex: 1; min-width: 0; text-overflow: ellipsis; border: 0; background: none; outline: none; color: var(--ink); font: 600 15px var(--body); }
-.input input::placeholder { color: var(--ink-soft); font-weight: 500; }
-.input .kind { color: var(--ink-soft); font-weight: 700; font-size: 12.5px; }
 /* checkout: one column of blocks, as the badges checkout (badges screens.ts:466-505) */
 .summary-card { display: grid; gap: 16px; }
 .summary-card .term-line { color: var(--ink-soft); }
 .summary-card .total { display: flex; justify-content: space-between; border-top: 1px solid var(--surface-line); padding-top: 14px; margin: 0; font-weight: 600; font-size: 20px; }
-.pay-with, .name-code, .code-entry, .pay-block, .add-code, .link-entry, .forget { display: grid; gap: 12px; }
-.add-code { justify-items: start; }
-.add-code .code-entry { width: 100%; }
+.pay-with, .name-code, .code-entry, .pay-block, .link-entry, .forget { display: grid; gap: 12px; }
 .name-code :is(.code-display, .check) { margin: 0; }
 .code-link { font-size: var(--fs-small); }
 .methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
@@ -262,12 +257,6 @@ h1:has(.grad) { text-wrap: pretty; }
 .verdict:empty { display: none; }
 .verdict.ok { color: var(--ok-fg); }
 .verdict.bad { color: var(--danger-fg); }
-
-.rows { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
-.rows .r { display: flex; justify-content: space-between; gap: 12px; font-weight: 600; font-size: 15px; }
-.rows .r > span:first-child { color: var(--ink-soft); }
-/* a long value, as a full reference, breaks within its side of the row */
-.rows .r > span:last-child { min-width: 0; text-align: right; }
 
 /* payment and registration: one column */
 /* qrSvg draws its own white frame */
@@ -355,8 +344,6 @@ svg.qr { display: block; width: 132px; height: auto; }
 .code-input { container-type: inline-size; }
 .code-input input { font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(11px, (100cqi - 28px) / 23.8, 15px); }
 
-.input.ok { border-color: var(--ok-fg); }
-.input.bad { border-color: var(--danger-fg); }
 .total s { color: var(--ink-soft); font-size: 20px; margin-right: 8px; }
 .check { display: flex; align-items: center; gap: 12px; margin-top: 18px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--surface-line); font-weight: 700; position: relative; cursor: pointer; }
 .check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
@@ -377,6 +364,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .list-row.code-row .main b { white-space: normal; overflow-wrap: anywhere; }
 .list-row .sub { color: var(--ink-soft); font-size: 14px; margin-top: 2px; }
 .list-row .acts { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.list > .code-entry { padding: 16px 0; border-top: 1px solid var(--surface-line); }
 .row-code { grid-column: 1 / -1; display: grid; justify-items: center; gap: 14px; }
 .row-code .code-display { width: 100%; margin-top: 0; }
 .how { display: grid; gap: 8px; }
@@ -396,10 +384,6 @@ svg.qr { display: block; width: 132px; height: auto; }
 /* a name can be 63 letters long */
 h1, .lead { overflow-wrap: anywhere; }
 main h1:focus { outline: none; }
-/* keyboard focus shows on the box around a text field */
-.input:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
-.input.bad:focus-within { outline-color: var(--danger-fg); }
-.input.ok:focus-within { outline-color: var(--ok-fg); }
 .answer .yours { display: flex; gap: 18px; font-weight: 700; font-size: 14.5px; }
 /* a name in a sentence moves to the next line whole; only a name longer than the line breaks, before its TLD first */
 .inline-name { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
@@ -433,6 +417,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 /* a phone */
 @media (max-width: 560px) {
   .entity .url { display: none; }
+  .card.list { padding-inline: 16px; }
   /* two balanced lines, broken after a dash, read better than a long one squeezed small */
   .code-display { font-size: 16px; letter-spacing: 0; padding: 16px 46px; }
   .entity { flex-wrap: wrap; }

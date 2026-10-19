@@ -92,7 +92,7 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   // edit links: both links, signed in the page, sent by the mock's relayer
   await page.goto(`/#/edit/${registrationId}`)
   await expect(page.getByLabel("Address")).toHaveValue("")
-  const labelRoom = await page.locator(".link-field").evaluateAll((fields) => fields.map((f) => f.querySelector(".input")!.getBoundingClientRect().top - f.previousElementSibling!.getBoundingClientRect().bottom))
+  const labelRoom = await page.locator(".link-field").evaluateAll((fields) => fields.map((f) => f.querySelector(".field")!.getBoundingClientRect().top - f.previousElementSibling!.getBoundingClientRect().bottom))
   expect(Math.min(...labelRoom), "room between each label and its field's focus ring").toBeGreaterThanOrEqual(RING_ROOM_PX)
   await page.getByLabel("Address").fill(contact)
   await expect(page.locator(".link-field").first()).toHaveAttribute("data-state", "ok")

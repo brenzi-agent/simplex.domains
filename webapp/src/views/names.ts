@@ -17,7 +17,7 @@ import * as store from "../store.ts"
 import { codeField } from "./codes.ts"
 import { entityCard } from "./search.ts"
 import {
-  type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusOn, go, isRoute, kept, keptLive, redirect, screen, whenDropped, whenLeaving,
+  type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusHeading, focusOn, go, isRoute, kept, keptLive, redirect, screen, whenDropped, whenLeaving,
 } from "./shell.ts"
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, secondsLeft, tabHold } from "./hold.ts"
@@ -89,9 +89,26 @@ function readRows(): void {
   for (const { code } of list.codes) {
     if (readCodes.has(code)) continue
     readCodes.add(code)
-    const route = listRoute
-    api.checkCode(code).then((answer) => answerList(route, { type: "code-read", code, state: answer.state }),
-      (e) => answerList(route, { type: "code-read", code, state: e instanceof api.ApiError && e.code === "code_invalid" ? "revoked" : "unchecked" }))
+    void readCode(code, listRoute)
+  }
+}
+
+// a row whose read failed is read once more, after the wait the service asked for
+function retryOnce(e: unknown, key: string, route: number, read: () => void): void {
+  const wait = api.retryDelay(e, UNREAD_RETRY_MS)
+  if (wait === null || retried.has(key) || !isRoute(route)) return
+  retried.add(key)
+  after(wait, read, listStop)
+}
+
+async function readCode(code: string, route: number): Promise<void> {
+  try {
+    const answer = await api.checkCode(code)
+    answerList(route, { type: "code-read", code, state: answer.state })
+  } catch (e) {
+    if (e instanceof api.ApiError && e.code === "code_invalid") return answerList(route, { type: "code-read", code, state: "revoked" })
+    answerList(route, { type: "code-read", code, state: "unchecked" })
+    retryOnce(e, code, route, () => void readCode(code, route))
   }
 }
 
@@ -109,11 +126,7 @@ async function readOrder(id: string, route: number): Promise<void> {
     // the service forgets an unpaid order some time after it closes
     if (e instanceof api.ApiError && e.code === "not_found" && await replaceWithNewer(o, route)) return
     answerList(route, { type: "row-unread", id })
-    const wait = api.retryDelay(e, UNREAD_RETRY_MS)
-    if (wait === null || retried.has(id) || !isRoute(route)) return
-    retried.add(id)
-    after(wait, () => void readOrder(id, route), listStop)
-    return
+    return retryOnce(e, id, route, () => void readOrder(id, route))
   }
   const synced = await flow.syncRecord(o, view) ?? o
   if (!isRoute(route)) return
@@ -159,6 +172,7 @@ function forgetEverything(): void {
   store.forgetEverything()
   session.setCheckout(null)
   dispatchList({ type: "forget-confirmed" })
+  focusHeading()
 }
 
 const pendingKey = (p: store.PendingCode) => `${p.label}@${p.createdAt}`
@@ -171,6 +185,8 @@ function forgetBlock(s: ListState): HTMLElement | null {
   if (!s.asking) {
     return el("a", { class: "danger-link", href: "#", role: "button", "data-focus": FORGET, onclick: (e: Event) => {
       e.preventDefault()
+      // the question is asked over the records as stored now, another tab's included
+      dispatchList(storedEvent())
       dispatchList({ type: "forget-asked" })
       focusOn(KEEP)
     } }, "Forget everything in this browser")
@@ -187,7 +203,7 @@ function forgetBlock(s: ListState): HTMLElement | null {
 
 const ADD_CODE = "add-code"
 
-// Your names' code field and its Add, kept across draws: Add takes a code judged unused and not listed yet.
+// Your names' code field with its Add, kept across draws: Add takes a code judged unused and not listed yet.
 function addCodeBox(): HTMLElement {
   let addable: session.AppliedCode | null = null
   const add = disabled(btn("Add", "quiet", () => {
@@ -203,23 +219,22 @@ function addCodeBox(): HTMLElement {
     const listed = v?.ok === true && store.codes().some((c) => c.code === v.code.display)
     addable = v?.ok && !listed ? v.code : null
     add.disabled = addable === null
-    return listed ? "Already in your codes. It is listed under Codes below." : null
-  })
+    return listed ? "Already in your codes. It is listed under Codes above." : null
+  }, null, null, add)
   const input = field.querySelector("input")!
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") add.click() })
-  return el("div", { class: "add-code" }, field, add)
+  return field
 }
 
-const listCard = (title: string, rows: HTMLElement[], empty: string) =>
-  el("div", { class: "card list" }, el("h2", {}, title), rows.length ? rows : el("p", { class: "note" }, empty))
+const restoreLink = () => el("a", { href: "/#/restore" }, "Restore with a name code")
 
 function namesScreen(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
+  const names = [...s.pending.map((p) => pendingRow(p, s, signal)), ...listedOrders(s).map((o) => orderRow(o, s))]
   return screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME },
-    kept(ADD_CODE, addCodeBox),
-    el("p", {}, el("a", { class: "btn quiet", href: "/#/restore" }, icon("refresh"), "Restore with a name code")),
-    listCard("Names", [...s.pending.map((p) => pendingRow(p, s, signal)), ...listedOrders(s).map((o) => orderRow(o, s))], "No names in this browser yet."),
-    listCard("Codes", s.codes.map((c) => codeRow(c, s)), "No codes in this browser yet."),
+    el("div", { class: "card list" }, el("h2", {}, "Names"), names.length ? names : el("p", { class: "note" }, "No names in this browser yet. ", restoreLink())),
+    names.length ? el("p", { class: "note" }, restoreLink()) : null,
+    el("div", { class: "card list" }, el("h2", {}, "Codes"), s.codes.map((c) => codeRow(c, s)), kept(ADD_CODE, addCodeBox)),
     forgetBlock(s))
 }
 
@@ -499,7 +514,7 @@ const PREVIEW_RETRY_S = 3
 function linkField(kind: LinkKind, placeholder: string, label: string, value: string, save: (v: string) => void): HTMLElement {
   const errorId = `link-error-${++linkFields}`
   const input = el("input", { type: "text", placeholder, value, "aria-label": label, spellcheck: "false", autocomplete: "off" })
-  const box = el("div", { class: "input" }, icon("link"), input, el("span", { class: "kind" }, label))
+  const box = el("label", { class: "field" }, icon("link"), input)
   const card = el("div", {})
   const field = el("div", { class: "link-field" }, box, card)
   // the field lives as long as the route keeps it; a check started anew ends the last one's wait
@@ -513,7 +528,7 @@ function linkField(kind: LinkKind, placeholder: string, label: string, value: st
     if (!card.querySelector(".skeleton")) card.replaceChildren(el("div", { class: "entity-wrap", "aria-hidden": "true" }, el("div", { class: "entity skeleton" })))
   }
   const refuse = (text: string) => {
-    box.className = "input bad"
+    box.className = "field bad"
     field.dataset.state = "bad"
     input.setAttribute("aria-invalid", "true")
     input.setAttribute("aria-describedby", errorId)
@@ -526,7 +541,7 @@ function linkField(kind: LinkKind, placeholder: string, label: string, value: st
     waiting = new AbortController()
     const link = input.value.trim()
     save("")
-    box.className = "input"
+    box.className = "field"
     input.removeAttribute("aria-invalid")
     input.removeAttribute("aria-describedby")
     field.dataset.state = link ? "checking" : "empty"
@@ -534,7 +549,7 @@ function linkField(kind: LinkKind, placeholder: string, label: string, value: st
     const entity = (profile: Preview) => el("div", { class: "entity-wrap" }, entityCard({ ...profile, link }, false))
     const accept = () => {
       field.dataset.state = "ok"
-      box.className = "input ok"
+      box.className = "field ok"
       save(link)
     }
     const known = previews.get(link)

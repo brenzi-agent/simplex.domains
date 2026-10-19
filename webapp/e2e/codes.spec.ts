@@ -191,7 +191,10 @@ test("a code added under Your names is listed, and forgotten", async ({ page, re
   await page.getByText("Forget everything in this browser").click()
   await shot(page, "N12c-forget")
   await page.getByRole("button", { name: "Forget everything" }).click()
-  await expect(page.getByText("No codes in this browser yet.")).toBeVisible()
+  await expect(row).toHaveCount(0)
+  // the confirmed question is drawn away, so focus goes to the page's heading
+  await expect(page.getByRole("heading", { name: "Your names" })).toBeFocused()
+  await expect(page.getByRole("textbox", { name: "Add a code" })).toBeVisible()
 })
 
 test("an owner code made at checkout is kept in Your names until its order exists", async ({ page }) => {

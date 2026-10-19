@@ -171,7 +171,7 @@ const keyed = (key: string | null | undefined) => key ? shownScreen?.querySelect
 
 export const focusOn = (key: string) => keyed(key)?.focus({ preventScroll: true })
 
-function focusHeading(): void {
+export function focusHeading(): void {
   const heading = shownScreen?.querySelector<HTMLElement>("h1")
   if (!heading) return
   heading.tabIndex = -1

@@ -86,9 +86,10 @@ const said = (v: CodeVerdict) => v.ok ? v.line : `${v.title}. ${v.line}`
 const refusers = new WeakMap<HTMLElement, (text: string) => void>()
 
 /** A kept code field with its verdict line under it. `judged` hears each verdict, null while there is nothing to judge,
- * and may return a refusal to say instead. A field opened with `start` shows that code as judged, or `refusal` as said. */
+ * and may return a refusal to say instead. A field opened with `start` shows that code as judged, or `refusal` as said.
+ * A field given an `action` shows it at the field's right end, as the search row does, with no label over it. */
 export function codeField(key: string, label: string, judged: (v: CodeVerdict | null) => string | null,
-  start: session.AppliedCode | null = null, refusal: string | null = null): HTMLElement {
+  start: session.AppliedCode | null = null, refusal: string | null = null, action: HTMLElement | null = null): HTMLElement {
   return kept(key, () => {
     const input = el("input", { type: "text", "aria-label": label, spellcheck: "false", placeholder: "SN6-…", autocomplete: "off", value: start?.display })
     const box = el("label", { class: "field code-input" }, icon("key"), input)
@@ -103,7 +104,7 @@ export function codeField(key: string, label: string, judged: (v: CodeVerdict | 
     const life = new AbortController()
     whenDropped(() => life.abort())
     const forget = watchCode(input, (v) => show(v, judged(v)), life.signal)
-    const entry = el("div", { class: "code-entry" }, el("span", { class: "label" }, label), box, line)
+    const entry = el("div", { class: "code-entry" }, action ? el("div", { class: "field-row" }, box, action) : [el("span", { class: "label" }, label), box], line)
     refusers.set(entry, (text) => {
       forget()
       input.value = ""
