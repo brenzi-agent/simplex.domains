@@ -15,7 +15,7 @@ const NUM_BLOCKS_M: readonly number[] = [
   17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49,
 ];
 
-export interface QrSymbol {
+interface QrSymbol {
   version: number;
   size: number;
   mask: number;
@@ -42,7 +42,7 @@ function gfMul(a: number, b: number): number {
   return GF_EXP[GF_LOG[a]! + GF_LOG[b]!]!;
 }
 
-export function generatorPoly(degree: number): number[] {
+function generatorPoly(degree: number): number[] {
   let poly = [1];
   for (let i = 0; i < degree; i++) {
     const next = new Array<number>(poly.length + 1).fill(0);
@@ -55,7 +55,7 @@ export function generatorPoly(degree: number): number[] {
   return poly;
 }
 
-export function eccOf(data: readonly number[], eccLen: number): number[] {
+function eccOf(data: readonly number[], eccLen: number): number[] {
   const gen = generatorPoly(eccLen);
   const rem = new Array<number>(eccLen).fill(0);
   for (const byte of data) {
@@ -67,7 +67,7 @@ export function eccOf(data: readonly number[], eccLen: number): number[] {
   return rem;
 }
 
-export function rawDataModules(version: number): number {
+function rawDataModules(version: number): number {
   let bits = (16 * version + 128) * version + 64;
   if (version >= 2) {
     const numAlign = Math.floor(version / 7) + 2;
@@ -81,7 +81,7 @@ function totalCodewords(version: number): number {
   return Math.floor(rawDataModules(version) / 8);
 }
 
-export function numDataCodewords(version: number): number {
+function numDataCodewords(version: number): number {
   return totalCodewords(version) - ECC_PER_BLOCK_M[version]! * NUM_BLOCKS_M[version]!;
 }
 
@@ -89,7 +89,7 @@ function charCountBits(version: number): number {
   return version < 10 ? 8 : 16;
 }
 
-export function byteCapacity(version: number): number {
+function byteCapacity(version: number): number {
   return Math.floor((numDataCodewords(version) * 8 - 4 - charCountBits(version)) / 8);
 }
 
@@ -101,7 +101,7 @@ function versionFor(byteLength: number): number | null {
 }
 
 // Version 32 uses a step of 26 because the general spacing rule computes the wrong value for it.
-export function alignmentPositions(version: number): number[] {
+function alignmentPositions(version: number): number[] {
   if (version === 1) return [];
   const numAlign = Math.floor(version / 7) + 2;
   const step = version === 32 ? 26 : Math.ceil((version * 4 + 4) / (numAlign * 2 - 2)) * 2;
@@ -110,7 +110,7 @@ export function alignmentPositions(version: number): number[] {
   return positions;
 }
 
-export function dataCodewords(bytes: Uint8Array, version: number): number[] {
+function dataCodewords(bytes: Uint8Array, version: number): number[] {
   const capacity = numDataCodewords(version);
   const bits: number[] = [];
   const push = (value: number, width: number): void => {
@@ -131,7 +131,7 @@ export function dataCodewords(bytes: Uint8Array, version: number): number[] {
   return codewords;
 }
 
-export function interleave(data: readonly number[], version: number): number[] {
+function interleave(data: readonly number[], version: number): number[] {
   const numBlocks = NUM_BLOCKS_M[version]!;
   const eccLen = ECC_PER_BLOCK_M[version]!;
   const shortLen = Math.floor(data.length / numBlocks);
@@ -152,14 +152,14 @@ export function interleave(data: readonly number[], version: number): number[] {
   return out;
 }
 
-export function formatBits(eclBits: number, mask: number): number {
+function formatBits(eclBits: number, mask: number): number {
   const data = (eclBits << 3) | mask;
   let rem = data;
   for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
   return ((data << 10) | rem) ^ 0x5412;
 }
 
-export function versionBits(version: number): number {
+function versionBits(version: number): number {
   let rem = version;
   for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
   return (version << 12) | rem;
@@ -351,7 +351,7 @@ class Matrix {
   }
 }
 
-export function encodeQr(payload: string): QrSymbol | null {
+function encodeQr(payload: string): QrSymbol | null {
   const bytes = new TextEncoder().encode(payload);
   const version = versionFor(bytes.length);
   if (version === null) return null;

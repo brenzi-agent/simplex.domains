@@ -43,9 +43,9 @@ export function linkField(kind: LinkKind, value: string, save: (v: string) => vo
   const field = el("div", { class: "link-field" }, box, card)
   // the field lives as long as the route keeps it; a check started anew ends the last one's wait
   const life = new AbortController()
-  whenDropped(() => life.abort())
-  const shown = () => !life.signal.aborted
   let waiting = new AbortController()
+  whenDropped(() => { life.abort(); waiting.abort() })
+  const shown = () => !life.signal.aborted
   let seq = 0
   const holdCardPlace = () => {
     if (!card.querySelector(".skeleton")) card.replaceChildren(previewPlace())
@@ -110,7 +110,7 @@ export function linkField(kind: LinkKind, value: string, save: (v: string) => vo
         const notice = el("p", { class: "field-error", id: errorId }, icon("clock"), line)
         input.setAttribute("aria-describedby", errorId)
         waitOut(line, e instanceof api.ApiError && e.retryAfter ? e.retryAfter : PREVIEW_RETRY_S,
-          (left) => `The link could not be checked now. Checking again in ${left}.`, () => { if (mine === seq) void check() }, AbortSignal.any([life.signal, waiting.signal]))
+          (left) => `The link could not be checked now. Checking again in ${left}.`, () => { if (mine === seq) void check() }, waiting.signal)
         return card.replaceChildren(notice)
       }
       refuse("This link could not be opened.")

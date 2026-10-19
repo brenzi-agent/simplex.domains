@@ -200,7 +200,7 @@ h1 .long { font-size: inherit; }
 .chip .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
 
 /* the landing's first screen (landing:144-168), its countdown replaced by the search */
-/* --frame-h is the header's and footer's height, which shell.ts measures, so the home fills the first screen as the landing's hero does.
+/* --frame-h is the header's, footer's and offline note's height, which shell.ts measures, so the home fills the first screen as the landing's hero does.
    WebKit rounds each of the four spacers' share of the room to its 1/64 px unit, which can take the home past the window and
    scroll the page a pixel; --spacer-rounding leaves room for the four rounded up. */
 .home { --spacer-rounding: calc(4px / 64); display: flex; flex-direction: column; align-items: center; text-align: center; padding-inline: 16px;
@@ -260,7 +260,11 @@ h1 .long { font-size: inherit; }
 .summary-card { display: grid; gap: 12px; padding: 20px 24px; }
 .summary-card .term-line { color: var(--ink-soft); font-size: var(--fs-small); }
 .summary-card .total { display: flex; justify-content: space-between; border-top: 1px solid var(--surface-line); padding-top: 14px; margin: 0; font-weight: 600; font-size: 20px; }
-.pay-with, .code-entry, .pay-block, .link-fields, .forget { display: grid; gap: 12px; }
+.pay-with, .code-entry, .pay-block, .link-fields, .forget { --block-gap: 12px; display: grid; gap: var(--block-gap); }
+/* an empty verdict stays in the accessibility tree, so its next words are announced; in a column, unlike a grid, its
+   negative margin takes back the gap */
+.code-entry { display: flex; flex-direction: column; }
+.code-entry > .verdict:empty { margin-top: calc(-1 * var(--block-gap)); }
 .link-entry, .link-field { display: grid; gap: 8px; }
 .link-lines { display: grid; gap: 8px; }
 /* a link set shows as the profile it opens, on one line: its avatar and name */
@@ -292,7 +296,6 @@ h1 .long { font-size: inherit; }
 .method[aria-disabled="true"] span { color: var(--danger-fg); }
 .method:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .verdict { font-size: var(--fs-small); font-weight: 600; }
-.verdict:empty { display: none; }
 .verdict.ok { color: var(--ok-fg); }
 .verdict.bad { color: var(--danger-fg); }
 
@@ -441,8 +444,8 @@ html { scrollbar-gutter: stable; }
 }
 /* the offline note follows the footer and stays at the window's foot, passing clicks beside it through to the page */
 :root { --note-offset: 16px; }
-.offline { position: sticky; bottom: 0; z-index: 15; padding: 0 16px calc(var(--note-offset) + env(safe-area-inset-bottom)); pointer-events: none; }
-.offline-note { pointer-events: auto; width: fit-content; max-width: 560px; margin: 0 auto; display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line); color: var(--ink); font-size: 14px; line-height: 1.4; }
+.offline { position: sticky; bottom: 0; z-index: 15; display: flex; padding-inline: 16px; pointer-events: none; }
+.offline-note { pointer-events: auto; width: fit-content; max-width: 560px; margin: 0 auto calc(var(--note-offset) + env(safe-area-inset-bottom)); display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line); color: var(--ink); font-size: 14px; line-height: 1.4; }
 .offline-note svg.i { flex: none; width: 18px; height: 18px; color: var(--warn-fg); }
 .entity.skeleton { height: 68px; }
 /* a link at work, or held by a wait, shows it is not to be pressed */
@@ -479,7 +482,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .summary-card .name { font-size: 22px; }
   .summary-card .name.long { font-size: 16px; }
   .summary-card .total { padding-top: 10px; }
-  .review-pay :is(.pay-with, .code-entry) { gap: 6px; }
+  .review-pay :is(.pay-with, .code-entry) { --block-gap: 6px; }
   .review-pay .btn { padding-block: 14px; }
   .method { flex-direction: column; padding: 8px 6px; gap: 2px; font-size: 16px; }
   .method span { flex-basis: auto; }

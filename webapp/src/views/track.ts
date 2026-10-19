@@ -15,9 +15,11 @@ let shownHeight = 0
 const slideMs = (smooth: boolean) => smooth && !reducedMotion() ? SLIDE_MS : 0
 const slideHeight = () => Math.ceil(slides[index].getBoundingClientRect().height)
 
+// The CSP refuses style attributes but not the style object, so styles are set through it.
 function fitHeight(ms: number): void {
   shownHeight = slideHeight()
-  track.setAttribute("style", shownHeight > 0 ? `--slide:${ms}ms;height:${shownHeight}px` : `--slide:${ms}ms`)
+  track.style.setProperty("--slide", `${ms}ms`)
+  track.style.height = shownHeight > 0 ? `${shownHeight}px` : ""
 }
 
 // A slide whose content grows or shrinks after it was placed resizes the track at once. The observer's first report
@@ -26,11 +28,11 @@ const resized = new ResizeObserver(() => { if (slideHeight() !== shownHeight) fi
 
 function moveTrack(smooth: boolean): void {
   const ms = slideMs(smooth)
-  rail.setAttribute("style", `--slide:${ms}ms;transform:translateX(-${index * 100}%)`)
+  rail.style.setProperty("--slide", `${ms}ms`)
+  rail.style.transform = `translateX(-${index * 100}%)`
   fitHeight(ms)
 }
 
-/** Puts a purchase screen on its step; a move to the next or previous step slides, any other move is at once. */
 export function placeOnTrack(main: HTMLElement, step: TrackStep, screen: HTMLElement): void {
   const mounted = main.firstChild === track
   const at = STEPS.indexOf(step)

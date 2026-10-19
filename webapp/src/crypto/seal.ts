@@ -6,7 +6,7 @@ import { base64url, fromBase64url } from "./code.ts"
 
 const IV_BYTES = 12
 
-export interface SealedOrder {
+interface SealedOrder {
   label: string
   contact: string
   channel: string

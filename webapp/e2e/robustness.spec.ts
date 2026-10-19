@@ -107,10 +107,12 @@ test("the invest dialog closes by Escape, its backdrop and its Close, giving foc
   }
   await invest.click()
   await expect(dialog).toBeVisible()
+  // the page's own close listener, added first, has run once this one hears the close event
+  const closed = await dialog.evaluateHandle((d) => ({ heard: new Promise<void>((done) => d.addEventListener("close", () => done(), { once: true })) }))
   await page.evaluate(() => history.back())
   await expect(page.getByRole("heading", { name: "Your names" })).toBeFocused()
   await expect(dialog).toBeHidden()
-  await page.waitForTimeout(500)
+  await closed.evaluate((c) => c.heard)
   await expect(page.getByRole("heading", { name: "Your names" }), "focus stays on the page gone back to").toBeFocused()
 })
 

@@ -225,7 +225,7 @@ export const changesOf = (f: EditForm): Partial<Links> => Object.fromEntries(LIN
 
 // the contract's GRACE_PERIOD: an expired name stays its holder's this long before anyone can register it again
 export const GRACE_S = 90 * 86_400
-export type Again = { when: "now" } | { when: "from"; at: number } | { when: "taken" }
+type Again = { when: "now" } | { when: "from"; at: number } | { when: "taken" }
 export function registrableAgain(expiresAt: number | null, answer: SearchAnswer, now: number): Again {
   if (answer.status === "available") return { when: "now" }
   if (expiresAt !== null && now / 1000 < expiresAt + GRACE_S) return { when: "from", at: expiresAt + GRACE_S }

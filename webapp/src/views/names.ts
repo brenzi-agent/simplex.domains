@@ -68,7 +68,7 @@ function showList(): void {
   lastSeen = list.seen
   lastChecked = list.checked
   if (!isRoute(listRoute)) return
-  draw("names", (signal) => namesScreen(list, signal))
+  draw("names", (signal) => buildNames(list, signal))
   readRows()
 }
 
@@ -225,7 +225,7 @@ function addCodeBox(): HTMLElement {
 
 const restoreLink = () => el("a", { href: "/#/restore" }, "Restore with a name code")
 
-function namesScreen(s: ListState, signal: AbortSignal): HTMLElement {
+function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
   const names = [...s.pending.map((p) => pendingRow(p, s, signal)), ...listedOrders(s).map((o) => orderRow(o, s))]
   return screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME },

@@ -162,7 +162,6 @@ const LOADING = "loading"
 // the key of a control a redraw turned off, whose focus dropped to the page: a later redraw that offers it gives it back
 let lostKey: string | null = null
 
-/** Builds the screen for `kind` and puts it on its purchase step, or swaps it in whole; the last screen's timers end with its signal. */
 export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, step: TrackStep | null = null): void {
   const main = frame()
   showConnection()
@@ -254,7 +253,6 @@ export function outcome(o: Outcome): HTMLElement {
 
 const LIMITED = "Too many orders were tried from here."
 
-/** The tab's wait as one screen: Try again turns on once the wait is over, which the caller redraws it for. */
 export function limitScreen(hold: Hold | null, again: () => void, back: string, signal: AbortSignal): HTMLElement {
   const line = el("span", {}, `${LIMITED} Nothing was charged.`)
   const tryAgain = btn("Try again", "block", again)
@@ -293,9 +291,10 @@ function toggleTheme(): void {
 
 export const OFFLINE_NOTE = "You are offline. Searches, payments and order updates need the connection."
 
-// after the footer and counted in the frame, so the footer's end scrolls clear of the note
-const offline = el("div", { class: "offline", hidden: true }, el("div", { class: "offline-note", role: "status" }, icon("offline"), el("span", {}, OFFLINE_NOTE)))
-const showConnection = () => { offline.hidden = navigator.onLine }
+// after the footer and counted in the frame, so the footer's end scrolls clear of the note; its status region stays while online, so the note is announced
+const offlineNote = el("div", { class: "offline-note", hidden: true }, icon("offline"), el("span", {}, OFFLINE_NOTE))
+const offline = el("div", { class: "offline", role: "status" }, offlineNote)
+const showConnection = () => { offlineNote.hidden = navigator.onLine }
 
 // Checked again whenever the page is drawn or looked at, as Firefox does not always tell a page opened offline that
 // the network is back.

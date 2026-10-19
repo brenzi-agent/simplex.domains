@@ -386,7 +386,7 @@ function cancelLink(s: OrderState): HTMLAnchorElement {
   return cancel
 }
 
-function payCryptoScreen(s: OrderState, signal: AbortSignal): HTMLElement {
+function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
   const inv = s.invoice!
   const coin = coinOf(inv)!
   const partial = Number(inv.cryptoAmountPaid ?? "0") > 0
@@ -467,7 +467,7 @@ async function payByCard(): Promise<void> {
   dispatch({ type: "card-submitted", at })
 }
 
-function payCardScreen(s: OrderState): HTMLElement {
+function buildPayCard(s: OrderState): HTMLElement {
   const invoice = s.invoice!
   const form = kept("stripe-form", () => el("div", { class: "stripe" }))
   if (cardIn !== form) mountInto(form, invoice)
@@ -496,7 +496,7 @@ function withoutRecord(view: api.RegistrationView, cls: string, text = "Enter yo
 const CLOSED_TITLE = "Invoice closed"
 const partlyPaid = (invoice: api.InvoiceView) => Number(invoice.cryptoAmountPaid ?? "0") > 0
 
-function closedScreen(s: OrderState, signal: AbortSignal): HTMLElement {
+function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
   const inv = s.invoice!
   const closed = closedCase(s)!
   const [tone, text] = closedWords(closed, inv)
@@ -540,7 +540,7 @@ function newInvoiceButton(s: OrderState, cls: string, get: () => void): HTMLButt
 }
 
 // A card never submitted is on this screen only because its form failed to load.
-function cardUnconfirmedScreen(s: OrderState, signal: AbortSignal): HTMLElement {
+function buildCardUnconfirmed(s: OrderState, signal: AbortSignal): HTMLElement {
   const inv = s.invoice!
   const formFailed = s.cardSubmittedAt === null
   holdEnds(signal)(s.hold !== null)
@@ -623,7 +623,7 @@ async function cancelInvoice(): Promise<void> {
   }
 }
 
-function confirmingScreen(s: OrderState): HTMLElement {
+function buildConfirming(s: OrderState): HTMLElement {
   const invoice = s.invoice!
   const coin = coinOf(invoice)
   const notice = coin
@@ -749,7 +749,7 @@ const WAIT_NOTE = "The contract makes every registration wait after its commit, 
 const COMMIT_NOTE = "Waiting for the commit to be mined. The wait starts once it is."
 const REGISTERING_NOTE = "Registering the name on chain. It is yours once the transaction is mined."
 
-function registeringScreen(s: OrderState, signal: AbortSignal): HTMLElement {
+function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
   const { record } = s
   const view = s.view!
   const states = stagesOf(view)
@@ -828,7 +828,7 @@ function registeredActions(view: api.RegistrationView, record: store.OrderRecord
     : [btn("Back to SimpleX", "", () => { location.href = "simplex:/" }), names])
 }
 
-function registeredScreen(s: OrderState): HTMLElement {
+function buildRegistered(s: OrderState): HTMLElement {
   const view = s.view!
   const label = labelOf(view, s.record)
   const code = s.record?.ownerCode ?? null
@@ -975,17 +975,17 @@ async function retryRegistration(): Promise<void> {
 }
 
 const BUILDERS: Record<OrderKind, Builder<OrderState>> = {
-  "pay-crypto": payCryptoScreen,
-  "pay-card": payCardScreen,
-  confirming: confirmingScreen,
-  registering: registeringScreen,
-  registered: registeredScreen,
+  "pay-crypto": buildPayCrypto,
+  "pay-card": buildPayCard,
+  confirming: buildConfirming,
+  registering: buildRegistering,
+  registered: buildRegistered,
   taken: buildTaken,
   "code-issued": buildCodeIssued,
   failed: buildFailed,
   "not-on-device": buildNotOnDevice,
-  "status:closed": closedScreen,
-  "status:card-unconfirmed": cardUnconfirmedScreen,
+  "status:closed": buildClosed,
+  "status:card-unconfirmed": buildCardUnconfirmed,
   "status:paid-by-invoice": buildPaidByInvoice,
   "status:unreadable": buildUnreadable,
   "status:unknown-link": buildUnknownLink,

@@ -159,8 +159,21 @@ export async function startOrder(page: Page, label: string, opts: OrderOptions =
   return { invoiceId: new URL(page.url()).searchParams.get("order")!, ownerCode }
 }
 
-export const test = base.extend<{}>({
+const CSP_REPORT = "reportCspViolation"
+
+// Every page's CSP refusals fail its test; only a server that sends the policy, as `vite preview` does, makes any.
+export const test = base.extend<{ cspViolations: void }>({
   baseURL: async ({ baseURL }, use) => use(baseURL ?? pageUrl(SLOT)),
+  cspViolations: [async ({ context }, use) => {
+    const refused: string[] = []
+    await context.exposeBinding(CSP_REPORT, (_source, text: string) => { refused.push(text) })
+    await context.addInitScript((report) => document.addEventListener("securitypolicyviolation", (e) => {
+      const send = (window as unknown as Record<string, (text: string) => void>)[report]
+      void send(`${e.effectiveDirective} refused ${e.blockedURI || "inline"} ${e.sample}`.trim())
+    }, true), CSP_REPORT)
+    await use()
+    expect(refused, "CSP violations").toEqual([])
+  }, { auto: true }],
 })
 
 export async function waitRegistered(page: Page, label: string): Promise<void> {

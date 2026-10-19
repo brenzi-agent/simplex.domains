@@ -19,7 +19,7 @@ export const LONGEST_TIER = 8
 // the shortest names a code covers: its own length, up to the longest tier
 export const codeTier = (length: number) => Math.min(length, LONGEST_TIER)
 
-export type NameCode =
+type NameCode =
   | { kind: "owner"; entropy: Uint8Array }
   | { kind: "prepaid"; minLength: number; canonical: string; display: string }
 
@@ -36,7 +36,7 @@ export function formatOwnerCode(entropy: Uint8Array): string {
 // The body's length after "SN" tells the kinds apart; digits cannot, since an owner code's body may start with one.
 // How far typed text is from a name code: nothing yet, on its way, long enough to judge, or never one, as a character
 // no code has. A prepaid code's body is its length digits and 20 characters; an owner code's is 30.
-export type CodeProgress = "empty" | "partial" | "complete" | "impossible"
+type CodeProgress = "empty" | "partial" | "complete" | "impossible"
 export function codeProgress(text: string): CodeProgress {
   const cleaned = text.replace(/[^\p{L}\p{N}]/gu, "").toUpperCase()
   if (!cleaned) return "empty"

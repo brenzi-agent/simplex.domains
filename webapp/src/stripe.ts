@@ -1,7 +1,7 @@
 // Stripe's Payment Element for card orders, as the badges webapp mounts it (apps/simplex-badge-service/web/src/stripe.ts).
 
 // Stripe.js must load from js.stripe.com and may not be bundled or self-hosted, so this is a script tag.
-export const STRIPE_JS_URL = "https://js.stripe.com/dahlia/stripe.js"
+const STRIPE_JS_URL = "https://js.stripe.com/dahlia/stripe.js"
 const KEY_META = "stripe-publishable-key"
 const CONFIRM_FAILED = "The card was not accepted. Check the details and try again."
 
@@ -57,9 +57,9 @@ function loadStripeJs(): Promise<StripeGlobal> {
   return loading
 }
 
-// Stripe's iframe cannot read the page's CSS variables, so these copy styles.css by hand.
-const LIGHT = { accent: "#0053D0", onAccent: "#FFFFFF", ink: "#0B1733", bg: "#F3F7FD", surface: "#FFFFFF", line: "rgba(11, 23, 51, .14)", muted: "rgba(11, 23, 51, .60)", danger: "#BF2D3F" }
-const DARK = { accent: "#70F0F9", onAccent: "#020A26", ink: "#EEF4FF", bg: "#0B1B42", surface: "#071433", line: "rgba(238, 244, 255, .14)", muted: "rgba(238, 244, 255, .52)", danger: "#FF8A96" }
+// Stripe's iframe cannot read the page's CSS variables; these copy styles.css's --primary, --primary-ink, --ink, --page-color, --surface, --surface-line, --ink-soft and --danger-fg.
+const LIGHT = { accent: "#0053D0", onAccent: "#ffffff", ink: "#0D1B3A", bg: "#F3FAFF", surface: "#ffffff", line: "rgba(0, 83, 208, .14)", muted: "rgba(13, 27, 58, .651)", danger: "#b3261e" }
+const DARK = { accent: "#70F0F9", onAccent: "#041038", ink: "#EAF2FF", bg: "#000832", surface: "#0A1C44", line: "rgba(112, 240, 249, .18)", muted: "rgba(234, 242, 255, .735)", danger: "#FF9F98" }
 
 const STRIPE_FONTS = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
 
@@ -86,7 +86,7 @@ function appearance(dark: boolean): Appearance {
   }
 }
 
-export type ConfirmOutcome = { kind: "submitted" } | { kind: "error"; message: string }
+type ConfirmOutcome = { kind: "submitted" } | { kind: "error"; message: string }
 export type MountedCard = { confirm: () => Promise<ConfirmOutcome>; destroy: () => void }
 
 // Null when the script or the SDK fails: the page then shows that the card form did not load.

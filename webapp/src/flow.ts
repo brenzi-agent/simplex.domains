@@ -119,7 +119,7 @@ export function takenCodeOf(record: store.OrderRecord, registrationId: string): 
   return takenOrderCode(wallet.seed, registrationId, record.label.length).display
 }
 
-export type RestoreResult = { record: store.OrderRecord; view: api.RegistrationView }
+type RestoreResult = { record: store.OrderRecord; view: api.RegistrationView }
 
 // The order's name and links, unsealed with the code, after checking that they rebuild the order's commitment.
 async function openOrder(wallet: Wallet, view: api.RegistrationView): Promise<Pick<store.OrderRecord, "label" | "contact" | "channel" | "request">> {

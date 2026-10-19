@@ -44,7 +44,7 @@ export type SearchAnswer =
   | { status: "registered"; entities: Entity[]; records?: Links | null; owner?: string; resolver?: string; recordsNonce?: number | null; expiresAt?: number; chainId?: number; tld: string }
   | { status: "reserved" }
 
-export interface Entity {
+interface Entity {
   type: "address" | "channel"
   displayName: string
   image: string | null
@@ -221,7 +221,7 @@ export const previewLink = (link: string) =>
   checked<{ type: "address" | "channel"; displayName: string; image: string | null }>(call("POST", "/api/link/preview", { link }), isPreview)
 const CODE_STATES = ["unused", "used", "reserved", "expired", "unpaid", "revoked"] as const
 export type CodeState = typeof CODE_STATES[number]
-export interface CodeAnswer { minLength: number; years: number; state: CodeState }
+interface CodeAnswer { minLength: number; years: number; state: CodeState }
 export async function checkCode(code: string, signal?: AbortSignal): Promise<CodeAnswer> {
   const answer: unknown = await call("POST", "/api/code/check", { code }, signal)
   const drawable = isObject(answer) && isCount(answer.minLength) && (answer.minLength as number) <= MAX_LABEL_LENGTH && isCount(answer.years)

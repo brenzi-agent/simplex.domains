@@ -83,15 +83,15 @@ const said = (v: CodeVerdict) => v.ok ? v.line : `${v.title}. ${v.line}`
 // a field's way to take a refusal from elsewhere, as the service's when the order is sent
 const refusers = new WeakMap<HTMLElement, (text: string) => void>()
 
-/** A kept code field with its verdict line under it. `judged` hears each verdict, null while there is nothing to judge,
- * and may return a refusal to say instead. A field opened with `start` shows that code as judged, or `refusal` as said.
- * A field given an `action` shows it at the field's right end, as the search row does, with no label over it. */
+// `judged` may return a refusal to say instead of the verdict; a field given an `action` has it in place of its label.
 export function codeField(key: string, label: string, judged: (v: CodeVerdict | null) => string | null,
   start: session.AppliedCode | null = null, refusal: string | null = null, action: HTMLElement | null = null): HTMLElement {
   return kept(key, () => {
-    const input = el("input", { type: "text", "aria-label": label, spellcheck: "false", placeholder: "SN6-…", autocomplete: "off", value: start?.display })
+    const verdictId = `${key}-verdict`
+    const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, spellcheck: "false", placeholder: "SN6-…", autocomplete: "off", value: start?.display })
     const box = el("label", { class: "field code-input" }, icon("key"), input)
     const line = liveRegion("verdict")
+    line.id = verdictId
     const show = (v: CodeVerdict | null, instead: string | null) => {
       const tone = instead !== null || v?.ok === false ? " bad" : v ? " ok" : ""
       box.className = `field code-input${tone}`
@@ -113,5 +113,4 @@ export function codeField(key: string, label: string, judged: (v: CodeVerdict | 
   })
 }
 
-/** Empties the field and says why its code was refused, with focus in the field for another code. */
 export const refuseCode = (entry: HTMLElement, text: string) => refusers.get(entry)?.(text)
