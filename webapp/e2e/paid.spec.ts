@@ -33,7 +33,7 @@ test("a Bitcoin order pays in two parts, registers on chain with its links, and 
   expect(ownerCode).toMatch(/^SN-/)
 
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-  await expect(page.locator(".pay-body .qr svg")).toBeVisible()
+  await expect(onStep(page).locator(".card.qr svg")).toBeVisible()
   await expect(page.getByText(/Rate held \d+:\d\d/)).toBeVisible()
   await shot(page, "N4-bitcoin")
 
@@ -448,15 +448,15 @@ test("Cancel this invoice reads as working while its request runs, and as itself
     await answered
     await route.fulfill({ status: 503, json: { error: "provider_unavailable" } })
   })
-  const link = page.locator("a:has(.swap)")
-  const hiddenLabel = page.locator(".swap > [aria-hidden=true]")
+  const link = onStep(page).locator("a[data-focus=cancel]")
   await link.click()
   await expect(link).toHaveAccessibleName("Cancelling…")
-  await expect(hiddenLabel).toHaveText("Cancel this invoice")
+  await expect(link).toHaveAttribute("aria-disabled", "true")
+  await expect(link).toBeFocused()
   answer()
   await expect(link).toHaveAccessibleName("Cancel this invoice")
-  await expect(hiddenLabel).toHaveText("Cancelling…")
-  await expect(hiddenLabel).toHaveCSS("opacity", "0")
+  await expect(link).not.toHaveAttribute("aria-disabled")
+  await expect(page.getByText("The invoice could not be cancelled now. Try again in a moment.")).toBeVisible()
 })
 
 test("a cancel the service answers with the invoice still open warns not to send more, after a reload too", async ({ page, request }) => {

@@ -224,8 +224,10 @@ export function outcome(o: Outcome): HTMLElement {
     alertBox(o.tone, o.icon, null, o.text),
     o.extra ?? null,
     o.action ?? null,
-    o.reference ? el("p", { class: "note ref" }, "Reference ", el("span", { class: "mono" }, o.reference)) : null)
+    o.reference ? referenceLine(o.reference) : null)
 }
+
+export const referenceLine = (reference: string) => el("p", { class: "note ref" }, "Reference ", el("span", { class: "mono" }, reference))
 
 // shown only in a document that has drawn nothing yet, while its first read is on its way
 export function drawLoading(title: string): void {

@@ -558,15 +558,17 @@ test("Back returns to where a page was left, a slow page included, and a reload 
     await new Promise((resolve) => setTimeout(resolve, 900))
     await route.continue()
   })
-  const placeholderShown = page.evaluate(() => new Promise<void>((resolve) => {
+  // the page left stays in sight, out of reach, until the slow order is read
+  const heldInert = page.evaluate(() => new Promise<void>((resolve) => {
+    const main = document.querySelector<HTMLElement>("body > main")!
     new MutationObserver((_, watch) => {
-      if (!document.querySelector("[data-placeholder]")) return
+      if (!main.inert) return
       watch.disconnect()
       resolve()
-    }).observe(document.body, { childList: true, subtree: true })
+    }).observe(main, { attributes: true, attributeFilter: ["inert"] })
   }))
   await page.evaluate(() => history.back())
-  await placeholderShown
+  await heldInert
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   await scrolledNear(page, orderPlace)
   await page.unroute(`**/api/invoice/${invoiceId}*`)
