@@ -3,7 +3,7 @@ import * as api from "../api.ts"
 import { parseNameCode } from "../crypto/code.ts"
 import { alertBox, btn, chip, codeDisplay, copyButton, disabled, el, gradName, icon, type Kid, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, dollars, methodName, SEP } from "../format.ts"
+import { dateOf, dollars, methodName, SEP, termText } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import { type LinkKind, linkKind, linkProblem } from "../names.ts"
 import { qrSvg } from "../qr.ts"
@@ -331,7 +331,7 @@ function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {
   const copy = copyButton(c.code, "Copy", "small-btn")
   copy.dataset.focus = `${c.code}-copy`
   const [text, tone] = check === undefined ? ["Checking", ""] : check === "unchecked" ? ["Not checked", "warn"] : CODE_CHIPS[check]
-  const node = row(c.code, "≡", c.code, `Names of ${c.minLength} or more letters, for ${c.years} years${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000, true)}`,
+  const node = row(c.code, "≡", c.code, `Names of ${c.minLength} or more letters, for ${termText(c.years)}${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000, true)}`,
     chip(text, tone, check === undefined || check === "unused"), [copy])
   node.classList.add("code-row")
   return node

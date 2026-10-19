@@ -168,7 +168,7 @@ describe("reduce", () => {
   it("card-submitted keeps when the card was submitted", () => {
     expect(reduce(STATES["pay-card"], { type: "card-submitted", at: submittedAgo(0) }).cardSubmittedAt).toBe(submittedAgo(0))
   })
-  it("card-failed marks the card form failed, which no later event loads again", () => {
+  it("card-failed marks the card form failed and shows the card-unconfirmed page", () => {
     const failed = reduce(STATES["pay-card"], { type: "card-failed" })
     expect(failed.cardFailed).toBe(true)
     expect(screenOf(failed)).toBe("status:card-unconfirmed")

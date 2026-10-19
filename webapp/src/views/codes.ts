@@ -1,7 +1,7 @@
 // The prepaid code field that checkout and Your names share, judged as it is typed.
 import * as api from "../api.ts"
 import { codeProgress, parseNameCode } from "../crypto/code.ts"
-import { seconds } from "../format.ts"
+import { seconds, termText } from "../format.ts"
 import { el, icon, liveRegion } from "../dom.ts"
 import type * as session from "../session.ts"
 import { kept, whenDropped } from "./shell.ts"
@@ -28,7 +28,7 @@ export const CODE_ERRORS: Record<string, string> = {
   code_not_covering: "This code does not cover this name.",
 }
 
-const unused = (code: session.AppliedCode): CodeVerdict => ({ ok: true, code, line: `Covers names of ${code.minLength} or more letters, for ${code.years} years.` })
+const unused = (code: session.AppliedCode): CodeVerdict => ({ ok: true, code, line: `Covers names of ${code.minLength} or more letters, for ${termText(code.years)}.` })
 
 const MISTYPED: CodeVerdict = { ok: false, title: "This code is not valid", line: "Check it for a mistyped character." }
 

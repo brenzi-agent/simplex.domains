@@ -73,7 +73,7 @@ test("a prepaid code entered at checkout registers a name with nothing to pay", 
   await expect(checkoutCode(page), "the code field opens only from its link").toHaveCount(0)
   await openCode(page)
   await checkoutCode(page).fill(code.toLowerCase())
-  await expect(page.locator(".code-entry .verdict.ok")).toHaveText("Covers names of 6 or more letters, for 5 years.")
+  await expect(page.locator(".code-entry .verdict.ok")).toHaveText("Covers names of 6 or more letters, for 5 years + 30 days.")
   await expect(total(page)).toContainText("$0.00")
   await expect(total(page).locator("s")).toBeVisible()
   await expect(page.locator(".summary-card")).toContainText("5 years + 30 days")
@@ -162,7 +162,7 @@ test("a code the service refuses as the order is sent leaves its field, says why
   await expect(checkoutCode(page), "a checkout with no code or refusal opens with its field closed").toHaveCount(0)
 })
 
-test("a code judged while a paid order is on its way leaves that order as it was sent", async ({ page, request }) => {
+test("a code judged while a paid order is on its way leaves that order as it was sent, and pays once it is refused", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   await search(page, uniqueLabel("late"))
   await page.getByRole("button", { name: "Register" }).click()
@@ -173,11 +173,11 @@ test("a code judged while a paid order is on its way leaves that order as it was
     await judged
     await route.continue()
   })
-  let send: () => void = () => undefined
-  const sent = new Promise<void>((resolve) => { send = resolve })
+  let refuse: () => void = () => undefined
+  const refused = new Promise<void>((resolve) => { refuse = resolve })
   await page.route("**/api/invoice", async (route) => {
-    await sent
-    await route.continue()
+    await refused
+    await route.fulfill({ status: 503, json: { error: "provider_unavailable" } })
   })
   const asked = page.waitForRequest("**/api/code/check")
   await checkoutCode(page).fill(code)
@@ -189,9 +189,11 @@ test("a code judged while a paid order is on its way leaves that order as it was
   await expect(onStep(page).locator(".code-entry .verdict.ok"), "the verdict arrived while the order was on its way").toBeVisible()
   await expect(total(page), "the order on its way pays money").not.toContainText("$0.00")
   await expect(page.getByText("Paid with your code")).toHaveCount(0)
-  send()
-  await page.waitForURL(/\?order=/)
-  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  refuse()
+  await expect(page.getByText("Paid with your code"), "the code the field shows as good pays once the order is back").toBeVisible()
+  await expect(total(page)).toContainText("$0.00")
+  await expect(onStep(page).locator(".code-entry .verdict.ok")).toBeVisible()
+  await expect(onStep(page).getByRole("button", { name: "Register", exact: true })).toBeEnabled()
   await page.unrouteAll({ behavior: "wait" })
 })
 

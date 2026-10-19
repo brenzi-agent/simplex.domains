@@ -7,6 +7,7 @@ import {
 } from "./crypto/registration.ts"
 import { seal, unseal } from "./crypto/seal.ts"
 import { checksumAddress, fromHex, hex, personalDigest, signDigest, walletFromEntropy, type Wallet } from "./crypto/wallet.ts"
+import { PRICED_YEARS } from "./names.ts"
 import * as store from "./store.ts"
 
 // how long a signed link edit stays valid
@@ -109,7 +110,7 @@ export async function takeCodeFor(record: store.OrderRecord, view: api.Registrat
   const signature = hex(signDigest(wallet.privateKey, personalDigest(`simplex.domains code ${view.id} ${hash} ${timestamp}`)))
   await api.takeCode(view.id, { codeHash: hash, timestamp, signature })
   store.updateOrder(record.registrationId, { takenCode: code.display })
-  store.addCode({ code: code.display, minLength: code.minLength, years: 2, addedAt: new Date().toISOString() })
+  store.addCode({ code: code.display, minLength: code.minLength, years: PRICED_YEARS, addedAt: new Date().toISOString() })
   return code.display
 }
 

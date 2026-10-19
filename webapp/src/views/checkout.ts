@@ -36,6 +36,8 @@ let state: CheckoutState
 let shown: CheckoutKind | null = null
 // the route the checkout's page was last drawn on; once it is no longer the route, the page has been left
 let pageRoute = -1
+// a code verdict that came while the order was on its way, heard once the order comes back to the checkout
+let unheard: CodeVerdict | null | undefined
 
 // The name code is made as the checkout opens and kept as pending, so Your names lists it before any order exists.
 export function checkoutPage(): void {
@@ -47,6 +49,7 @@ export function checkoutPage(): void {
   if (!isRedraw() || shown === null || state.checkout.label !== c.label) {
     state = initialState(c)
     shown = null
+    unheard = undefined
   }
   pageRoute = currentRoute()
   // a wait met elsewhere in the tab holds this page's actions too
@@ -65,6 +68,10 @@ function dispatch(event: CheckoutEvent): void {
   const kind = screenOf(state)
   shown = kind
   draw(kind, (signal) => BUILDERS[kind](state, signal), CHECKOUT_STEP)
+  if (kind !== "checkout" || state.sending || unheard === undefined) return
+  const late = unheard
+  unheard = undefined
+  heed(late)
 }
 
 // a screen that holds an action for the tab's wait hears when it is over
@@ -170,17 +177,23 @@ const waitingNotice = (blocked: WaitingOrder) => el("section", { class: "pay-wit
   alertBox("info", "info", "You have an order waiting to be confirmed", "A second order would be a second charge, so this one cannot start yet. When that payment is confirmed or expires, you can start a new one here."),
   el("div", {}, btn("Open the waiting order", "quiet", () => go(store.invoiceUrl(blocked.invoiceId)))))
 
-// A code that pays is applied as it is judged, one for longer names is refused here, and anything else takes off the
-// code the field held. Read from the module's state, as the field is kept across draws.
-function onVerdict(v: CodeVerdict | null): string | null {
-  // the order on its way was sent without this verdict, so it pays as it was sent
-  if (state.sending) return null
+const tooShort = (v: CodeVerdict | null, label: string) => v?.ok === true && label.length < v.code.minLength
+
+// A code that pays is applied, and anything else takes off the code the field held. Read from the module's state, as
+// the field is kept across draws.
+function heed(v: CodeVerdict | null): void {
   const { label, code, codeError } = state.checkout
-  const tooShort = v?.ok === true && label.length < v.code.minLength
-  if (v?.ok && !tooShort) act({ type: "code-applied", code: v.code })
+  if (v?.ok && !tooShort(v, label)) act({ type: "code-applied", code: v.code })
   // an edit takes off the code the field held, and the service's last refusal of one
   else if (code || codeError) act({ type: "code-removed" })
-  return v?.ok && tooShort ? `This code covers names of ${v.code.minLength} or more letters; ${label} has ${label.length}.` : null
+}
+
+// The field's verdict, heard at once unless the order on its way was sent without it; one for longer names is refused here.
+function onVerdict(v: CodeVerdict | null): string | null {
+  const { label } = state.checkout
+  if (state.sending) unheard = v
+  else heed(v)
+  return v?.ok && tooShort(v, label) ? `This code covers names of ${v.code.minLength} or more letters; ${label} has ${label.length}.` : null
 }
 
 const codeEntry = () => codeField(CODE_FIELD, CODE_LABEL, onVerdict, state.checkout.code, state.checkout.codeError ?? null)
@@ -333,6 +346,8 @@ function orderError(e: unknown, c: session.Checkout): void {
     return go(searchLink(c.label, c.appOwner))
   }
   if (code in CODE_ERRORS) {
+    // the field is emptied for another code, so a verdict on the one it held is moot
+    unheard = undefined
     // drawn first, so the field is open again for another code when it takes focus and says why
     act({ type: "order-refused", reason: "code", error: CODE_ERRORS[code] })
     return refuseCode(codeEntry(), CODE_ERRORS[code])
