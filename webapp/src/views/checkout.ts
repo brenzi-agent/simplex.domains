@@ -1,6 +1,6 @@
 // The checkout's steps: the links the name opens, its name code, and Check your order with how it pays, and Pay.
 import * as api from "../api.ts"
-import { alertBox, btn, codeDisplay, el, gradName, icon, type Kid, link, nameText, nameTitle, setAction } from "../dom.ts"
+import { alertBox, btn, codeDisplay, el, icon, type Kid, link, nameText, nameTitle, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, methodName, SEP, termText, untilFromNow } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
@@ -18,7 +18,8 @@ import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./ho
 import { openedInstead } from "./order.ts"
 
 const METHOD_ORDER: Method[] = ["card", "btc", "xmr"]
-const CODE_FIELD = "checkout-code"
+// a field per name, so what was typed in it stays with its checkout
+const codeKey = (label: string) => `checkout-code-${label}`
 const CODE_LABEL = "I have a code"
 const CHECKOUT_NOTE = "checkout-note"
 const PAY_WITH_ID = "pay-with-label"
@@ -218,12 +219,12 @@ function onVerdict(v: CodeVerdict | null): string | null {
   return v?.ok && tooShort(v, label) ? `This code covers names of ${v.code.minLength} or more letters; ${label} has ${label.length}.` : null
 }
 
-const codeEntry = () => codeField(CODE_FIELD, CODE_LABEL, onVerdict, state.checkout.code, state.checkout.codeError ?? null)
+const codeEntry = () => codeField(codeKey(state.checkout.label), CODE_LABEL, onVerdict, state.checkout.code, state.checkout.codeError ?? null)
 
-// the link the field opens from is drawn away, so focus goes into the field
+// the link the field opens from is drawn away, so focus goes into the field, which is where the link was in view
 function openCode(): void {
   dispatch({ type: "code-opened" })
-  codeEntry().querySelector("input")!.focus()
+  codeEntry().querySelector("input")!.focus({ preventScroll: true })
 }
 
 // the link holds the field's place, so the field opens without moving the page
@@ -258,8 +259,8 @@ function buildLinks(s: CheckoutState): HTMLElement {
     locked(kept("link-channel", () => linkField("channel", c.channel, (link) => setLink("channel", link))), s.sending),
   ]
   // one button, named Skip for now while both fields are empty and Continue once a link is typed, so the step keeps still
-  return screen({ title: ["What should ", gradName(c.label, c.chain.tld), " open?"], back: searchLink(c.label, null),
-    lead: "Paste your links from the SimpleX app. You can change them later." },
+  return screen({ title: "What should your name open?", back: searchLink(c.label, null),
+    lead: ["When someone opens ", nameText(c.label, c.chain.tld), " in SimpleX, it connects them to you or shows your channel. Paste the links from the app; you can change them later."] },
     el("div", { class: "link-fields" }, linkEntry("contact", fields[0]), linkEntry("channel", fields[1])),
     continueButton(() => linksDone(fields), false, [el("span", { class: "skip" }, "Skip for now"), el("span", { class: "go" }, "Continue")]))
 }
@@ -299,7 +300,7 @@ function buildTooMany({ checkout: c, hold }: CheckoutState, signal: AbortSignal)
 }
 
 function buildTaken({ checkout: c }: CheckoutState): HTMLElement {
-  return outcome({ tone: "info", icon: "info", title: "Someone registered it first", text: [nameText(c.label, c.chain.tld), " was registered a moment ago. Nothing was charged."],
+  return outcome({ tone: "info", icon: "info", title: "Someone registered it first", text: [nameText(c.label, c.chain.tld), " was taken after you searched for it. Nothing was charged."],
     action: btn("Search another name", "", () => go(searchLink("", c.appOwner))) })
 }
 
@@ -374,7 +375,7 @@ async function sendOrder(): Promise<void> {
     store.saveOrder(flow.recordFor(draft, built, method, paid, { registrationId: res.registration.id, invoiceId: res.invoiceId }))
     done(store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id }))
   } catch (e) {
-    if (built && e instanceof api.ApiError && e.code === "bad_request" && typeof e.body.invoiceId === "string") return openInvoice(draft, built, e.body.invoiceId, c.method, done)
+    if (built && e instanceof api.ApiError && e.code === "bad_request" && typeof e.body.invoiceId === "string") return openInvoice(draft, built, e.body.invoiceId, c.code ? "code" : c.method, done)
     // the order did not go: its checkout is open to change again before the error page sends the buyer back to it
     session.stopSending(c)
     // a rate limit holds the tab's actions wherever the buyer has gone meanwhile
@@ -392,8 +393,11 @@ async function sendOrder(): Promise<void> {
 // says why it pays another way than the one chosen.
 async function openInvoice(draft: flow.Draft, built: flow.BuiltOrder, invoiceId: string, chosen: Method | "code", done: (url: string) => void): Promise<void> {
   const invoice = await api.readInvoice(invoiceId).catch(() => null)
-  if (invoice) store.saveOrder(flow.recordFor(draft, built, invoice.cryptoCurrency ?? "card", invoice.amount, { registrationId: invoice.registration.id, invoiceId }))
-  if (invoice && (invoice.cryptoCurrency ?? "card") !== chosen) openedInstead(invoiceId)
+  if (invoice) {
+    const had = invoice.cryptoCurrency ?? "card"
+    store.saveOrder(flow.recordFor(draft, built, had, invoice.amount, { registrationId: invoice.registration.id, invoiceId }))
+    if (had !== chosen) openedInstead({ invoiceId, had, chosen })
+  }
   done(store.invoiceUrl(invoiceId))
 }
 

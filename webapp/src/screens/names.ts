@@ -3,7 +3,7 @@ import { dateOf } from "../format.ts"
 import { type CodeRecord, type OrderRecord, orderUrl, type PendingCode } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
 
-export interface RowSeen { view: RegistrationView; invoice: InvoiceView | null; answer?: SearchAnswer | null; linksSavedAt?: string }
+export interface RowSeen { view: RegistrationView; invoice: InvoiceView | null; answer?: SearchAnswer | null }
 export type CodeCheck = CodeState | "unchecked"
 export type Finding = "finding" | "none" | "unchecked"
 
@@ -24,7 +24,7 @@ export interface ListState extends Stored {
 export type ListEvent =
   | ({ type: "stored"; hold: Hold | null } & Stored)
   | { type: "row-read"; id: string; view: RegistrationView; invoice: InvoiceView | null; now: number }
-  | { type: "row-answered"; id: string; answer: SearchAnswer | null; linksSavedAt: string | undefined }
+  | { type: "row-answered"; id: string; answer: SearchAnswer | null }
   | { type: "row-unread"; id: string }
   | { type: "code-toggled"; id: string }
   | { type: "code-read"; code: string; state: CodeCheck }
@@ -42,7 +42,7 @@ const idsOf = (s: Stored) => s.orders.map((o) => o.registrationId)
 export function initialList(stored: Stored, hold: Hold | null, seen: Record<string, RowSeen>, checked: Record<string, CodeCheck>, now: number): ListState {
   const known = stored.codes.map((c) => c.code).filter((c) => checked[c] !== "unchecked")
   const unreplaced = stored.orders.filter((o) => !o.replacedBy).map((o) => o.registrationId)
-  return { ...stored, hold, now, seen: linksCurrent(keep(seen, unreplaced), stored.orders), unread: [], checked: keep(checked, known), finding: {}, asking: false, shownCode: null }
+  return { ...stored, hold, now, seen: keep(seen, unreplaced), unread: [], checked: keep(checked, known), finding: {}, asking: false, shownCode: null }
 }
 
 export const hasRecords = (s: Stored) => s.orders.length > 0 || s.pending.length > 0 || s.codes.length > 0
@@ -55,7 +55,7 @@ export function reduceList(s: ListState, e: ListEvent): ListState {
       const { type: _, ...stored } = e
       const unreplaced = new Set(s.orders.filter((o) => !o.replacedBy).map((o) => o.registrationId))
       const ids = idsOf(stored).filter((id) => !(unreplaced.has(id) && stored.orders.find((o) => o.registrationId === id)?.replacedBy))
-      return { ...s, ...stored, seen: linksCurrent(keep(s.seen, ids), stored.orders), unread: s.unread.filter((id) => ids.includes(id)),
+      return { ...s, ...stored, seen: keep(s.seen, ids), unread: s.unread.filter((id) => ids.includes(id)),
         checked: keep(s.checked, stored.codes.map((c) => c.code)), finding: keep(s.finding, stored.pending.map((p) => p.ownerCode)), asking: s.asking && hasRecords(stored),
         shownCode: s.shownCode !== null && ids.includes(s.shownCode) ? s.shownCode : null }
     }
@@ -63,14 +63,10 @@ export function reduceList(s: ListState, e: ListEvent): ListState {
       const o = s.orders.find((r) => r.registrationId === e.id)
       if (!o || (o.replacedBy && !moneyReached(e.invoice))) return s
       const last = s.seen[e.id]
-      const kept = last?.view.phase === "registered" && e.view.phase === "registered" ? { answer: last.answer, linksSavedAt: last.linksSavedAt } : {}
+      const kept = last?.view.phase === "registered" && e.view.phase === "registered" ? { answer: last.answer } : {}
       return { ...s, now: e.now, seen: { ...s.seen, [e.id]: { view: e.view, invoice: e.invoice, ...kept } }, unread: s.unread.filter((id) => id !== e.id) }
     }
-    // An answer asked for before the name's last save is dropped: the save changed the record, which is read again.
-    case "row-answered": {
-      const current = e.linksSavedAt === s.orders.find((o) => o.registrationId === e.id)?.linksSavedAt
-      return s.seen[e.id] && current ? { ...s, seen: { ...s.seen, [e.id]: { ...s.seen[e.id], answer: e.answer, linksSavedAt: e.linksSavedAt } } } : s
-    }
+    case "row-answered": return s.seen[e.id] ? { ...s, seen: { ...s.seen, [e.id]: { ...s.seen[e.id], answer: e.answer } } } : s
     case "row-unread": return ordered(e.id) && !s.unread.includes(e.id) ? { ...s, unread: [...s.unread, e.id] } : s
     case "code-toggled": return { ...s, shownCode: s.shownCode === e.id ? null : ordered(e.id) ? e.id : s.shownCode }
     case "code-read": return s.codes.some((c) => c.code === e.code) ? { ...s, checked: { ...s.checked, [e.code]: e.state } } : s
@@ -112,12 +108,6 @@ export function listedOrders(s: ListState): OrderRecord[] {
 // holder's through the grace period, and whether or not someone has registered it again since.
 export const lapsed = ({ view, answer }: Pick<RowSeen, "view" | "answer">, now: number) =>
   view.phase === "registered" && ((view.expiresAt !== null && view.expiresAt < now / 1000) || answer?.status === "available")
-
-// A row's links read before its name's last save, from this tab or another, are not shown as current.
-function linksCurrent(seen: Record<string, RowSeen>, orders: OrderRecord[]): Record<string, RowSeen> {
-  const stale = orders.filter((o) => seen[o.registrationId]?.answer && seen[o.registrationId].linksSavedAt !== o.linksSavedAt)
-  return stale.length ? { ...seen, ...Object.fromEntries(stale.map((o) => [o.registrationId, { ...seen[o.registrationId], answer: null }])) } : seen
-}
 
 export const waitsToSign = (view: RegistrationView, now: number) =>
   view.phase === "committed" && view.label === null && view.revealAfter !== null && now / 1000 >= view.revealAfter

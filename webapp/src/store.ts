@@ -30,8 +30,6 @@ export interface OrderRecord {
   codeRefusal?: CodeRefusal
   // the link of the order that replaced this one with a new invoice; its old link leads there
   replacedBy?: string
-  // when this browser last saved the name's links, so Your names drops the links it read before
-  linksSavedAt?: string
   createdAt: string
 }
 

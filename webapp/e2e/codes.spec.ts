@@ -414,7 +414,7 @@ test("an order restored in a browser without its code promises nothing of the co
   }
 })
 
-test("the registering page's lead tells the time left from the commit's wait", async ({ page, request }) => {
+test("the registering page's clock tells the time left from the commit's wait", async ({ page, request }) => {
   const { registrationId } = await registerWithCode(page, request, "cwait")
   await page.route(`**/api/registration/${registrationId}*`, async (route) => {
     const response = await route.fetch()
@@ -423,7 +423,8 @@ test("the registering page's lead tells the time left from the commit's wait", a
     await route.fulfill({ response, json: { ...view, phase: "committed", label: null, commitTx: view.commitTx ?? `0x${"1".repeat(64)}`, revealAfter: serviceNow + WAIT_S } })
   })
   await page.reload()
-  await expect(page.locator(".screen > .lead")).toHaveText("About 3 minutes. Keep this page open until the name is yours.")
+  await expect(page.locator(".countdown b")).toHaveText(/^3:[12]\d$/)
+  await expect(page.locator(".screen > .lead")).toHaveText("Keep this page open until the name is yours.")
   await page.unrouteAll({ behavior: "ignoreErrors" })
 })
 
@@ -475,10 +476,11 @@ test("a restore that fails on the network gives focus back to its button", async
 })
 
 const NAME_CODE = "SN-GE65A-H60EF-815JQ-DT70X-DH67M-Q7M9J"
-// the narrowest phone width at which a name code still fits its field whole, its letters at the legible floor or larger
-const FITS_FROM_PX = 360
+// the narrowest phone width at which a name code still fits the restore field whole, its letters at the legible floor or larger
+const FITS_FROM_PX = 390
 const NARROWEST_PX = 320
-const LEGIBLE_PX = 11
+// the smallest letters a phone's code field draws; a code wider than its field at this size scrolls in it
+const LEGIBLE_PX = 14
 
 // A phone's own scrollbars lie over the page; Chromium draws them so only when it is told it is a phone.
 async function codeFields(browser: Browser, browserName: string, width: number) {
@@ -502,19 +504,20 @@ async function codeFields(browser: Browser, browserName: string, width: number) 
   return { list, restore }
 }
 
-for (const width of [1280, 390, FITS_FROM_PX]) {
-  test(`a name code, the longest code, shows whole in Your names' code field and on restore at ${width} px`, async ({ browser, browserName }) => {
-    const { list, restore } = await codeFields(browser, browserName, width)
-    expect(list.overflow, "the code's width past Your names' field").toBeLessThanOrEqual(0)
-    expect(restore.overflow, "the code's width past the restore field").toBeLessThanOrEqual(0)
-    expect(Math.min(list.font, restore.font), "the code's letter size").toBeGreaterThanOrEqual(LEGIBLE_PX)
+test("a name code, the longest code, shows whole in Your names' code field and on restore on a laptop", async ({ browser, browserName }) => {
+  const { list, restore } = await codeFields(browser, browserName, 1280)
+  expect(list.overflow, "the code's width past Your names' field").toBeLessThanOrEqual(0)
+  expect(restore.overflow, "the code's width past the restore field").toBeLessThanOrEqual(0)
+  expect(Math.min(list.font, restore.font), "the code's letter size").toBeGreaterThanOrEqual(LEGIBLE_PX)
+})
+
+for (const width of [FITS_FROM_PX, 360, NARROWEST_PX]) {
+  test(`at ${width} px a code field keeps its letters at ${LEGIBLE_PX} px or larger, a field too narrow for a name code scrolling it`, async ({ browser, browserName }) => {
+    const fields = await codeFields(browser, browserName, width)
+    if (width >= FITS_FROM_PX) expect(fields.restore.overflow, "the code's width past the restore field").toBeLessThanOrEqual(0)
+    for (const [name, field] of Object.entries(fields)) {
+      expect(field.font, `${name}: the code's letter size`).toBeGreaterThanOrEqual(LEGIBLE_PX)
+      if (field.overflow > 0) expect(field.font, `${name}: the letter size of a code its field scrolls`).toBe(LEGIBLE_PX)
+    }
   })
 }
-
-test(`below ${FITS_FROM_PX} px a name code keeps its letters at the legible floor or larger, a field too narrow scrolling instead`, async ({ browser, browserName }) => {
-  const fields = await codeFields(browser, browserName, NARROWEST_PX)
-  for (const [name, field] of Object.entries(fields)) {
-    expect(field.font, `${name}: the code's letter size`).toBeGreaterThanOrEqual(LEGIBLE_PX)
-    if (field.overflow > 0) expect(field.font, `${name}: the letter size of a code its field scrolls`).toBe(LEGIBLE_PX)
-  }
-})

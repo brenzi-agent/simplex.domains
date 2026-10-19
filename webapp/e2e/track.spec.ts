@@ -1,8 +1,8 @@
 import { expect, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  channelLink, checkoutCode, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, REGISTRATION_MS, savedToReview, search, shot, startOrder, test, uniqueLabel,
-  waitRegistered,
+  channelLink, checkoutCode, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, REGISTRATION_MS, savedToReview, search, shot, startOrder, test, toReview,
+  uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // the rail's shift in slides: its translateX over the track's width
@@ -195,9 +195,10 @@ test("every purchase step fits a laptop's and a phone's window without scrolling
 })
 
 // WebKit rounds the home's spacers to whole pixels anew as the content below them changes
-const ROUNDING_PX = 1
+const WEBKIT_ROUNDING_PX = 1
 
-test("the home keeps its headline and search still as each kind of answer comes, at a laptop's and a phone's size", async ({ page }) => {
+test("the home keeps its headline and search still as each kind of answer comes, at a laptop's and a phone's size", async ({ page, browserName }) => {
+  const rounding = browserName === "webkit" ? WEBKIT_ROUNDING_PX : 0
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
     await page.goto("/")
@@ -211,10 +212,38 @@ test("the home keeps its headline and search still as each kind of answer comes,
       await page.getByLabel("Name", { exact: true }).press("Enter")
       await expect(page.locator(`.answer ${answer}`).first()).toBeVisible()
       const moved = (await still()).map((at, i) => Math.abs(at - before[i]))
-      expect(Math.max(...moved), `${name} at ${size.width}x${size.height}: headline and search moved ${moved}`).toBeLessThanOrEqual(ROUNDING_PX)
+      expect(Math.max(...moved), `${name} at ${size.width}x${size.height}: headline and search moved ${moved}`).toBeLessThanOrEqual(rounding)
       expect(await page.evaluate(() => document.scrollingElement!.scrollHeight), `${name} at ${size.width}x${size.height}`).toBe(size.height)
     }
   }
+})
+
+test("the registering page keeps its heading still on a phone from the commit to the name being registered", async ({ page, request }) => {
+  await page.setViewportSize(FIT_SIZES[1])
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  const label = uniqueLabel("regstill")
+  await search(page, label)
+  await toReview(page)
+  await openCode(page)
+  await checkoutCode(page).fill(code)
+  await expect(onStep(page).getByText(/^Covers names of/)).toBeVisible()
+  // each frame's heading top and the words under the clock, while the heading is the registering page's
+  await page.evaluate(() => {
+    const w = window as unknown as { __frames: [number, string][] }
+    w.__frames = []
+    const look = () => {
+      const heading = document.querySelector(".slide:not([inert]) h1, body > main > .screen h1")
+      const note = document.querySelector(".countdown p")?.firstChild?.textContent ?? ""
+      if (heading?.textContent!.startsWith("Registering")) w.__frames.push([Math.round(heading.getBoundingClientRect().top), note])
+      requestAnimationFrame(look)
+    }
+    requestAnimationFrame(look)
+  })
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await waitRegistered(page, label)
+  const frames = await page.evaluate(() => (window as unknown as { __frames: [number, string][] }).__frames)
+  expect(new Set(frames.map(([, note]) => note)).size, "the page went through more than one stage").toBeGreaterThan(1)
+  expect([...new Set(frames.map(([top]) => top))], "the heading's top in each frame").toHaveLength(1)
 })
 
 // A name of the widest letters breaks its lines as early as any name of its length can; drawn at random from two

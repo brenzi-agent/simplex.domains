@@ -109,7 +109,7 @@ test("a name registered by someone else while its order is checked says so at Pa
   await expect.poll(async () => (await searchName(request, label)).status, { timeout: REGISTRATION_MS }).toBe("registered")
   await payButton(page).click()
   await expect(onStep(page).getByRole("heading", { name: "Someone registered it first" })).toBeVisible()
-  await expect(onStep(page).getByText(`${label}.simplex was registered a moment ago. Nothing was charged.`)).toBeVisible()
+  await expect(onStep(page).getByText(`${label}.simplex was taken after you searched for it. Nothing was charged.`)).toBeVisible()
   await shot(page, "N3g-taken-at-pay")
   await onStep(page).getByRole("button", { name: "Search another name" }).click()
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue("")

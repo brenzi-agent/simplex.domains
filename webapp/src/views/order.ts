@@ -58,7 +58,7 @@ export function orderPage(invoiceId: string | null, registrationId: string | nul
   }
   window.addEventListener("storage", onStorage)
   whenLeaving(() => { polls.abort(); clearTimeout(wakes); window.removeEventListener("storage", onStorage) })
-  if (!redraw) whenDropped(dropCard)
+  if (!redraw) whenDropped(() => { dropCard(); instead = null })
   // the same order drawn again stays on screen until it is read, rather than blanking to a loading line
   if (redraw) document.querySelector("main")?.setAttribute("aria-busy", "true")
   else drawLoading("Opening the order…", asStep)
@@ -358,10 +358,13 @@ function orderLine({ view, record, invoice }: OrderState): HTMLElement {
 
 const TICKER: Record<"btc" | "xmr", string> = { btc: "BTC", xmr: "XMR" }
 
-// the invoice an earlier try made, which a checkout opened in place of one with the method it chose
-let instead: string | null = null
-export const openedInstead = (invoiceId: string) => { instead = invoiceId }
-const insteadLine = (invoice: api.InvoiceView) => instead === invoice.invoiceId ? el("p", { class: "note" }, "An earlier try already made this invoice, so it opened instead of a new one.") : null
+// the invoice an earlier try made, which a checkout opened in place of paying as it chose; said until its page is left
+let instead: { invoiceId: string; had: string; chosen: string } | null = null
+export const openedInstead = (opened: typeof instead) => { instead = opened }
+// a method as a sentence names it
+const methodWord = (method: string) => method === "card" ? "card" : methodName(method)
+const insteadLine = (invoice: api.InvoiceView) => instead?.invoiceId !== invoice.invoiceId ? null : el("p", { class: "note" },
+  `This name already has a ${methodWord(instead.had)} invoice from an earlier try, so it opened instead of ${instead.chosen === "code" ? "using your code" : `a new ${methodWord(instead.chosen)} one`}.`)
 
 function copyField(label: string, value: string): HTMLElement {
   // A long value, as an address, may break between any two letters, which the field's balance evens out: WebKit
@@ -404,7 +407,8 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
     insteadLine(inv),
     el("div", { class: "qr-grid" },
       uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`), el("a", { href: uri }, "Open in wallet")) : null,
-      copyField(`${partial ? "Rest to send" : "Amount"} in ${TICKER[coin]}`, due),
+      // labels in sentence case, as their copy buttons say them; the label style draws them in capitals
+      copyField(`${partial ? "rest to send" : "amount"} in ${TICKER[coin]}`, due),
       copyField(`${methodName(coin)} address`, inv.address!)),
     el("p", { class: "note waiting" }, el("span", {}, partial ? "Waiting for the rest of the payment" : "Waiting for payment", SEP, rateLine(inv, signal)),
       partial ? null : cancelLink(s)),
@@ -715,21 +719,8 @@ function headingOf({ view, record }: OrderState): Kid {
   return label ? ["Registering ", gradName(label, view!.tld)] : "Registering the name"
 }
 
-const MINUTE_S = 60
-function waitEstimate(view: api.RegistrationView): string {
-  const left = waitLeft(view)
-  if (view.phase !== "committed" || left <= 0) return ""
-  if (left < MINUTE_S) return "Under a minute. "
-  const minutes = Math.round(left / MINUTE_S)
-  return minutes === 1 ? "About a minute. " : `About ${minutes} minutes. `
-}
-
-function leadOf({ view, record }: OrderState): string {
-  const keepOpen = openedFromApp(view!, record) ? "Keep this page open while SimpleX finishes it."
-    : record ? "Keep this page open until the name is yours."
-      : "The browser with its name code signed it."
-  return `${waitEstimate(view!)}${keepOpen}`
-}
+const leadOf = ({ view, record }: OrderState) => openedFromApp(view!, record) ? "Keep this page open while SimpleX finishes it."
+  : record ? "Keep this page open until the name is yours." : "The browser with its name code signed it."
 
 const WAIT_NOTE = "Every new name waits a little, so nobody who sees your order can take the name first."
 const COMMIT_NOTE = "Placing your order. The wait starts once it is in."
@@ -742,16 +733,14 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
   const refused = refusalsOf(s) >= REVEAL_ATTEMPTS
   const steps = stages(states)
   const clockNode = el("b", {})
-  const note = el("p", {})
+  const note = el("span", {})
   const tryAgain = () => {
     dispatch({ type: "reveal-retried" })
     refresh()
   }
-  const lead = el("span", {})
   const say = (node: HTMLElement, text: string) => { if (node.textContent !== text) node.textContent = text }
   // the wait's time, its line and the words under it move on each second between the screen's own changes
   const tick = () => {
-    say(lead, leadOf(s))
     if (view.phase === "committed") fillWait(steps.children[1] as HTMLElement, view)
     const left = waitLeft(view)
     if (view.phase === "committed" && left > 0) {
@@ -766,9 +755,10 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
     else say(note, REGISTERING_NOTE)
   }
   onTheSecond(() => waitLeft(view), tick, signal)
-  return screen({ title: headingOf(s), lead },
+  return screen({ title: headingOf(s), lead: leadOf(s) },
     steps,
-    el("div", { class: "countdown" }, clockNode, note),
+    // the note keeps the height of its longest words, so the page keeps still as they change
+    el("div", { class: "countdown" }, clockNode, el("p", {}, note, el("span", { class: "sizer", "aria-hidden": "true" }, WAIT_NOTE))),
     refused ? alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration.") : null,
     refused ? btn("Try again", "quiet block", tryAgain, icon("refresh")) : null,
     referenceLine(s.invoice?.invoiceId ?? view.id))

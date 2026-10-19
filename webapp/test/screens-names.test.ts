@@ -79,38 +79,6 @@ describe("list helpers", () => {
     expect(againLine(expiresAt, available, expiresAt * 1000)).toBe("Search it to register it again.")
     expect(againLine(expiresAt, registered(undefined, { owner: APP }), (expiresAt + GRACE_S) * 1000)).toBe("It has been registered again since.")
   })
-  it("a list opened after its name's links were saved, here or in another tab, shows the row without its old links until it reads them again", () => {
-    const view = registeredView()
-    const seen = { "reg-1": { view, invoice: null, answer: registered() }, "reg-2": { view: registeredView({ id: "reg-2" }), invoice: null, answer: registered() } }
-    const s = initialList(stored({ orders: [record({ linksSavedAt: "2026-10-17T12:01:00Z" }), record({ registrationId: "reg-2" })] }), null, seen, {}, NOW)
-    expect(s.seen["reg-1"].answer).toBeNull()
-    expect(s.seen["reg-2"]).toBe(seen["reg-2"])
-    const read = reduceList(s, { type: "row-read", id: "reg-1", view, invoice: null, now: NOW })
-    expect(read.seen["reg-1"].answer).toBeNull()
-    const answered = reduceList(read, { type: "row-answered", id: "reg-1", answer: registered({ contact: "", channel: CHANNEL }), linksSavedAt: "2026-10-17T12:01:00Z" })
-    expect(answered.seen["reg-1"]).toMatchObject({ answer: { records: { contact: "", channel: CHANNEL } }, linksSavedAt: "2026-10-17T12:01:00Z" })
-    expect(initialList(stored({ orders: answered.orders }), null, answered.seen, {}, NOW).seen).toEqual(answered.seen)
-  })
-  it("an answer asked for before a save, here or in another tab, and answered after it is dropped, whichever answer comes first", () => {
-    const view = registeredView()
-    const SAVED = "2026-10-17T12:01:00Z"
-    const read = reduceList(list({ orders: [record()] }), { type: "row-read", id: "reg-1", view, invoice: null, now: NOW })
-    const saved = reduceList(read, storedEvent({ orders: [record({ linksSavedAt: SAVED })] }))
-    expect(reduceList(saved, { type: "row-answered", id: "reg-1", answer: registered(), linksSavedAt: undefined })).toBe(saved)
-    const fresh = reduceList(saved, { type: "row-answered", id: "reg-1", answer: registered({ contact: "", channel: CHANNEL }), linksSavedAt: SAVED })
-    expect(fresh.seen["reg-1"]).toMatchObject({ answer: { records: { contact: "", channel: CHANNEL } }, linksSavedAt: SAVED })
-    expect(reduceList(fresh, { type: "row-answered", id: "reg-1", answer: registered(), linksSavedAt: undefined })).toBe(fresh)
-  })
-  it("links saved in another tab while the list is open drop the row's old links, and leave rows with none read yet as they are", () => {
-    const view = registeredView()
-    const one = list({ orders: [record()] })
-    const answered = reduceList(reduceList(one, { type: "row-read", id: "reg-1", view, invoice: null, now: NOW }), { type: "row-answered", id: "reg-1", answer: registered(), linksSavedAt: undefined })
-    const saved = reduceList(answered, storedEvent({ orders: [record({ linksSavedAt: "2026-10-17T12:01:00Z" })] }))
-    expect(saved.seen["reg-1"]).toEqual({ view, invoice: null, answer: null })
-    expect(reduceList(answered, storedEvent({ orders: [record()] })).seen).toEqual(answered.seen)
-    const unanswered = reduceList(one, { type: "row-read", id: "reg-1", view, invoice: null, now: NOW })
-    expect(reduceList(unanswered, storedEvent({ orders: [record({ linksSavedAt: "2026-10-17T12:01:00Z" })] })).seen).toEqual(unanswered.seen)
-  })
   it("waitsToSign: a commit whose wait is over and whose name is still hidden", () => {
     const view = registration({ phase: "committed", revealAfter: NOW / 1000 - 1 })
     expect(waitsToSign(view, NOW)).toBe(true)
@@ -225,7 +193,7 @@ describe("list", () => {
   it("row-read keeps the read, the time, and a registered name's records until they are read again", () => {
     const answer = registered()
     const first = reduceList(one, { type: "row-read", id: "reg-1", view: registeredView(), invoice: null, now: NOW + 1000 })
-    const withAnswer = reduceList(first, { type: "row-answered", id: "reg-1", answer, linksSavedAt: undefined })
+    const withAnswer = reduceList(first, { type: "row-answered", id: "reg-1", answer })
     expect(withAnswer.seen["reg-1"]).toEqual({ view: registeredView(), invoice: null, answer })
     const again = reduceList(withAnswer, { type: "row-read", id: "reg-1", view: registeredView(), invoice: null, now: NOW + 2000 })
     expect(again.seen["reg-1"].answer).toBe(answer)
@@ -241,7 +209,7 @@ describe("list", () => {
   })
   it("an answer about a record no longer kept changes nothing", () => {
     expect(reduceList(one, { type: "row-read", id: "reg-gone", view, invoice: null, now: NOW })).toBe(one)
-    expect(reduceList(one, { type: "row-answered", id: "reg-1", answer: null, linksSavedAt: undefined })).toBe(one)
+    expect(reduceList(one, { type: "row-answered", id: "reg-1", answer: null })).toBe(one)
     expect(reduceList(one, { type: "row-unread", id: "reg-gone" })).toBe(one)
     expect(reduceList(one, { type: "code-read", code: "SN6-gone", state: "used" })).toBe(one)
     expect(reduceList(one, { type: "find-started", ownerCode: "SN-gone" })).toBe(one)

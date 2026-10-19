@@ -3,7 +3,7 @@ import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  channelLink, CHECKOUT_KEY, checkoutCode, checkoutOwnerCode, CODE_HEADING, contactLink, control, LINKS_HEADING, mockRegistration, onStep, openCode, payButton, REGISTRATION_MS,
+  channelLink, CHECKOUT_KEY, checkoutCode, checkoutOwnerCode, CODE_HEADING, contactLink, control, LINKS_HEADING, MOCK, mockRegistration, onStep, openCode, payButton, REGISTRATION_MS,
   registrationOf, SAVED, savedToReview, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
@@ -73,9 +73,20 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   await expect(onStep(page).locator(".card.qr svg")).toBeVisible()
   await expect(page.getByText(/Rate held \d+:\d\d/)).toBeVisible()
   await shot(page, "N4-bitcoin")
+  // the wallet link is a BIP21 URI for what is left to send, and each copy button says what it copies
+  const invoice = async () => (await request.get(`${MOCK}/api/invoice/${invoiceId}`)).json() as Promise<{ address: string; cryptoAmount: string; cryptoAmountDue: string }>
+  const wallet = onStep(page).getByRole("link", { name: "Open in wallet" })
+  const { address, cryptoAmount } = await invoice()
+  await expect(wallet).toHaveAttribute("href", `bitcoin:${address}?amount=${cryptoAmount}`)
+  await expect(onStep(page).getByRole("button", { name: "Copy amount in BTC" })).toBeVisible()
+  await expect(onStep(page).getByRole("button", { name: "Copy Bitcoin address" })).toBeVisible()
 
   await control(request, `partial/${invoiceId}`)
   await expect(page.getByText("Part of the payment arrived")).toBeVisible()
+  const { cryptoAmountDue } = await invoice()
+  expect(cryptoAmountDue, "the rest is less than the whole").not.toBe(cryptoAmount)
+  await expect(wallet).toHaveAttribute("href", `bitcoin:${address}?amount=${cryptoAmountDue}`)
+  await expect(onStep(page).getByRole("button", { name: "Copy rest to send in BTC" })).toBeVisible()
   await shot(page, "N4a-partial")
 
   await control(request, `settle/${invoiceId}`)
@@ -195,25 +206,12 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   await expect(row.locator(".row-code")).toHaveCount(0)
   await expect(row.getByRole("button", { name: "Show code" })).toBeFocused()
 
-  await expect(row.locator(".sub")).toContainText(/points at Channel\sC3/)
   await row.getByText("Edit links").click()
   await expect(page.getByLabel("Channel")).toHaveValue(nextChannel)
   await page.getByLabel("Address").fill(contact)
   await expect(page.locator(".link-field").first()).toHaveAttribute("data-state", "ok")
   await page.getByRole("button", { name: "Save links" }).click()
   await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
-  await page.evaluate((name) => {
-    const w = window as unknown as { __lines: string[] }
-    w.__lines = []
-    new MutationObserver(() => {
-      const line = [...document.querySelectorAll("body > main .list-row")].find((r) => r.querySelector(".main b")?.textContent === name)?.querySelector(".sub")?.textContent
-      if (line && line !== w.__lines.at(-1)) w.__lines.push(line)
-    }).observe(document.body, { childList: true, subtree: true, characterData: true })
-  }, `${label}.simplex`)
-  await page.getByRole("link", { name: "Your names" }).first().click()
-  await expect(row.locator(".sub")).toContainText(/points at Contact\sA1/)
-  const lines = await page.evaluate(() => (window as unknown as { __lines: string[] }).__lines)
-  expect(lines.filter((l) => /points at Channel\sC3/.test(l)), lines.join(" | ")).toEqual([])
 })
 
 test("a purchase walks the steps a buyer expects, and the links set before paying are on chain", async ({ page, request }) => {
@@ -223,8 +221,8 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await page.getByRole("button", { name: "Register" }).click()
   const step = onStep(page)
 
-  await expect(step.getByRole("heading", { name: `What should ${label}.simplex open?` })).toBeFocused()
-  await expect(step.locator(".lead")).toHaveText("Paste your links from the SimpleX app. You can change them later.")
+  await expect(step.getByRole("heading", { name: "What should your name open?" })).toBeFocused()
+  await expect(step.locator(".lead")).toHaveText(`When someone opens ${label}.simplex in SimpleX, it connects them to you or shows your channel. Paste the links from the app; you can change them later.`)
   await expect(step.getByRole("button", { name: "Skip for now" })).toBeVisible()
   await step.getByLabel("Address").fill(contact)
   await expect(step.getByRole("button", { name: "Skip for now" }), "a typed link leaves only Continue").toHaveCount(0)
@@ -258,14 +256,17 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await expect(step.getByRole("radio")).toHaveText(["Card", "Bitcoin", "Monero"])
   await expect(step.getByRole("checkbox")).toHaveCount(0)
 
-  // Change opens the links with focus in the field chosen; the code saved, Continue returns to the review, its code field still open
+  // Change opens the links with focus in the field chosen; the code saved, Continue returns to the review, its code field
+  // still open with what was typed in it
   await openCode(page)
+  await checkoutCode(page).fill("SN6-Z6VPA")
   await step.getByRole("button", { name: "Change the channel" }).click()
   await expect(step.getByLabel("Channel")).toBeFocused()
   await expect(step.getByLabel("Channel")).toHaveValue(channel)
   await step.getByRole("button", { name: "Continue" }).click()
   await expect(step.getByRole("heading", { name: "Check your order" })).toBeFocused()
-  await expect(checkoutCode(page)).toBeVisible()
+  await expect(checkoutCode(page)).toHaveValue("SN6-Z6VPA")
+  await checkoutCode(page).fill("")
   // Back walks the same steps in reverse, its box still ticked
   await step.getByRole("link", { name: "Back" }).click()
   await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeFocused()
@@ -297,18 +298,31 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   expect(answer.owner, "the code saved before paying owns the name").toBe(checksumAddress(walletOf(ownerCode)!.address))
   expect(answer.records, "the links set before paying are on chain").toEqual({ contact, channel })
 
-  // Your names, opened from here, draws the name as registered from its first frame, never as a row still being checked
+  // Your names, opened from here, draws the name as registered from its first frame, never as a row still being checked,
+  // and its line as it stays once the name's links are read
   await page.evaluate((name) => {
-    const w = window as unknown as { __chips: string[] }
+    const w = window as unknown as { __chips: string[]; __lines: Set<string> }
     w.__chips = []
+    w.__lines = new Set()
     new MutationObserver(() => {
-      for (const row of document.querySelectorAll(".list-row")) if (row.textContent!.includes(name)) w.__chips.push(row.querySelector(".chip")!.textContent!)
-    }).observe(document.body, { childList: true, subtree: true })
+      for (const row of document.querySelectorAll(".list-row")) {
+        if (!row.textContent!.includes(name)) continue
+        w.__chips.push(row.querySelector(".chip")!.textContent!)
+        w.__lines.add(row.querySelector(".sub")!.textContent!)
+      }
+    }).observe(document.body, { childList: true, subtree: true, characterData: true })
   }, `${label}.simplex`)
+  const nameRead = page.waitForResponse((r) => /\/api\/name\/(0x)?[0-9a-f]{64}/.test(new URL(r.url()).pathname))
   await main.getByRole("link", { name: "Your names" }).click()
   await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: "Show code" })).toBeVisible()
-  const chips = await page.evaluate(() => (window as unknown as { __chips: string[] }).__chips)
+  await nameRead
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: "Edit links" })).toBeVisible()
+  const { chips, lines } = await page.evaluate(() => {
+    const w = window as unknown as { __chips: string[]; __lines: Set<string> }
+    return { chips: w.__chips, lines: [...w.__lines] }
+  })
   expect(chips.filter((chip) => chip !== "Registered"), chips.join(" | ")).toEqual([])
+  expect(lines, "the row's line as first drawn").toHaveLength(1)
   await page.goBack()
   await waitRegistered(page, label)
   await main.getByRole("link", { name: "Edit links" }).click()
@@ -383,6 +397,8 @@ test("the owner code restores an order in another browser, and a bad code is ref
   const label = uniqueLabel("rest")
   const { invoiceId, ownerCode } = await startOrder(page, label, { method: "xmr" })
   await expect(page.getByRole("heading", { name: "Pay with Monero" })).toBeVisible()
+  const { address, cryptoAmount } = await (await request.get(`${MOCK}/api/invoice/${invoiceId}`)).json() as { address: string; cryptoAmount: string }
+  await expect(onStep(page).getByRole("link", { name: "Open in wallet" }), "the Monero URI").toHaveAttribute("href", `monero:${address}?tx_amount=${cryptoAmount}`)
   await control(request, `confirming/${invoiceId}`)
   await expect(page.getByText("Waiting for 1 confirmation")).toBeVisible()
   await shot(page, "N5-confirming")
@@ -450,7 +466,7 @@ test("the card form stays in place while another tab writes the order, the same 
   await other.goto("/")
   const writes: ((k: string) => void)[] = [
     (k) => localStorage.setItem(k, `${localStorage.getItem(k)!} `),
-    (k) => localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k)!), linksSavedAt: new Date().toISOString() })),
+    (k) => localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k)!), contact: "https://smp8.simplex.im/a#S1" })),
   ]
   for (const write of writes) {
     const read = page.waitForResponse((r) => new URL(r.url()).pathname === `/api/invoice/${invoiceId}` && !r.url().includes("?"))
@@ -784,44 +800,4 @@ test("a card form that does not load, in a browser without the order, leads to t
   await expect(page.getByRole("button", { name: "Get a new invoice" })).toHaveCount(0)
   await page.getByRole("button", { name: "Enter your name code" }).click()
   await expect(page.getByLabel("Name code", { exact: true })).toBeVisible()
-})
-
-test("links saved in another tab show in Your names once it is opened again, never as the old ones", async ({ page, request }) => {
-  const label = uniqueLabel("xtab")
-  const { invoiceId } = await startOrder(page, label, { method: "btc" })
-  await control(request, `settle/${invoiceId}`)
-  await waitRegistered(page, label)
-  const registrationId = await registrationOf(request, invoiceId)
-  await page.goto("/#/names")
-  const row = page.locator(".list-row", { hasText: `${label}.simplex` })
-  await expect(row.locator(".sub")).toContainText(/^Until /)
-  await expect(row.locator(".sub")).not.toContainText("points at")
-  const saveContact = async (contact: string) => {
-    const other = await page.context().newPage()
-    await other.goto(`/#/edit/${registrationId}`)
-    await other.getByLabel("Address").fill(contact)
-    await expect(other.locator(".link-field").first()).toHaveAttribute("data-state", "ok")
-    await other.getByRole("button", { name: "Save links" }).click()
-    await expect(other.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
-    await other.close()
-  }
-  await saveContact(contactLink("A1"))
-  await page.getByRole("link", { name: "Your names" }).first().click()
-  await expect(row.locator(".sub")).toContainText(/points at Contact\sA1/)
-
-  await page.evaluate(() => { location.hash = "#/trademarks" })
-  await expect(page.getByRole("heading", { name: "Trademark owners" })).toBeVisible()
-  await saveContact(contactLink("D4"))
-  await page.evaluate((name) => {
-    const w = window as unknown as { __lines: string[] }
-    w.__lines = []
-    new MutationObserver(() => {
-      const line = [...document.querySelectorAll("body > main .list-row")].find((r) => r.querySelector(".main b")?.textContent === name)?.querySelector(".sub")?.textContent
-      if (line && line !== w.__lines.at(-1)) w.__lines.push(line)
-    }).observe(document.body, { childList: true, subtree: true, characterData: true })
-  }, `${label}.simplex`)
-  await page.getByRole("link", { name: "Your names" }).first().click()
-  await expect(row.locator(".sub")).toContainText(/points at Contact\sD4/)
-  const lines = await page.evaluate(() => (window as unknown as { __lines: string[] }).__lines)
-  expect(lines.filter((l) => /points at Contact\sA1/.test(l)), lines.join(" | ")).toEqual([])
 })

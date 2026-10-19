@@ -82,13 +82,15 @@ function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => voi
 const said = (v: CodeVerdict) => v.ok ? v.line : `${v.title}. ${v.line}`
 // a field's way to take a refusal from elsewhere, as the service's when the order is sent
 const refusers = new WeakMap<HTMLElement, (text: string) => void>()
+// what was typed in a field, by its key, shown and judged again when its page is opened again
+const typed = new Map<string, string>()
 
 // `judged` may return a refusal to say instead of the verdict; `label` names the field, and an `action` goes beside it.
 export function codeField(key: string, label: string, judged: (v: CodeVerdict | null) => string | null,
   start: session.AppliedCode | null = null, refusal: string | null = null, action: HTMLElement | null = null): HTMLElement {
   return kept(key, () => {
     const verdictId = `${key}-verdict`
-    const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, spellcheck: "false", placeholder: "SN6-…", autocomplete: "off", value: start?.display })
+    const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, spellcheck: "false", placeholder: "SN6-…", autocomplete: "off", value: start?.display ?? typed.get(key) })
     const box = el("label", { class: "field code-input" }, icon("key"), input)
     const line = liveRegion("verdict")
     line.id = verdictId
@@ -102,10 +104,14 @@ export function codeField(key: string, label: string, judged: (v: CodeVerdict | 
     const life = new AbortController()
     whenDropped(() => life.abort())
     const forget = watchCode(input, (v) => show(v, judged(v)), life.signal)
+    input.addEventListener("input", () => typed.set(key, input.value))
+    // judged once the page that asked for the field is drawn, as a verdict may change the page
+    if (!start && input.value) queueMicrotask(() => input.dispatchEvent(new Event("input")))
     const entry = el("div", { class: "code-entry" }, action ? el("div", { class: "field-row" }, box, action) : box, line)
     refusers.set(entry, (text) => {
       forget()
       input.value = ""
+      typed.delete(key)
       show(null, text)
       input.focus()
     })

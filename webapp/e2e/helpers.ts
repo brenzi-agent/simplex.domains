@@ -1,4 +1,4 @@
-import { expect, test as base, type APIRequestContext, type BrowserContext, type BrowserContextOptions, type Page } from "@playwright/test"
+import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Page } from "@playwright/test"
 import { mkdirSync } from "node:fs"
 import { mockUrl, pageUrl } from "./slots.ts"
 
@@ -110,7 +110,7 @@ export async function openCode(page: Page): Promise<void> {
 export const CHECKOUT_KEY = "simplex-names-checkout"
 export const checkoutOwnerCode = (page: Page) => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).ownerCode as string, CHECKOUT_KEY)
 
-export const LINKS_HEADING = /^What should .+ open\?$/
+export const LINKS_HEADING = "What should your name open?"
 export const CODE_HEADING = "Save your name code"
 export const SAVED = "I have saved my name code"
 
@@ -170,7 +170,7 @@ export const test = base.extend<{ cspViolations: void }>({
       }, true), CSP_REPORT)
     }
     await watch(context)
-    // the browser is the worker's, so the context maker it had is put back once the test is over
+    // the browser is the worker's: the maker set on it is deleted after the test, so its class's own shows again
     const newContext = browser.newContext.bind(browser)
     browser.newContext = async (options?: BrowserContextOptions) => {
       const made = await newContext(options)
@@ -180,7 +180,7 @@ export const test = base.extend<{ cspViolations: void }>({
     try {
       await use()
     } finally {
-      browser.newContext = newContext
+      delete (browser as Partial<Browser>).newContext
     }
     expect(refused, "CSP violations").toEqual([])
   }, { auto: true }],

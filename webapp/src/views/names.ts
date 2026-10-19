@@ -138,9 +138,8 @@ async function readOrder(id: string, route: number): Promise<void> {
   if (!isRoute(route)) return
   dispatchList({ type: "row-read", id, view, invoice, now: api.serviceNow() })
   if (view.phase !== "registered") return
-  const linksSavedAt = store.orderByRegistration(id)?.linksSavedAt
   const answer = await api.searchName(view.labelHash, (view.label ?? synced.label).length).catch(() => null)
-  answerList(route, { type: "row-answered", id, answer, linksSavedAt })
+  answerList(route, { type: "row-answered", id, answer })
 }
 
 async function replaceWithNewer(o: store.OrderRecord, route: number): Promise<boolean> {
@@ -245,8 +244,6 @@ function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
 
 const markOf = (label: string) => label.slice(0, 1).toUpperCase()
 
-const NAME_KEPT_WHOLE = 24
-
 const PROGRESS: Partial<Record<api.Phase, string>> = {
   queued: "Paid, waiting to commit",
   committing: "Committing",
@@ -266,12 +263,7 @@ function subLine(o: store.OrderRecord, { view, invoice, answer }: RowSeen, now: 
   // what was paid, from the invoice; the record's amount is the order's worth, lower after a move to a cheaper name
   const paid = invoice ? `${dollars(invoice.amount, true)} ${methodName(invoice.cryptoCurrency ?? "card")}` : recordedPaid(o)
   if (lapsed({ view, answer }, now)) return `Expired ${view.expiresAt ? dateOf(view.expiresAt, true) : ""}`.trim()
-  if (view.phase === "registered") {
-    const shown = answer?.status === "registered" ? answer.entities[0]?.displayName : undefined
-    // a short display name stays on one line
-    const target = shown && shown.length <= NAME_KEPT_WHOLE ? shown.replaceAll(" ", "\u00a0") : shown
-    return [view.expiresAt ? `Until ${dateOf(view.expiresAt, true)}` : null, target ? `points at ${target}` : null, continued(paid)].filter(Boolean).join(SEP)
-  }
+  if (view.phase === "registered") return [view.expiresAt ? `Until ${dateOf(view.expiresAt, true)}` : null, continued(paid)].filter(Boolean).join(SEP)
   if (invoice?.status === "paid" && view.phase === "unpaid") return ["Paid after the invoice closed; support refunds it", ...reference(invoice.invoiceId)]
   if (invoice?.status === "expired" && view.phase === "unpaid") {
     const part = Number(invoice.cryptoAmountPaid ?? "0") > 0 && !invoice.paidInFull
@@ -516,10 +508,7 @@ async function saveLinks(fields: HTMLElement[]): Promise<void> {
   const { record, read, form } = edit
   if (!form?.saving) return
   try {
-    await flow.saveLinks(record!, read!.view, form.nonce, form.changes, (kind) => {
-      store.updateOrder(record!.registrationId, { linksSavedAt: new Date().toISOString() })
-      answerEdit(route, { type: "link-saved", kind })
-    })
+    await flow.saveLinks(record!, read!.view, form.nonce, form.changes, (kind) => answerEdit(route, { type: "link-saved", kind }))
     answerEdit(route, { type: "save-done" })
   } catch (e) {
     // no answer is not a refusal: the edit may still be mined, and sending it again would pay for it twice

@@ -577,22 +577,40 @@ test("Back returns to where a page was left, a slow page included, and a reload 
   await page.unroute(`**/api/invoice/${invoiceId}*`)
 })
 
-test("a checkout copied to another tab that pays another way opens the first tab's invoice and says why", async ({ page }) => {
-  await search(page, uniqueLabel("copy"))
-  await toReview(page)
-  const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
-  await payButton(page).click()
-  await page.waitForURL(/\?order=/)
-  const invoiceId = new URL(page.url()).searchParams.get("order")
-  const copy = await page.context().newPage()
-  // a duplicated tab starts with the first tab's session, the same checkout and its name code
-  await copy.addInitScript(([key, value]) => { if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, value) }, [CHECKOUT_KEY, checkout])
-  await copy.goto("/#/checkout")
-  await copy.getByRole("radio", { name: "Monero" }).click()
-  await payButton(copy).click()
-  await copy.waitForURL(/\?order=/)
-  expect(new URL(copy.url()).searchParams.get("order"), "the order's one invoice").toBe(invoiceId)
-  await expect(copy.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-  await expect(copy.getByText("An earlier try already made this invoice, so it opened instead of a new one.")).toBeVisible()
-  await copy.close()
-})
+// A copied tab pays with Monero or with a code; the first tab's Bitcoin invoice opens instead, its page saying so until it
+// is left, and not when it is opened again from Your names.
+for (const other of ["Monero", "a code"]) {
+  test(`a checkout copied to another tab that pays with ${other} opens the first tab's invoice and says why`, async ({ page, request }) => {
+    await search(page, uniqueLabel("copy"))
+    await toReview(page)
+    const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
+    await payButton(page).click()
+    await page.waitForURL(/\?order=/)
+    const invoiceId = new URL(page.url()).searchParams.get("order")
+    const copy = await page.context().newPage()
+    // a duplicated tab starts with the first tab's session, the same checkout and its name code
+    await copy.addInitScript(([key, value]) => { if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, value) }, [CHECKOUT_KEY, checkout])
+    await copy.goto("/#/checkout")
+    if (other === "Monero") {
+      await copy.getByRole("radio", { name: "Monero" }).click()
+      await payButton(copy).click()
+    } else {
+      const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+      await openCode(copy)
+      await checkoutCode(copy).fill(code)
+      await expect(onStep(copy).getByText(/^Covers names of/)).toBeVisible()
+      await onStep(copy).getByRole("button", { name: "Register" }).click()
+    }
+    await copy.waitForURL(/\?order=/)
+    expect(new URL(copy.url()).searchParams.get("order"), "the order's one invoice").toBe(invoiceId)
+    await expect(copy.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+    const why = `This name already has a Bitcoin invoice from an earlier try, so it opened instead of ${other === "Monero" ? "a new Monero one" : "using your code"}.`
+    await expect(onStep(copy).getByText(why)).toBeVisible()
+    await copy.getByRole("link", { name: "Your names" }).first().click()
+    await copy.locator(".list-row").getByRole("button", { name: "Open" }).first().click()
+    await expect(copy.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+    expect(new URL(copy.url()).searchParams.get("order"), "the same invoice opened again").toBe(invoiceId)
+    await expect(onStep(copy).locator(".note", { hasText: "earlier try" }), "the line is said once").toHaveCount(0)
+    await copy.close()
+  })
+}
