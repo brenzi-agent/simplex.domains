@@ -88,7 +88,7 @@ function dispatch(event: SearchEvent): void {
   state = result.state
   if (!isRoute(pageRoute)) return
   shown = result.screen
-  showScreen("search", result.screen, state, BUILDS[result.screen], null, result.motion)
+  showScreen(result.screen, state, BUILDS[result.screen], null, result.motion)
 }
 
 function submit(): void {
@@ -237,7 +237,7 @@ interface Drawn { nodes: Node[]; register?: RegisterPart }
 function buildSearch(s: SearchState, signal: AbortSignal): Built<SearchState> {
   const input = el("input", { type: "text", value: s.typed, placeholder: "yourname", "aria-label": "Name", autocomplete: "off", autocapitalize: "none", spellcheck: "false" })
   field = input
-  const search = btn("Search", "lg", () => submit(), icon("arrow"))
+  const search = btn("Search", "", () => submit(), icon("arrow"))
   const box = el("div", { class: "search" }, icon("search"), input, el("span", { class: "tld" }, ".simplex"), search)
   const results = liveRegion("results")
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit() })
@@ -348,7 +348,7 @@ function ruleLine({ label, problem }: Extract<Answer, { kind: "rule" }>): HTMLEl
 
 function pauseNotice(hold: Hold): HTMLElement {
   const title = el("b", {})
-  const notice = el("div", { class: "under-search" }, el("div", { class: "alert warn" }, icon("clock"), el("div", {}, title, "Too many requests were sent from here. Searching is paused until then.")))
+  const notice = el("div", { class: "under-search" }, el("div", { class: "notice warn" }, icon("clock"), el("div", {}, title, "Too many requests were sent from here. Searching is paused until then.")))
   waitOut(title, secondsLeft(hold), (left) => `Try again in ${left}`, () => undefined)
   return notice
 }
@@ -426,7 +426,7 @@ function registerNoteOf(s: SearchState, unpayable: boolean): Part {
   if (!refusal) return ["", () => []]
   if (refusal.why === "other") return [JSON.stringify(refusal), () => [ownOrderNote(store.invoiceUrl(refusal.invoiceId))]]
   const words = refusal.why === "taken" ? "This name was taken just now. Search another one." : "Nothing changed. Try again in a moment."
-  return [JSON.stringify(refusal), () => [alertBox("bad", "alert", "That did not go through", words)]]
+  return [JSON.stringify(refusal), () => [alertBox("danger", "alert", "That did not go through", words)]]
 }
 
 const ownOrderNote = (url: string) => alertBox("info", "info", "You already have an order for this name", el("a", { href: url }, "Open that order"))

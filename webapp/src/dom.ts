@@ -100,16 +100,14 @@ export function link(text: Kid, onclick: () => void): HTMLAnchorElement {
   return el("a", { href: "#", role: "button", onclick: (e: Event) => { e.preventDefault(); onclick() } }, text)
 }
 
-export function navLink(text: Kid, href: string, cls = ""): HTMLAnchorElement {
-  return el("a", { href, class: cls || undefined }, text)
-}
-
 export function chip(text: string, cls = "", dot = false): HTMLSpanElement {
   return el("span", { class: `chip ${cls}`.trim() }, dot ? el("span", { class: "dot" }) : null, text)
 }
 
-export function alertBox(tone: string, ic: IconName, title: string | null, text: Kid): HTMLDivElement {
-  return el("div", { class: `alert ${tone}` }, icon(ic), el("div", {}, title ? el("b", {}, title) : null, text))
+type Tone = "ok" | "warn" | "danger" | "info"
+
+export function alertBox(tone: Tone, ic: IconName, title: string | null, text: Kid): HTMLDivElement {
+  return el("div", { class: `notice ${tone}` }, icon(ic), el("div", {}, title ? el("b", {}, title) : null, text))
 }
 
 // punctuation after the name is kept on its line

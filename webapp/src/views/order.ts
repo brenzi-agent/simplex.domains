@@ -65,7 +65,7 @@ export function orderPage(invoiceId: string | null, registrationId: string | nul
   whenLeaving(() => { polls.abort(); clearTimeout(wakes); window.removeEventListener("storage", onStorage) })
   // the same order drawn again stays on screen until it is read, rather than blanking to a loading line
   if (redraw) document.querySelector("main")?.setAttribute("aria-busy", "true")
-  else placeholderSoon(null)
+  else placeholderSoon()
   void follow(mine, invoiceId, registrationId, polls.signal)
 }
 
@@ -78,7 +78,7 @@ function dispatch(event: OrderEvent): void {
   const arrived = result.screen !== shown
   shown = result.screen
   document.querySelector("main")?.removeAttribute("aria-busy")
-  showScreen(null, result.screen, state, BUILDS[result.screen], heading, result.motion)
+  showScreen(result.screen, state, BUILDS[result.screen], heading, result.motion)
   if (revealDue(state)) reveal(state.view!, state.record!)
   if (arrived || state.record !== before.record) keepCodes(state)
   wakeOnTime()
@@ -473,7 +473,7 @@ function buildPayCrypto(state: OrderState, signal: AbortSignal): Built<OrderStat
 function buildPayCard(paying: OrderState, signal: AbortSignal): Built<OrderState> {
   const { view, record } = paying
   const invoice = paying.invoice!
-  const pay = btn(`Pay ${dollars(invoice.amount, true)}`, "lg block")
+  const pay = btn(`Pay ${dollars(invoice.amount, true)}`, "block")
   const error = el("div", {})
   const form = el("div", { class: "stripe" })
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
@@ -503,7 +503,7 @@ function buildPayCard(paying: OrderState, signal: AbortSignal): Built<OrderState
       dispatch({ type: "card-started" })
       const outcome = await card.confirm()
       if (outcome.kind === "submitted") return submitted()
-      if (!signal.aborted) dispatch({ type: "card-refused", note: { tone: "bad", icon: "alert", title: null, text: outcome.message } })
+      if (!signal.aborted) dispatch({ type: "card-refused", note: { tone: "danger", icon: "alert", title: null, text: outcome.message } })
     })
   }
   const key = publishableKey()
@@ -616,7 +616,7 @@ async function cancelInvoice(): Promise<void> {
     if (record && after.status !== "paid") store.updateOrder(record.registrationId, { cancelled: true })
     // without a record nothing keeps the cancel, so the warning shows here once
     const stillOpen = !record && after.status === "open"
-    answer(gen, { type: "cancel-answered", note: stillOpen ? { tone: "bad", icon: "alert", title: null, text: cancelStillOpen(after) } : null })
+    answer(gen, { type: "cancel-answered", note: stillOpen ? { tone: "danger", icon: "alert", title: null, text: cancelStillOpen(after) } : null })
     if (!stillOpen) reread(gen)
   } catch (e) {
     // an invoice that closed meanwhile is shown as it is now
@@ -862,7 +862,7 @@ function buildRegistering(state: OrderState, signal: AbortSignal): Built<OrderSt
     changeTo(heading, ...headingOf(next))
     crumbsTo(bar, barOf(next))
     changeTo(named, cardName(labelOf(view, record), view.tld))
-    changeTo(problem, ...(refusalsOf(next) >= REVEAL_ATTEMPTS ? [el("div", { class: "mt-18" }, alertBox("bad", "alert", "The name could not be signed", "The service refused the signed registration."),
+    changeTo(problem, ...(refusalsOf(next) >= REVEAL_ATTEMPTS ? [el("div", { class: "mt-18" }, alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration."),
       el("div", { class: "mt-14" }, btn("Try again", "quiet", tryAgain, icon("refresh"))))] : []))
     if (view.phase === "committed" && filling !== view.revealAfter) {
       filling = view.revealAfter
@@ -963,7 +963,7 @@ function registeredBody(view: api.RegistrationView, record: store.OrderRecord | 
   const states: StageState[] = ["done", "done", "done"]
   if (!record?.ownerCode) {
     const back = record
-      ? btn("Back to SimpleX", "lg block", () => { location.href = "simplex:/" }, icon("arrow"))
+      ? btn("Back to SimpleX", "block", () => { location.href = "simplex:/" }, icon("arrow"))
       : withoutRecord(view, "quiet block", "Restore with your name code")
     return el("div", { class: "wrap narrow" }, el("div", { class: "panel" },
       el("div", { class: "panel-sec" }, track(states).node), txRows(view, states, now).node, el("div", { class: "panel-sec" }, back)))
@@ -977,7 +977,7 @@ function registeredBody(view: api.RegistrationView, record: store.OrderRecord | 
       codeDisplay(record.ownerCode, "owner-code"),
       store.canPersist()
         ? alertBox("warn", "shield", null, "Whoever has this code controls the name. Nobody else has a copy, not even us.")
-        : alertBox("bad", "alert", "This code could not be saved in this browser", "The copy you saved before paying is the only one."))),
+        : alertBox("danger", "alert", "This code could not be saved in this browser", "The copy you saved before paying is the only one."))),
     el("aside", { class: "panel summary" },
       el("span", { class: "label" }, "Next steps"),
       el("div", { class: "next mt-12" },
@@ -1095,7 +1095,7 @@ function buildFailed(state: OrderState, signal: AbortSignal): Built<OrderState> 
   const view = failed!
   const label = labelOf(view, record)
   const note = liveRegion()
-  const again = btn("Try again", "lg", () => void retryRegistration(), icon("refresh"))
+  const again = btn("Try again", "", () => void retryRegistration(), icon("refresh"))
   // a code refused for good leaves nothing to try again, so the page offers another search as the other endings do
   const action = live(el("div", { class: "mt-18" }))
   const elsewhere = btn("Search a name", "quiet", () => go(searchFrom(view, record)))
@@ -1114,7 +1114,7 @@ function buildFailed(state: OrderState, signal: AbortSignal): Built<OrderState> 
   return { sections: [head,
     twoCols(el("div", { class: "panel" },
       el("div", { class: "panel-sec" }, track(failedAt).node,
-        el("div", { class: "mt-22" }, alertBox("bad", "alert", view.error ?? "The registration did not go through", "The service's own retries gave up.")),
+        el("div", { class: "mt-22" }, alertBox("danger", "alert", view.error ?? "The registration did not go through", "The service's own retries gave up.")),
         note, action)),
     orderCard(cardName(label, view.tld), [...paidRows(view, invoice).slice(0, 1), ["Charged again", "Never"], ["Reference", fullRef(invoice?.invoiceId ?? view.id)]]))], update }
 }

@@ -87,7 +87,7 @@ function dispatchList(event: ListEvent): void {
   lastChecked = list.checked
   if (!isRoute(listRoute)) return
   listShown = result.screen
-  showList("names", result.screen, list, buildNames, null, result.motion)
+  showList(result.screen, list, buildNames, null, result.motion)
   readRows()
 }
 
@@ -207,7 +207,7 @@ function buildNames(s: ListState, signal: AbortSignal): Built<ListState> {
     dispatchList({ type: "forget-kept" })
     forgetLink.focus({ preventScroll: true })
   })
-  const question = el("div", { class: "mt-18" }, alertBox("bad", "alert", "Forget every name and code in this browser?",
+  const question = el("div", { class: "mt-18" }, alertBox("danger", "alert", "Forget every name and code in this browser?",
     "Everything listed here is removed from this browser. Without your saved copies, the name codes and codes cannot be restored."),
   el("div", { class: "actions mt-14" }, btn("Forget everything", "danger", forgetEverything), keep))
   const rows = new Map<string, ListRow>()
@@ -451,7 +451,7 @@ function dispatchRestore(event: RestoreEvent): void {
   restore = result.state
   if (!isRoute(restoreRoute)) return
   restoreShown = result.screen
-  showRestore("names", result.screen, restore, buildRestore, null, result.motion)
+  showRestore(result.screen, restore, buildRestore, null, result.motion)
 }
 
 function buildRestore(s: RestoreState, signal: AbortSignal): Built<RestoreState> {
@@ -459,7 +459,7 @@ function buildRestore(s: RestoreState, signal: AbortSignal): Built<RestoreState>
   restoreField = input
   const box = el("div", { class: "input code-input mt-8" }, icon("key"), input)
   const note = liveRegion()
-  const action = btn("Restore", "lg block", () => void run(), icon("arrow"))
+  const action = btn("Restore", "block", () => void run(), icon("arrow"))
   // Restore had focus when the lookup started, and lost it to the page when it was turned off
   let pressed = false
   const run = async () => {
@@ -490,7 +490,7 @@ function buildRestore(s: RestoreState, signal: AbortSignal): Built<RestoreState>
     if (refocus) input.focus({ preventScroll: true })
     drawAs(note, JSON.stringify([next.busy, next.hold, next.refusal]), () => next.busy ? [el("p", { class: "hint" }, "Finding the code's orders…")]
       : next.hold ? [holdNotice(next.hold)]
-        : refusal ? [el("div", { class: "mt-14" }, refusal.verdict ? verdictNode({ ok: false, title: refusal.title, line: refusal.text }) : alertBox("bad", "alert", refusal.title, refusal.text))]
+        : refusal ? [el("div", { class: "mt-14" }, refusal.verdict ? verdictNode({ ok: false, title: refusal.title, line: refusal.text }) : alertBox("danger", "alert", refusal.title, refusal.text))]
           : [])
     watchHold(next.hold !== null)
   }
@@ -523,7 +523,7 @@ export function editPage(registrationId: string): void {
   editRoute = currentRoute()
   if (screenOfEdit(edit) === "edit-no-code") return dispatchEdit({ type: "opened" })
   if (redraw) return readAgain()
-  placeholderSoon("names")
+  placeholderSoon()
   void readEdit(editOpened)
 }
 
@@ -533,7 +533,7 @@ const dispatchEdit = oneAtATime((event: EditEvent) => {
   if (!isRoute(editRoute)) return
   const heading = headingFocus(result, editShown, focus.onPage())
   editShown = result.screen
-  showEdit("names", result.screen, edit, EDIT_BUILDS[result.screen], heading, result.motion)
+  showEdit(result.screen, edit, EDIT_BUILDS[result.screen], heading, result.motion)
 })
 
 const editOpen = (gen: number) => gen === editOpened && isRoute(editRoute)
@@ -622,14 +622,14 @@ function resultNode(f: EditForm): HTMLElement | null {
     case "unanswered": return box(alertBox("warn", "clock", "No answer yet", "The change may still go through. Reload this page in a few minutes to see whether it did before saving again."))
     case "moved": return box(alertBox("warn", "clock", f.sent.length ? notSaved(f) : "An earlier save got there first",
       f.sent.length ? `Another save reached the chain first. The ${LINK_NAMES[unsent(f.changes, f.sent)!]} is still as you typed it: save again to send it.` : "It was still on its way when this one was signed. The fields now show the links on chain: change them and save again."))
-    case "refused": return box(alertBox("bad", "alert", notSaved(f), "Try again in a moment."))
+    case "refused": return box(alertBox("danger", "alert", notSaved(f), "Try again in a moment."))
   }
 }
 
 function buildEditForm(s: EditState, signal: AbortSignal): Built<EditState> {
   const start = s.form!
   const result = liveRegion()
-  const save = btn("Save links", "lg block", () => void submit())
+  const save = btn("Save links", "block", () => void submit())
   let built = false
   const changed = (kind: keyof api.Links) => (value: string) => { if (built) dispatchEdit({ type: "field-changed", kind, value }) }
   const fields = el("div", {},
@@ -715,7 +715,7 @@ const EDIT_BUILDS: Record<EditKind, Build<EditState>> = {
 }
 
 export function trademarksPage(): void {
-  page(null, [pageHead("Trademark owners", "Some names are reserved and cannot be bought."),
+  page([pageHead("Trademark owners", "Some names are reserved and cannot be bought."),
     el("div", { class: "wrap" }, el("div", { class: "panel narrow" }, el("div", { class: "panel-sec" },
       el("p", {}, "If you own a trademark and want the matching name reserved for you, write to ", el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL),
         " with the name and proof that you own the mark. A reserved name can only be registered by the SimpleX team for its owner."))))])

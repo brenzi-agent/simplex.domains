@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from "@playwright/test"
+import { expect, type Page } from "@playwright/test"
 import { control, search, startOrder, test, uniqueLabel } from "./helpers.ts"
 
 // EIP-55's own example, and the same wallet with one letter's case changed
@@ -62,7 +62,7 @@ test("Your names keeps focus in its row when another tab adds a row above it", a
   await other.close()
 })
 
-test("an order's page keeps focus, and the phone menu stays open, when another tab changes the order", async ({ page }) => {
+test("an order's page keeps focus when another tab changes the order", async ({ page }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("ordfocus"), { method: "btc" })
   const key = await page.evaluate((id) => Object.keys(localStorage).find((k) => k.startsWith("simplex-names:order:") && localStorage.getItem(k)!.includes(id))!, invoiceId)
   const other = await page.context().newPage()
@@ -72,15 +72,6 @@ test("an order's page keeps focus, and the phone menu stays open, when another t
   await redrawnInPlace(page, invoiceId, () => touchRecord(other, key))
   await expect(page.getByText("Loading…")).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Cancel this invoice" })).toBeFocused()
-
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByLabel("Menu").click()
-  await expect(page.getByRole("link", { name: "Search" })).toBeFocused()
-  await page.keyboard.press("Tab")
-  await expect(page.getByRole("link", { name: "Your names" })).toBeFocused()
-  await redrawnInPlace(page, invoiceId, () => touchRecord(other, key))
-  await expect(page.getByLabel("Menu")).toHaveAttribute("aria-expanded", "true")
-  await expect(page.getByRole("link", { name: "Your names" })).toBeFocused()
   await other.close()
 })
 
@@ -90,7 +81,7 @@ test("a name typed but not searched stays when a code is applied from the popup"
   await expect(page.locator(".result")).toBeVisible()
   const typed = uniqueLabel("typed")
   await page.getByLabel("Name", { exact: true }).fill(typed)
-  await page.getByRole("button", { name: "Check a code" }).click()
+  await page.getByRole("button", { name: "Check your code" }).click()
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
   await expect(page.locator(".verdict.ok")).toBeVisible()
   await markDrawn(page)
@@ -102,7 +93,7 @@ test("a name typed but not searched stays when a code is applied from the popup"
   await expect(page.getByLabel("Name", { exact: true })).toBeFocused()
 })
 
-test("an app link whose wallet fails its checksum does not work, and a code used there goes to a search", async ({ page, request }) => {
+test("an app link whose wallet fails its checksum does not work", async ({ page }) => {
   const label = uniqueLabel("cksum")
   await page.goto(`/#/?name=${label}&owner=${APP_WALLET}`)
   await expect(page.getByText("Opened from SimpleX.")).toBeVisible()
@@ -110,14 +101,6 @@ test("an app link whose wallet fails its checksum does not work, and a code used
   await expect(page.getByText("Opened from SimpleX.")).toBeVisible()
   await page.goto(`/#/?name=${label}&owner=${DAMAGED_WALLET}`)
   await expect(page.getByRole("heading", { name: "This link from SimpleX does not work" })).toBeVisible()
-
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.getByRole("button", { name: "Check a code" }).click()
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await expect(page.locator(".verdict.ok")).toBeVisible()
-  await page.getByRole("button", { name: "Use this code" }).click()
-  await page.waitForURL((url) => url.hash === "#/")
-  await expect(page.getByText(/^Code applied/)).toBeVisible()
 })
 
 test("Enter in Add a code adds the code and closes the popup, with focus back on Add a code", async ({ page, request }) => {
@@ -145,7 +128,7 @@ test("a restore refused for the code itself puts focus back in the code's field"
 test("removing the code from a result searches again without it, with focus in the search box", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   await page.goto("/")
-  await page.getByRole("button", { name: "Check a code" }).click()
+  await page.getByRole("button", { name: "Check your code" }).click()
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
   await expect(page.locator(".verdict.ok")).toBeVisible()
   await page.getByRole("button", { name: "Use this code" }).click()
@@ -209,18 +192,6 @@ test("an app's order refused for its method draws the checkout again in place, w
   expect(await page.evaluate(() => history.length)).toBe(entries)
 })
 
-test("a popup opened from the phone menu closes the menu first, and Escape gives focus back to the menu's toggle", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto("/")
-  await page.getByLabel("Menu").click()
-  await page.getByRole("navigation").getByRole("button", { name: "Check a code" }).click()
-  await expect(page.getByRole("dialog")).toBeVisible()
-  await expect(page.getByLabel("Menu")).toHaveAttribute("aria-expanded", "false")
-  await page.keyboard.press("Escape")
-  await expect(page.getByRole("dialog")).toHaveCount(0)
-  await expect(page.getByLabel("Menu")).toBeFocused()
-})
-
 test("a code already in Your names is said so when added again, and a well-formed unknown code is not called a typo", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   await page.goto("/#/names")
@@ -238,80 +209,7 @@ test("a code already in Your names is said so when added again, and a well-forme
     }
   }
   await page.route("**/api/code/check", (route) => route.fulfill({ status: 400, json: { error: "code_invalid" } }))
-  await page.getByRole("button", { name: "Check a code" }).click()
+  await page.getByRole("button", { name: "Add a code" }).click()
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(code)
   await expect(page.locator(".verdict.bad")).toContainText("SimpleX did not issue it, or withdrew it.")
-})
-
-async function hiddenUnderHeader(page: Page, stopAt: string, presses: number): Promise<string[]> {
-  const hidden: string[] = []
-  for (let i = 0; i < presses; i++) {
-    await page.keyboard.press("Shift+Tab")
-    const seen = await page.evaluate((stop) => {
-      const focused = document.activeElement as HTMLElement | null
-      if (!focused?.closest("main")) return { stop: false, hidden: null }
-      const header = document.querySelector("body > header.top")!.getBoundingClientRect()
-      const top = focused.getBoundingClientRect().top
-      return { stop: focused.matches(stop), hidden: top < header.bottom ? `${focused.tagName.toLowerCase()} "${(focused.textContent || focused.getAttribute("aria-label") || "").trim()}" at ${Math.round(top)}, header to ${Math.round(header.bottom)}` : null }
-    }, stopAt)
-    if (seen.hidden) hidden.push(seen.hidden)
-    if (seen.stop) break
-  }
-  return hidden
-}
-
-for (const [device, viewport] of [["desktop", { width: 1280, height: 900 }], ["phone", { width: 390, height: 844 }]] as const) {
-  test(`keyboard focus going up the home page on a ${device} never lands under the sticky header`, async ({ page }) => {
-    await page.setViewportSize(viewport)
-    await page.goto("/")
-    await search(page, "bakery")
-    await expect(page.getByRole("link", { name: "Open in SimpleX" }).first()).toBeVisible()
-    expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight), "a page long enough to scroll").toBe(true)
-    await page.evaluate(() => {
-      (document.activeElement as HTMLElement | null)?.blur()
-      window.scrollTo(0, document.documentElement.scrollHeight)
-    })
-    expect(await hiddenUnderHeader(page, 'input[aria-label="Name"]', 30)).toEqual([])
-  })
-}
-
-// Chromium scrolls the page to where a control in the sticky header would be unstuck when that control takes focus.
-// The home page scrolls further than this at both widths, whatever it lays out once resized.
-const SCROLLED_PX = 300
-test("closing a popup opened from the header, or the phone menu, leaves the page scrolled where it was", async ({ page }) => {
-  await page.goto("/")
-  await page.getByRole("heading", { name: /Own your name/ }).waitFor()
-  // a face loading later lays the page out taller above the place scrolled to, which WebKit then keeps in view
-  await page.evaluate(() => document.fonts.ready)
-  const scrolledDown = async () => {
-    await page.evaluate((y) => scrollTo(0, y), SCROLLED_PX)
-    await expect.poll(() => page.evaluate(() => scrollY), { message: "the page scrolled down" }).toBe(SCROLLED_PX)
-  }
-  // a pointer's press where the control is, as Playwright's own click first scrolls a sticky control to its unstuck place
-  const press = async (control: Locator) => {
-    const box = (await control.boundingBox())!
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-  }
-  await scrolledDown()
-  const header = page.locator("header.top")
-  for (const close of ["Escape", "Close", "backdrop"]) {
-    await press(header.getByRole("button", { name: "Check a code" }))
-    await expect(page.getByRole("dialog")).toBeVisible()
-    // a person closes it a frame or more after it is drawn; closed within that frame, WebKit moves the page once more
-    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
-    if (close === "Escape") await page.keyboard.press("Escape")
-    else if (close === "Close") await page.getByRole("dialog").getByRole("button", { name: "Close" }).click()
-    else await page.locator(".modal-overlay").click({ position: { x: 8, y: 8 } })
-    await expect(page.getByRole("dialog")).toHaveCount(0)
-    await expect(header.getByRole("button", { name: "Check a code" }), close).toBeFocused()
-    expect(await page.evaluate(() => scrollY), `closed by ${close}`).toBe(SCROLLED_PX)
-  }
-  await page.setViewportSize({ width: 390, height: 844 })
-  await scrolledDown()
-  await press(page.getByRole("button", { name: "Menu" }))
-  await expect(page.locator("header nav a").first()).toBeFocused()
-  expect(await page.evaluate(() => scrollY), "the menu opened").toBe(SCROLLED_PX)
-  await page.keyboard.press("Escape")
-  await expect(page.getByRole("button", { name: "Menu" })).toBeFocused()
-  expect(await page.evaluate(() => scrollY), "the menu closed").toBe(SCROLLED_PX)
 })

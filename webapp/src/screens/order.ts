@@ -14,7 +14,7 @@ export type OrderKind = "pay-crypto" | "pay-card" | "confirming" | "slow" | "reg
 
 type Action = "card" | "cancel" | "reorder" | "code" | "retry"
 
-export interface Note { tone: "warn" | "bad"; icon: IconName; title: string | null; text: string; link?: { text: string; href: string; after: string } }
+export interface Note { tone: "warn" | "danger"; icon: IconName; title: string | null; text: string; link?: { text: string; href: string; after: string } }
 
 interface Reveal { key: string; sending: boolean; refusals: number }
 

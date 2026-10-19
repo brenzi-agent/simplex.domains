@@ -170,7 +170,7 @@ test("a failed retarget shows one message below the result, however often it is 
     await page.getByRole("button", { name: "Register with your payment" }).click()
     await expect(page.getByText("That did not go through")).toHaveCount(1)
   }
-  await expect(page.locator(".result .alert")).toHaveCount(0)
+  await expect(page.locator(".result .notice")).toHaveCount(0)
   await shot(page, "N8a2-retarget-failed")
 })
 

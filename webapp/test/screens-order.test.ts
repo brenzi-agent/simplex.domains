@@ -185,7 +185,7 @@ describe("reduce", () => {
     expect(reduce(failed, { type: "card-retried" }).cardFailed).toBe(false)
   })
   it("card-started marks the card's confirm at work; card-refused ends it with Stripe's words as the note", () => {
-    const note: Note = { tone: "bad", icon: "alert", title: null, text: "Your card was declined." }
+    const note: Note = { tone: "danger", icon: "alert", title: null, text: "Your card was declined." }
     const confirming = reduce(STATES["pay-card"], { type: "card-started" })
     expect(confirming).toEqual({ ...STATES["pay-card"], busy: "card" })
     expect(reduce(confirming, { type: "card-refused", note })).toEqual({ ...STATES["pay-card"], note })

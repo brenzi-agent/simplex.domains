@@ -81,7 +81,7 @@ const dispatch = oneAtATime((event: CheckoutEvent) => {
   if (!isRoute(pageRoute)) return
   const heading = headingFocus(result, shown, focus.onPage())
   shown = result.screen
-  showScreen("search", result.screen, state, BUILDS[result.screen], heading, result.motion)
+  showScreen(result.screen, state, BUILDS[result.screen], heading, result.motion)
 })
 
 // a screen that holds an action for the tab's wait hears when it is over
@@ -271,7 +271,7 @@ function buildCheckout(s: CheckoutState, signal: AbortSignal): Built<CheckoutSta
 
   const rows = orderRows(rowsOf(c, blockedBy(s) !== null))
   const total = totalLine(c)
-  const onward = btn("Continue", "lg block", () => {
+  const onward = btn("Continue", "block", () => {
     const pending = [...main.querySelectorAll<HTMLElement>(".link-field")].find((f) => f.dataset.state === "bad" || f.dataset.state === "checking")
     if (pending) return pending.querySelector("input")!.focus()
     if (fromApp) void submitOrder()
@@ -365,7 +365,7 @@ function buildOwnerCode(s: CheckoutState, signal: AbortSignal): Built<CheckoutSt
   const c = s.checkout
   const box = el("input", { type: "checkbox", checked: c.saved })
   const label = c.code ? "Register" : "Continue to payment"
-  const action = btn(label, "lg block", () => void submitOrder(), icon("arrow"))
+  const action = btn(label, "block", () => void submitOrder(), icon("arrow"))
   box.addEventListener("change", () => { if (!act({ type: "saved", saved: box.checked })) redirect("/#/names") })
   const holdNote = liveRegion()
   const rows = orderRows(rowsOf(c, false))

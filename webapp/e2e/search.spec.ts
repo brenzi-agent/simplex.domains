@@ -115,46 +115,6 @@ test("without storage the page warns that the code is kept nowhere else", async 
   await context.close()
 })
 
-test("the menu opens on a phone, a tap on the dimmed page only closes it, and the trademark page answers", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto("/")
-  await page.getByLabel("Menu").click()
-  await expect(page.getByRole("link", { name: "Search" })).toBeFocused()
-  await page.keyboard.press("Tab")
-  await expect(page.getByRole("link", { name: "Your names" })).toBeFocused()
-  await page.keyboard.press("Escape")
-  await expect(page.getByRole("link", { name: "Your names" })).toBeHidden()
-  await expect(page.getByLabel("Menu")).toBeFocused()
-  await page.getByLabel("Name", { exact: true }).fill("bakery")
-  await expect(page.getByText("or Search")).toBeHidden()
-  await page.getByLabel("Menu").click()
-  await page.screenshot({ path: "screenshots/N0-phone-menu.png" })
-  // a tap on the dimmed page under the open menu only closes the menu, rather than also following the link there
-  const trademarks = page.getByRole("link", { name: "Trademark owners" })
-  await trademarks.click({ force: true })
-  await expect(page.getByRole("link", { name: "Your names" })).toBeHidden()
-  await expect(page.getByRole("heading", { name: /Own your name/ })).toBeVisible()
-  await trademarks.click()
-  await expect(page.getByRole("heading", { name: "Trademark owners" })).toBeVisible()
-  await shot(page, "T1-trademarks")
-})
-
-test("the open phone menu dims the page below the header, and only while it is open", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto("/")
-  const scrim = () => page.evaluate(() => {
-    const s = getComputedStyle(document.documentElement, "::after")
-    return { shown: s.content !== "none" && s.visibility === "visible" && Number(s.opacity) > 0, top: parseFloat(s.top), header: document.querySelector("header")!.getBoundingClientRect().bottom }
-  })
-  expect((await scrim()).shown, "the page undimmed with the menu shut").toBe(false)
-  await page.getByLabel("Menu").click()
-  await expect.poll(async () => (await scrim()).shown, { message: "the page dimmed under the open menu" }).toBe(true)
-  const { top, header } = await scrim()
-  expect(top, "where the dimming starts").toBe(header)
-  await page.keyboard.press("Escape")
-  await expect.poll(async () => (await scrim()).shown, { message: "the page undimmed once the menu shut" }).toBe(false)
-})
-
 test("without storage two expired invoices of one order do not lead to each other", async ({ browser, request }) => {
   const context = await browser.newContext()
   await context.addInitScript(() => {
@@ -195,21 +155,6 @@ test("a double click acts once, whatever the redrawn page puts under the pointer
   await page.getByRole("button", { name: "Continue" }).dblclick()
   await expect(page.getByRole("heading", { name: "Save your name code" })).toBeVisible()
   await expect(page.getByRole("checkbox", { name: "I have saved my code" })).not.toBeChecked()
-  await page.getByRole("button", { name: "Check a code" }).dblclick()
-  await expect(page.getByRole("dialog")).toBeVisible()
-})
-
-test("the phone menu closes on Escape or a click outside, wherever focus went", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto("/")
-  await page.getByLabel("Menu").click()
-  for (let i = 0; i < 7; i++) await page.keyboard.press("Tab")
-  await page.keyboard.press("Escape")
-  await expect(page.getByRole("link", { name: "Your names" })).toBeHidden()
-  await page.getByLabel("Menu").click()
-  // the press lands on the dimmed page over the search box
-  await page.locator(".search").click({ force: true })
-  await expect(page.getByRole("link", { name: "Your names" })).toBeHidden()
 })
 
 test("restore waits out a rate limit on finding a code's orders", async ({ page, request }) => {
@@ -222,7 +167,7 @@ test("restore waits out a rate limit on finding a code's orders", async ({ page,
   await expect(page.getByRole("button", { name: "Restore" })).toBeDisabled()
   // a screen reader hears the wait once, from a still copy; the countdown itself is hidden from it
   await expect(page.locator(".sr-only", { hasText: "Your code is fine. Try again in 3 seconds." })).toHaveCount(1)
-  await expect(page.locator(".alert span[aria-hidden=true]")).toBeVisible()
+  await expect(page.locator(".notice span[aria-hidden=true]")).toBeVisible()
   // typing meanwhile does not shorten the wait
   await page.getByLabel("Name code").press("End")
   await page.getByLabel("Name code").press("Space")
@@ -324,7 +269,7 @@ test("a search pause reads the same after leaving the page and coming back", asy
   await control(request, "search", { limitSeconds: 30 })
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("pauseback"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
-  const notice = page.locator(".under-search .alert")
+  const notice = page.locator(".under-search .notice")
   await expect(notice).toContainText("Too many requests were sent from here. Searching is paused until then.")
   const before = (await notice.innerText()).replace(/Try again in \d+ seconds?/, "")
   await page.getByRole("link", { name: "Your names" }).first().click()

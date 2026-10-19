@@ -190,7 +190,7 @@ test("an edit page that cannot read its name retries in place, and stops retryin
   await page.route(`**/api/registration/${registrationId}*`, (route) => { reads += 1; return route.fulfill({ status: 503, json: { error: "unavailable" } }) })
   await page.goto(`/#/edit/${registrationId}`)
   await expect(page.getByText("The name could not be read now")).toBeVisible()
-  const kept = ["h1", ".alert", ".btn"]
+  const kept = ["h1", ".notice", ".btn"]
   await markNodes(page, kept)
   await takeTransitions(page)
   await takeCuts(page)

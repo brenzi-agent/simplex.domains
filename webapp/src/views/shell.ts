@@ -1,26 +1,22 @@
-// The page's frame: header, footer, popups, and navigation between views.
-import { el, icon, navLink } from "../dom.ts"
+// The page's frame: theme switch, popups, and navigation between views; index.html draws the header and footer.
+import { el, icon } from "../dom.ts"
 import * as focus from "../focus.ts"
 import { dropWaitingPage, EASE, fadeIn, finishMotion, type Leave, live, moving, overlayIn, overlayOut, swapPage, syncList, TRANSIENT, transition, transitions, transitionsIdle } from "../motion.ts"
-import { methodMark } from "../icons.ts"
 import { CROSS_MS } from "../motion-values.ts"
 import type { Motion, PageMotion } from "../screens/machine.ts"
 import { routes, type View } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 
-export const BADGES_URL = "https://badges.simplex.chat"
 export const WEFUNDER_URL = "https://wefunder.com/simplex.chat?utm_source=domains"
 export const CONTACT_EMAIL = "chat@simplex.chat"
 export const INVEST_AMOUNT = "$500"
 export const INVEST_LINE = `Invest ${INVEST_AMOUNT}+ in SimpleX Chat and get a free SimpleX name.`
 
 let rerender: () => void = () => undefined
-let openCodePopup: () => void = () => undefined
 
-export function setRenderer(render: () => void, codePopup: () => void): void {
+export function setRenderer(render: () => void): void {
   rerender = render
-  openCodePopup = codePopup
 }
 
 let route = 0
@@ -121,9 +117,9 @@ export interface Built<S> { sections: Node[]; update: (state: S) => void }
 export type Build<S> = (state: S, signal: AbortSignal) => Built<S>
 let shownStop: AbortController | null = null
 
-export function screens<S>(): (active: Active, kind: string, state: S, build: Build<S>, toHeading?: boolean | null, motion?: Motion) => void {
+export function screens<S>(): (kind: string, state: S, build: Build<S>, toHeading?: boolean | null, motion?: Motion) => void {
   let shown: { kind: string; update: (state: S) => void; stop: AbortController } | null = null
-  return (active, kind, state, build, toHeading = null, motion = "screen") => {
+  return (kind, state, build, toHeading = null, motion = "screen") => {
     if (shown !== null && shown.stop === shownStop && shown.kind === kind && isRedraw() && document.querySelector(SHOWN_PAGE) !== null) {
       shown.update(state)
       return void transitionsIdle().then(nameTab)
@@ -133,13 +129,8 @@ export function screens<S>(): (active: Active, kind: string, state: S, build: Bu
     const built = build(state, stop.signal)
     shown = { kind, update: built.update, stop }
     shownStop = stop
-    page(active, built.sections, toHeading, motion === "in-place" ? "screen" : motion)
+    page(built.sections, toHeading, motion === "in-place" ? "screen" : motion)
   }
-}
-
-// the logo is drawn by CSS for the theme, and index.html draws the same before the script
-function brand(): HTMLAnchorElement {
-  return el("a", { class: "brand", href: "/#/", "aria-label": "SimpleX" }, el("span", { class: "logo" }))
 }
 
 export function isDark(): boolean {
@@ -149,132 +140,15 @@ export function isDark(): boolean {
 // The browser's own bars, as a phone's or an installed app's, in the page's background for the theme on screen, which
 // the reader may have chosen over the one their system prefers.
 function paintBars(): void {
-  const ground = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim()
+  const ground = getComputedStyle(document.documentElement).getPropertyValue("--page-color").trim()
   for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) meta.content = ground
 }
 
-// outlasts the colours' .3s easing in styles.css, which taking the class away would cut short
-const THEME_EASE_MS = 400
-
 function toggleTheme(): void {
-  const root = document.documentElement
-  const apply = () => {
-    const dark = !isDark()
-    store.setTheme(dark ? "dark" : "light")
-    root.classList.toggle("dark", dark)
-    paintBars()
-    turnIn(dark ? ".when-dark svg" : ".when-light svg")
-  }
-  if (!moving()) return apply()
-  // the page cross-fades to the other theme where the browser's view transitions run; elsewhere its colours ease
-  if (transitions()) return transition("theme", apply, () => {
-    const shown = document.querySelector<HTMLElement>(SHOWN_PAGE)
-    if (shown) finishMotion(shown)
-  })
-  root.classList.add("theme-easing")
-  apply()
-  clearTimeout(themeEased)
-  themeEased = setTimeout(() => {
-    root.classList.remove("theme-easing")
-    paintBars()
-  }, THEME_EASE_MS)
-}
-let themeEased: ReturnType<typeof setTimeout> | undefined
-
-// both icons are drawn and CSS shows the one for the current theme, so a theme switch needs no redraw
-function themeIcons(): HTMLElement[] {
-  return [el("span", { class: "when-light" }, icon("moon")), el("span", { class: "when-dark" }, icon("sun"))]
-}
-
-type Active = "search" | "names" | null
-
-function header(): HTMLElement {
-  const nav = (text: string, key: string, href: string) => {
-    const link = navLink(text, href)
-    link.dataset.nav = key
-    return link
-  }
-  // The menu closes first so the popup's opener is the toggle.
-  const menu = el("nav", {},
-    nav("Search", "search", "/#/"), nav("Your names", "names", "/#/names"),
-    el("a", { href: BADGES_URL, target: "_blank", rel: "noopener" }, "SimpleX badges"),
-    el("a", { class: "nav-code", href: "#", role: "button", onclick: (e: Event) => { e.preventDefault(); closeMenu(true); openCodePopup() } }, icon("key"), "Check a code"))
-  const top = el("header", { class: "top" }, el("div", { class: "wrap" },
-    brand(),
-    menu,
-    el("span", { class: "grow" }),
-    el("a", { class: "ghost-btn", href: "#", role: "button", onclick: (e: Event) => { e.preventDefault(); openCodePopup() } }, icon("key"), "Check a code"),
-    el("a", { class: "icon-btn", href: "#", role: "button", "aria-label": "Switch light or dark theme", onclick: (e: Event) => { e.preventDefault(); toggleTheme() } }, themeIcons()),
-    el("a", { class: "icon-btn menu-btn", href: "#", role: "button", "aria-label": "Menu", "aria-expanded": "false", onclick: (e: Event) => {
-      e.preventDefault()
-      if (top.classList.contains("menu-open")) return closeMenu(false)
-      top.classList.remove("menu-closing")
-      top.classList.add("menu-open")
-      ;(e.currentTarget as HTMLElement).setAttribute("aria-expanded", "true")
-      fadeMenu(top, true)
-      // The menu's links come before this button, so Tab alone would pass them by. Chromium scrolls the page to where a
-      // sticky header's control would be unstuck, so focus inside the header never scrolls.
-      menu.querySelector("a")!.focus({ preventScroll: true })
-    } },
-      el("span", { class: "when-closed" }, icon("menu")), el("span", { class: "when-open" }, icon("x")))))
-  return top
-}
-
-const MENU_MS = 180
-// the width to which the header's links are in the menu, as in styles.css
-const PHONE_MENU = matchMedia("(max-width: 780px)")
-
-const MENU_SHUT = "inset(0 0 100% 0)"
-const MENU_WHOLE = "inset(0 0 -48px 0)"
-function fadeMenu(top: HTMLElement, open: boolean): void {
-  if (!moving() || !PHONE_MENU.matches) return
-  const nav = top.querySelector<HTMLElement>("nav")!
-  const rolling = nav.getAnimations().find((a) => a.playState === "running")
-  if (rolling) rolling.reverse()
-  else {
-    nav.getAnimations().forEach((a) => a.cancel())
-    nav.animate({ clipPath: open ? [MENU_SHUT, MENU_WHOLE] : [MENU_WHOLE, MENU_SHUT] }, { duration: MENU_MS, easing: EASE, fill: "both" })
-  }
-  const roll = nav.getAnimations()[0]
-  roll.onfinish = () => {
-    if (!top.classList.contains("menu-open")) top.classList.remove("menu-closing")
-    roll.cancel()
-  }
-  turnIn(open ? ".menu-btn .when-open svg" : ".menu-btn .when-closed svg")
-}
-
-// a toggle's icon for its new state turns in
-function turnIn(selector: string): void {
-  if (moving()) document.querySelector(`.top ${selector}`)?.animate({ opacity: [0, 1], rotate: ["-90deg", "0deg"] }, { duration: MENU_MS, easing: EASE })
-}
-
-// The open phone menu closes on Escape or a click outside it, wherever focus has gone meanwhile.
-function closeMenu(refocus: boolean): void {
-  const top = document.querySelector<HTMLElement>(".top.menu-open")
-  if (!top) return
-  const toggle = top.querySelector<HTMLElement>(".menu-btn")!
-  top.classList.remove("menu-open")
-  toggle.setAttribute("aria-expanded", "false")
-  if (refocus) toggle.focus({ preventScroll: true })
-  if (moving() && PHONE_MENU.matches) top.classList.add("menu-closing")
-  fadeMenu(top, false)
-}
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !document.querySelector(OVERLAY)) closeMenu(true) })
-document.addEventListener("click", (e) => {
-  const top = document.querySelector(".top.menu-open")
-  const target = e.target as Element
-  if (top && !top.contains(target) && !target.closest(".modal-overlay")) closeMenu(false)
-})
-
-function footer(): HTMLElement {
-  return el("footer", { class: "foot" }, el("div", { class: "wrap" },
-    brand(),
-    el("div", { class: "links" },
-      el("a", { href: WEFUNDER_URL, target: "_blank", rel: "noopener" }, "Wefunder"),
-      el("a", { href: "/#/trademarks" }, "Trademark owners"),
-      el("a", { href: `mailto:${CONTACT_EMAIL}` }, "Contact")),
-    el("span", { class: "grow" }),
-    el("div", { class: "pays" }, "We accept", ...(["card", "btc", "xmr"] as const).map((m) => methodMark(m)))))
+  const dark = !isDark()
+  store.setTheme(dark ? "dark" : "light")
+  document.documentElement.classList.toggle("dark", dark)
+  paintBars()
 }
 
 export const OFFLINE_NOTE = "You are offline. Searches, payments and order updates need the connection."
@@ -305,21 +179,14 @@ document.addEventListener("visibilitychange", showConnection)
 
 const SHOWN_PAGE = "body > main:not(.pending)"
 
-// The header and footer are drawn once and stay; index.html draws the header's bar and logo before the script runs.
-function frame(): { top: HTMLElement; main: HTMLElement | null } {
-  const top = document.querySelector<HTMLElement>("body > header.top")
-  const main = document.querySelector<HTMLElement>(SHOWN_PAGE)
-  if (top?.dataset.drawn) return { top, main }
-  const drawn = header()
-  drawn.dataset.drawn = "1"
-  if (top) top.replaceWith(drawn)
-  else document.body.prepend(drawn)
-  const foot = footer()
-  document.body.append(foot)
+// index.html draws the header and footer; the script wires the theme switch once
+function frame(): HTMLElement {
+  const main = document.querySelector<HTMLElement>(SHOWN_PAGE)!
+  if (document.body.dataset.framed) return main
+  document.body.dataset.framed = "1"
+  document.querySelector(".theme-switch")!.addEventListener("click", toggleTheme)
   paintBars()
-  // what the static bar did not have eases in
-  for (const node of [...drawn.querySelectorAll(".wrap > :not(.brand)"), foot]) fadeIn(node)
-  return { top: drawn, main }
+  return main
 }
 
 let waitingPage: { main: HTMLElement; scrollTo: number | null } | null = null
@@ -331,7 +198,7 @@ function nameTab(): void {
   document.title = heading ? `${heading} · ${SITE_TITLE}` : SITE_TITLE
 }
 
-export function page(active: Active, sections: Node[], toHeading: boolean | null = null, motion: PageMotion = "screen"): void {
+export function page(sections: Node[], toHeading: boolean | null = null, motion: PageMotion = "screen"): void {
   dropWaitingPage()
   if (waitingPage) {
     waitingPage.main.remove()
@@ -345,15 +212,14 @@ export function page(active: Active, sections: Node[], toHeading: boolean | null
   const samePage = isRedraw()
   const keepFocus = samePage && toHeading === null
   if (keepFocus) focus.keep(document.activeElement)
-  const { top, main: old } = frame()
+  const old = frame()
   showConnection()
-  if (!samePage) closeMenu(false)
-  const main = el("main", { class: "page" }, ...sections)
-  const first = !old?.childElementCount
-  const filled = old?.querySelector("[data-placeholder]") != null
-  const arrived = old?.querySelector('[data-placeholder=""]') != null
+  const main = el("main", {}, ...sections)
+  const first = !old.childElementCount
+  const filled = old.querySelector("[data-placeholder]") != null
+  const arrived = old.querySelector('[data-placeholder=""]') != null
   // Firefox draws a part without the fade of what it is in, so a placeholder not yet fully faded in gives way as a first page does.
-  const unseen = filled && [...old!.querySelectorAll("[data-placeholder]")].some((n) => n.getAnimations().some((a) => a.playState !== "finished"))
+  const unseen = filled && [...old.querySelectorAll("[data-placeholder]")].some((n) => n.getAnimations().some((a) => a.playState !== "finished"))
   const change = samePage ? (filled ? "fill" : motion) : popped ?? (drawnView ? routes[drawnView][routeView] : motion)
   const placeholding = main.querySelector("[data-placeholder]") !== null
   const scrollTo = placeholding && scrollTarget !== null ? 0 : scrollTarget
@@ -363,7 +229,6 @@ export function page(active: Active, sections: Node[], toHeading: boolean | null
   drawnView = routeView
   const swap = (leave: Leave) => {
     waitingPage = null
-    for (const link of top.querySelectorAll<HTMLElement>("nav a[data-nav]")) link.classList.toggle("on", link.dataset.nav === active)
     if (keepFocus) focus.keep(document.activeElement)
     swapPage(old, main, scrollTo, leave)
     if (document.querySelector(OVERLAY)) {
@@ -382,14 +247,14 @@ export function page(active: Active, sections: Node[], toHeading: boolean | null
   // the new page is laid out at once, for the code drawing it to measure, and shown when it takes the old one's place
   main.classList.add("pending")
   main.inert = true
-  ;(old ?? top).after(main)
+  old.after(main)
   // A browser skips a view transition asked for before its first paint, so the first page fades in on its own.
   if (first || unseen) {
     swap("at-once")
     return fadeIn(main)
   }
   waitingPage = { main, scrollTo }
-  transition(change, () => swap(transitions() ? "at-once" : change), () => finishMotion(old!), scrollTo)
+  transition(change, () => swap(transitions() ? "at-once" : change), () => finishMotion(old), scrollTo)
 }
 
 // Escape closes the popup, and Tab cycles within it
@@ -433,7 +298,7 @@ export function popup(content: HTMLElement): void {
   document.body.append(overlay)
   document.documentElement.classList.add("modal-open")
   content.setAttribute("aria-modal", "true")
-  behindPopup = [...document.querySelectorAll<HTMLElement>("body > header.top, body > main:not(.pending), body > footer")].filter((n) => !n.inert)
+  behindPopup = [...document.querySelectorAll<HTMLElement>("body > header.topbar, body > main:not(.pending), body > footer")].filter((n) => !n.inert)
   for (const node of behindPopup) node.inert = true
   if (moving()) {
     overlayIn(overlay, [...content.children], from)
@@ -522,9 +387,9 @@ function lookOf(kept: Element, next: Element): void {
 }
 
 const PLACEHOLDER_AFTER_MS = 500
-export function placeholderSoon(active: Active): void {
+export function placeholderSoon(): void {
   const mine = route
-  const draw = (delayed: boolean) => { if (route === mine && drawnRoute !== mine) page(active, placeholder(delayed)) }
+  const draw = (delayed: boolean) => { if (route === mine && drawnRoute !== mine) page(placeholder(delayed)) }
   const shown = document.querySelector<HTMLElement>(SHOWN_PAGE)
   if (!shown?.childElementCount) return draw(true)
   shown.inert = true

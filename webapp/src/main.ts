@@ -2,7 +2,6 @@
 import "./styles.css"
 import { EDIT_PATH, viewOf } from "./screens/routes.ts"
 import { checkoutPage, ownerCodePage } from "./views/checkout.ts"
-import { codePopup } from "./views/codes.ts"
 import { editPage, historyPage, restorePage, trademarksPage } from "./views/names.ts"
 import { orderPage } from "./views/order.ts"
 import { searchPage } from "./views/search.ts"
@@ -25,7 +24,7 @@ function render(): void {
   }
 }
 
-setRenderer(render, () => codePopup("check"))
+setRenderer(render)
 window.addEventListener("popstate", (e) => {
   historyMoved(e)
   render()

@@ -64,7 +64,7 @@ test("a Bitcoin order pays in two parts, registers on chain with its links, and 
   await page.getByRole("button", { name: "Save links" }).click()
   await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
   // Save stays off with nothing left to save, so focus goes to the answer below it, which stays in view
-  const saved = page.locator(".alert", { hasText: "Links saved" })
+  const saved = page.locator(".notice", { hasText: "Links saved" })
   await expect(saved).toBeFocused()
   await expect(saved).toBeInViewport()
   await shot(page, "N12b-edit-links")

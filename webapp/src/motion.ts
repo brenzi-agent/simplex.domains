@@ -449,11 +449,10 @@ export function live<T extends HTMLElement>(node: T): T {
 const VIEW_TRANSITIONS = viewTransitionsUsable(FIREFOX_FIXED)
 export const transitions = () => moving() && VIEW_TRANSITIONS
 
-export type Change = "forward" | "back" | "screen" | "fill" | "theme"
+export type Change = "forward" | "back" | "screen" | "fill"
 
 let running: ViewTransition | null = null
 let waiting: (() => void) | null = null
-let waitingChange: Change | null = null
 
 export const TRANSIENT = "transientName"
 function unname(): void {
@@ -466,10 +465,9 @@ function unname(): void {
 }
 
 export function dropWaitingPage(): void {
-  queue = queue.filter((q) => q.change === "theme")
-  if (!waiting || waitingChange === "theme") return
+  queue = []
+  if (!waiting) return
   waiting = null
-  waitingChange = null
   running?.skipTransition()
 }
 
@@ -486,7 +484,7 @@ let queue: Queued[] = []
 // A change that scrolls the window pictures the old page and foot apart from the new ones, so neither pair slides by
 // the scroll; the transition's type says whether the order's card and name are still paired.
 const SCROLL_TYPES: Record<Exclude<Pairing, "all">, string> = { card: "near", none: "far" }
-const APART: [string, string][] = [["body > main:not(.pending)", "page-old"], ["body > footer.foot", "page-foot-old"]]
+const APART: [string, string][] = [["body > main:not(.pending)", "page-old"], ["body > footer.footer", "page-foot-old"]]
 
 function nameApart(node: HTMLElement, name: string): HTMLElement {
   Object.assign(node.style, { viewTransitionName: name, viewTransitionClass: "page-part" })
@@ -525,11 +523,9 @@ function begin({ change, update, prepare, scrollTo }: Queued): void {
     apart.forEach(unnameApart)
     if (waiting !== run) return
     waiting = null
-    waitingChange = null
     update()
   }
   waiting = run
-  waitingChange = change
   const started = document.startViewTransition({ update: run, types: pairing === "all" ? [change] : [change, SCROLL_TYPES[pairing]] })
   running = started
   // a transition cut short by a newer one rejects ready; the change itself is made either way
@@ -564,7 +560,7 @@ const unseen = (a: Animation) => a.pending || Number(a.effect?.getComputedTiming
 const loops = (root: Element) => root.getAnimations({ subtree: true })
   .filter((a): a is CSSAnimation => a instanceof CSSAnimation && a.effect?.getTiming().iterations === Infinity)
 
-export type Leave = "at-once" | Exclude<Change, "theme">
+export type Leave = "at-once" | Change
 const CARD_NAME = ".summary .order-name"
 const CARD_STAYS = "card-stays"
 export function swapPage(old: HTMLElement | null, main: HTMLElement, scrollTo: number | null, leave: Leave): void {
