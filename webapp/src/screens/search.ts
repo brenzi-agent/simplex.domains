@@ -2,7 +2,7 @@ import type { SearchAnswer } from "../api.ts"
 import { foldLabel, type LabelProblem, labelProblem } from "../names.ts"
 import type { AppliedCode } from "../session.ts"
 import type { OrderRecord } from "../store.ts"
-import { type Hold, type Machine, NO_LEAD } from "./machine.ts"
+import { type Hold, NO_LEAD } from "./hold.ts"
 
 export type Opening = "fromApp" | "retarget" | "plain" | "bad-app-link"
 export type SearchKind = `search:${Exclude<Opening, "bad-app-link">}` | "status:bad-app-link"
@@ -117,12 +117,3 @@ export function reduce(s: SearchState, e: SearchEvent): SearchState {
 export function screenOf(s: SearchState): SearchKind {
   return s.opening === "bad-app-link" ? "status:bad-app-link" : `search:${s.opening}`
 }
-
-export const moves: Machine<SearchState, SearchEvent, SearchKind>["moves"] = {
-  "search:plain": {},
-  "search:fromApp": {},
-  "search:retarget": {},
-  "status:bad-app-link": {},
-}
-
-export const searchMachine: Machine<SearchState, SearchEvent, SearchKind> = { name: "search", reduce, screenOf, moves }

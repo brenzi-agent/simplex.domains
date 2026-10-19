@@ -3,12 +3,10 @@ import * as api from "../api.ts"
 import { codeProgress, parseNameCode } from "../crypto/code.ts"
 import { seconds } from "../format.ts"
 import { btn, disabled, el, icon, liveRegion } from "../dom.ts"
-import { moving, transitionsIdle } from "../motion.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { shownSearch } from "./search.ts"
 import { closePopup, go, popup, refresh } from "./shell.ts"
-import { changeTo } from "./slots.ts"
 
 export type CodeVerdict =
   | { ok: true; code: session.AppliedCode; line: string }
@@ -108,12 +106,11 @@ export function codePopup(mode: "check" | "add" = "check"): void {
     closePopup()
     // A code applied on the search page is said under its search box, which may be far above a phone's screen, as when the
     // popup was opened from the investors' tile: the box comes into view, if it is not, with focus, once the page is drawn.
-    if (!location.hash.startsWith("#/checkout")) void transitionsIdle().then(() => {
-      const input = document.querySelector<HTMLInputElement>("body > main:not(.pending) .search input")
-      if (!input) return
-      input.closest(".search")!.scrollIntoView({ block: "nearest", behavior: moving() ? "smooth" : "auto" })
-      input.focus({ preventScroll: true })
-    })
+    if (location.hash.startsWith("#/checkout")) return
+    const input = document.querySelector<HTMLInputElement>("body > main .search input")
+    if (!input) return
+    input.closest(".search")!.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    input.focus({ preventScroll: true })
   }))
   const restore = el("a", { href: "/#/restore", class: "restore-link", onclick: () => closePopup() }, "Restore in Your names")
   // the last verdict belongs to the last text: nothing is applied until this one is judged
@@ -124,14 +121,14 @@ export function codePopup(mode: "check" | "add" = "check"): void {
   watchCode(input, (judged) => {
     if (!judged) {
       box.className = "input code-input"
-      return changeTo(verdict)
+      return verdict.replaceChildren()
     }
     // a code already listed is said so, rather than offered for adding again
     const listed = mode === "add" && judged.ok && store.codes().some((c) => c.code === judged.code.display)
     const v: CodeVerdict = listed ? { ok: false, title: "Already in your codes", line: "It is listed under Codes in Your names." } : judged
     current = v
     box.className = `input code-input ${v.ok ? "ok" : "bad"}`
-    changeTo(verdict, verdictNode(v), !v.ok && v.title === "This is a name code" ? restore : "")
+    verdict.replaceChildren(verdictNode(v), !v.ok && v.title === "This is a name code" ? restore : "")
     if (v.ok) action.removeAttribute("disabled")
   })
   input.addEventListener("keydown", (e) => {

@@ -1,7 +1,7 @@
 import { holdsPayment, type CodeState, type InvoiceView, type Links, type Phase, type RegistrationView, type SearchAnswer } from "../api.ts"
 import { dateOf } from "../format.ts"
 import { type CodeRecord, type OrderRecord, orderUrl, type PendingCode } from "../store.ts"
-import { type Hold, type Machine, NO_LEAD } from "./machine.ts"
+import { type Hold, NO_LEAD } from "./hold.ts"
 
 export interface RowSeen { view: RegistrationView; invoice: InvoiceView | null; answer?: SearchAnswer | null; linksSavedAt?: string }
 export type CodeCheck = CodeState | "unchecked"
@@ -32,8 +32,6 @@ export type ListEvent =
   | { type: "forget-asked" }
   | { type: "forget-kept" }
   | { type: "forget-confirmed" }
-
-export type ListKind = "names"
 
 const keep = <T>(map: Record<string, T>, keys: string[]): Record<string, T> => Object.fromEntries(keys.filter((k) => k in map).map((k) => [k, map[k]]))
 const idsOf = (s: Stored) => s.orders.map((o) => o.registrationId)
@@ -83,8 +81,6 @@ export function reduceList(s: ListState, e: ListEvent): ListState {
     case "forget-confirmed": return { ...s, orders: [], pending: [], codes: [], seen: {}, unread: [], checked: {}, finding: {}, asking: false }
   }
 }
-
-export const listMachine: Machine<ListState, ListEvent, ListKind> = { name: "names", reduce: reduceList, screenOf: () => "names", moves: { names: {} } }
 
 export const moneyReached = (invoice: InvoiceView | null) => invoice !== null && (invoice.status === "paid" || holdsPayment(invoice))
 
@@ -152,7 +148,6 @@ export function editable(answer: SearchAnswer, owner: string): boolean {
   return answer.owner.toLowerCase() === owner.toLowerCase() && answer.records !== null
 }
 
-export type RestoreKind = "restore"
 type RefusalKind = "invalid" | "prepaid" | "none" | "unasked" | "other"
 export interface Refusal { verdict: boolean; title: string; text: string; again: boolean }
 export const REFUSALS: Record<RefusalKind, Refusal> = {
@@ -178,8 +173,6 @@ export function reduceRestore(s: RestoreState, e: RestoreEvent): RestoreState {
     case "hold-ended": return { ...s, hold: null }
   }
 }
-
-export const restoreMachine: Machine<RestoreState, RestoreEvent, RestoreKind> = { name: "restore", reduce: reduceRestore, screenOf: () => "restore", moves: { restore: {} } }
 
 export const EDIT_RETRY_MS = 5000
 export type EditKind = "edit" | "edit-unreadable" | "edit-no-code" | "edit-expired" | "edit-in-app" | "edit-elsewhere" | "edit-not-registered"
@@ -315,16 +308,3 @@ export function reduceEdit(s: EditState, e: EditEvent): EditState {
     }
   }
 }
-
-const to = (...kinds: EditKind[]): Partial<Record<EditKind, "screen">> => Object.fromEntries(kinds.map((k) => [k, "screen"]))
-export const editMoves: Machine<EditState, EditEvent, EditKind>["moves"] = {
-  "edit-no-code": {},
-  "edit-unreadable": to("edit", "edit-expired", "edit-in-app", "edit-elsewhere", "edit-not-registered"),
-  "edit-not-registered": to("edit", "edit-expired", "edit-in-app", "edit-elsewhere"),
-  edit: to("edit-expired", "edit-in-app", "edit-elsewhere"),
-  "edit-elsewhere": to("edit", "edit-expired", "edit-in-app"),
-  "edit-in-app": to("edit-expired"),
-  "edit-expired": {},
-}
-
-export const editMachine: Machine<EditState, EditEvent, EditKind> = { name: "edit", reduce: reduceEdit, screenOf: screenOfEdit, moves: editMoves }

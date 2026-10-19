@@ -1,41 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { after, every, oneAtATime } from "../src/views/effects.ts"
+import { after, every } from "../src/views/effects.ts"
 
 beforeEach(() => {
   vi.useFakeTimers()
 })
 afterEach(() => {
   vi.useRealTimers()
-})
-
-describe("oneAtATime", () => {
-  it("takes an event met while drawing after the drawing, in the order met", () => {
-    const taken: string[] = []
-    const dispatch = oneAtATime((e: string) => {
-      taken.push(`start ${e}`)
-      if (e === "first") {
-        dispatch("second")
-        dispatch("third")
-      }
-      taken.push(`end ${e}`)
-    })
-    dispatch("first")
-    expect(taken).toEqual(["start first", "end first", "start second", "end second", "start third", "end third"])
-  })
-  it("still takes the events queued behind a drawing that throws, and lets the error through", () => {
-    const taken: string[] = []
-    const dispatch = oneAtATime((e: string) => {
-      if (e === "bad") {
-        dispatch("after")
-        throw new Error("draw failed")
-      }
-      taken.push(e)
-    })
-    expect(() => dispatch("bad")).toThrow("draw failed")
-    expect(taken).toEqual(["after"])
-    dispatch("later")
-    expect(taken).toEqual(["after", "later"])
-  })
 })
 
 describe("every", () => {

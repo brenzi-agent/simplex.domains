@@ -1,5 +1,6 @@
 import { ApiError, LIMITED_WAIT_S, serviceNow } from "../api.ts"
-import { type Hold, NO_LEAD } from "../screens/machine.ts"
+import { alertBox, el, waitOut } from "../dom.ts"
+import { type Hold, NO_LEAD } from "../screens/hold.ts"
 import { after } from "./effects.ts"
 
 // The tab's wait after a rate limit outlives the page that met it, so a redraw or Back draws its action held again.
@@ -33,4 +34,13 @@ export function holdEnder(signal: AbortSignal, ended: () => void): (held: boolea
       stop = null
     } else if (!stop) wait()
   }
+}
+
+export const secondsLeft = (hold: Hold) => Math.ceil((hold.until - serviceNow()) / 1000)
+
+export function holdNotice(hold: Hold): HTMLElement {
+  const line = el("span", {})
+  const notice = el("div", { class: "left mt-14" }, alertBox("warn", "clock", "Too many attempts", line))
+  waitOut(line, secondsLeft(hold), (left) => `${hold.lead}Try again in ${left}.`, () => undefined)
+  return notice
 }

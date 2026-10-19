@@ -163,6 +163,12 @@ body > main { flex: 1 0 auto; }
 .chip.bad { background: var(--danger-bg); color: var(--danger-fg); }
 
 .wrap { max-width: 1120px; margin: 0 auto; padding: 0 32px; }
+/* inner pages: one centred column with Back above the heading (badges screens.ts:35-43) */
+.screen { width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: 12px 16px 48px; display: flex; flex-direction: column; gap: 22px; }
+.back { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-small); align-self: flex-start; }
+.outcome { text-align: center; }
+.outcome .btn { align-self: center; }
+.outcome .actions { justify-content: center; }
 /* a popup keeps the page behind it still */
 html.modal-open { overflow: hidden; }
 
@@ -222,7 +228,7 @@ html.dark .tile.invest { --invest-from: #0A2F8F; --invest-to: #4A2FB8; }
 .tile.invest { text-align: center; align-items: center; }
 .tile.invest p { color: rgba(255, 255, 255, .84); }
 .tile.invest .links { display: grid; gap: 10px; margin-top: auto; padding-top: 8px; width: min(100%, 260px); }
-.wefunder-btn, .check-code-btn { display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 999px; font-size: 14.5px; font-weight: 700; white-space: nowrap; transition: var(--moves); }
+.wefunder-btn, .check-code-btn { display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 999px; font-size: 14.5px; font-weight: 700; white-space: nowrap; }
 .tile.invest .wefunder-btn { background: #fff; color: #0B1733; }
 .tile.invest .check-code-btn { color: #fff; border: 1.5px solid rgba(255, 255, 255, .45); }
 .wefunder-btn .wefunder { height: 19px; width: auto; color: #0053D0; translate: 0 -1px; }
@@ -242,41 +248,17 @@ html.dark .tile.invest { --invest-from: #0A2F8F; --invest-to: #4A2FB8; }
 html:not(.dark) .scene .nm.grad { background: none; color: var(--primary); }
 .scene .opens { flex: 1; min-width: 56px; display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--ink-soft); font-size: 12.5px; font-weight: 700; }
 .scene .line { align-self: stretch; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--chip-line), var(--primary)); transform-origin: left; }
-.scene .line, .scene .word, .scene .contact, .scene .typed .nm { transition: scale var(--axis-ms) var(--emphasized), opacity var(--axis-ms) var(--ease), translate var(--axis-ms) var(--emphasized); }
 .scene[data-step="empty"] .line { scale: 0 1; opacity: 0; }
 .scene[data-step="empty"] .word, .scene[data-step="empty"] .contact, .scene[data-step="opens"] .contact { opacity: 0; }
 .scene[data-step="empty"] .contact, .scene[data-step="opens"] .contact { translate: 0 8px; }
 .scene[data-step="out"] .typed .nm, .scene[data-step="out"] .line, .scene[data-step="out"] .word, .scene[data-step="out"] .contact { opacity: 0; }
-.scene .typed.typing .nm::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -.12em; background: var(--primary); animation: caret 1s steps(1) infinite; }
-@keyframes caret { 50% { opacity: 0; } }
 .scene .contact { display: flex; align-items: center; gap: 12px; padding: 12px 18px 12px 12px; border-radius: 18px; background: var(--surface); border: 1px solid var(--surface-line); min-width: 0; }
 .scene .avatar { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; color: #fff; font-weight: 800; flex: none; }
 .scene .who b { display: block; font-size: 15px; }
 .scene .who span { color: var(--ink-soft); font-size: 13px; font-weight: 600; }
 .scene .who .mono { font-size: 12.5px; font-weight: 500; letter-spacing: -.01em; }
 
-/* inner pages: a left-aligned title with a stepper */
-.page-head { padding: 44px 0 26px; }
-.crumbs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.crumb { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; font-weight: 700; font-size: 13px; color: var(--ink-soft); border: 1px solid var(--surface-line); background: var(--surface); }
-.crumb i { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; font-style: normal; font-size: 11.5px; background: var(--chip); color: var(--ink-soft); }
-.crumb.done i { background: var(--ok-bg); color: var(--ok-fg); }
-.crumb i > .outgoing { inset: 0; display: grid; place-items: center; }
-.crumb.on { color: var(--ink); }
-a.crumb[href] { color: var(--ink-soft); }
-a.crumb, a.crumb:hover { text-decoration: none; }
-a.crumb[href]:hover { color: var(--ink); border-color: var(--surface-line); background: var(--chip); }
-a.crumb:not([href], .on) { cursor: not-allowed; }
-/* the current step's ring is a part of its own, which goes over to the next step as the order moves on */
-.crumb-ring { position: absolute; inset: -1px; border-radius: inherit; border: 1px solid var(--chip-line); box-shadow: 0 0 0 4px var(--chip); pointer-events: none; view-transition-name: step-ring; view-transition-class: page-part box; }
-.crumb.on i { background: var(--primary); color: var(--primary-ink); }
-.crumb-sep { position: relative; width: 18px; height: 1px; background: var(--surface-line); }
-.crumb-line { position: absolute; inset: 0; background: var(--ok-fg); }
-.page-head h1 { font-size: 52px; margin-top: 22px; }
-.page-head .lead { margin-top: 10px; }
 
-/* the main column shrinks below its content's width, so a wide link preview cannot push the order card off the page */
-.cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
 .panel { background: var(--surface); border: 1px solid var(--surface-line); border-radius: 24px; }
 .panel-sec { padding: 26px 28px; }
 .panel-sec + .panel-sec { border-top: 1px solid var(--surface-line); }
@@ -301,7 +283,6 @@ a.crumb:not([href], .on) { cursor: not-allowed; }
 .method.on .radio { border: 5px solid var(--primary); }
 
 .summary { padding: 24px; }
-.box-body { display: flow-root; }
 .rows { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
 .rows .r { display: flex; justify-content: space-between; gap: 12px; font-weight: 600; font-size: 15px; }
 .rows .r > span:first-child { color: var(--ink-soft); }
@@ -317,8 +298,7 @@ a.crumb:not([href], .on) { cursor: not-allowed; }
 .mini-invest a { display: inline-block; margin-top: 4px; }
 
 /* registration progress */
-/* The halo and ripple reach 16px past the node; the track keeps that room inside its own box so its two pictures lie on each other. */
-.track { --track-room: 18px; display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 16px; padding: var(--track-room); margin: calc(8px - var(--track-room)) calc(-1 * var(--track-room)) calc(-1 * var(--track-room)); }
+.track { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 16px; margin-top: 8px; }
 .stage { position: relative; padding-top: 34px; }
 .stage::before { content: ""; position: absolute; top: 13px; left: 0; right: 0; height: 4px; border-radius: 4px; background: var(--chip); }
 .stage.done::before { background: var(--ok-fg); }
@@ -328,7 +308,6 @@ a.crumb:not([href], .on) { cursor: not-allowed; }
 .stage.done .node { background: var(--ok-fg); border-color: var(--ok-fg); color: var(--page-color); }
 .stage.active .node { border-color: var(--primary); color: var(--primary); box-shadow: 0 0 0 6px var(--chip); }
 .stage.failed .node { background: var(--danger-fg); border-color: var(--danger-fg); color: var(--page-color); }
-.stage::before, .stage .node { transition: var(--moves); }
 .stage b { display: block; margin-top: 10px; font-size: 16px; }
 .stage > span:last-child { display: block; color: var(--ink-soft); font-weight: 600; font-size: 13.5px; }
 .countdown { display: flex; align-items: center; gap: 18px; margin-top: 26px; padding: 18px 20px; border-radius: 18px; background: var(--chip); border: 1px solid var(--chip-line); }
@@ -343,10 +322,6 @@ a.crumb:not([href], .on) { cursor: not-allowed; }
 .celebrate { text-align: center; padding: 56px 0 34px; }
 .celebrate .tick { position: relative; width: 76px; height: 76px; margin: 0 auto; border-radius: 24px; display: grid; place-items: center; background: var(--ok-fg); color: var(--page-color); }
 .celebrate .tick svg.i { width: 36px; height: 36px; stroke-width: 3; }
-.celebrate .tick path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw .4s var(--emphasized) var(--crossed-ms) forwards; }
-@keyframes draw { to { stroke-dashoffset: 0; } }
-/* Only transform and opacity change, so the ring moves without repainting the page. */
-.celebrate .tick::before { content: ""; position: absolute; inset: 0; border-radius: inherit; border: 2px solid var(--ok-fg); opacity: 0; pointer-events: none; --ripple-from: .45; --ripple-to: 1.6; animation: ripple 2.4s linear calc(var(--crossed-ms) + .4s) 3; }
 .celebrate h1 { font-size: 64px; margin-top: 28px; }
 .celebrate .lead { margin-top: 12px; }
 .code-display { margin-top: 18px; padding: 22px 16px; border-radius: 18px; background: var(--chip); border: 1px dashed var(--chip-line); text-align: center; font: 700 19px var(--mono); letter-spacing: .02em; text-wrap: balance; }
@@ -426,8 +401,6 @@ a.crumb:not([href], .on) { cursor: not-allowed; }
 
 /* checkout extras */
 /* an unavailable method is dimmed, all but the line saying why, which stays readable */
-.method > :not(div), .method b { transition: opacity var(--quick) var(--ease); }
-.method div > .live { display: inline; }
 .method.off > :not(div), .method.off b { opacity: .5; }
 .method.off div > span, .method.off div > span span { color: var(--danger-fg); }
 .covered-box { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: 16px; background: var(--ok-bg); color: var(--ok-fg); font-weight: 700; }
@@ -445,7 +418,7 @@ a.crumb:not([href], .on) { cursor: not-allowed; }
 .check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .check input:focus-visible + .box { outline: 2px solid var(--primary); outline-offset: 2px; }
 .check input:checked + .box { background: var(--primary); border-color: var(--primary); }
-.check .box::after { content: ""; display: block; width: 5px; height: 10px; margin: 2px auto 0; border: solid var(--surface); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); opacity: 0; transition: opacity var(--quick) var(--ease); }
+.check .box::after { content: ""; display: block; width: 5px; height: 10px; margin: 2px auto 0; border: solid var(--surface); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); opacity: 0; }
 .check .box { width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--surface-line); background: var(--surface); flex: none; }
 .check input:checked + .box::after { opacity: 1; }
 .why { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
@@ -464,11 +437,11 @@ a.crumb:not([href], .on) { cursor: not-allowed; }
 .copy-field .val .word { word-break: break-all; }
 .copy-btn { position: relative; }
 .copy-icons { display: inline-grid; flex: none; }
-.copy-icons svg.i { grid-area: 1 / 1; transition: opacity var(--quick) var(--ease), scale var(--quick) var(--ease); }
+.copy-icons svg.i { grid-area: 1 / 1; }
 .copy-icons svg.i:last-child { opacity: 0; scale: .4; color: var(--ok-fg); }
 .copy-btn.copied .copy-icons svg.i:first-child { opacity: 0; scale: .4; }
 .copy-btn.copied .copy-icons svg.i:last-child { opacity: 1; scale: 1; }
-.copied-note { position: absolute; left: 50%; bottom: calc(100% + 8px); translate: -50% 4px; padding: 5px 9px; border-radius: 8px; background: var(--ink); color: var(--surface); font: 700 12px/1 var(--body); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity var(--quick) var(--ease), translate var(--quick) var(--ease); }
+.copied-note { position: absolute; left: 50%; bottom: calc(100% + 8px); translate: -50% 4px; padding: 5px 9px; border-radius: 8px; background: var(--ink); color: var(--surface); font: 700 12px/1 var(--body); white-space: nowrap; opacity: 0; pointer-events: none; }
 .copied-note::after { content: ""; position: absolute; left: 50%; top: 100%; translate: -50% 0; border: 5px solid transparent; border-top-color: var(--ink); }
 .copy-btn.copied .copied-note { opacity: 1; translate: -50% 0; }
 .field-copy { flex: none; display: grid; place-items: center; width: 32px; height: 32px; margin: -6px -6px -6px 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); cursor: pointer; }
@@ -487,20 +460,6 @@ a.crumb:not([href], .on) { cursor: not-allowed; }
 .stripe .box { padding: 13px 14px; border-radius: 12px; border: 1px solid var(--surface-line); background: var(--surface); color: var(--ink-soft); font-weight: 600; }
 .stripe .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-/* a single status, centred */
-.status-wrap { max-width: 640px; margin: 0 auto; padding: 64px 32px 0; }
-.status { padding: 36px; text-align: center; }
-.status .orb { width: 64px; height: 64px; margin: 0 auto; border-radius: 20px; display: grid; place-items: center; }
-.status .orb svg.i { width: 28px; height: 28px; }
-.status .orb.warn { background: var(--warn-bg); color: var(--warn-fg); }
-.status .orb.bad { background: var(--danger-bg); color: var(--danger-fg); }
-.status .orb.info { background: var(--chip); color: var(--primary); }
-.status .orb.ok { background: var(--ok-bg); color: var(--ok-fg); }
-.status h1 { font-size: 36px; margin-top: 20px; }
-.status p { color: var(--ink-soft); margin-top: 10px; font-size: 16px; }
-.status .actions { display: flex; justify-content: center; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
-.status .ref { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--surface-line); display: flex; justify-content: space-between; font-size: 14px; font-weight: 600; color: var(--ink-soft); }
-.status .ref .mono { color: var(--ink); }
 
 /* outcome choices */
 .options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
@@ -531,8 +490,6 @@ a.crumb:not([href], .on) { cursor: not-allowed; }
 .narrow { max-width: 760px; }
 .smaller { font-size: 34px; }
 .ref-small { font-size: 13px; color: var(--ink-soft); }
-/* the answer's shadow lies inside the part, so the part's clip while its height eases never cuts it */
-.results { margin-top: 0; padding-bottom: 44px; margin-bottom: -44px; }
 .field-error { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--danger-fg); font-weight: 700; font-size: 14px; }
 .link-field + .link-field { margin-top: 14px; }
 .entity-wrap { margin: 10px 0; }
@@ -567,151 +524,29 @@ main h1:focus { outline: none; }
 /* Monero's mark for dark grounds has a white base */
 html.dark .monero-base { fill: #fff; }
 
-/* motion: controls answer hover and press, and states ease from one to the next */
-:root {
-  --ease: cubic-bezier(.2, .7, .2, 1); --quick: .16s;
-  /* what moves in a page's change: Material's emphasized easing over 300 ms */
-  --emphasized: cubic-bezier(.2, 0, 0, 1); --axis-ms: .3s;
-  /* A crossing, as CROSS_* in motion-values.ts: what goes dims to .6 as what comes rises to .2, then they trade places. */
-  --cross-ms: 160ms; --cross-out: linear(0, 0.4 50%, 0.8 50%, 1); --cross-in: linear(0, 0.2 50%, 0.6 50%, 1);
-  --crossed-ms: calc(var(--cross-ms) / 2);
-  --moves: color var(--quick) var(--ease), background-color var(--quick) var(--ease), border-color var(--quick) var(--ease), outline-color var(--quick) var(--ease),
-    box-shadow var(--quick) var(--ease), translate var(--quick) var(--ease), opacity var(--quick) var(--ease);
-}
 /* The gutter keeps the page from shifting under a popup. */
 html { scrollbar-gutter: stable; }
-a, .small-btn, .method, .check, .input, .search, .crumb, .chip, .code-entry .line { transition: var(--moves); }
-.method .radio, .check .box { transition: var(--moves), border-width var(--quick) var(--ease); }
 .method:not(.off), .check { cursor: pointer; }
 @media (hover: hover) {
   .small-btn:hover, .brand:hover { text-decoration: none; }
   .small-btn:hover { background-color: var(--chip); border-color: var(--chip-line); color: var(--ink); }
   .method:not(.off):not(.on):hover, .check:hover { border-color: var(--chip-line); }
-  /* A control sliding under a still pointer passes in about 60 ms; the hover delay keeps it from lighting up. */
-  :where(.btn:not([disabled]):not(.working), .small-btn, .method:not(.on), .check):hover { transition-delay: 80ms; }
-  :where(.btn, .small-btn, .method, .check):active { transition-delay: 0s; }
 }
-
-/* something under way shows that it is alive */
-@keyframes breathe { 50% { opacity: .45; } }
-@keyframes ripple { from { opacity: var(--ripple-from, 1); transform: scale(1); } to { opacity: 0; transform: scale(var(--ripple-to, 1.35)); } }
-@keyframes sweep { from { translate: -100% 0; } to { translate: 290% 0; } }
-@keyframes appear { from { opacity: 0; } }
-@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-/* only opacity and transform move, which the compositor does without restyling the page each frame */
-.waiting .awaiting::before { animation: breathe 1.8s var(--ease) infinite; }
-.stage.active .node::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; box-shadow: 0 0 0 6px var(--chip); animation: ripple 1.8s var(--ease) infinite; }
-.meter i { animation: sweep 1.6s var(--ease) infinite; }
-/* what is still being read holds its place, shimmering: a searched name's card, a link's card, a page's heading and panels */
-.skeleton { position: relative; overflow: hidden; border-color: transparent; box-shadow: none; background: var(--chip); }
-.skeleton::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 20%, var(--surface-line) 50%, transparent 80%); animation: shimmer 1.4s linear infinite; }
-/* a page's placeholder shows only when its page is slow to come, so a quick one never flashes it */
-[data-placeholder="delayed"] { animation: appear .3s var(--ease) .25s both; }
 /* the offline note keeps clear of the page: centred over its foot, above everything but a popup */
 :root { --note-offset: 16px; }
 .offline-note { position: fixed; left: 16px; right: 16px; bottom: calc(var(--note-offset) + env(safe-area-inset-bottom)); z-index: 15; width: fit-content; max-width: 560px; margin: 0 auto; display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line); color: var(--ink); font-size: 14px; line-height: 1.4; }
 .offline-note svg.i { flex: none; width: 18px; height: 18px; color: var(--warn-fg); }
-/* the foot makes room for the note and as much again below and above it, so its last lines can be scrolled clear of it */
-.footer { transition: padding-bottom var(--quick) var(--ease); }
-html:has(.offline-note:not(.closing)) .footer { padding-bottom: calc(var(--offline-room, 0px) + 2 * var(--note-offset) + env(safe-area-inset-bottom)); }
-main.pending { position: fixed; inset: 0 0 auto; opacity: 0; pointer-events: none; }
-.page-leaving { position: fixed; overflow: hidden; pointer-events: none; }
-/* Under reduced motion, hiding by an inherited property such as visibility would hold every element hidden until its own transition starts. */
-body > main { transition-property: none; }
-main.pending, main.pending *, .page-leaving *, .outgoing, .outgoing *, .offline-note.closing { view-transition-name: none !important; }
-/* the page under a view transition is the new one already, and takes the pointer */
-::view-transition { pointer-events: none; }
-.topbar { view-transition-name: page-top; }
-.footer { view-transition-name: page-foot; }
-.offline-note { view-transition-name: offline-note; }
-body > main:not(.pending) { view-transition-name: page; view-transition-class: page-part; }
-.summary { view-transition-name: order-card; view-transition-class: page-part box; }
-.cols > .panel:first-child { view-transition-name: page-panel; view-transition-class: page-part box; }
-.summary > .box-body { view-transition-name: order-card-body; view-transition-class: page-part card-body; }
-.cols > .panel:first-child > .box-body { view-transition-name: page-panel-body; view-transition-class: page-part; }
-.page-head h1 { view-transition-name: page-title; view-transition-class: page-part; }
-.page-head .lead { view-transition-name: page-lead; view-transition-class: page-part; }
-.crumbs { view-transition-name: crumbs; view-transition-class: page-part; }
-::view-transition-group(page-top), ::view-transition-group(offline-note) { z-index: 2; }
-::view-transition-group(*) { animation-duration: var(--axis-ms); animation-timing-function: var(--emphasized); }
-/* Every picture crosses, in place of the browser's own fade, which adds the two pictures' light together. */
-::view-transition-old(*) { animation: var(--cross-ms) var(--cross-out) var(--cross-delay, 0s) both fade-out; }
-::view-transition-new(*) { animation: var(--cross-ms) var(--cross-in) var(--cross-delay, 0s) both appear; }
-html:active-view-transition-type(forward, back, fill, screen)::view-transition-old(root),
-html:active-view-transition-type(forward, back, fill, screen)::view-transition-old(page-top),
-html:active-view-transition-type(forward, back, fill, screen)::view-transition-old(page-foot),
-html:active-view-transition-type(forward, back, fill, screen)::view-transition-old(offline-note) { animation: none; opacity: 0; }
-html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(root),
-html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(page-top),
-html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(page-foot),
-html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(offline-note) { animation: none; }
-/* A change that scrolls the window pictures the old page and foot apart from the new (motion.ts names them), each
-   crossing where it stands; a little scroll still pairs the order's card and name, a far one nothing. */
-html:active-view-transition-type(near) body > main :not(.summary, .summary > .box-body, .order-name),
-html:active-view-transition-type(far) body > main * { view-transition-name: none !important; }
-html:active-view-transition-type(near, far)::view-transition-new(page-foot) { animation: var(--cross-ms) var(--cross-in) both appear; }
-html:active-view-transition-type(forward, back)::view-transition-old(page),
-html:active-view-transition-type(forward, back)::view-transition-old(.page-part):only-child { animation: var(--axis-ms) var(--emphasized) both axis-out, var(--cross-ms) var(--cross-out) var(--cross-delay, 0s) both fade-out; }
-html:active-view-transition-type(forward, back)::view-transition-new(page),
-html:active-view-transition-type(forward, back)::view-transition-new(.page-part):only-child { animation: var(--axis-ms) var(--emphasized) both axis-in, var(--cross-ms) var(--cross-in) var(--cross-delay, 0s) both appear; }
-html:active-view-transition-type(forward) { --axis: 16px; }
-html:active-view-transition-type(back) { --axis: -16px; }
-@keyframes axis-out { to { translate: calc(-1 * var(--axis)) 0; } }
-@keyframes axis-in { from { translate: var(--axis) 0; } }
-@keyframes fade-out { to { opacity: 0; } }
-/* A box on both sides is one surface, its contents pictured apart: the old stays whole under the new as it crosses in.
-   The rules name classes: Chromium crashes reading the style of a picture that a rule names with :only-child. */
-::view-transition-old(order-card), ::view-transition-new(order-card), ::view-transition-old(page-panel), ::view-transition-new(page-panel) { height: 100%; }
-::view-transition-old(.box) { animation: none; }
-::view-transition-old(.box):only-child { animation: var(--cross-ms) var(--cross-out) both fade-out; }
-::view-transition-old(order-card-body), ::view-transition-new(order-card-body), ::view-transition-old(page-panel-body), ::view-transition-new(page-panel-body) { height: auto; object-fit: none; object-position: left top; }
-::view-transition-old(page-title), ::view-transition-new(page-title), ::view-transition-old(page-lead), ::view-transition-new(page-lead) { height: 100%; object-fit: none; object-position: left top; }
-/* The name travels above the parts around it; a card that arrives with it fills in once it has landed. */
-.order-name { view-transition-name: order-name; view-transition-class: page-part; width: fit-content; max-width: 100%; }
-::view-transition-group(order-name) { z-index: 1; }
-.card-stays .summary .order-name { view-transition-group: nearest; }
-::view-transition-new(.card-body):only-child { --cross-delay: calc(var(--axis-ms) - var(--cross-ms)); }
-html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(.tick):only-child { animation: tick-in var(--axis-ms) var(--emphasized) var(--crossed-ms) both; }
-html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(.line):only-child { animation: fill-across var(--axis-ms) var(--emphasized) both; transform-origin: left; }
-@keyframes tick-in { from { scale: .4; opacity: 0; } }
-@keyframes fill-across { from { scale: 0 1; } }
+.order-name { width: fit-content; max-width: 100%; }
 .btn.counting { font-variant-numeric: tabular-nums; }
-/* the label and the spinner cross, so the button never shows empty */
-.btn.working { position: relative; color: transparent; cursor: progress; transition: color var(--cross-ms) var(--cross-out); }
-.btn.working[disabled] { background: var(--primary); }
-.btn.quiet.working[disabled] { background: none; border-color: var(--surface-line); }
-.btn.working::after, .btn.settling::after { content: ""; position: absolute; inset: 0; margin: auto; width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid var(--primary-ink); border-right-color: transparent; }
-.btn.working::after { animation: spin .7s linear infinite, appear var(--cross-ms) var(--cross-in) both; }
-.btn.quiet.working::after, .btn.quiet.settling::after { border-color: var(--ink-soft); border-right-color: transparent; }
-.btn.settling { position: relative; transition: color var(--cross-ms) var(--cross-in); }
-.btn.settling::after { animation: spin .7s linear infinite, fade-out var(--cross-ms) var(--cross-out) both; }
-@keyframes spin { to { rotate: 1turn; } }
-.row-item.entering { animation: rise-in var(--axis-ms) var(--emphasized) calc(var(--crossed-ms) + var(--i) * 40ms) both; }
-@keyframes rise-in { from { opacity: 0; translate: 0 8px; } }
 .result-shape { max-width: 760px; margin: 14px auto 0; height: 108px; border-radius: 22px; }
 .entity.skeleton { height: 68px; }
-.skeleton.line { height: 52px; width: min(560px, 80%); margin-top: 22px; border-radius: 14px; }
-.skeleton.line.short { height: 22px; width: min(360px, 55%); margin-top: 14px; border-radius: 8px; }
-.panel.skeleton { height: 260px; }
-.panel.skeleton.tall { height: 380px; }
-:where(.live) { position: relative; }
-.outgoing { position: absolute !important; inset: 0 0 auto; pointer-events: none; }
 /* the countdown's clock and the icon after it take the same room */
 .countdown b { display: inline-grid; place-items: center; min-height: 1em; }
 .countdown b svg.i { width: .8em; height: .8em; }
-.digits { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.count { display: inline-block; }
-.roll { display: inline-block; position: relative; overflow: clip; vertical-align: bottom; }
-/* a character rises into its box, which an inline box would not */
-.roll > span { display: inline-block; }
 /* a link at work, or held by a wait, shows it is not to be pressed */
 a[aria-disabled="true"] { opacity: .6; cursor: default; }
 /* a search under way dims the answer it replaces */
-.result { transition: opacity var(--quick) var(--ease); }
 .result.busy { opacity: .55; }
-/* a part of the page that changes in place holds its children's margins, so its height eases with them; a part with
-   a display of its own keeps it */
-:where(.live) { display: flow-root; }
 
 /* The tap area reaches past a control's edge to 44 px while the drawn size stays. */
 @media (pointer: coarse) {
@@ -730,16 +565,10 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 
 /* too narrow for a row's name beside its chip and buttons, the steps in one line, or the footer in one row: they wrap */
 @media (max-width: 760px) {
-  .crumb:not(.on), .crumb-sep { display: none; }
   .row-item { flex-wrap: wrap; }
   .row-item .acts { flex-basis: 100%; flex-wrap: wrap; }
   .row-item .main { flex-basis: calc(100% - 56px); }
   .row-item.code-row .main b { white-space: normal; text-wrap: balance; }
-}
-
-/* a tablet or a narrow window: the order card goes under the page's main column */
-@media (max-width: 860px) {
-  .cols { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* a phone */
@@ -769,8 +598,6 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .entity .url { display: none; }
   .bento { grid-template-columns: 1fr; }
   .tile, .tile.wide { grid-column: auto; }
-  .page-head { padding: 26px 0 18px; }
-  .page-head h1 { font-size: 34px; }
   .panel-sec { padding: 20px; }
   .method { padding: 12px; }
   .method div > span { display: none; }
@@ -799,15 +626,10 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .code-input input { font-size: clamp(11px, 100cqi / 23.2, 12.5px); letter-spacing: 0; }
   .pay-head { flex-wrap: wrap; }
   .pay-head .amount { font-size: 32px; }
-  .status-wrap { padding: 32px 18px 0; }
-  .status { padding: 24px 20px; }
   .waiting { flex-wrap: wrap; }
 }
 
 /* a reader who asked for less motion gets the states without the easing */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
-  /* A still spinner would read as a fault, so it turns slowly; it shows only once the work takes a moment. */
-  .btn.working::after { animation: spin 1.6s linear infinite, appear .01ms linear var(--quick) both !important; }
-  [data-placeholder="delayed"] { animation-delay: .25s !important; }
 }

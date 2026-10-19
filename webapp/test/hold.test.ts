@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError, LIMITED_WAIT_S, serviceNow } from "../src/api.ts"
-import { NO_LEAD } from "../src/screens/machine.ts"
-import { holdEnd, holdEnder, holdFrom, holding, holdLeft, startHold, tabHold } from "../src/views/hold.ts"
+import { NO_LEAD } from "../src/screens/hold.ts"
+import { holdEnd, holdEnder, holdFrom, holding, holdLeft, secondsLeft, startHold, tabHold } from "../src/views/hold.ts"
 
 const DAY_MS = 86_400_000
 // each test starts a day after the last, past any wait an earlier one left in the module
@@ -52,6 +52,16 @@ describe("the tab's wait", () => {
     startHold(5)
     expect(holdEnd()).toBe(serviceNow() + 5000)
     expect(tabHold()).toEqual({ until: serviceNow() + 5000, lead: NO_LEAD })
+  })
+  it("secondsLeft counts a hold's whole seconds up on the service's clock, and none or fewer once it is over", () => {
+    const hold = { until: serviceNow() + 2500, lead: NO_LEAD }
+    expect(secondsLeft(hold)).toBe(3)
+    vi.advanceTimersByTime(1500)
+    expect(secondsLeft(hold)).toBe(1)
+    vi.advanceTimersByTime(1000)
+    expect(secondsLeft(hold)).toBe(0)
+    vi.advanceTimersByTime(2000)
+    expect(secondsLeft(hold)).toBe(-2)
   })
 })
 

@@ -521,7 +521,7 @@ const PLACE_PX = 4
 const scrolledNear = (page: Page, y: number) => expect.poll(() => page.evaluate((t) => Math.abs(scrollY - t), y)).toBeLessThanOrEqual(PLACE_PX)
 
 // The page goes Back itself, as Playwright's Back from Your names here never returns in Firefox driven over WebDriver BiDi.
-test("Back returns to where a page was left, a slow page included, and a reload keeps the place", { tag: "@motion" }, async ({ page }) => {
+test("Back returns to where a page was left, a slow page included, and a reload keeps the place", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 600 })
   await page.goto("/")
   const place = await page.evaluate(() => Math.min(700, document.documentElement.scrollHeight - innerHeight))

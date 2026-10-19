@@ -1,6 +1,6 @@
 import type { Method } from "../api.ts"
 import type { AppliedCode, Checkout } from "../session.ts"
-import { type Hold, type Machine, NO_LEAD } from "./machine.ts"
+import { type Hold, NO_LEAD } from "./hold.ts"
 
 export const FALLBACK_METHOD: Record<Method, Method> = { card: "btc", btc: "xmr", xmr: "btc" }
 
@@ -85,16 +85,3 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
 export function screenOf(s: CheckoutState): CheckoutKind {
   return s.refusal ? `status:${s.refusal}` : s.page
 }
-
-const to = (...kinds: CheckoutKind[]): Partial<Record<CheckoutKind, "screen">> => Object.fromEntries(kinds.map((k) => [k, "screen"]))
-const REFUSALS: CheckoutKind[] = ["status:price-changed", "status:too-many", "status:failed"]
-
-export const moves: Machine<CheckoutState, CheckoutEvent, CheckoutKind>["moves"] = {
-  checkout: to(...REFUSALS),
-  "owner-code": to(...REFUSALS),
-  "status:failed": to("status:price-changed", "status:too-many", "checkout", "owner-code"),
-  "status:too-many": to("checkout", "owner-code"),
-  "status:price-changed": to("checkout", "owner-code"),
-}
-
-export const checkoutMachine: Machine<CheckoutState, CheckoutEvent, CheckoutKind> = { name: "checkout", reduce, screenOf, moves }

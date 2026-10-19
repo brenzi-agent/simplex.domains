@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView } from "../src/api.ts"
-import { headingFocus, NO_LEAD, step } from "../src/screens/machine.ts"
+import { NO_LEAD } from "../src/screens/hold.ts"
 import {
-  CARD_SLOW_MS, initialState, moves, type Note, openedFromApp, orderMachine, type OrderEvent, type OrderKind, type OrderState,
+  CARD_SLOW_MS, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState,
   reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
@@ -73,24 +73,6 @@ const STATES: Record<OrderKind, OrderState> = {
   "status:price-changed": read(crypto({ status: "expired" }), undefined, { price: 2500 }),
 }
 
-function eventTo(from: OrderKind, to: OrderKind, s: OrderState): { state: OrderState; event: OrderEvent } {
-  if (to === "status:card-failed") return { state: s, event: { type: "card-failed" } }
-  if (from === "status:card-failed" && to === "pay-card") return { state: s, event: { type: "card-retried" } }
-  if (from === "pay-card" && to === "confirming") return { state: s, event: { type: "card-submitted", at: new Date(NOW).toISOString() } }
-  if (from === "confirming" && to === "slow") {
-    const paying = { ...STATES.slow, cardSubmittedAt: submittedAgo(0) }
-    return { state: paying, event: { type: "tick", now: NOW + CARD_SLOW_MS + 1000 } }
-  }
-  if ((from === "slow" || from === "confirming") && to === "pay-card") {
-    const paying = from === "slow" ? s : { ...STATES.slow, cardSubmittedAt: submittedAgo(0) }
-    return { state: paying, event: { type: "record-changed", record: record({ method: "card" }), cardSubmittedAt: null } }
-  }
-  if (from === "slow" && to === "confirming") return { state: s, event: { type: "record-changed", record: record({ method: "card" }), cardSubmittedAt: submittedAgo(0) } }
-  if (to === "status:price-changed") return { state: { ...s, busy: "reorder" }, event: { type: "price-changed", price: 2500 } }
-  if (to === "status:unknown-link") return { state: s, event: { type: "not-found" } }
-  return { state: s, event: answered(s, STATES[to]) }
-}
-
 describe("screenOf", () => {
   const cases: [string, OrderState, OrderKind][] = [
     ["a link the service does not know", STATES["status:unknown-link"], "status:unknown-link"],
@@ -124,32 +106,6 @@ describe("screenOf", () => {
   ]
   it.each(cases)("%s", (_, state, kind) => {
     expect(screenOf(state)).toBe(kind)
-  })
-})
-
-describe("moves", () => {
-  const rows = Object.entries(moves).flatMap(([from, to]) => Object.entries(to).map(([next, motion]): [OrderKind, OrderKind, string] => [from as OrderKind, next as OrderKind, motion]))
-  it("lists the order's lifecycle as page changes", () => {
-    expect(rows.length).toBeGreaterThan(0)
-    expect(rows.every(([, , motion]) => motion === "screen")).toBe(true)
-  })
-  it.each(rows)("%s → %s", (from, to, motion) => {
-    const warn = vi.fn()
-    const { state, event } = eventTo(from, to, STATES[from])
-    expect(screenOf(state)).toBe(from)
-    const result = step(orderMachine, state, from, event, warn)
-    expect(result).toMatchObject({ screen: to, motion, expected: true })
-    expect(warn).not.toHaveBeenCalled()
-  })
-  it("logs a move no order makes, and still shows it", () => {
-    const warn = vi.fn()
-    const result = step(orderMachine, STATES.registered, "registered", answered(STATES.registered, STATES["pay-crypto"]), warn)
-    expect(result).toMatchObject({ screen: "pay-crypto", motion: "screen", expected: false })
-    expect(warn).toHaveBeenCalledWith("[screens] order: unexpected move registered → pay-crypto")
-  })
-  it("keeps a screen whose state changes in place", () => {
-    const partly = read(crypto({ cryptoAmountPaid: "0.0001", cryptoAmountDue: "0.00015" }))
-    expect(step(orderMachine, STATES["pay-crypto"], "pay-crypto", answered(STATES["pay-crypto"], partly), vi.fn())).toMatchObject({ screen: "pay-crypto", motion: "in-place", expected: true })
   })
 })
 
@@ -398,18 +354,6 @@ describe("openedFromApp", () => {
     expect(openedFromApp(registration(), record())).toBe(false)
     expect(openedFromApp(registration({ sealed: null }), null)).toBe(true)
     expect(openedFromApp(registration(), null)).toBe(false)
-  })
-})
-
-describe("headingFocus", () => {
-  const result = (motion: "in-place" | "screen") => ({ state: STATES.registered, screen: "registered" as const, motion, expected: true })
-  it("a screen change on a page shown moves focus to the heading only when focus was on the page", () => {
-    expect(headingFocus(result("screen"), "registering", true)).toBe(true)
-    expect(headingFocus(result("screen"), "registering", false)).toBe(false)
-  })
-  it("leaves focus to the page change for a page opened, and where it is for an update", () => {
-    expect(headingFocus(result("screen"), null, true)).toBeNull()
-    expect(headingFocus(result("in-place"), "registered", true)).toBeNull()
   })
 })
 

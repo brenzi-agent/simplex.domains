@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { routes, type View, viewOf } from "../src/screens/routes.ts"
-
-const VIEWS: View[] = ["search", "checkout", "name-code", "order", "names", "restore", "edit", "trademarks"]
+import { type View, viewOf } from "../src/screens/routes.ts"
 
 describe("viewOf", () => {
   const cases: [string, string, View][] = [
@@ -23,39 +21,4 @@ describe("viewOf", () => {
       expect(viewOf(new URLSearchParams(query), path)).toBe(view)
     })
   }
-})
-
-describe("routes", () => {
-  const backTo: Record<View, View[]> = {
-    search: [],
-    checkout: ["search"],
-    "name-code": ["search", "checkout"],
-    order: ["search", "checkout", "name-code"],
-    names: ["search", "checkout", "name-code"],
-    restore: ["search", "checkout", "name-code", "names"],
-    edit: ["search", "checkout", "name-code", "names"],
-    trademarks: ["search"],
-  }
-  for (const from of VIEWS) {
-    it(`${from} goes back to ${backTo[from].join(", ") || "nothing"} and forward to the rest`, () => {
-      const motions = Object.fromEntries(VIEWS.map((to) => [to, routes[from][to]]))
-      const expected = Object.fromEntries(VIEWS.map((to) => [to, backTo[from].includes(to) ? "back" : "forward"]))
-      expect(motions).toEqual(expected)
-    })
-  }
-
-  it("goes back along the order the way it came forward", () => {
-    const flow: View[] = ["search", "checkout", "name-code", "order"]
-    flow.forEach((from, i) => flow.slice(i + 1).forEach((to) => {
-      expect(routes[from][to], `${from} → ${to}`).toBe("forward")
-      expect(routes[to][from], `${to} → ${from}`).toBe("back")
-    }))
-  })
-
-  it("goes along the header's sections in their order", () => {
-    for (const section of ["names", "restore", "edit"] as View[]) {
-      expect(routes.search[section]).toBe("forward")
-      expect(routes[section].search).toBe("back")
-    }
-  })
 })

@@ -1,24 +1,21 @@
 // An order's page (?order=<invoice>) or a code registration's (?registration=<id>): payment, registration, and every ending.
 import * as api from "../api.ts"
 import { codeTier, LONGEST_TIER, parseNameCode } from "../crypto/code.ts"
-import { alertBox, btn, chip, codeDisplay, copyButton, disabled, el, gradName, icon, link, liveRegion, nameText, nameTitle } from "../dom.ts"
+import { alertBox, btn, chip, codeDisplay, copyButton, el, gradName, icon, type Kid, link, liveRegion, nameText, nameTitle, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
-import * as focus from "../focus.ts"
-import { current, live, rollTo, takeTurns } from "../motion.ts"
 import { clock, dateOf, dollars, methodName, shortAddress, shortHash, termText } from "../format.ts"
+import type { IconName } from "../icons.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
-import { headingFocus, step } from "../screens/machine.ts"
 import {
-  coinOf, initialState, type Note, openedFromApp, orderMachine, type OrderEvent, type OrderKind, type OrderState, refusalsOf,
-  retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, wakeAt,
+  coinOf, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
+  retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, wakeAt,
 } from "../screens/order.ts"
 import * as store from "../store.ts"
-import { mountCard, publishableKey } from "../stripe.ts"
+import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
 import { useCode } from "./codes.ts"
 import { every } from "./effects.ts"
-import { holdEnd, holdEnder, holdFrom, tabHold } from "./hold.ts"
-import { changeTo, drawAs, holdNotice, setAction, unchanging } from "./slots.ts"
-import { type Build, type Built, CONTACT_EMAIL, crumbs, crumbsTo, currentRoute, go, isDark, isRedraw, isRoute, pageHead, placeholderSoon, redirect, refresh, screens, searchLink, status, twoCols, whenLeaving } from "./shell.ts"
+import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
+import { type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, outcome, redirect, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
 
 const RETRY_MS = 3000
 // The badge service's words for a cancel the provider took while the service still shows the invoice open; a card
@@ -35,8 +32,6 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const warning = (text: string): Note => ({ tone: "warn", icon: "alert", title: null, text })
 
 let state: OrderState = initialState("", null)
-let shown: OrderKind | null = null
-const showScreen = screens<OrderState>()
 let opened = 0
 let pageRoute = -1
 let reads = 0
@@ -50,7 +45,6 @@ export function orderPage(invoiceId: string | null, registrationId: string | nul
     opened += 1
     // A reveal on its way outlasts the page, so the same order opened again does not sign it twice.
     state = initialState(reference, tabHold(), state.reference === reference ? state.reveal : null)
-    shown = null
   }
   pageRoute = mine
   const polls = new AbortController()
@@ -63,24 +57,24 @@ export function orderPage(invoiceId: string | null, registrationId: string | nul
   }
   window.addEventListener("storage", onStorage)
   whenLeaving(() => { polls.abort(); clearTimeout(wakes); window.removeEventListener("storage", onStorage) })
+  if (!redraw) whenDropped(dropCard)
   // the same order drawn again stays on screen until it is read, rather than blanking to a loading line
   if (redraw) document.querySelector("main")?.setAttribute("aria-busy", "true")
-  else placeholderSoon()
+  else drawLoading("Opening the order…")
   void follow(mine, invoiceId, registrationId, polls.signal)
 }
 
 function dispatch(event: OrderEvent): void {
   const before = state
-  const result = step(orderMachine, state, shown, event)
-  state = result.state
+  state = reduce(state, event)
   if (!isRoute(pageRoute)) return
-  const heading = headingFocus(result, shown, focus.onPage())
-  const arrived = result.screen !== shown
-  shown = result.screen
+  const kind = screenOf(state)
   document.querySelector("main")?.removeAttribute("aria-busy")
-  showScreen(result.screen, state, BUILDS[result.screen], heading, result.motion)
+  draw(kind, (signal) => BUILDERS[kind](state, signal))
+  if (kind !== "pay-card") dropCard()
   if (revealDue(state)) reveal(state.view!, state.record!)
-  if (arrived || state.record !== before.record) keepCodes(state)
+  // keepCodes dispatches record-changed itself, so it runs only when the screen or the record moved
+  if (kind !== screenOf(before) || state.record !== before.record) keepCodes(state)
   wakeOnTime()
 }
 
@@ -299,15 +293,17 @@ function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
   })
 }
 
-function keepCodes({ view, record, invoice, cardSubmittedAt: submitted }: OrderState): void {
+function keepCodes(s: OrderState): void {
+  const { view, record, invoice, cardSubmittedAt: submitted } = s
   if (!view || !record) return
-  if (shown === "code-issued" && record.ownerCode && !record.takenCode) {
+  const kind = screenOf(s)
+  if (kind === "code-issued" && record.ownerCode && !record.takenCode) {
     const code = flow.takenCodeOf(record, view.id)
     store.updateOrder(record.registrationId, { takenCode: code })
     store.addCode({ code, minLength: codeTier(record.label.length), years: 2, addedAt: new Date().toISOString() })
     dispatch({ type: "record-changed", record: { ...record, takenCode: code }, cardSubmittedAt: submitted })
   }
-  const released = shown === "taken" && !invoice ? releasedCode(view, record) : null
+  const released = kind === "taken" && !invoice ? releasedCode(view, record) : null
   if (released && !store.codes().some((c) => c.code === released.code)) store.addCode({ ...released, addedAt: new Date().toISOString() })
 }
 
@@ -319,48 +315,43 @@ function releasedCode(view: api.RegistrationView, record: store.OrderRecord | nu
   return { code, minLength, years: view.years }
 }
 
-const actionRow = () => live(el("div", { class: "actions" }))
-
 function noteNode(note: Note, cls: string): HTMLElement {
   const text = note.link ? [note.text, el("a", { href: note.link.href }, note.link.text), note.link.after] : note.text
   return el("div", { class: cls }, alertBox(note.tone, note.icon, note.title, text))
 }
 
-function showNote(slot: HTMLElement, s: OrderState, cls: string, holds: boolean): void {
+function noteOf(s: OrderState, cls: string, holds: boolean): HTMLElement | null {
   const hold = holds ? s.hold : null
-  drawAs(slot, JSON.stringify([hold, s.note]), () => hold ? [holdNotice(hold)] : s.note ? [noteNode(s.note, cls)] : [])
+  return hold ? holdNotice(hold) : s.note ? noteNode(s.note, cls) : null
 }
 
-function buildUnreadable({ reference }: OrderState): Built<OrderState> {
-  return unchanging([status("warn", "alert", "This order could not be loaded", "The page keeps trying. If it does not load, quote the reference below.", [], { reference })])
+function buildUnreadable({ reference }: OrderState): HTMLElement {
+  return outcome({ tone: "warn", icon: "alert", title: "This order could not be loaded", text: "The page keeps trying. If it does not load, quote the reference below.", reference })
 }
 
-function buildUnknownLink(): Built<OrderState> {
-  return unchanging([status("info", "link", "This link does not work", "It names no order this service knows. Check the link, or start again.", [btn("Search a name", "", () => go("/#/"))])])
+function buildUnknownLink(): HTMLElement {
+  return outcome({ tone: "info", icon: "link", title: "This link does not work", text: "It names no order this service knows. Check the link, or start again.",
+    action: btn("Search a name", "", () => go("/#/")) })
 }
 
-function buildPaidLate(paid: OrderState): Built<OrderState> {
-  const actions = actionRow()
-  const update = ({ view, record }: OrderState) => drawAs(actions, record?.replacedBy ?? "", () =>
-    [record?.replacedBy ? btn("Open the new invoice", "quiet", () => go(record.replacedBy!)) : btn("Search a name", "quiet", () => go(searchFrom(view!, record)))])
-  update(paid)
-  return { sections: [status("warn", "alert", "Paid after the invoice closed", "The payment arrived after this invoice had closed, so nothing was registered. Support refunds it: quote the reference below.",
-    [], { reference: paid.invoice!.invoiceId, extra: actions })], update }
+function buildPaidLate({ view, record, invoice }: OrderState): HTMLElement {
+  return outcome({ tone: "warn", icon: "alert", title: "Paid after the invoice closed",
+    text: "The payment arrived after this invoice had closed, so nothing was registered. Support refunds it: quote the reference below.",
+    action: record?.replacedBy ? btn("Open the new invoice", "quiet", () => go(record.replacedBy!)) : btn("Search a name", "quiet", () => go(searchFrom(view!, record))),
+    reference: invoice!.invoiceId })
 }
 
-function buildPaidByInvoice(unpaid: OrderState): Built<OrderState> {
-  const actions = actionRow()
-  const update = ({ view, record }: OrderState) => drawAs(actions, record?.invoiceId ?? "", () =>
-    [record?.invoiceId ? btn("Open its payment", "", () => go(store.orderUrl(record))) : btn("Search a name", "quiet", () => go(searchFrom(view!, record)))])
-  update(unpaid)
-  return { sections: [status("info", "link", "This order is paid by invoice", "Its page is the payment link it was made with.", [], { reference: unpaid.view!.id, extra: actions })], update }
+function buildPaidByInvoice({ view, record }: OrderState): HTMLElement {
+  return outcome({ tone: "info", icon: "link", title: "This order is paid by invoice", text: "Its page is the payment link it was made with.",
+    action: record?.invoiceId ? btn("Open its payment", "", () => go(store.orderUrl(record))) : btn("Search a name", "quiet", () => go(searchFrom(view!, record))),
+    reference: view!.id })
 }
 
 const shortRef = (reference: string) => el("span", { class: "mono" }, `${reference.slice(0, 8)}…`)
 // in full where the page leads to support, which asks for it
 const fullRef = (reference: string) => el("span", { class: "mono ref-full" }, reference)
 
-function orderCard(name: Node, rows: [string, string | Node][], ...rest: (Node | null)[]): HTMLElement {
+function orderCard(name: Node, rows: [string, string | Node][], ...rest: Kid[]): HTMLElement {
   return el("aside", { class: "panel summary" },
     el("span", { class: "label" }, "Your order"),
     name,
@@ -374,155 +365,136 @@ const cardName = (label: string | null, tld: string) => label ? nameTitle(label,
 const total = (amount: number) => el("div", { class: "total" }, el("span", { class: "label" }, "Total"), el("b", {}, dollars(amount, true)))
 
 // what is copied can differ from what is shown, as an amount without its unit, which a wallet's amount field refuses
-function copyField(label: string): { node: HTMLElement; set: (value: string, copy?: string | false) => void } {
-  const box = live(el("div", {}))
-  const set = (value: string, copy: string | false = value) => {
-    const button = copy === false ? null : copyButton(copy, null, "field-copy", `Copy ${label.toLowerCase()}`)
-    // A value of one long word, as an address, may break between any two letters, which the field's balance evens out:
-    // WebKit balances only between the breaks it is given, Firefox only in a word that breaks anywhere (.word).
-    const word = !value.includes(" ")
-    const shown = word ? [...value].flatMap((ch, i) => i ? [el("wbr"), ch] : [ch]) : [value]
-    changeTo(box, el("div", { class: "val" }, el("span", { class: word ? "word" : undefined }, ...shown), button))
-  }
-  return { node: el("div", { class: "copy-field" }, el("span", { class: "label" }, label), box), set }
+function copyField(label: string, value: string, copy: string | false = value): HTMLElement {
+  const button = copy === false ? null : copyButton(copy, null, "field-copy", `Copy ${label.toLowerCase()}`)
+  // A value of one long word, as an address, may break between any two letters, which the field's balance evens out:
+  // WebKit balances only between the breaks it is given, Firefox only in a word that breaks anywhere (.word).
+  const word = !value.includes(" ")
+  const shown = word ? [...value].flatMap((ch, i) => i ? [el("wbr"), ch] : [ch]) : [value]
+  return el("div", { class: "copy-field" }, el("span", { class: "label" }, label),
+    el("div", {}, el("div", { class: "val" }, el("span", { class: word ? "word" : undefined }, ...shown), button)))
 }
 
-function countdown(node: HTMLElement, prefix: string, end: () => number, signal: AbortSignal): () => void {
+function countdown(node: HTMLElement, prefix: string, end: number, signal: AbortSignal): void {
   const time = el("span", { class: "time" })
   node.replaceChildren(`${prefix} `, time)
-  const turn = () => rollTo(time, clock((end() - api.serviceNow()) / 1000), true)
+  const turn = () => { time.textContent = clock((end - api.serviceNow()) / 1000) }
   turn()
   every(1000, turn, signal)
-  return turn
 }
 
-function buildPayCrypto(state: OrderState, signal: AbortSignal): Built<OrderState> {
-  let shown = state
-  const { view, record } = state
-  const invoice = state.invoice!
+function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
+  const { view, record } = s
+  const invoice = s.invoice!
   const currency = coinOf(invoice)!
   const coin = currency === "btc" ? "BTC" : "XMR"
   const name = methodName(currency)
-  const partialOf = (inv: api.InvoiceView) => Number(inv.cryptoAmountPaid ?? "0") > 0
-  const alert = live(el("div", {}))
-  const sendLabel = live(el("span", { class: "label" }))
-  const amount = live(el("div", { class: "amount" }))
-  const usd = live(el("div", { class: "usd" }))
+  const partial = Number(invoice.cryptoAmountPaid ?? "0") > 0
+  const due = partial ? invoice.cryptoAmountDue! : invoice.cryptoAmount!
   const rate = chip("", "brand")
-  const turnRate = countdown(rate, "Rate held", () => Date.parse(shown.invoice!.expiresAt), signal)
-  const qr = live(el("div", { class: "qr" }))
-  let qrUri: string | null | undefined
-  const [amountField, addressField, referenceField] = [copyField("Amount"), copyField(`${name} address`), copyField("Reference")]
-  const awaiting = live(el("span", {}))
-  const cancelSlot = live(el("span", {}))
-  const named = live(el("div", {}))
-  const note = liveRegion()
-  const watchHold = holdEnds(signal)
-  const [idleLabel, busyLabel] = [el("span", {}, "Cancel this invoice"), el("span", { "aria-hidden": "true" }, "Cancelling…")]
-  const cancel = link(el("span", { class: "swap" }, idleLabel, busyLabel), () => void cancelInvoice())
+  countdown(rate, "Rate held", Date.parse(invoice.expiresAt), signal)
+  const uri = paymentUri(currency, invoice.address!, due)
+  const code = uri ? qrSvg(uri, `${name} payment`) : null
+  const working = s.busy === "cancel"
   // aria-hidden as "true", which assistive technology and the stylesheet both read; an empty one counts as not hidden
-  const showWorking = (on: boolean) => {
-    const [shownLabel, hidden] = on ? [busyLabel, idleLabel] : [idleLabel, busyLabel]
-    if (hidden.getAttribute("aria-hidden") !== "true") takeTurns(shownLabel, hidden)
-    shownLabel.removeAttribute("aria-hidden")
-    hidden.setAttribute("aria-hidden", "true")
-    if (on) cancel.setAttribute("aria-disabled", "true")
-    else cancel.removeAttribute("aria-disabled")
-  }
-  const show = (next: OrderState) => {
-    const inv = next.invoice!
-    const partial = partialOf(inv)
-    const due = partial ? inv.cryptoAmountDue! : inv.cryptoAmount!
-    changeTo(alert, ...(partial ? [el("div", { class: "mb-18" }, alertBox("warn", "alert", "Part of the payment arrived", `${inv.cryptoAmountPaid} of ${inv.cryptoAmount} ${coin} is seen. Send the remaining ${due} ${coin} to the same address.`))] : []))
-    changeTo(sendLabel, partial ? "Send the rest" : "Send")
-    changeTo(amount, `${due} ${coin}`)
-    changeTo(usd, `${dollars(inv.amount, true)} in total`)
-    const uri = paymentUri(currency, inv.address!, due)
-    if (uri !== qrUri) {
-      qrUri = uri
-      const code = uri ? qrSvg(uri, `${name} payment`) : null
-      qr.replaceChildren(...(code ? [code] : []))
-    }
-    amountField.set(`${due} ${coin}`, due)
-    addressField.set(inv.address!)
-    referenceField.set(inv.invoiceId, false)
-    changeTo(awaiting, partial ? "Waiting for the rest of the payment" : "Waiting for payment")
-    changeTo(cancelSlot, ...(partial ? [] : [cancel]))
-    changeTo(named, cardName(labelOf(next.view!, next.record), next.view!.tld))
-    showWorking(next.busy === "cancel")
-    // a wait the tab is in shows why the link does nothing until it is over
-    showNote(note, next, "mt-14", !partial)
-    watchHold(next.hold !== null)
-  }
-  show(state)
+  const cancel = link(el("span", { class: "swap" }, el("span", { "aria-hidden": working ? "true" : undefined }, "Cancel this invoice"),
+    el("span", { "aria-hidden": working ? undefined : "true" }, "Cancelling…")), () => void cancelInvoice())
+  cancel.dataset.focus = "cancel"
+  if (working) cancel.setAttribute("aria-disabled", "true")
+  holdEnds(signal)(s.hold !== null)
   const main = el("div", { class: "panel" }, el("div", { class: "panel-sec" },
-    alert,
-    el("div", { class: "pay-head" }, el("div", {}, sendLabel, amount, usd), rate),
-    el("div", { class: "pay-body" }, qr, el("div", {}, amountField.node, addressField.node, referenceField.node)),
-    el("div", { class: "waiting" }, el("span", { class: "awaiting" }, awaiting), cancelSlot), note))
-  const update = (next: OrderState) => {
-    const newRate = next.invoice!.expiresAt !== shown.invoice!.expiresAt
-    shown = next
-    show(next)
-    if (newRate) turnRate()
-  }
-  return { sections: [pageHead(`Pay with ${name}`, "Bookmark this page: the address and the countdown live on its link.", crumbs("Payment", { fromApp: openedFromApp(view!, record) })),
-    twoCols(main, orderCard(named, [["Term", termText(view!.years)], ["Paying with", name]], total(invoice.amount)))], update }
+    partial ? el("div", { class: "mb-18" }, alertBox("warn", "alert", "Part of the payment arrived", `${invoice.cryptoAmountPaid} of ${invoice.cryptoAmount} ${coin} is seen. Send the remaining ${due} ${coin} to the same address.`)) : null,
+    el("div", { class: "pay-head" }, el("div", {}, el("span", { class: "label" }, partial ? "Send the rest" : "Send"), el("div", { class: "amount" }, `${due} ${coin}`),
+      el("div", { class: "usd" }, `${dollars(invoice.amount, true)} in total`)), rate),
+    el("div", { class: "pay-body" }, el("div", { class: "qr" }, code), el("div", {}, copyField("Amount", `${due} ${coin}`, due), copyField(`${name} address`, invoice.address!), copyField("Reference", invoice.invoiceId, false))),
+    el("div", { class: "waiting" }, el("span", { class: "awaiting" }, partial ? "Waiting for the rest of the payment" : "Waiting for payment"), partial ? null : cancel),
+    // a wait the tab is in shows why the link does nothing until it is over
+    liveRegion(undefined, noteOf(s, "mt-14", !partial))))
+  return screen({ title: `Pay with ${name}`, lead: "Bookmark this page: the address and the countdown live on its link." },
+    main, orderCard(cardName(labelOf(view!, record), view!.tld), [["Term", termText(view!.years)], ["Paying with", name]], total(invoice.amount)))
 }
 
-function buildPayCard(paying: OrderState, signal: AbortSignal): Built<OrderState> {
-  const { view, record } = paying
-  const invoice = paying.invoice!
-  const pay = btn(`Pay ${dollars(invoice.amount, true)}`, "block")
-  const error = el("div", {})
-  const form = el("div", { class: "stripe" })
+// The Stripe frame reloads, losing what was typed, whenever its form moves in the page; so the card's own events change
+// Pay and its note where they are, as the badge store's card form does, rather than drawing the screen again.
+let card: MountedCard | null = null
+// the form a card is mounted in, or being mounted in; a mount that answers after it was dropped is destroyed
+let cardIn: HTMLElement | null = null
+let cardMounts = 0
+let payParts: { pay: HTMLButtonElement; note: HTMLElement } | null = null
+// without a Stripe key in development, Pay does what a submitted card does; the mock's controls settle it
+const STAND_IN: MountedCard = { confirm: async () => ({ kind: "submitted" }), destroy: () => undefined }
+
+function dropCard(): void {
+  cardMounts += 1
+  card?.destroy()
+  card = null
+  cardIn?.replaceChildren()
+  cardIn = null
+  payParts = null
+}
+
+function mountInto(form: HTMLElement, invoice: api.InvoiceView): void {
+  const mine = ++cardMounts
+  cardIn = form
+  const key = publishableKey()
+  if (!key && import.meta.env.DEV) {
+    cardStandIn(form)
+    card = STAND_IN
+    return
+  }
+  void mountCard(key, invoice.clientSecret ?? "", form, isDark()).then((mounted) => {
+    if (mine !== cardMounts) return mounted?.destroy()
+    if (!mounted) return dispatch({ type: "card-failed" })
+    card = mounted
+    if (payParts) setAction(payParts.pay, false, false)
+  })
+}
+
+function takeCardEvent(event: OrderEvent): void {
+  state = reduce(state, event)
+  if (!payParts) return
+  setAction(payParts.pay, state.busy === "card", card === null)
+  const note = noteOf(state, "mt-14", false)
+  payParts.note.replaceChildren(...(note ? [note] : []))
+}
+
+async function payByCard(): Promise<void> {
+  if (state.busy || !card) return
+  const gen = opened
+  const { invoice, record } = state
+  takeCardEvent({ type: "card-started" })
+  const confirmed = await card.confirm()
+  if (!isOpen(gen)) return
+  if (confirmed.kind === "error") return takeCardEvent({ type: "card-refused", note: { tone: "danger", icon: "alert", title: null, text: confirmed.message } })
+  // The page knows the card was submitted without asking the service, so it shows that at once, in an outage too.
+  const at = new Date(api.serviceNow()).toISOString()
+  store.markCardSubmitted(invoice!.invoiceId, at)
+  if (record) store.updateOrder(record.registrationId, { cardSubmittedAt: at })
+  dispatch({ type: "card-submitted", at })
+}
+
+function buildPayCard(s: OrderState): HTMLElement {
+  const { view, record } = s
+  const invoice = s.invoice!
+  const form = kept("stripe-form", () => el("div", { class: "stripe" }))
+  if (cardIn !== form) mountInto(form, invoice)
+  const pay = setAction(btn(`Pay ${dollars(invoice.amount, true)}`, "block", () => void payByCard()), s.busy === "card", card === null)
+  pay.dataset.focus = "pay"
+  const note = el("div", {}, noteOf(s, "mt-14", false))
+  payParts = { pay, note }
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
   const forgetful = store.canPersist() ? null : el("div", { class: "mb-14" }, alertBox("warn", "alert", "This browser cannot remember a card payment",
     "After paying, keep this page open until it moves on. Reloading would show the card form again."))
   const main = el("div", { class: "panel" }, el("div", { class: "panel-sec" },
-    el("div", { class: "sec-title" }, el("h2", {}, "Card details")), forgetful, form, error, el("div", { class: "mt-18" }, pay)))
-  // The page knows the card was submitted without asking the service, so it shows that at once, in an outage too; only
-  // while this form is still on screen, since a confirm can outlast the screen.
-  const submitted = () => {
-    const at = new Date(api.serviceNow()).toISOString()
-    store.markCardSubmitted(invoice.invoiceId, at)
-    if (record) store.updateOrder(record.registrationId, { cardSubmittedAt: at })
-    if (!signal.aborted) dispatch({ type: "card-submitted", at })
-  }
-  let ready = false
-  const mount = async (key: string) => {
-    disabled(pay)
-    const card = await mountCard(key, invoice.clientSecret ?? "", form, isDark())
-    if (signal.aborted || !form.isConnected) return card?.destroy()
-    if (!card) return dispatch({ type: "card-failed" })
-    signal.addEventListener("abort", () => card.destroy(), { once: true })
-    ready = true
-    pay.removeAttribute("disabled")
-    pay.addEventListener("click", async () => {
-      if (state.busy) return
-      dispatch({ type: "card-started" })
-      const outcome = await card.confirm()
-      if (outcome.kind === "submitted") return submitted()
-      if (!signal.aborted) dispatch({ type: "card-refused", note: { tone: "danger", icon: "alert", title: null, text: outcome.message } })
-    })
-  }
-  const key = publishableKey()
-  if (!key && import.meta.env.DEV) cardStandIn(form, pay, submitted)
-  else queueMicrotask(() => void mount(key))
-  return { sections: [pageHead("Pay by card", null, crumbs("Payment", { fromApp: openedFromApp(view!, record) })),
-    twoCols(main, orderCard(cardName(labelOf(view!, record), view!.tld), [["Term", termText(view!.years)], ["Paying with", "Card"]], total(invoice.amount)))],
-  update: (next) => {
-    if (ready) setAction(pay, next.busy === "card", false)
-    showNote(error, next, "mt-14", false)
-  } }
+    el("div", { class: "sec-title" }, el("h2", {}, "Card details")), forgetful, form, note, el("div", { class: "mt-18" }, pay)))
+  return screen({ title: "Pay by card" },
+    main, orderCard(cardName(labelOf(view!, record), view!.tld), [["Term", termText(view!.years)], ["Paying with", "Card"]], total(invoice.amount)))
 }
 
-// Without a Stripe key in development, Pay does what a submitted card does; the mock's controls settle it.
-function cardStandIn(form: HTMLElement, pay: HTMLButtonElement, submitted: () => void): void {
+function cardStandIn(form: HTMLElement): void {
   const f = (text: string, value: string) => el("label", { class: "f" }, el("span", {}, text), el("div", { class: "box" }, value))
   form.append(el("div", { class: "label" }, el("span", {}, "Stripe's payment form"), el("span", {}, "Development stand-in")),
     f("Card number", "4242 4242 4242 4242"), el("div", { class: "two" }, f("Expiry", "12 / 30"), f("CVC", "123")), f("Country", "Portugal"))
-  pay.addEventListener("click", submitted)
 }
 
 // a new search from an order opened from the app stays the app's, so a name found there registers to its wallet
@@ -536,31 +508,22 @@ function withoutRecord(view: api.RegistrationView, cls: string, text = "Enter yo
 // A cancel the service still shows open: nothing more is paid into the invoice, so the page offers no way to pay it.
 // The page keeps following it, and shows it as cancelled once the service closes it.
 const partlyPaid = (invoice: api.InvoiceView) => Number(invoice.cryptoAmountPaid ?? "0") > 0
-function buildStillOpen(cancelled: OrderState): Built<OrderState> {
-  const inv = cancelled.invoice!
-  const words = live(el("span", {}))
-  const update = ({ invoice }: OrderState) => changeTo(words, `${cancelStillOpen(invoice!)}${partlyPaid(invoice!) ? " Part of the payment arrived; quote the reference below to support." : ""}`)
-  update(cancelled)
-  return { sections: [status("warn", "alert", "Invoice cancelled", words,
-    [btn("Search a name", "quiet", () => go(searchFrom(inv.registration, state.record)))], { reference: inv.invoiceId })], update }
+function buildStillOpen({ invoice, record }: OrderState): HTMLElement {
+  const inv = invoice!
+  return outcome({ tone: "warn", icon: "alert", title: "Invoice cancelled",
+    text: `${cancelStillOpen(inv)}${partlyPaid(inv) ? " Part of the payment arrived; quote the reference below to support." : ""}`,
+    action: btn("Search a name", "quiet", () => go(searchFrom(inv.registration, record))), reference: inv.invoiceId })
 }
 
-function buildCardFailed(s: OrderState, signal: AbortSignal): Built<OrderState> {
+function buildCardFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   const inv = s.invoice!
-  const note = liveRegion()
-  const watchHold = holdEnds(signal)
-  const actions = live(el("div", { class: "actions" }))
-  const load = btn("Load the card form again", "", () => dispatch({ type: "card-retried" }))
-  const again = btn("Get a new invoice", "quiet", () => void reorderAfterCancel())
-  const update = (next: OrderState) => {
-    drawAs(actions, next.record ? "again" : "", () => [load, next.record ? again : withoutRecord(next.view!, "quiet")])
-    setAction(again, next.busy === "reorder", next.hold !== null)
-    showNote(note, next, "left mt-18", next.record !== null)
-    watchHold(next.hold !== null)
-  }
-  update(s)
-  return { sections: [status("warn", "alert", "The card form did not load", "Stripe's form was blocked or failed to load. Nothing was charged.",
-    [], { reference: inv.invoiceId, extra: [note, actions] })], update }
+  const again = setAction(btn("Get a new invoice", "quiet", () => void reorderAfterCancel()), s.busy === "reorder", s.hold !== null)
+  again.dataset.focus = "reorder"
+  holdEnds(signal)(s.hold !== null)
+  return outcome({ tone: "warn", icon: "alert", title: "The card form did not load", text: "Stripe's form was blocked or failed to load. Nothing was charged.",
+    extra: liveRegion(undefined, noteOf(s, "left mt-18", s.record !== null)),
+    action: el("div", { class: "actions" }, btn("Load the card form again", "", () => dispatch({ type: "card-retried" })), s.record ? again : withoutRecord(s.view!, "quiet")),
+    reference: inv.invoiceId })
 }
 
 async function reorderAfterCancel(): Promise<void> {
@@ -630,38 +593,29 @@ async function cancelInvoice(): Promise<void> {
   }
 }
 
-function buildConfirming(state: OrderState): Built<OrderState> {
-  const { view, record } = state
-  const invoice = state.invoice!
+function buildConfirming(s: OrderState): HTMLElement {
+  const { view, record } = s
+  const invoice = s.invoice!
   const card = coinOf(invoice) === null
-  const line = live(el("div", { class: "amount smaller" }))
-  const named = live(el("div", {}))
-  const show = (next: OrderState) => {
-    changeTo(line, card ? "Waiting for Stripe to\u00a0confirm" : confirmations(next.invoice!.requiredConfirmations ?? 1))
-    changeTo(named, cardName(labelOf(next.view!, next.record), next.view!.tld))
-  }
-  show(state)
   const coin = invoice.cryptoCurrency === "xmr" ? "XMR" : "BTC"
   const main = el("div", { class: "panel" }, el("div", { class: "panel-sec" },
-    el("div", { class: "pay-head" }, el("div", {}, el("span", { class: "label" }, card ? "Card accepted" : "Payment received"), line)),
+    el("div", { class: "pay-head" }, el("div", {}, el("span", { class: "label" }, card ? "Card accepted" : "Payment received"),
+      el("div", { class: "amount smaller" }, card ? "Waiting for Stripe to\u00a0confirm" : confirmations(invoice.requiredConfirmations ?? 1)))),
     el("p", { class: "sec-note mt-12" }, card
       ? "Stripe usually confirms within a minute. Registration starts by itself; this page moves on."
       : `${invoice.cryptoAmount} ${coin} arrived. Registration starts once it confirms; this page moves on by itself.`),
     el("div", { class: "meter" }, el("i")),
     el("div", { class: "waiting" }, el("span", { class: "awaiting" }, "Confirming payment"), el("span", { class: "mono ref-small" }, invoice.invoiceId))))
-  return { sections: [pageHead(card ? "Paying by card" : "Confirming your payment", null, crumbs("Payment", { fromApp: openedFromApp(view!, record) })),
-    twoCols(main, orderCard(named, [["Term", termText(view!.years)], ["Paying with", card ? "Card" : methodName(invoice.cryptoCurrency ?? "btc")]], total(invoice.amount)))], update: show }
+  return screen({ title: card ? "Paying by card" : "Confirming your payment" },
+    main, orderCard(cardName(labelOf(view!, record), view!.tld), [["Term", termText(view!.years)], ["Paying with", card ? "Card" : methodName(invoice.cryptoCurrency ?? "btc")]], total(invoice.amount)))
 }
 
 // A card refused after Stripe's first answer leaves the invoice open with nothing paid; once the service has seen the payment, entering it again could charge twice.
-function buildSlow(waiting: OrderState): Built<OrderState> {
-  const actions = actionRow()
+function buildSlow({ invoice }: OrderState): HTMLElement {
   const check = btn("Check again", "", refresh)
-  const again = btn("Enter the card again", "quiet", enterCardAgain)
-  const update = ({ invoice }: OrderState) => drawAs(actions, String(Boolean(invoice!.amountPaid)), () => invoice!.amountPaid ? [check] : [check, again])
-  update(waiting)
-  return { sections: [status("warn", "clock", "This is taking longer than expected", "The payment has not been confirmed. This page keeps working: come back to it later, or quote the reference below.",
-    [], { reference: waiting.invoice!.invoiceId, extra: actions })], update }
+  return outcome({ tone: "warn", icon: "clock", title: "This is taking longer than expected",
+    text: "The payment has not been confirmed. This page keeps working: come back to it later, or quote the reference below.",
+    action: invoice!.amountPaid ? check : el("div", { class: "actions" }, check, btn("Enter the card again", "quiet", enterCardAgain)), reference: invoice!.invoiceId })
 }
 
 function enterCardAgain(): void {
@@ -671,40 +625,30 @@ function enterCardAgain(): void {
   dispatch({ type: "record-changed", record: record && { ...record, cardSubmittedAt: undefined }, cardSubmittedAt: null })
 }
 
-function buildExpired(s: OrderState, signal: AbortSignal): Built<OrderState> {
+function buildExpired(s: OrderState, signal: AbortSignal): HTMLElement {
   const inv = s.invoice!
-  const note = liveRegion()
+  const record = s.record
   // a new invoice reuses this order's commitment, which only the browser holding its name code can rebuild
   const received = api.holdsPayment(inv)
-  if (s.record?.cancelled && !received) {
-    const { label, ownerCode, owner } = s.record
-    const restart = btn("Order the name again", "", () => go(searchLink(label, ownerCode === null ? owner : null)), icon("arrow"))
-    return unchanging([status("info", "x", "Invoice cancelled", "This invoice was cancelled and nothing was received.", [restart], { reference: inv.invoiceId, extra: note })])
+  if (record?.cancelled && !received) {
+    const { label, ownerCode, owner } = record
+    return outcome({ tone: "info", icon: "x", title: "Invoice cancelled", text: "This invoice was cancelled and nothing was received.",
+      action: btn("Order the name again", "", () => go(searchLink(label, ownerCode === null ? owner : null)), icon("arrow")), reference: inv.invoiceId })
   }
-  const words = live(el("span", {}))
-  const actions = live(el("div", { class: "actions" }))
-  const again = btn("Get a new invoice", "", reorder)
-  const watchHold = holdEnds(signal)
-  const update = (next: OrderState) => {
-    const record = next.record
-    const latest = next.invoice!
-    if (received) {
-      const coin = latest.cryptoCurrency === "xmr" ? "XMR" : "BTC"
-      const arrived = partlyPaid(latest) && !latest.paidInFull ? `${latest.cryptoAmountPaid} ${coin} arrived, which is not the full amount.` : "A payment did not complete before the invoice closed."
-      changeTo(words, `${arrived} Write to `, el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with the reference below and we will sort it out.")
-    }
-    drawAs(actions, record?.replacedBy ?? (record ? "again" : ""), () => [record?.replacedBy
-      ? btn("Open the new invoice", "quiet", () => go(record.replacedBy!))
-      : record ? again : withoutRecord(latest.registration, "quiet")])
-    again.classList.toggle("quiet", received && !record?.cancelled)
-    setAction(again, next.busy === "reorder", next.hold !== null)
-    showNote(note, next, "left mt-18", record !== null && !record.replacedBy)
-    watchHold(next.hold !== null)
+  const note = liveRegion(undefined, noteOf(s, "left mt-18", record !== null && !record.replacedBy))
+  const again = setAction(btn("Get a new invoice", received && !record?.cancelled ? "quiet" : "", reorder), s.busy === "reorder", s.hold !== null)
+  again.dataset.focus = "reorder"
+  holdEnds(signal)(s.hold !== null)
+  const action = record?.replacedBy ? btn("Open the new invoice", "quiet", () => go(record.replacedBy!)) : record ? again : withoutRecord(inv.registration, "quiet")
+  if (received) {
+    const coin = inv.cryptoCurrency === "xmr" ? "XMR" : "BTC"
+    const arrived = partlyPaid(inv) && !inv.paidInFull ? `${inv.cryptoAmountPaid} ${coin} arrived, which is not the full amount.` : "A payment did not complete before the invoice closed."
+    return outcome({ tone: "warn", icon: "alert", title: "Invoice expired",
+      text: [`${arrived} Write to `, el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with the reference below and we will sort it out."],
+      extra: note, action, reference: inv.invoiceId })
   }
-  update(s)
-  const extra = { reference: inv.invoiceId, extra: [note, actions] }
-  if (received) return { sections: [status("warn", "alert", "Invoice expired", words, [], extra)], update }
-  return { sections: [status("info", "clock", "Invoice expired", inv.cryptoCurrency ? "Nothing was received before its rate window closed." : "Nothing was paid before it closed.", [], extra)], update }
+  return outcome({ tone: "info", icon: "clock", title: "Invoice expired", text: inv.cryptoCurrency ? "Nothing was received before its rate window closed." : "Nothing was paid before it closed.",
+    extra: note, action, reference: inv.invoiceId })
 }
 
 function reorder(): void {
@@ -714,11 +658,11 @@ function reorder(): void {
   void newInvoice(invoice!, record ?? undefined, gen)
 }
 
-function buildPriceChanged({ record, invoice, price }: OrderState): Built<OrderState> {
+function buildPriceChanged({ record, invoice, price }: OrderState): HTMLElement {
   const { label, ownerCode, owner } = record!
   const appOwner = ownerCode === null ? owner : null
-  return unchanging([status("warn", "alert", "The price changed", [nameText(label, invoice!.registration.tld), ` costs ${dollars(price!, true)} now. Nothing was charged.`],
-    [btn("Search again", "", () => go(searchLink(label, appOwner)))], { reference: invoice!.invoiceId })])
+  return outcome({ tone: "warn", icon: "alert", title: "The price changed", text: [nameText(label, invoice!.registration.tld), ` costs ${dollars(price!, true)} now. Nothing was charged.`],
+    action: btn("Search again", "", () => go(searchLink(label, appOwner))), reference: invoice!.invoiceId })
 }
 
 async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | undefined, gen: number): Promise<void> {
@@ -763,19 +707,10 @@ const STAGES = [
   { n: "3", going: "Registering", done: "Registered", text: "Then it is yours" },
 ]
 
-function track(states: StageState[]): { node: HTMLElement; set: (states: StageState[]) => void } {
-  const parts = STAGES.map((s) => {
-    const node = live(el("span", { class: "node" }))
-    const title = live(el("b", {}))
-    return { ...s, node, title, stage: el("div", { class: "stage" }, node, title, el("span", {}, s.text)) }
-  })
-  const set = (next: StageState[]) => parts.forEach((p, i) => {
-    p.stage.className = `stage ${next[i]}`.trim()
-    changeTo(p.node, next[i] === "done" ? "✓" : next[i] === "failed" ? "✕" : p.n)
-    changeTo(p.title, next[i] === "done" ? p.done : p.going)
-  })
-  set(states)
-  return { node: el("div", { class: "track" }, ...parts.map((p) => p.stage)), set }
+function track(states: StageState[]): HTMLElement {
+  return el("div", { class: "track" }, ...STAGES.map((stage, i) => el("div", { class: `stage ${states[i]}`.trim() },
+    el("span", { class: "node" }, states[i] === "done" ? "✓" : states[i] === "failed" ? "✕" : stage.n),
+    el("b", {}, states[i] === "done" ? stage.done : stage.going), el("span", {}, stage.text))))
 }
 
 // block explorers by chain id; a chain without one, as a local test chain, shows its hashes as text
@@ -788,21 +723,14 @@ function onChain(view: api.RegistrationView, kind: "tx" | "address", value: stri
     : el("span", { title: value ?? "" }, text)
 }
 
-type SetTxs = (view: api.RegistrationView, states: StageState[], refused: boolean, now: number) => void
-function txRows(view: api.RegistrationView, states: StageState[], now: number, refused = false): { node: HTMLElement; set: SetTxs } {
+function txRows(view: api.RegistrationView, states: StageState[], now: number, refused = false): HTMLElement {
   const tx = (k: string, ...cells: Node[]) => el("div", { class: "tx" }, el("span", { class: "k" }, k), ...cells)
-  const [commitHash, commitChip, registerHash, registerChip] = [live(el("span", { class: "v mono" })), live(el("span", {})), live(el("span", { class: "v mono" })), live(el("span", {}))]
-  const set: SetTxs = (view, states, refused, now) => {
-    const hash = (h: string | null) => onChain(view, "tx", h, h ? shortHash(h) : "—")
-    changeTo(commitHash, hash(view.commitTx))
-    changeTo(commitChip, ...(view.commitTx ? [chip(states[0] === "done" ? "Confirmed" : "Sent", states[0] === "done" ? "ok" : "brand")] : []))
-    changeTo(registerHash, hash(view.registerTx))
-    changeTo(registerChip, states[2] === "done" ? chip("Confirmed", "ok") : states[2] === "active" ? chip("Sent", "brand")
-      : view.revealAfter !== null && now / 1000 >= view.revealAfter ? (refused ? chip("Not signed", "bad") : chip("Signing", "brand")) : chip("After the wait"))
-  }
-  set(view, states, refused, now)
-  return { node: el("div", { class: "panel-sec txs" }, tx("Commit", commitHash, commitChip), tx("Register", registerHash, registerChip),
-    tx("Owner", el("span", { class: "v mono" }, onChain(view, "address", view.owner, shortAddress(view.owner))))), set }
+  const hash = (h: string | null) => el("span", { class: "v mono" }, onChain(view, "tx", h, h ? shortHash(h) : "—"))
+  const commitChip = view.commitTx ? chip(states[0] === "done" ? "Confirmed" : "Sent", states[0] === "done" ? "ok" : "brand") : null
+  const registerChip = states[2] === "done" ? chip("Confirmed", "ok") : states[2] === "active" ? chip("Sent", "brand")
+    : view.revealAfter !== null && now / 1000 >= view.revealAfter ? (refused ? chip("Not signed", "bad") : chip("Signing", "brand")) : chip("After the wait")
+  return el("div", { class: "panel-sec txs" }, tx("Commit", hash(view.commitTx), el("span", {}, commitChip)), tx("Register", hash(view.registerTx), el("span", {}, registerChip)),
+    tx("Owner", el("span", { class: "v mono" }, onChain(view, "address", view.owner, shortAddress(view.owner)))))
 }
 
 function paidRows(view: api.RegistrationView, invoice: api.InvoiceView | null): [string, string | Node][] {
@@ -812,9 +740,9 @@ function paidRows(view: api.RegistrationView, invoice: api.InvoiceView | null): 
 
 const stagesOf = (view: api.RegistrationView): StageState[] => view.phase === "registering" ? ["done", "done", "active"] : view.phase === "committed" ? ["done", "active", ""] : ["active", "", ""]
 
-function headingOf({ view, record }: OrderState): (Node | string)[] {
+function headingOf({ view, record }: OrderState): Kid {
   const label = labelOf(view!, record)
-  return label ? ["Registering ", gradName(label, view!.tld)] : ["Registering the name"]
+  return label ? ["Registering ", gradName(label, view!.tld)] : "Registering the name"
 }
 
 const MINUTE_S = 60
@@ -837,61 +765,43 @@ const WAIT_NOTE = "The contract makes every registration wait after its commit, 
 const COMMIT_NOTE = "Waiting for the commit to be mined. The wait starts once it is."
 const REGISTERING_NOTE = "Registering the name on chain. It is yours once the transaction is mined."
 
-function buildRegistering(state: OrderState, signal: AbortSignal): Built<OrderState> {
-  let shown = state
-  const steps = track(stagesOf(state.view!))
-  const txs = txRows(state.view!, stagesOf(state.view!), state.now)
-  const clockNode = live(el("b", {}))
-  const note = live(el("p", {}))
-  const problem = live(el("div", {}))
-  const barOf = ({ view, record, invoice }: OrderState) => crumbs("Registration", { fromApp: openedFromApp(view!, record), prepaid: !invoice })
-  const bar = barOf(state)
-  const named = live(el("div", {}))
-  const head = pageHead(headingOf(state), leadOf(state), bar)
-  const heading = live(head.querySelector("h1")!)
-  const lead = live(head.querySelector<HTMLElement>(".lead")!)
+function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
+  const { record } = s
+  const view = s.view!
+  const states = stagesOf(view)
+  const refused = refusalsOf(s) >= REVEAL_ATTEMPTS
+  const steps = track(states)
+  const clockNode = el("b", {})
+  const note = el("p", {})
   const tryAgain = () => {
     dispatch({ type: "reveal-retried" })
     refresh()
   }
-  const show = (next: OrderState) => {
-    const { record } = next
-    const view = next.view!
-    steps.set(stagesOf(view))
-    changeTo(heading, ...headingOf(next))
-    crumbsTo(bar, barOf(next))
-    changeTo(named, cardName(labelOf(view, record), view.tld))
-    changeTo(problem, ...(refusalsOf(next) >= REVEAL_ATTEMPTS ? [el("div", { class: "mt-18" }, alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration."),
-      el("div", { class: "mt-14" }, btn("Try again", "quiet", tryAgain, icon("refresh"))))] : []))
-  }
+  const lead = el("span", {})
+  const say = (node: HTMLElement, text: string) => { if (node.textContent !== text) node.textContent = text }
+  // the wait's time, its line and the words under it move on each second between the screen's own changes
   const tick = () => {
-    const { record } = shown
-    const view = shown.view!
-    const refused = refusalsOf(shown) >= REVEAL_ATTEMPTS
-    changeTo(lead, leadOf(shown))
-    txs.set(view, stagesOf(view), view.label === null && refused, shown.now)
-    if (view.phase === "committed") fillWait(steps.node.children[1] as HTMLElement, view)
+    say(lead, leadOf(s))
+    if (view.phase === "committed") fillWait(steps.children[1] as HTMLElement, view)
     const left = waitLeft(view)
     if (view.phase === "committed" && left > 0) {
-      rollTo(clockNode, clock(left), true)
-      return changeTo(note, WAIT_NOTE)
+      say(clockNode, clock(left))
+      return say(note, WAIT_NOTE)
     }
-    if (!current(clockNode, "svg")) clockNode.replaceChildren(icon("clock"))
-    if (view.phase !== "committed") return changeTo(note, view.phase === "registering" ? REGISTERING_NOTE : COMMIT_NOTE)
+    if (!clockNode.querySelector("svg")) clockNode.replaceChildren(icon("clock"))
+    if (view.phase !== "committed") return say(note, view.phase === "registering" ? REGISTERING_NOTE : COMMIT_NOTE)
     waitsSeen.delete(view.id)
-    if (openedFromApp(view, record) && view.label === null) changeTo(note, "Waiting for SimpleX to sign the registration with your app's wallet.")
-    else if (view.label === null && refused) changeTo(note, "The registration is not signed yet.")
-    else changeTo(note, REGISTERING_NOTE)
+    if (openedFromApp(view, record) && view.label === null) say(note, "Waiting for SimpleX to sign the registration with your app's wallet.")
+    else if (view.label === null && refused) say(note, "The registration is not signed yet.")
+    else say(note, REGISTERING_NOTE)
   }
-  show(state)
-  const turn = onTheSecond(() => waitLeft(shown.view!), tick, signal)
-  const update = (next: OrderState) => {
-    shown = next
-    show(next)
-    turn()
-  }
-  return { sections: [head, twoCols(el("div", { class: "panel" }, el("div", { class: "panel-sec" }, steps.node, el("div", { class: "countdown" }, clockNode, note), problem), txs.node),
-    orderCard(named, paidRows(state.view!, state.invoice)))], update }
+  onTheSecond(() => waitLeft(view), tick, signal)
+  return screen({ title: headingOf(s), lead },
+    el("div", { class: "panel" }, el("div", { class: "panel-sec" }, steps, el("div", { class: "countdown" }, clockNode, note),
+      refused ? el("div", { class: "mt-18" }, alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration."),
+        el("div", { class: "mt-14" }, btn("Try again", "quiet", tryAgain, icon("refresh")))) : null),
+    txRows(view, states, s.now, view.label === null && refused)),
+    orderCard(cardName(labelOf(view, record), view.tld), paidRows(view, s.invoice)))
 }
 
 const waitsSeen = new Map<string, number>()
@@ -906,8 +816,8 @@ function fillWait(stage: HTMLElement, view: api.RegistrationView): void {
 }
 
 const TURN_SLACK_MS = 20
-function onTheSecond(left: () => number, f: () => void, signal: AbortSignal): () => void {
-  if (signal.aborted) return () => undefined
+function onTheSecond(left: () => number, f: () => void, signal: AbortSignal): void {
+  if (signal.aborted) return
   let id: ReturnType<typeof setTimeout> | undefined
   const next = () => {
     clearTimeout(id)
@@ -917,34 +827,23 @@ function onTheSecond(left: () => number, f: () => void, signal: AbortSignal): ()
   }
   signal.addEventListener("abort", () => clearTimeout(id), { once: true })
   next()
-  return next
 }
 
-function buildNotOnDevice({ view, invoice }: OrderState): Built<OrderState> {
-  return unchanging([status("info", "key", "The name code is not in this browser",
-    ["This order registers a name to ", el("span", { class: "nowrap" }, shortAddress(view!.owner)), ". Its code was made in the browser it was bought in. Enter the code you saved before paying to carry on here."],
-    [btn("Enter your name code", "", () => go("/#/restore"), icon("arrow"))], { reference: invoice?.invoiceId ?? view!.id })])
+function buildNotOnDevice({ view, invoice }: OrderState): HTMLElement {
+  return outcome({ tone: "info", icon: "key", title: "The name code is not in this browser",
+    text: ["This order registers a name to ", el("span", { class: "nowrap" }, shortAddress(view!.owner)), ". Its code was made in the browser it was bought in. Enter the code you saved before paying to carry on here."],
+    action: btn("Enter your name code", "", () => go("/#/restore"), icon("arrow")), reference: invoice?.invoiceId ?? view!.id })
 }
 
-const recordPicture = (record: store.OrderRecord | null) => record ? record.ownerCode ?? "app" : ""
-
-function buildRegistered(done: OrderState): Built<OrderState> {
-  const view = done.view!
-  const label = labelOf(view, done.record)
-  // the tick draws itself, its stroke measured as one so the drawing needs no length
-  const tick = icon("check")
-  tick.querySelectorAll("path").forEach((p) => p.setAttribute("pathLength", "1"))
-  const lead = live(el("p", { class: "lead" }))
-  const body = live(el("div", {}))
-  const update = ({ record }: OrderState) => {
-    changeTo(lead, registeredLead(view, record))
-    drawAs(body, recordPicture(record), () => [registeredBody(view, record, done.now)])
-  }
-  update(done)
-  return { sections: [el("section", { class: "celebrate" }, el("div", { class: "wrap" },
-    el("div", { class: "tick" }, tick),
-    el("h1", { class: "display" }, label ? gradName(label, view.tld) : "The name", el("br"), "is yours"),
-    lead)), body], update }
+function buildRegistered({ view: registered, record, now }: OrderState): HTMLElement {
+  const view = registered!
+  const label = labelOf(view, record)
+  return el("section", { class: "screen" },
+    el("div", { class: "celebrate" }, el("div", { class: "wrap" },
+      el("div", { class: "tick" }, icon("check")),
+      el("h1", { class: "display" }, label ? gradName(label, view.tld) : "The name", el("br"), "is yours"),
+      el("p", { class: "lead" }, registeredLead(view, record)))),
+    registeredBody(view, record, now))
 }
 
 function registeredLead(view: api.RegistrationView, record: store.OrderRecord | null): string {
@@ -962,11 +861,11 @@ function registeredBody(view: api.RegistrationView, record: store.OrderRecord | 
       ? btn("Back to SimpleX", "block", () => { location.href = "simplex:/" }, icon("arrow"))
       : withoutRecord(view, "quiet block", "Restore with your name code")
     return el("div", { class: "wrap narrow" }, el("div", { class: "panel" },
-      el("div", { class: "panel-sec" }, track(states).node), txRows(view, states, now).node, el("div", { class: "panel-sec" }, back)))
+      el("div", { class: "panel-sec" }, track(states)), txRows(view, states, now), el("div", { class: "panel-sec" }, back)))
   }
-  const next = (ic: Parameters<typeof icon>[0], title: string, text: string, action: Node | null) =>
+  const next = (ic: IconName, title: string, text: string, action: Node | null) =>
     el("div", { class: "item" }, el("span", { class: "ic" }, icon(ic)), el("div", {}, el("b", {}, title), el("p", {}, text), action))
-  return twoCols(
+  return el("div", {},
     el("div", { class: "panel" }, el("div", { class: "panel-sec" },
       el("div", { class: "sec-title" }, el("h2", {}, "Your name code")),
       el("p", { class: "sec-note" }, "The name code it was ordered with. It owns the name."),
@@ -983,59 +882,44 @@ function registeredBody(view: api.RegistrationView, record: store.OrderRecord | 
         next("key", "Keep the code safe", "Until you redeem it, it is the only key to the name.", null))))
 }
 
-function buildTakenWithCode(taken: OrderState): Built<OrderState> {
-  const view = taken.view!
-  const label = labelOf(view, taken.record)
-  const code = live(el("div", {}))
-  const actions = actionRow()
-  const update = ({ record }: OrderState) => {
-    const released = releasedCode(view, record)
-    drawAs(code, released?.code ?? "", () => released ? [codeDisplay(released.code)] : [])
-    drawAs(actions, released?.code ?? "", () => [released
-      ? btn("Use it for another name", "", () => useCode({ ...released, addedAt: "" }), icon("arrow"))
-      : btn("Search another name", "", () => go("/#/"))])
-  }
-  update(taken)
-  return { sections: [status("info", "key", "Someone registered it first",
-    [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your code was not spent: use it for another name."],
-    [], { reference: view.id, extra: [code, actions] })], update }
+function buildTakenWithCode({ view: taken, record }: OrderState): HTMLElement {
+  const view = taken!
+  const label = labelOf(view, record)
+  const released = releasedCode(view, record)
+  return outcome({ tone: "info", icon: "key", title: "Someone registered it first",
+    text: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your code was not spent: use it for another name."],
+    extra: released ? codeDisplay(released.code) : null,
+    action: released ? btn("Use it for another name", "", () => useCode({ ...released, addedAt: "" }), icon("arrow")) : btn("Search another name", "", () => go("/#/")),
+    reference: view.id })
 }
 
-function buildTaken(state: OrderState, signal: AbortSignal): Built<OrderState> {
-  const { view: taken, record, invoice } = state
-  if (!invoice) return buildTakenWithCode(state)
+function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
+  const { view: taken, record, invoice } = s
+  if (!invoice) return buildTakenWithCode(s)
   const view = taken!
   const label = labelOf(view, record)
   const paid = dollars(invoice.amount, true)
   // the order's worth caps another name; after a move to a cheaper name it is lower than what was paid
-  const kept = dollars(view.price, true)
-  const other = btn("Choose another name", "block", () => go(`/#/?retarget=${view.id}`))
-  const note = liveRegion()
-  const code = btn("Take a code", "quiet block", () => void takeCode())
+  const worth = dollars(view.price, true)
+  const canAct = Boolean(record?.ownerCode)
   const fromApp = openedFromApp(view, record)
-  const watchHold = holdEnds(signal)
-  const cannot = live(el("div", {}))
-  const cannotAct = (next: OrderState) => next.record?.ownerCode ? [] : [el("div", { class: "mt-16" }, openedFromApp(view, next.record)
+  const other = setAction(btn("Choose another name", "block", () => go(`/#/?retarget=${view.id}`)), false, !canAct)
+  const code = setAction(btn("Take a code", "quiet block", () => void takeCode()), canAct && s.busy === "code", !canAct || s.hold !== null)
+  code.dataset.focus = "take-code"
+  holdEnds(signal)(s.hold !== null)
+  const cannot = canAct ? null : el("div", { class: "mt-16" }, fromApp
     ? alertBox("info", "phone", "This order was opened from SimpleX", "Choose another name or take a code in the app.")
-    : alertBox("info", "key", "The name code is not in this browser", "Restore it in Your names to choose another name or take a code."))]
-  const update = (next: OrderState) => {
-    const canAct = Boolean(next.record?.ownerCode)
-    drawAs(cannot, canAct ? "" : openedFromApp(view, next.record) ? "app" : "restore", () => cannotAct(next))
-    setAction(other, false, !canAct)
-    setAction(code, canAct && next.busy === "code", !canAct || next.hold !== null)
-    showNote(note, next, "mt-14", canAct)
-    watchHold(next.hold !== null)
-  }
-  update(state)
-  return { sections: [pageHead("Someone registered it first", [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."], crumbs("Registration", { fromApp })),
-    twoCols(el("div", { class: "panel" },
-      el("div", { class: "panel-sec" }, track(["done", "done", "failed"]).node,
+    : alertBox("info", "key", "The name code is not in this browser", "Restore it in Your names to choose another name or take a code."))
+  return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."] },
+    el("div", { class: "panel" },
+      el("div", { class: "panel-sec" }, track(["done", "done", "failed"]),
         el("p", { class: "sec-note mt-18 mb-0" }, "Another registration of this name went through first, so ours could not."),
         cannot,
         el("div", { class: "options" },
-          el("div", { class: "option" }, el("b", {}, "Choose another name"), el("p", {}, `Any name of up to ${kept}, registered to the same wallet, so your code owns it.`), other),
-          el("div", { class: "option" }, el("b", {}, "Take a code instead"), el("p", {}, `A code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for 2 years, to use here or in the app.`), code)), note)),
-    orderCard(cardName(label, view.tld), [["Paid", `${paid} · ${methodName(invoice.cryptoCurrency ?? "card")}`], ["Kept", kept], ["Reference", fullRef(invoice.invoiceId)]]))], update }
+          el("div", { class: "option" }, el("b", {}, "Choose another name"), el("p", {}, `Any name of up to ${worth}, registered to the same wallet, so your code owns it.`), other),
+          el("div", { class: "option" }, el("b", {}, "Take a code instead"), el("p", {}, `A code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for 2 years, to use here or in the app.`), code)),
+        liveRegion(undefined, noteOf(s, "mt-14", canAct)))),
+    orderCard(cardName(label, view.tld), [["Paid", `${paid} · ${methodName(invoice.cryptoCurrency ?? "card")}`], ["Kept", worth], ["Reference", fullRef(invoice.invoiceId)]]))
 }
 
 async function takeCode(): Promise<void> {
@@ -1055,28 +939,22 @@ async function takeCode(): Promise<void> {
   }
 }
 
-const issuedPicture = ({ view, record }: OrderState) => openedFromApp(view!, record) ? "app" : record?.ownerCode ?? ""
-
-function buildCodeIssued(issued: OrderState): Built<OrderState> {
-  const body = live(el("div", {}))
-  const update = (next: OrderState) => drawAs(body, issuedPicture(next), () => [issuedStatus(next)])
-  update(issued)
-  return { sections: [body], update }
-}
-
-function issuedStatus({ view: issued, record }: OrderState): HTMLElement {
+function buildCodeIssued({ view: issued, record }: OrderState): HTMLElement {
   const view = issued!
   if (openedFromApp(view, record)) {
-    return status("info", "key", "This order became a code", "The app the order was opened from shows the code.", [btn("Search a name", "", () => go(searchFrom(view, record)))], { reference: view.id })
+    return outcome({ tone: "info", icon: "key", title: "This order became a code", text: "The app the order was opened from shows the code.",
+      action: btn("Search a name", "", () => go(searchFrom(view, record))), reference: view.id })
   }
   if (!record?.ownerCode) {
-    return status("info", "key", "This order became a code", "The code is made from the order's name code, so it shows in the browser that has it. Restore the name code here to see it.",
-      [btn("Enter your name code", "", () => go("/#/restore"), icon("arrow"))], { reference: view.id })
+    return outcome({ tone: "info", icon: "key", title: "This order became a code",
+      text: "The code is made from the order's name code, so it shows in the browser that has it. Restore the name code here to see it.",
+      action: btn("Enter your name code", "", () => go("/#/restore"), icon("arrow")), reference: view.id })
   }
   const code = record.takenCode ?? flow.takenCodeOf(record, view.id)
-  return status("ok", "key", "Here is a code instead", [`For names of ${codeTier(record.label.length)} or more letters, for 2 years: what `, nameText(record.label, view.tld), " was paid for."],
-    [btn("Search another name", "quiet", () => go("/#/"))],
-    { extra: [codeDisplay(code),
+  return outcome({ tone: "ok", icon: "key", title: "Here is a code instead",
+    text: [`For names of ${codeTier(record.label.length)} or more letters, for 2 years: what `, nameText(record.label, view.tld), " was paid for."],
+    action: btn("Search another name", "quiet", () => go("/#/")),
+    extra: [codeDisplay(code),
       el("div", { class: "center mt-16" }, el("div", { class: "qr" }, qrSvg(code, "code"))),
       el("div", { class: "left" }, alertBox("info", "info", "Keep a copy of this code", "The service keeps only its hash; this browser keeps the code, under Your names."))] })
 }
@@ -1086,33 +964,22 @@ const failedLead = ({ invoice, codeRefused, codeKept, record }: OrderState) => i
   : codeRefused ? "Your code can no longer pay for it, so trying again cannot register it."
   : record?.prepaidCode && codeKept ? "Your code is kept. Trying again spends nothing more." : "Trying again spends nothing more."
 
-function buildFailed(state: OrderState, signal: AbortSignal): Built<OrderState> {
-  const { view: failed, record, invoice } = state
+function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
+  const { view: failed, record, invoice } = s
   const view = failed!
   const label = labelOf(view, record)
-  const note = liveRegion()
-  const again = btn("Try again", "", () => void retryRegistration(), icon("refresh"))
   // a code refused for good leaves nothing to try again, so the page offers another search as the other endings do
-  const action = live(el("div", { class: "mt-18" }))
-  const elsewhere = btn("Search a name", "quiet", () => go(searchFrom(view, record)))
-  const head = pageHead(invoice ? "Paid, not registered" : "Not registered", failedLead(state), crumbs("Registration", { fromApp: openedFromApp(view, record), prepaid: !invoice }))
-  const lead = live(head.querySelector<HTMLElement>(".lead")!)
-  const watchHold = holdEnds(signal)
-  const update = (next: OrderState) => {
-    changeTo(lead, failedLead(next))
-    setAction(again, next.busy === "retry", next.hold !== null)
-    drawAs(action, String(next.codeRefused), () => [next.codeRefused ? elsewhere : again])
-    showNote(note, next, "mt-14", true)
-    watchHold(next.hold !== null)
-  }
-  update(state)
+  const retry = setAction(btn("Try again", "", () => void retryRegistration(), icon("refresh")), s.busy === "retry", s.hold !== null)
+  retry.dataset.focus = "retry"
+  const action = s.codeRefused ? btn("Search a name", "quiet", () => go(searchFrom(view, record))) : retry
+  holdEnds(signal)(s.hold !== null)
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
-  return { sections: [head,
-    twoCols(el("div", { class: "panel" },
-      el("div", { class: "panel-sec" }, track(failedAt).node,
+  return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s) },
+    el("div", { class: "panel" },
+      el("div", { class: "panel-sec" }, track(failedAt),
         el("div", { class: "mt-22" }, alertBox("danger", "alert", view.error ?? "The registration did not go through", "The service's own retries gave up.")),
-        note, action)),
-    orderCard(cardName(label, view.tld), [...paidRows(view, invoice).slice(0, 1), ["Charged again", "Never"], ["Reference", fullRef(invoice?.invoiceId ?? view.id)]]))], update }
+        liveRegion(undefined, noteOf(s, "mt-14", true)), el("div", { class: "mt-18" }, action))),
+    orderCard(cardName(label, view.tld), [...paidRows(view, invoice).slice(0, 1), ["Charged again", "Never"], ["Reference", fullRef(invoice?.invoiceId ?? view.id)]]))
 }
 
 // The refusal is kept with the order, so the page opened again says it from its first frame.
@@ -1150,7 +1017,7 @@ async function retryRegistration(): Promise<void> {
   reread(gen)
 }
 
-const BUILDS: Record<OrderKind, Build<OrderState>> = {
+const BUILDERS: Record<OrderKind, Builder<OrderState>> = {
   "pay-crypto": buildPayCrypto,
   "pay-card": buildPayCard,
   confirming: buildConfirming,

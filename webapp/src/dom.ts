@@ -1,11 +1,8 @@
 // Building blocks for the views, as the mockups (plans/names-codes/mockups/domains.js) draw them.
-import { keep } from "./focus.ts"
-import { live, moving, rollTo } from "./motion.ts"
-import { CROSS_MS } from "./motion-values.ts"
 import { seconds } from "./format.ts"
 import { icon, type IconName } from "./icons.ts"
 
-type Kid = Node | string | null | undefined | false | Kid[]
+export type Kid = Node | string | null | undefined | false | Kid[]
 type Attrs = Record<string, string | boolean | ((e: Event) => void) | undefined>
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = {}, ...kids: Kid[]): HTMLElementTagNameMap[K] {
@@ -35,7 +32,7 @@ export function waitOut(node: HTMLElement, waitSeconds: number, text: (left: str
   node.setAttribute("aria-hidden", "true")
   node.before(el("span", { class: "sr-only" }, text(seconds(waitSeconds))))
   const [before, after] = text(COUNT_MARK).split(COUNT_MARK)
-  const count = live(el("span", { class: "count" }))
+  const count = el("span", {})
   const unit = document.createTextNode("")
   node.replaceChildren(before, count, unit, after)
   const until = Date.now() + waitSeconds * 1000
@@ -47,7 +44,7 @@ export function waitOut(node: HTMLElement, waitSeconds: number, text: (left: str
     else if (shown) return clearInterval(timer)
     const left = Math.ceil((until - Date.now()) / 1000)
     if (left > 0) {
-      rollTo(count, String(left))
+      count.textContent = String(left)
       unit.textContent = seconds(left).slice(String(left).length)
       return
     }
@@ -57,39 +54,6 @@ export function waitOut(node: HTMLElement, waitSeconds: number, text: (left: str
   }
   const timer = setInterval(tick, 1000)
   tick()
-}
-
-// the spinner and the label cross back, as .btn.settling in styles.css
-const SETTLE_MS = CROSS_MS
-const settling = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>()
-
-export function working(button: HTMLButtonElement): HTMLButtonElement {
-  disabled(button)
-  clearTimeout(settling.get(button))
-  button.classList.remove("settling")
-  button.style.minWidth = `${button.getBoundingClientRect().width}px`
-  button.classList.add("working")
-  button.setAttribute("aria-busy", "true")
-  return button
-}
-
-function idle(button: HTMLElement): void {
-  if (!button.classList.contains("working")) return
-  button.classList.remove("working")
-  button.removeAttribute("aria-busy")
-  const done = () => {
-    button.classList.remove("settling")
-    button.style.removeProperty("min-width")
-  }
-  if (!moving()) return done()
-  button.classList.add("settling")
-  settling.set(button, setTimeout(done, SETTLE_MS))
-}
-
-export function release(button: HTMLButtonElement): void {
-  idle(button)
-  button.removeAttribute("disabled")
-  if (button.isConnected && document.activeElement === document.body) button.focus({ preventScroll: true })
 }
 
 export function btn(text: Kid, cls = "", onclick?: () => void, ...extra: Kid[]): HTMLButtonElement {
@@ -104,7 +68,7 @@ export function chip(text: string, cls = "", dot = false): HTMLSpanElement {
   return el("span", { class: `chip ${cls}`.trim() }, dot ? el("span", { class: "dot" }) : null, text)
 }
 
-type Tone = "ok" | "warn" | "danger" | "info"
+export type Tone = "ok" | "warn" | "danger" | "info"
 
 export function alertBox(tone: Tone, ic: IconName, title: string | null, text: Kid): HTMLDivElement {
   return el("div", { class: `notice ${tone}` }, icon(ic), el("div", {}, title ? el("b", {}, title) : null, text))
@@ -126,16 +90,20 @@ export function gradName(label: string, tld = "simplex"): HTMLSpanElement {
 }
 
 // where a page writes the answer to an action, announced by screen readers when it changes
-export function liveRegion(cls?: string): HTMLDivElement {
-  return live(el("div", { class: cls, role: "status", "aria-live": "polite" }))
+export function liveRegion(cls?: string, ...kids: Kid[]): HTMLDivElement {
+  return el("div", { class: cls, role: "status", "aria-live": "polite" }, ...kids)
 }
 
-export function disabled<T extends HTMLElement>(node: T, off = true): T {
-  // a button turned off drops focus to the page; a redraw of the page gives it back to the button or its successor
-  if (off && node === document.activeElement) keep(node)
-  if (off) node.setAttribute("disabled", "")
-  if (off) idle(node)
+export function disabled<T extends HTMLElement>(node: T): T {
+  node.setAttribute("disabled", "")
   return node
+}
+
+export function setAction(button: HTMLButtonElement, busy: boolean, held: boolean): HTMLButtonElement {
+  button.disabled = busy || held
+  if (busy) button.setAttribute("aria-busy", "true")
+  else button.removeAttribute("aria-busy")
+  return button
 }
 
 const COPIED_MS = 2000

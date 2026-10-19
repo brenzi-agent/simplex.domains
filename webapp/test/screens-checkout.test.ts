@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "vitest"
 import {
-  changeOf, checkoutMachine, type CheckoutEvent, type CheckoutKind, type CheckoutState, FALLBACK_METHOD, initialState, moves, reduce, screenOf,
+  changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, FALLBACK_METHOD, initialState, reduce, screenOf,
 } from "../src/screens/checkout.ts"
-import { NO_LEAD, step } from "../src/screens/machine.ts"
+import { NO_LEAD } from "../src/screens/hold.ts"
 import type { Checkout } from "../src/session.ts"
 
 const NOW = Date.parse("2026-10-17T12:00:00Z")
@@ -30,14 +30,6 @@ const STATES: Record<CheckoutKind, CheckoutState> = {
   "status:failed": open("owner-code", { refusal: "failed" }),
 }
 
-function eventTo(to: CheckoutKind, s: CheckoutState): { state: CheckoutState; event: CheckoutEvent } {
-  const sent = { ...s, sending: true, busy: true }
-  if (to === "status:price-changed") return { state: sent, event: { type: "price-changed", price: 2500 } }
-  if (to === "status:too-many") return { state: sent, event: { type: "hold-started", until: NOW + 30_000 } }
-  if (to === "status:failed") return { state: sent, event: { type: "order-refused", reason: "failed" } }
-  return { state: { ...s, page: to }, event: opened(s, { hold: null }) }
-}
-
 describe("screenOf", () => {
   const cases: [string, CheckoutState, CheckoutKind][] = [
     ["the checkout", open("checkout"), "checkout"],
@@ -51,42 +43,6 @@ describe("screenOf", () => {
   ]
   it.each(cases)("%s", (_, state, kind) => {
     expect(screenOf(state)).toBe(kind)
-  })
-})
-
-describe("moves", () => {
-  const rows = Object.entries(moves).flatMap(([from, to]) => Object.entries(to).map(([next, motion]): [CheckoutKind, CheckoutKind, string] => [from as CheckoutKind, next as CheckoutKind, motion]))
-  it("lists the refusals as page changes", () => {
-    expect(rows.length).toBeGreaterThan(0)
-    expect(rows.every(([, , motion]) => motion === "screen")).toBe(true)
-  })
-  it.each(rows)("%s → %s", (from, to, motion) => {
-    const warn = vi.fn()
-    const { state, event } = eventTo(to, STATES[from])
-    expect(screenOf(state)).toBe(from)
-    const result = step(checkoutMachine, state, from, event, warn)
-    expect(result).toMatchObject({ screen: to, motion, expected: true })
-    expect(warn).not.toHaveBeenCalled()
-  })
-  it("an order tried again from the checkout and refused for its method draws the checkout with another one chosen", () => {
-    const warn = vi.fn()
-    const sent = { ...STATES["status:failed"], page: "checkout" as const, sending: true, busy: true }
-    const result = step(checkoutMachine, sent, "status:failed", { type: "order-refused", reason: "method" }, warn)
-    expect(result).toMatchObject({ screen: "checkout", motion: "screen", expected: true })
-    expect(result.state.checkout).toMatchObject({ method: "xmr", unavailable: "btc" })
-    expect(warn).not.toHaveBeenCalled()
-  })
-  it("logs a move no checkout makes, and still shows it", () => {
-    const warn = vi.fn()
-    const priced = STATES["status:price-changed"]
-    const result = step(checkoutMachine, priced, "status:price-changed", { type: "hold-started", until: NOW }, warn)
-    expect(result).toMatchObject({ screen: "status:too-many", motion: "screen", expected: false })
-    expect(warn).toHaveBeenCalledWith("[screens] checkout: unexpected move status:price-changed → status:too-many")
-  })
-  it("keeps a screen whose state changes in place", () => {
-    const s = STATES.checkout
-    expect(step(checkoutMachine, s, "checkout", { type: "code-applied", code: CODE }, vi.fn())).toMatchObject({ screen: "checkout", motion: "in-place", expected: true })
-    expect(step(checkoutMachine, STATES["status:too-many"], "status:too-many", { type: "hold-ended" }, vi.fn())).toMatchObject({ screen: "status:too-many", motion: "in-place" })
   })
 })
 

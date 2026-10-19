@@ -2,24 +2,22 @@
 import * as api from "../api.ts"
 import { labelHash } from "../crypto/registration.ts"
 import { checksumAddress, fromHex, hex } from "../crypto/wallet.ts"
-import { alertBox, btn, chip, el, icon, link, liveRegion, nameText, nameTitle, waitOut } from "../dom.ts"
+import { alertBox, btn, chip, el, icon, link, liveRegion, nameText, nameTitle, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dollars, letters, methodName, shortAddress, termText } from "../format.ts"
 import { methodMark, wefunderMark } from "../icons.ts"
-import { current, live, moving } from "../motion.ts"
 import { foldLabel, MAX_LABEL_LENGTH, priceFor } from "../names.ts"
-import { type Hold, step } from "../screens/machine.ts"
+import type { Hold } from "../screens/hold.ts"
 import { againLine, ranOut } from "../screens/names.ts"
 import {
-  type Answer, codeFor, initialSearch, type Mine, type Moved, type Opening, returnedTo, searchDue, type SearchEvent, type SearchKind, searchMachine, type SearchState,
+  type Answer, codeFor, initialSearch, type Mine, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent, type SearchKind, type SearchState,
 } from "../screens/search.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { codePopup } from "./codes.ts"
-import { type Build, type Built, closePopup, CONTACT_EMAIL, currentRoute, go, INVEST_LINE, isRedraw, isRoute, popup, screens, searchLink, status, throughHistory, WEFUNDER_URL } from "./shell.ts"
+import { type Builder, closePopup, CONTACT_EMAIL, currentRoute, draw, go, INVEST_LINE, isRedraw, isRoute, kept, outcome, popup, searchLink, throughHistory, WEFUNDER_URL } from "./shell.ts"
 import { after } from "./effects.ts"
-import { holdEnd, holdEnder, holdFrom, tabHold } from "./hold.ts"
-import { drawAs, holdNotice, secondsLeft, setAction, unchanging } from "./slots.ts"
+import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
 
 // links from the service come from records on chain, which anyone can write: only SimpleX and https links are followed
 const SAFE_LINK = /^(simplex:\/|https:\/\/)/
@@ -38,7 +36,6 @@ const RULE = `A name has 6 letters or more: ${RANGES} and single hyphens between
 
 let state: SearchState = initialSearch()
 let shown: SearchKind | null = null
-const showScreen = screens<SearchState>()
 let opens = 0
 let pageRoute = -1
 let field: HTMLInputElement | null = null
@@ -84,11 +81,18 @@ export function searchPage(params: URLSearchParams): void {
 }
 
 function dispatch(event: SearchEvent): void {
-  const result = step(searchMachine, state, shown, event)
-  state = result.state
+  state = reduce(state, event)
   if (!isRoute(pageRoute)) return
-  shown = result.screen
-  showScreen(result.screen, state, BUILDS[result.screen], null, result.motion)
+  const kind = screenOf(state)
+  shown = kind
+  draw(kind, (signal) => BUILDERS[kind](state, signal))
+}
+
+// what is typed is shown by the field itself, so the page takes it without drawing
+function typed(input: HTMLInputElement): void {
+  state = reduce(state, { type: "typed", text: input.value })
+  input.closest(".search")!.classList.remove("bad")
+  document.querySelector<HTMLElement>("body > main .hint.keys")?.toggleAttribute("hidden", !input.value)
 }
 
 function submit(): void {
@@ -219,27 +223,24 @@ async function retarget(record: store.OrderRecord, label: string, chain: session
   }
 }
 
-const BUILDS: Record<SearchKind, Build<SearchState>> = {
+const BUILDERS: Record<SearchKind, Builder<SearchState>> = {
   "search:plain": buildSearch,
   "search:fromApp": buildSearch,
   "search:retarget": buildSearch,
   "status:bad-app-link": buildBadAppLink,
 }
 
-function buildBadAppLink(s: SearchState): Built<SearchState> {
-  return unchanging([status("warn", "alert", "This link from SimpleX does not work", "The wallet it names is not a valid address. Open the link again from the app, or search here for a name owned by a wallet made in this browser.",
-    [el("a", { class: "btn quiet", href: searchLink(s.name, null) }, "Search here")])])
+function buildBadAppLink(s: SearchState): HTMLElement {
+  return outcome({ tone: "warn", icon: "alert", title: "This link from SimpleX does not work",
+    text: "The wallet it names is not a valid address. Open the link again from the app, or search here for a name owned by a wallet made in this browser.",
+    action: el("a", { class: "btn quiet", href: searchLink(s.name, null) }, "Search here") })
 }
 
-interface RegisterPart { button: HTMLButtonElement; note: HTMLElement }
-interface Drawn { nodes: Node[]; register?: RegisterPart }
-
-function buildSearch(s: SearchState, signal: AbortSignal): Built<SearchState> {
-  const input = el("input", { type: "text", value: s.typed, placeholder: "yourname", "aria-label": "Name", autocomplete: "off", autocapitalize: "none", spellcheck: "false" })
+function searchField(): HTMLElement {
+  const input = el("input", { type: "text", placeholder: "yourname", "aria-label": "Name", autocomplete: "off", autocapitalize: "none", spellcheck: "false" })
   field = input
   const search = btn("Search", "", () => submit(), icon("arrow"))
-  const box = el("div", { class: "search" }, icon("search"), input, el("span", { class: "tld" }, ".simplex"), search)
-  const results = liveRegion("results")
+  search.dataset.focus = "search"
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit() })
   // names are lower case, so upper case folds as it is typed; the caret stays where it was
   const fold = () => {
@@ -252,65 +253,52 @@ function buildSearch(s: SearchState, signal: AbortSignal): Built<SearchState> {
   // a keyboard composing a character would restart and repeat it if the value changed under it
   input.addEventListener("compositionend", () => {
     fold()
-    dispatch({ type: "typed", text: input.value })
+    typed(input)
   })
   input.addEventListener("input", (e) => {
     if (!(e as InputEvent).isComposing) fold()
-    dispatch({ type: "typed", text: input.value })
+    typed(input)
   })
-  const banner = s.opening === "plain" ? null : live(el("div", { class: "banner-slot" }))
+  return el("div", { class: "search" }, icon("search"), input, el("span", { class: "tld" }, ".simplex"), search)
+}
+
+function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
+  const box = kept("search-field", searchField)
+  const input = box.querySelector("input")!
+  const search = box.querySelector("button")!
+  if (input.value !== s.typed) input.value = s.typed
+  box.classList.toggle("bad", s.bad)
+  setAction(search, false, s.paused)
   const retry = () => {
     search.focus({ preventScroll: true })
     submit()
   }
-  let registerPart: RegisterPart | null = null
-  const watchHold = holdEnder(signal, holdEnded)
-  let cardFor = -1
-  const update = (next: SearchState) => {
-    if (input.value !== next.typed) input.value = next.typed
-    box.classList.toggle("bad", next.bad)
-    setAction(search, false, next.paused)
-    if (banner) drawAs(banner, ...bannerOf(next))
-    current<HTMLElement>(results, ".result")?.classList.toggle("busy", next.searching !== null)
-    const [key, draw] = resultsOf(next, retry)
-    drawAs(results, key, () => {
-      const drawn = draw()
-      registerPart = drawn.register ?? null
-      return drawn.nodes
-    })
-    if (registerPart && next.answer?.kind === "found" && next.answer.answer.status === "available") showRegister(registerPart, next, next.answer.answer)
-    watchHold(next.hold !== null)
-    if (next.searching && !next.searching.card && next.answer?.kind !== "found" && cardFor !== next.seq) {
-      const seq = next.seq
-      cardFor = seq
-      after(SEARCH_CARD_AFTER_MS, () => dispatch({ type: "card-due", seq }), signal)
-    }
+  holdEnder(signal, holdEnded)(s.hold !== null)
+  if (s.searching && !s.searching.card && s.answer?.kind !== "found") {
+    const seq = s.seq
+    after(SEARCH_CARD_AFTER_MS, () => dispatch({ type: "card-due", seq }), signal)
   }
-  update(s)
+  const banner = s.opening === "plain" ? null : el("div", { class: "banner-slot" }, bannerOf(s))
   const hero = el("section", { class: "hero" }, el("div", { class: "wrap" },
     el("span", { class: "eyebrow" }, el("span", { class: "tag" }, "NEW"), "Names for SimpleX channels and addresses"),
     el("h1", { class: "display" }, "Own your name", el("br"), "on ", el("span", { class: "grad" }, "SimpleX")),
     el("p", { class: "lead" }, "One name for your public channel and contact address, registered to a wallet only you hold."),
-    banner, box, results))
-  return { sections: s.opening === "plain" ? [hero, bento()] : [hero], update }
+    banner, box, liveRegion("results", resultsOf(s, retry))))
+  // a search under way dims the answer it replaces
+  hero.querySelector(".result")?.classList.toggle("busy", s.searching !== null)
+  return el("section", { class: "home" }, hero, s.opening === "plain" ? bento() : null)
 }
 
-type Part<T = Node[]> = [string, () => T]
-
-function bannerOf(s: SearchState): Part {
+function bannerOf(s: SearchState): HTMLElement | null {
   if (s.fromApp) {
-    const wallet = s.fromApp
-    return [`app ${wallet}`, () => [el("div", { class: "banner" }, icon("phone"), el("span", {}, el("b", {}, "Opened from SimpleX. "), `The name is registered to your app's wallet, ${shortAddress(wallet)}.`))]]
+    return el("div", { class: "banner" }, icon("phone"), el("span", {}, el("b", {}, "Opened from SimpleX. "), `The name is registered to your app's wallet, ${shortAddress(s.fromApp)}.`))
   }
-  if (s.moved) {
-    const moved = s.moved
-    return [JSON.stringify(moved), () => [movedBanner(moved)]]
-  }
+  if (s.moved) return movedBanner(s.moved)
   if (s.retarget) {
     const worth = dollars(s.retarget.paid, true)
-    return [`kept ${worth}`, () => [el("div", { class: "banner" }, icon("wallet"), el("span", {}, el("b", {}, `Your payment is kept: ${worth}. `), `Choose another name of up to ${worth}; nothing more is charged.`))]]
+    return el("div", { class: "banner" }, icon("wallet"), el("span", {}, el("b", {}, `Your payment is kept: ${worth}. `), `Choose another name of up to ${worth}; nothing more is charged.`))
   }
-  return ["", () => []]
+  return null
 }
 
 function movedBanner(moved: Moved): HTMLElement {
@@ -319,26 +307,23 @@ function movedBanner(moved: Moved): HTMLElement {
     : el("div", { class: "banner" }, icon("info"), el("span", {}, el("b", {}, "Your payment already went to another name. "), el("a", { href: moved.url }, "Open ", nameText(moved.label, moved.tld))))
 }
 
-function resultsOf(s: SearchState, retry: () => void): Part<Drawn> {
-  const shows = (key: string, draw: () => Node[]): Part<Drawn> => [key, () => ({ nodes: draw() })]
-  if (s.paused && s.hold) {
-    const hold = s.hold
-    return shows(`paused ${hold.until}`, () => [pauseNotice(hold)])
-  }
-  if (s.searching?.card) return shows("card", () => [el("div", { class: "skeleton result-shape" }, el("span", { class: "sr-only" }, "Searching…"))])
+function resultsOf(s: SearchState, retry: () => void): HTMLElement | null {
+  if (s.paused && s.hold) return pauseNotice(s.hold)
+  if (s.searching?.card) return el("div", { class: "skeleton result-shape" }, el("span", { class: "sr-only" }, "Searching…"))
   const answer = s.answer
-  if (answer?.kind === "rule") return shows(`rule ${answer.label} ${answer.problem}`, () => [ruleLine(answer)])
+  if (answer?.kind === "rule") return ruleLine(answer)
   if (answer?.kind === "unchecked") {
-    return shows("unchecked", () => [el("div", { class: "under-search" }, alertBox("warn", "alert", "This name could not be checked", "The name service did not answer."),
-      el("div", { class: "mt-14" }, btn("Try again", "quiet", retry, icon("refresh"))))])
+    return el("div", { class: "under-search" }, alertBox("warn", "alert", "This name could not be checked", "The name service did not answer."),
+      el("div", { class: "mt-14" }, btn("Try again", "quiet", retry, icon("refresh"))))
   }
   if (answer?.kind === "found") return resultFor(s, answer)
   const code = codeFor(s)
   if (code) {
-    return shows(`applied ${code.display}`, () => [el("p", { class: "hint applied" }, `Code applied: names of ${code.minLength} or more letters, for ${code.years}\u00a0years. Search a name to use it. `,
-      link("Remove", removeCode))])
+    return el("p", { class: "hint applied" }, `Code applied: names of ${code.minLength} or more letters, for ${code.years}\u00a0years. Search a name to use it. `,
+      link("Remove", removeCode))
   }
-  return s.typed ? shows("keys", () => [el("p", { class: "hint keys" }, "Press ", el("kbd", {}, "Enter"), " or Search")]) : shows("", () => [])
+  // the field shows and hides it as it is typed in, as the page is not drawn for each key
+  return el("p", { class: "hint keys", hidden: !s.typed }, "Press ", el("kbd", {}, "Enter"), " or Search")
 }
 
 function ruleLine({ label, problem }: Extract<Answer, { kind: "rule" }>): HTMLElement {
@@ -353,22 +338,19 @@ function pauseNotice(hold: Hold): HTMLElement {
   return notice
 }
 
-function resultFor(s: SearchState, found: Found): Part<Drawn> {
+function resultFor(s: SearchState, found: Found): HTMLElement {
   const { label, answer } = found
-  if (answer.status === "available") {
-    const code = codeFor(s)
-    return [JSON.stringify([label, answer, code, s.retarget?.paid ?? null]), () => availableResult(s, label, answer)]
-  }
+  if (answer.status === "available") return availableResult(s, label, answer)
   if (answer.status === "reserved") {
-    return [`reserved ${label}`, () => ({ nodes: [takenResult(label, chip("Reserved", "warn", true), [
+    return takenResult(label, chip("Reserved", "warn", true), [
       el("p", { class: "note" }, "Reserved names are not sold here. If it is yours to use, contact the SimpleX team."),
       el("div", { class: "mt-12" }, btn("Contact the SimpleX team", "quiet", () => teamPopup())),
-    ])] })]
+    ])
   }
   // there are no renewals, so a name of ours past its expiry is over here, though the chain keeps it ours in its grace period
   const expiresAt = answer.expiresAt ?? null
   const lapsed = found.mine && expiresAt !== null && expiresAt < found.now / 1000 ? `${ranOut(expiresAt)} ${againLine(expiresAt, answer, found.now)}` : null
-  return [JSON.stringify([label, answer, found.mine, lapsed]), () => ({ nodes: [registeredResult(label, answer, found.mine, lapsed)] })]
+  return registeredResult(label, answer, found.mine, lapsed)
 }
 
 function registeredResult(label: string, answer: Extract<api.SearchAnswer, { status: "registered" }>, mine: Mine | null, lapsed: string | null): HTMLElement {
@@ -390,7 +372,7 @@ function registeredResult(label: string, answer: Extract<api.SearchAnswer, { sta
   ])
 }
 
-function availableResult(s: SearchState, label: string, answer: Available): Drawn {
+function availableResult(s: SearchState, label: string, answer: Available): HTMLElement {
   const applied = codeFor(s)
   const coded = coveredBy(s, label)
   const retarget = s.retarget
@@ -407,26 +389,20 @@ function availableResult(s: SearchState, label: string, answer: Available): Draw
     ? el("div", { class: "price" }, el("b", {}, el("s", {}, dollars(priceFor(answer.price, years, answer.years))), "$0"), el("span", {}, `for ${years} years`))
     : el("div", { class: "price" }, el("b", {}, dollars(answer.price)), el("span", {}, `for ${years} years`))
   const action = coded ? "Register with code" : retarget ? "Register with your payment" : "Register"
-  const note = live(el("div", { class: "under-search" }))
-  const button = btn(action, "", register, icon("arrow"))
-  return { nodes: [el("div", {}, el("div", { class: "result" }, what, el("div", { class: "deal" }, price, button)), note)], register: { button, note } }
-}
-
-function showRegister({ button, note }: RegisterPart, s: SearchState, answer: Available): void {
   const unpayable = unaffordable(s, answer)
-  setAction(button, s.register.busy, unpayable || s.ownOrder !== null || s.hold !== null)
-  drawAs(note, ...registerNoteOf(s, unpayable))
+  const button = setAction(btn(action, "", register, icon("arrow")), s.register.busy, unpayable || s.ownOrder !== null || s.hold !== null)
+  return el("div", {}, el("div", { class: "result" }, what, el("div", { class: "deal" }, price, button)), el("div", { class: "under-search" }, registerNote(s, unpayable)))
 }
 
-function registerNoteOf(s: SearchState, unpayable: boolean): Part {
+function registerNote(s: SearchState, unpayable: boolean): HTMLElement | null {
   const { ownOrder, hold, register: { refusal } } = s
-  if (unpayable) return ["", () => []]
-  if (ownOrder) return [`own ${ownOrder}`, () => [ownOrderNote(ownOrder)]]
-  if (hold) return [`hold ${hold.until} ${hold.lead}`, () => [holdNotice(hold)]]
-  if (!refusal) return ["", () => []]
-  if (refusal.why === "other") return [JSON.stringify(refusal), () => [ownOrderNote(store.invoiceUrl(refusal.invoiceId))]]
+  if (unpayable) return null
+  if (ownOrder) return ownOrderNote(ownOrder)
+  if (hold) return holdNotice(hold)
+  if (!refusal) return null
+  if (refusal.why === "other") return ownOrderNote(store.invoiceUrl(refusal.invoiceId))
   const words = refusal.why === "taken" ? "This name was taken just now. Search another one." : "Nothing changed. Try again in a moment."
-  return [JSON.stringify(refusal), () => [alertBox("danger", "alert", "That did not go through", words)]]
+  return alertBox("danger", "alert", "That did not go through", words)
 }
 
 const ownOrderNote = (url: string) => alertBox("info", "info", "You already have an order for this name", el("a", { href: url }, "Open that order"))
@@ -480,7 +456,7 @@ const SCENE_PLAYS = 3
 let scenePlayed = false
 
 function playWhenSeen(scene: HTMLElement): HTMLElement {
-  if (scenePlayed || !moving()) return scene
+  if (scenePlayed) return scene
   scene.dataset.step = "empty"
   scene.querySelector(".nm")!.textContent = ""
   const seen = new IntersectionObserver((entries) => {

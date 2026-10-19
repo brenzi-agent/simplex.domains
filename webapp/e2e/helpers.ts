@@ -1,6 +1,5 @@
-import { expect, test as base, type APIRequestContext, type BrowserContext, type Page } from "@playwright/test"
+import { expect, test as base, type APIRequestContext, type Page } from "@playwright/test"
 import { mkdirSync } from "node:fs"
-import { FIREFOX_FIXED, viewTransitionsUsable } from "../src/motion-values.ts"
 import { mockUrl, pageUrl } from "./slots.ts"
 
 export const SCREENSHOTS = process.env.SCREENSHOTS_DIR ?? "screenshots"
@@ -128,67 +127,9 @@ export async function savedCode(page: Page): Promise<void> {
   if (!(await page.getByRole("checkbox", { name: "I have saved my code" }).isChecked())) await page.getByText("I have saved my code").click()
 }
 
-export const test = base.extend<{ unexpectedMoves: void }>({
+export const test = base.extend<{}>({
   baseURL: async ({ baseURL }, use) => use(baseURL ?? pageUrl(SLOT)),
-  unexpectedMoves: [async ({ context, browser }, use) => {
-    const warnings: string[] = []
-    const watch = (c: BrowserContext) => c.on("console", (m) => { if (m.type() === "warning" && m.text().startsWith("[screens]")) warnings.push(m.text()) })
-    watch(context)
-    const newContext = browser.newContext.bind(browser)
-    browser.newContext = async (options) => {
-      const opened = await newContext(options)
-      watch(opened)
-      return opened
-    }
-    try {
-      await use()
-    } finally {
-      browser.newContext = newContext
-    }
-    expect(warnings, "moves the views' tables lack").toEqual([])
-  }, { auto: true }],
 })
-
-// an easing that a resize starts begins in the frame after the change, so the page is still once two frames in a row are
-const STILL_FRAMES = 2
-const KEYFRAME_TIMING = ["offset", "computedOffset", "easing", "composite"]
-// A repeating motion such as a pulse never ends, and a wait's line fills over the whole wait by a property of its own, so neither counts as still moving.
-export const settle = (page: Page) => page.evaluate(([frames, timing]) => new Promise<void>((done) => {
-  const transitioning = () => {
-    try {
-      return document.documentElement.matches(":active-view-transition")
-    } catch {
-      return false
-    }
-  }
-  const changing = (a: Animation) => a.playState === "running" && a.effect?.getTiming().iterations === 1
-    && (a.effect as KeyframeEffect).getKeyframes().some((k) => Object.keys(k).some((p) => !timing.includes(p) && !p.startsWith("--")))
-  let still = 0
-  const look = () => {
-    // Playwright's WebKit closes the page when asked for the document's animations around a view transition, whose
-    // pictures' animations are the root's; the page's own are the body's
-    const moving = transitioning() || document.querySelector("main.pending") !== null || document.body.getAnimations({ subtree: true }).some(changing)
-    still = moving ? 0 : still + 1
-    if (still >= frames) done()
-    else requestAnimationFrame(look)
-  }
-  requestAnimationFrame(look)
-}), [STILL_FRAMES, KEYFRAME_TIMING] as const)
-
-// A page button pressed where it is: Playwright's own click first scrolls it into view, and a page change that scrolls
-// the window pictures the pages apart.
-export const pressInPlace = (page: Page, name: string) => page.evaluate((name) =>
-  [...document.querySelectorAll<HTMLElement>("body > main:not(.pending) .btn")].find((b) => b.textContent?.trim() === name)!.click(), name)
-
-export const fades = async (page: Page) => !(await page.evaluate(viewTransitionsUsable, FIREFOX_FIXED))
-
-export const markNodes = (page: Page, selectors: string[]) => page.evaluate((list) => {
-  for (const s of list) for (const n of document.querySelectorAll("body > main " + s)) (n as unknown as { __kept: boolean }).__kept = true
-}, selectors)
-export const keptNodes = (page: Page, selectors: string[]) => page.evaluate((list) => list.filter((s) => {
-  const n = document.querySelector("body > main " + s) as unknown as { __kept?: boolean } | null
-  return n?.__kept === true
-}), selectors)
 
 export async function waitRegistered(page: Page, label: string): Promise<void> {
   await expect(page.getByRole("heading", { name: `${label}.simplex is yours` })).toBeVisible({ timeout: REGISTRATION_MS })

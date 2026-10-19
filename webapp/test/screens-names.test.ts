@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView, SearchAnswer } from "../src/api.ts"
-import { type Hold, NO_LEAD, step } from "../src/screens/machine.ts"
+import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
-  changesOf, CODE_CHIPS, editable, editMachine, editMoves, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
-  GRACE_S, initialList, initialRestore, lapsed, listedOrders, listMachine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
-  againLine, ranOut, registrableAgain, restoreMachine, screenOfEdit, settled, type Stored, unsent, waitsToSign,
+  changesOf, CODE_CHIPS, editable, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
+  GRACE_S, initialList, initialRestore, lapsed, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
+  againLine, ranOut, registrableAgain, screenOfEdit, settled, type Stored, unsent, waitsToSign,
 } from "../src/screens/names.ts"
 import type { CodeRecord, OrderRecord, PendingCode } from "../src/store.ts"
 
@@ -218,11 +218,6 @@ describe("list", () => {
     expect(s).toMatchObject({ now: NOW, asking: false, hold: null, finding: {}, unread: [] })
     expect(initialList(stored({ pending: [pending("SN-P")] }), WAIT, {}, {}, NOW).hold).toEqual(WAIT)
   })
-  it("has one screen, which every change keeps in place", () => {
-    expect(listMachine.screenOf(one)).toBe("names")
-    expect(listMachine.moves).toEqual({ names: {} })
-    expect(step(listMachine, one, "names", { type: "forget-asked" }, vi.fn()).motion).toBe("in-place")
-  })
   it("stored takes the records another tab or this one wrote, and forgets what was read about records gone", () => {
     const read = reduceList(reduceList(one, { type: "row-read", id: "reg-1", view, invoice: null, now: NOW }), { type: "code-read", code: "SN6-A", state: "unused" })
     const found = reduceList(read, { type: "find-ended", ownerCode: "SN-P", outcome: "none" })
@@ -303,15 +298,8 @@ describe("restore", () => {
     expect(initialRestore({ until: NOW + 5000, lead: NO_LEAD })).toEqual({ busy: false, refusal: null, hold: { until: NOW + 5000, lead: NO_LEAD } })
     expect(start).toEqual({ busy: false, refusal: null, hold: null })
   })
-  it("has one screen, which every change keeps in place", () => {
-    expect(restoreMachine.screenOf(start)).toBe("restore")
-    expect(restoreMachine.moves).toEqual({ restore: {} })
-    expect(step(restoreMachine, start, "restore", { type: "find-started" }, vi.fn()).motion).toBe("in-place")
-  })
-  it("opened changes nothing: the page opened shows its screen as a new page, and drawn again keeps it in place", () => {
+  it("opened changes nothing", () => {
     expect(reduceRestore(start, { type: "opened" })).toBe(start)
-    expect(step(restoreMachine, start, null, { type: "opened" }, vi.fn())).toMatchObject({ screen: "restore", motion: "screen" })
-    expect(step(restoreMachine, start, "restore", { type: "opened" }, vi.fn()).motion).toBe("in-place")
   })
   it("find-started marks the lookup at work and clears the last refusal", () => {
     expect(reduceRestore({ ...start, refusal: "unasked" }, { type: "find-started" })).toEqual({ busy: true, refusal: null, hold: null })
@@ -371,36 +359,6 @@ describe("edit", () => {
     })
   })
 
-  function eventTo(to: EditKind): EditEvent {
-    const s = STATES[to]
-    if (to === "edit-unreadable") return { type: "read-failed" }
-    return { type: "answered", view: s.read!.view, answer: s.read!.answer, record: s.record!, now: NOW, hold: null }
-  }
-
-  describe("moves", () => {
-    const rows = Object.entries(editMoves).flatMap(([from, to]) => Object.entries(to).map(([next, motion]): [EditKind, EditKind, string] => [from as EditKind, next as EditKind, motion]))
-    it("lists each way a name read again can turn out as a page change", () => {
-      expect(rows.length).toBeGreaterThan(0)
-      expect(rows.every(([, , motion]) => motion === "screen")).toBe(true)
-    })
-    it.each(rows)("%s → %s", (from, to, motion) => {
-      const warn = vi.fn()
-      expect(screenOfEdit(STATES[from])).toBe(from)
-      const result = step(editMachine, STATES[from], from, eventTo(to), warn)
-      expect(result).toMatchObject({ screen: to, motion, expected: true })
-      expect(warn).not.toHaveBeenCalled()
-    })
-    it("logs a move no edit page makes, and still shows it", () => {
-      const warn = vi.fn()
-      const result = step(editMachine, STATES["edit-expired"], "edit-expired", eventTo("edit"), warn)
-      expect(result).toMatchObject({ screen: "edit", motion: "screen", expected: false })
-      expect(warn).toHaveBeenCalledWith("[screens] edit: unexpected move edit-expired → edit")
-    })
-    it("keeps the form in place while it is edited and saved", () => {
-      expect(step(editMachine, editing, "edit", { type: "save-started" }, vi.fn()).motion).toBe("in-place")
-    })
-  })
-
   describe("reduceEdit", () => {
     it("answered opens the form with the chain's links and nonce, held when the tab is waiting", () => {
       expect(form(editing)).toEqual({
@@ -414,9 +372,8 @@ describe("edit", () => {
       const typed = reduceEdit(editing, { type: "field-changed", kind: "channel", value: CHANNEL })
       expect(form(answered(typed, registered(undefined, { recordsNonce: 9 }))).values.channel).toBe(CHANNEL)
     })
-    it("opened changes nothing, so a page opened without the name code shows that screen as a new page", () => {
+    it("opened changes nothing", () => {
       expect(reduceEdit(STATES["edit-no-code"], { type: "opened" })).toBe(STATES["edit-no-code"])
-      expect(step(editMachine, STATES["edit-no-code"], null, { type: "opened" }, vi.fn())).toMatchObject({ screen: "edit-no-code", motion: "screen", expected: true })
     })
     it("read-started marks a read under way; read-failed ends it and counts the failure, answered ends it", () => {
       const reading = reduceEdit(STATES["edit-unreadable"], { type: "read-started" })

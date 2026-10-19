@@ -1,7 +1,7 @@
 import { holdsPayment, type InvoiceView, type RegistrationView } from "../api.ts"
 import type { IconName } from "../icons.ts"
 import type { CodeRefusal, OrderRecord } from "../store.ts"
-import { type Hold, type Machine, NO_LEAD } from "./machine.ts"
+import { type Hold, NO_LEAD } from "./hold.ts"
 
 // a card payment Stripe has not confirmed after this long gets the "taking longer" page
 export const CARD_SLOW_MS = 10 * 60 * 1000
@@ -190,34 +190,3 @@ export function wakeAt(s: OrderState): number | null {
   ].filter((at): at is number => at !== null && at > now)
   return moments.length ? Math.min(...moments) : null
 }
-
-const to = (...kinds: OrderKind[]): Partial<Record<OrderKind, "screen">> => Object.fromEntries(kinds.map((k) => [k, "screen"]))
-// A tab put away misses the steps between, so a paid order can arrive at any step of its registration.
-const REGISTRATION: OrderKind[] = ["registering", "not-on-device", "registered", "taken", "failed", "code-issued"]
-const CLOSED: OrderKind[] = ["status:expired", "status:expired-received", "status:expired-cancelled", "status:paid-late"]
-const GONE: OrderKind = "status:unknown-link"
-
-export const moves: Machine<OrderState, OrderEvent, OrderKind>["moves"] = {
-  "status:unreadable": to("pay-crypto", "pay-card", "confirming", "slow", "status:still-open", ...CLOSED, ...REGISTRATION, "status:paid-by-invoice", GONE),
-  "pay-crypto": to("confirming", "status:still-open", ...CLOSED, ...REGISTRATION, GONE),
-  "pay-card": to("confirming", "slow", "status:card-failed", "status:still-open", ...CLOSED, ...REGISTRATION, GONE),
-  "status:card-failed": to("pay-card", "confirming", "slow", "status:still-open", ...CLOSED, ...REGISTRATION, "status:price-changed", GONE),
-  confirming: to("slow", "pay-card", "status:still-open", ...CLOSED, ...REGISTRATION, GONE),
-  slow: to("confirming", "pay-card", "status:still-open", ...CLOSED, ...REGISTRATION, GONE),
-  "status:still-open": to("confirming", "slow", "status:expired-cancelled", "status:expired-received", "status:paid-late", ...REGISTRATION, GONE),
-  "status:expired": to("status:expired-received", "status:paid-late", "status:price-changed", GONE),
-  "status:expired-received": to("status:paid-late", "status:price-changed", GONE),
-  "status:expired-cancelled": to("status:expired-received", "status:paid-late", GONE),
-  "status:paid-late": {},
-  "status:paid-by-invoice": to(...REGISTRATION, GONE),
-  registering: to("registered", "taken", "failed", "code-issued", "not-on-device", GONE),
-  "not-on-device": to("registering", "registered", "taken", "failed", "code-issued", GONE),
-  taken: to("registering", "not-on-device", "registered", "failed", "code-issued", GONE),
-  failed: to("registering", "not-on-device", "registered", "taken", "code-issued", GONE),
-  registered: {},
-  "code-issued": {},
-  [GONE]: {},
-  "status:price-changed": to(GONE),
-}
-
-export const orderMachine: Machine<OrderState, OrderEvent, OrderKind> = { name: "order", reduce, screenOf, moves }

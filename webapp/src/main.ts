@@ -11,7 +11,7 @@ function render(): void {
   const query = new URLSearchParams(location.search)
   const [path, hashQuery = ""] = location.hash.replace(/^#/, "").split("?")
   const view = viewOf(query, path)
-  nextRoute(view)
+  nextRoute()
   switch (view) {
     case "order": return orderPage(query.get("order"), query.get("registration"))
     case "checkout": return checkoutPage()

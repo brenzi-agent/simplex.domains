@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "vitest"
 import type { SearchAnswer } from "../src/api.ts"
-import { type Hold, NO_LEAD, step } from "../src/screens/machine.ts"
+import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
-  codeFor, initialSearch, moves, type Opening, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent, type SearchKind, searchMachine, type SearchState, screenOf,
+  codeFor, initialSearch, type Opening, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent, type SearchKind, type SearchState, screenOf,
 } from "../src/screens/search.ts"
 import type { OrderRecord } from "../src/store.ts"
 
@@ -43,34 +43,6 @@ describe("screenOf", () => {
   it("a retarget page whose order went elsewhere stays the retarget page", () => {
     const s = open({ opening: "retarget", retarget: record() })
     expect(screenOf(reduce(s, { type: "retarget-read", record: record(), moved: { to: "code", url: "/?order=inv-1" } }))).toBe("search:retarget")
-  })
-})
-
-describe("moves", () => {
-  const kinds: SearchKind[] = ["search:plain", "search:fromApp", "search:retarget", "status:bad-app-link"]
-  it("lists every kind, each changing only in place", () => {
-    expect(Object.keys(moves).sort()).toEqual([...kinds].sort())
-    for (const kind of kinds) expect(moves[kind], kind).toEqual({})
-  })
-  it.each(kinds)("%s changes in place through a whole search", (kind) => {
-    const warn = vi.fn()
-    let s = open({ opening: kind === "status:bad-app-link" ? "bad-app-link" : kind.slice("search:".length) as Opening, name: "alice1" })
-    const events: ((s: SearchState) => SearchEvent)[] = [() => searchedEvent("alice1"), (now) => ({ type: "card-due", seq: now.seq }), (now) => answered(now)]
-    for (const event of events) {
-      const result = step(searchMachine, s, kind, event(s), warn)
-      expect(result).toMatchObject({ screen: kind, motion: "in-place", expected: true })
-      s = result.state
-    }
-    expect(warn).not.toHaveBeenCalled()
-  })
-  it("logs a move no search makes, and still shows it", () => {
-    const warn = vi.fn()
-    const result = step(searchMachine, initialSearch(), "search:plain", openedEvent({ opening: "fromApp", fromApp: OWNER }), warn)
-    expect(result).toMatchObject({ screen: "search:fromApp", motion: "screen", expected: false })
-    expect(warn).toHaveBeenCalledWith("[screens] search: unexpected move search:plain → search:fromApp")
-  })
-  it("a page opened anew is a page change", () => {
-    expect(step(searchMachine, initialSearch(), null, openedEvent(), vi.fn())).toMatchObject({ screen: "search:plain", motion: "screen", expected: true })
   })
 })
 
