@@ -32,11 +32,13 @@ export function found(mark: Mark): HTMLElement | null {
   return alike(mark)[mark.index] ?? null
 }
 
-const headingOf = () => document.querySelector<HTMLElement>("main:not(.pending) h1")
+const headingOf = () => document.querySelector<HTMLElement>("body > main:not(.pending) h1")
 
-function focusOn(heading: HTMLElement, preventScroll = false): void {
+// The heading takes focus where it is: a new page is scrolled by its own move, and a part changed in place leaves the
+// page where its reader has it.
+function focusOn(heading: HTMLElement): void {
   heading.tabIndex = -1
-  heading.focus({ preventScroll })
+  heading.focus({ preventScroll: true })
 }
 
 export function focusHeading(): void {
@@ -65,6 +67,10 @@ function stopWatching(): void {
   giveUp = undefined
   waitingOn = null
 }
+
+const keeping = () => kept !== null
+
+export const onPage = () => document.activeElement?.closest("body > main") != null || keeping()
 
 export function drop(): void {
   kept = null
@@ -95,7 +101,7 @@ function waitOnHeading(): void {
   const heading = headingOf()
   if (giveUp !== undefined || !heading) return
   waitingOn = heading
-  focusOn(heading, true)
+  focusOn(heading)
   giveUp = setTimeout(drop, APPEAR_MS)
 }
 

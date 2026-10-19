@@ -3,11 +3,12 @@ import * as api from "../api.ts"
 import { codeProgress, parseNameCode } from "../crypto/code.ts"
 import { seconds } from "../format.ts"
 import { btn, disabled, el, icon, liveRegion } from "../dom.ts"
+import { moving, transitionsIdle } from "../motion.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
-import { checkoutPage } from "./checkout.ts"
 import { shownSearch } from "./search.ts"
 import { closePopup, go, popup, refresh } from "./shell.ts"
+import { changeTo } from "./slots.ts"
 
 export type CodeVerdict =
   | { ok: true; code: session.AppliedCode; line: string }
@@ -83,12 +84,6 @@ export function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null)
   })
 }
 
-// A verdict the field already shows keeps still rather than fading in again at each key.
-export function showVerdict(part: HTMLElement, ...nodes: (Node | string)[]): void {
-  const shown = [...part.childNodes].filter((n) => !(n instanceof Element && n.classList.contains("outgoing"))).map((n) => n.textContent).join("")
-  if (shown !== nodes.map((n) => typeof n === "string" ? n : n.textContent).join("")) part.replaceChildren(...nodes)
-}
-
 export function verdictNode(v: CodeVerdict): HTMLElement {
   return v.ok
     ? el("div", { class: "verdict ok" }, icon("check"), el("div", {}, el("b", {}, "Unused"), el("span", {}, v.line)))
@@ -111,6 +106,14 @@ export function codePopup(mode: "check" | "add" = "check"): void {
     const refusal = applyCode(current.code)
     if (refusal) return void verdict.replaceChildren(verdictNode({ ok: false, title: "Not for this order", line: refusal }))
     closePopup()
+    // A code applied on the search page is said under its search box, which may be far above a phone's screen, as when the
+    // popup was opened from the investors' tile: the box comes into view, if it is not, with focus, once the page is drawn.
+    if (!location.hash.startsWith("#/checkout")) void transitionsIdle().then(() => {
+      const input = document.querySelector<HTMLInputElement>("body > main:not(.pending) .search input")
+      if (!input) return
+      input.closest(".search")!.scrollIntoView({ block: "nearest", behavior: moving() ? "smooth" : "auto" })
+      input.focus({ preventScroll: true })
+    })
   }))
   const restore = el("a", { href: "/#/restore", class: "restore-link", onclick: () => closePopup() }, "Restore in Your names")
   // the last verdict belongs to the last text: nothing is applied until this one is judged
@@ -121,14 +124,14 @@ export function codePopup(mode: "check" | "add" = "check"): void {
   watchCode(input, (judged) => {
     if (!judged) {
       box.className = "input code-input"
-      return showVerdict(verdict)
+      return changeTo(verdict)
     }
     // a code already listed is said so, rather than offered for adding again
     const listed = mode === "add" && judged.ok && store.codes().some((c) => c.code === judged.code.display)
     const v: CodeVerdict = listed ? { ok: false, title: "Already in your codes", line: "It is listed under Codes in Your names." } : judged
     current = v
     box.className = `input code-input ${v.ok ? "ok" : "bad"}`
-    showVerdict(verdict, verdictNode(v), !v.ok && v.title === "This is a name code" ? restore : "")
+    changeTo(verdict, verdictNode(v), !v.ok && v.title === "This is a name code" ? restore : "")
     if (v.ok) action.removeAttribute("disabled")
   })
   input.addEventListener("keydown", (e) => {
@@ -140,7 +143,7 @@ export function codePopup(mode: "check" | "add" = "check"): void {
   popup(el("div", { class: "modal", role: "dialog", "aria-label": mode === "add" ? "Add a code" : "Check your code" },
     el("div", { class: "modal-head" },
       el("h3", {}, mode === "add" ? "Add a code" : "Check your code"),
-      el("a", { class: "icon-btn", href: "#", "aria-label": "Close", onclick: (e: Event) => { e.preventDefault(); closePopup() } }, icon("x"))),
+      el("a", { class: "icon-btn", href: "#", role: "button", "aria-label": "Close", onclick: (e: Event) => { e.preventDefault(); closePopup() } }, icon("x"))),
     el("p", { class: "sec-note" }, "A code from SimpleX, for example for investors. Nothing is spent until a name is registered with it."),
     box, verdict, action))
   input.focus()
@@ -156,8 +159,8 @@ function applyCode(code: session.AppliedCode): string | null {
     if (c.label.length < code.minLength) return `This code covers names of ${code.minLength} or more letters; ${c.label} has ${c.label.length}.`
     session.updateCheckout(c.label, { code, codeError: undefined })
     session.setAppliedCode(code)
-    // on the checkout itself it draws in place, as its own code entry does, so links still being checked are kept
-    if (location.hash === "#/checkout") checkoutPage()
+    // on the checkout itself it changes in place, as its own code entry does, so links still being checked are kept
+    if (location.hash === "#/checkout") refresh()
     else go("/#/checkout")
     return null
   }

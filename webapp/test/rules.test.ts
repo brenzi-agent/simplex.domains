@@ -6,6 +6,7 @@ describe("label rules", () => {
   it("folds case and spaces, and accepts 6 to 63 letters with single inner hyphens", () => {
     expect(foldLabel("  Bakery ")).toBe("bakery")
     expect(foldLabel("Bakery.SimpleX")).toBe("bakery")
+    expect(foldLabel("bak\u200Bery\uFEFF")).toBe("bakery")
     expect(labelProblem(foldLabel("bak.ery"))).toBe("chars")
     expect(labelProblem("bakery")).toBeNull()
     expect(labelProblem("bak-ery-2")).toBeNull()

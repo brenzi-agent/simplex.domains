@@ -14,9 +14,12 @@ export type LabelProblem = "short" | "long" | "chars"
 // simplexmq's nameLabelP: a-z and 0-9, each hyphen between a letter or digit on both sides
 const LABEL = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
+// characters that show nothing, as a link pasted from a chat can carry: a name typed with them is the name without them
+const INVISIBLE = /[\u200B-\u200D\u2060\uFEFF]/g
+
 // the search box shows ".simplex" after the input, so a name typed with it is the same name
 export function foldLabel(input: string): string {
-  return input.trim().toLowerCase().replace(/\.simplex$/, "")
+  return input.replace(INVISIBLE, "").trim().toLowerCase().replace(/\.simplex$/, "")
 }
 
 export function labelProblem(label: string): LabelProblem | null {

@@ -15,6 +15,15 @@ export class ApiError extends Error {
   }
 }
 
+// How long to wait before asking again: what a rate limit asks for, or the usual pause. Null for a refusal that asking
+// again cannot change, such as a request this device's clock signed outside the service's window.
+export function retryDelay(e: unknown, usual: number): number | null {
+  if (!(e instanceof ApiError)) return usual
+  if (e.retryAfter) return e.retryAfter * 1000
+  if (e.code === "rate_limited") return usual
+  return e.status >= 400 && e.status < 500 ? null : usual
+}
+
 export type Phase = "unpaid" | "queued" | "committing" | "committed" | "registering" | "registered" | "taken" | "failed" | "code_issued"
 export type Method = "card" | "btc" | "xmr"
 
@@ -25,9 +34,14 @@ export interface ChainInfo {
   tld: string
 }
 
+export interface Links {
+  contact: string
+  channel: string
+}
+
 export type SearchAnswer =
   | ({ status: "available"; price: number; currency: string; years: number } & ChainInfo)
-  | { status: "registered"; entities: Entity[]; records?: { contact: string; channel: string } | null; owner?: string; resolver?: string; recordsNonce?: number | null; expiresAt?: number; chainId?: number; tld: string }
+  | { status: "registered"; entities: Entity[]; records?: Links | null; owner?: string; resolver?: string; recordsNonce?: number | null; expiresAt?: number; chainId?: number; tld: string }
   | { status: "reserved" }
 
 export interface Entity {

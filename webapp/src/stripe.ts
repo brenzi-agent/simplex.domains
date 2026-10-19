@@ -61,6 +61,8 @@ function loadStripeJs(): Promise<StripeGlobal> {
 const LIGHT = { accent: "#0053D0", onAccent: "#FFFFFF", ink: "#0B1733", bg: "#F3F7FD", surface: "#FFFFFF", line: "rgba(11, 23, 51, .14)", muted: "rgba(11, 23, 51, .60)", danger: "#BF2D3F" }
 const DARK = { accent: "#70F0F9", onAccent: "#020A26", ink: "#EEF4FF", bg: "#0B1B42", surface: "#071433", line: "rgba(238, 244, 255, .14)", muted: "rgba(238, 244, 255, .52)", danger: "#FF8A96" }
 
+const STRIPE_FONTS = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+
 function appearance(dark: boolean): Appearance {
   const p = dark ? DARK : LIGHT
   return {
@@ -69,8 +71,9 @@ function appearance(dark: boolean): Appearance {
       colorPrimary: p.accent, colorBackground: p.surface, colorText: p.ink, colorTextSecondary: p.muted, colorTextPlaceholder: p.muted,
       colorDanger: p.danger, accessibleColorOnColorPrimary: p.onAccent, iconColor: p.ink, iconHoverColor: p.ink, iconCardCvcColor: p.muted,
       iconCardCvcErrorColor: p.danger, iconCardErrorColor: p.danger, iconChevronDownColor: p.muted, iconChevronDownHoverColor: p.ink,
-      iconLoadingIndicatorColor: p.accent, tabIconColor: p.muted, tabIconSelectedColor: p.accent, logoColor: p.ink,
-      fontFamily: "Manrope, sans-serif", fontSizeBase: "16px", borderRadius: "12px", spacingUnit: "4px",
+      // Stripe's logo comes in two tones only; its frame cannot load the page's own fonts, so it uses the system's
+      iconLoadingIndicatorColor: p.accent, tabIconColor: p.muted, tabIconSelectedColor: p.accent, logoColor: dark ? "light" : "dark",
+      fontFamily: STRIPE_FONTS, fontSizeBase: "16px", borderRadius: "12px", spacingUnit: "4px",
     },
     rules: {
       ".Input": { backgroundColor: p.bg, color: p.ink, border: `1px solid ${p.line}`, boxShadow: "none" },

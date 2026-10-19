@@ -51,12 +51,21 @@
 @property --bad-soft { syntax: "<color>"; inherits: true; initial-value: rgba(208, 52, 71, .08); }
 @property --warn { syntax: "<color>"; inherits: true; initial-value: #965B00; }
 @property --warn-soft { syntax: "<color>"; inherits: true; initial-value: rgba(230, 160, 20, .12); }
+@property --shadow-near { syntax: "<color>"; inherits: true; initial-value: rgba(11, 23, 51, .05); }
+@property --shadow-far { syntax: "<color>"; inherits: true; initial-value: rgba(11, 23, 51, .07); }
+@property --shadow-lg-far { syntax: "<color>"; inherits: true; initial-value: rgba(0, 63, 168, .14); }
+@property --button-sheen { syntax: "<color>"; inherits: true; initial-value: rgba(255, 255, 255, .25); }
+@property --button-glow { syntax: "<color>"; inherits: true; initial-value: rgba(0, 83, 208, .3); }
+@property --button-glow-blur { syntax: "<length>"; inherits: true; initial-value: 20px; }
 
 :root {
   color-scheme: light;
   --display: "GT-Walsheim", "GT-Walsheim fallback", Gilroy, Helvetica, sans-serif;
   --body: "Manrope", "Manrope fallback", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", monospace;
+  --top-h: 68px;
+  /* what dims the page under a popup or the open phone menu */
+  --scrim: rgba(3, 12, 40, .38);
 
   --bg: #FAFCFF;
   --glow-1: rgba(83, 193, 255, .30);
@@ -73,8 +82,11 @@
   --surface: #ffffff;
   --surface-2: #F3F7FD;
   --glass: rgba(255, 255, 255, .72);
-  --shadow: 0 1px 2px rgba(11, 23, 51, .05), 0 12px 32px rgba(11, 23, 51, .07);
-  --shadow-lg: 0 2px 6px rgba(11, 23, 51, .05), 0 32px 80px rgba(0, 63, 168, .14);
+  --shadow-near: rgba(11, 23, 51, .05);
+  --shadow-far: rgba(11, 23, 51, .07);
+  --shadow-lg-far: rgba(0, 63, 168, .14);
+  --shadow: 0 1px 2px var(--shadow-near), 0 12px 32px var(--shadow-far);
+  --shadow-lg: 0 2px 6px var(--shadow-near), 0 32px 80px var(--shadow-lg-far);
 
   --brand: #0053D0;
   --brand-2: #1E9BFF;
@@ -85,7 +97,10 @@
   --button-top: #1F7FEB;
   --button-bottom: #0053D0;
   --button: linear-gradient(180deg, var(--button-top) 0%, var(--button-bottom) 100%);
-  --button-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 8px 20px rgba(0, 83, 208, .3);
+  --button-sheen: rgba(255, 255, 255, .25);
+  --button-glow: rgba(0, 83, 208, .3);
+  --button-glow-blur: 20px;
+  --button-shadow: 0 1px 0 var(--button-sheen) inset, 0 8px var(--button-glow-blur) var(--button-glow);
   /* a large heading reads at 3:1 or more at every stop */
   --heading-1: #0053D0;
   --heading-2: #1A86E0;
@@ -118,8 +133,10 @@ html.dark {
   --surface: #071433;
   --surface-2: #0B1B42;
   --glass: rgba(2, 10, 38, .7);
-  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .3);
-  --shadow-lg: 0 2px 6px rgba(0, 0, 0, .3), 0 32px 80px rgba(2, 192, 255, .1);
+  --shadow-near: rgba(0, 0, 0, .3);
+  --shadow-far: rgba(0, 0, 0, .3);
+  --shadow-lg-far: rgba(2, 192, 255, .1);
+  --scrim: rgba(0, 3, 16, .6);
 
   --brand: #70F0F9;
   --brand-2: #02C0FF;
@@ -128,7 +145,9 @@ html.dark {
   --on-brand: #031034;
   --button-top: #8AF5FB;
   --button-bottom: #22C9F5;
-  --button-shadow: 0 1px 0 rgba(255, 255, 255, .4) inset, 0 8px 24px rgba(2, 192, 255, .28);
+  --button-sheen: rgba(255, 255, 255, .4);
+  --button-glow: rgba(2, 192, 255, .28);
+  --button-glow-blur: 24px;
   --heading-1: #70F0F9;
   --heading-2: #50D8F1;
   --heading-3: #8F9BFF;
@@ -154,8 +173,7 @@ body { text-wrap: pretty; position: relative; font: 500 16px/1.5 var(--body); co
 .page { flex: 1 0 auto; padding-bottom: 64px; }
 /* a faint grid under the glow, fading out below the hero */
 body::before { content: ""; position: absolute; inset: 0 0 auto; height: 760px; background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px); background-size: 56px 56px; -webkit-mask-image: radial-gradient(70% 80% at 50% 0%, #000 30%, transparent 75%); mask-image: radial-gradient(70% 80% at 50% 0%, #000 30%, transparent 75%); pointer-events: none; }
-/* the glow never makes a short page taller than its content */
-body::after { content: ""; position: absolute; inset: 0 0 auto; height: min(900px, 100%); background: var(--bg-glow); pointer-events: none; }
+body::after { content: ""; position: absolute; inset: 0 0 auto; height: min(900px, 100%); background-image: var(--bg-glow); background-size: 100% 900px; background-repeat: no-repeat; pointer-events: none; }
 body > * { position: relative; z-index: 1; }
 a { color: var(--brand); text-decoration: none; font-weight: 600; }
 button { font: inherit; color: inherit; }
@@ -166,7 +184,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 
 /* header: frosted, one hairline below */
 .top { position: sticky; top: 0; z-index: 10; background: var(--glass); backdrop-filter: blur(14px) saturate(1.4); border-bottom: 1px solid var(--line); }
-.top .wrap { display: flex; align-items: center; height: 68px; gap: 8px; }
+.top .wrap { display: flex; align-items: center; height: var(--top-h); gap: 8px; }
 /* both themes' logos, one over the other, so a theme change fades one into the other; its box keeps the files'
    proportions before they load */
 .brand .logo { display: block; position: relative; height: 26px; aspect-ratio: 400 / 99; }
@@ -198,13 +216,13 @@ html.modal-open { overflow: hidden; }
 .hero h1 { font-size: 84px; margin-top: 22px; }
 .hero .lead { margin: 18px auto 0; max-width: 560px; }
 
-/* the search: one pill, a gradient ring, the name, a .simplex tag and the button */
-.search { display: flex; align-items: center; gap: 12px; max-width: 760px; height: 80px; margin: 40px auto 0; padding: 0 10px 0 26px; border-radius: 22px; border: 1.5px solid transparent; background: linear-gradient(var(--surface), var(--surface)) padding-box, var(--ring) border-box; box-shadow: var(--shadow-lg); text-align: left; }
+@property --bad-ring { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+.search { --bad-shown: color-mix(in srgb, var(--bad) var(--bad-ring), transparent); display: flex; align-items: center; gap: 12px; max-width: 760px; height: 80px; margin: 40px auto 0; padding: 0 10px 0 26px; border-radius: 22px; border: 1.5px solid transparent; background: linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(var(--bad-shown), var(--bad-shown)) border-box, var(--ring) border-box; box-shadow: var(--shadow-lg); text-align: left; }
 .search > svg.i { width: 22px; height: 22px; color: var(--ink-3); }
 .search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font: 600 24px var(--body); letter-spacing: -.01em; }
 .search input::placeholder { color: var(--ink-3); font-weight: 500; }
 .search .tld { padding: 7px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); font: 700 17px var(--body); }
-.search.bad { background: linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(var(--bad), var(--bad)) border-box; }
+.search.bad { --bad-ring: 100%; }
 /* the hint and a rule take one line of the same height, so the page under them does not move */
 .hint { margin-top: 14px; color: var(--ink-3); font-size: 14px; font-weight: 600; line-height: 24px; }
 /* the only sign of an applied code, so it reads as text rather than a faint hint */
@@ -214,8 +232,8 @@ html.modal-open { overflow: hidden; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 52px; padding: 0 24px; border-radius: 14px; border: 0; background: linear-gradient(180deg, var(--button-top) 0%, var(--button-bottom) 100%); color: var(--on-brand); font-weight: 800; font-size: 16px; box-shadow: var(--button-shadow); white-space: nowrap; cursor: pointer; }
 .btn.lg { height: 60px; padding: 0 28px; font-size: 17px; border-radius: 16px; }
 .btn.block { width: 100%; }
-.btn.quiet { background: var(--surface); color: var(--ink); border: 1px solid var(--line-2); box-shadow: var(--shadow); }
-.btn[disabled] { background: var(--surface-2); color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line-2); cursor: not-allowed; }
+.btn.quiet { --button-top: var(--surface); --button-bottom: var(--surface); color: var(--ink); border: 1px solid var(--line-2); box-shadow: var(--shadow); }
+.btn[disabled] { --button-top: var(--surface-2); --button-bottom: var(--surface-2); color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line-2); cursor: not-allowed; }
 
 /* the result of a search, right under it */
 .result { max-width: 760px; margin: 14px auto 0; display: flex; flex-wrap: wrap; align-items: center; gap: 20px; padding: 18px 18px 18px 26px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); text-align: left; }
@@ -252,19 +270,45 @@ html.modal-open { overflow: hidden; }
 .tile .pays { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 6px; }
 .tile .pays span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); font-weight: 700; font-size: 13px; }
 .tile .pays svg { width: 16px; height: 16px; }
-.tile.invest { background: radial-gradient(80% 120% at 100% 0%, var(--brand-soft), transparent 60%), var(--surface); }
-.tile.invest .links { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: auto; font-size: 15px; }
-.tile.invest .links a { white-space: nowrap; }
-/* a name pointing at a channel, as the app shows it */
-.preview { margin-top: auto; display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 18px; background: var(--surface-2); border: 1px solid var(--line); }
-.preview .avatar { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; color: #fff; font-weight: 800; flex: none; }
-.preview .who { flex: 1; }
-.preview .who b { display: block; font-size: 15px; }
-.preview .who span { color: var(--ink-3); font-size: 13px; font-weight: 600; }
-.preview .arrow { color: var(--ink-3); }
-.preview .nm { font-family: var(--display); font-weight: 700; font-size: 18px; }
+.tile.invest { --invest-from: #0053D0; --invest-to: #6C4BFF; color: #fff; border-color: transparent; background: radial-gradient(70% 90% at 100% 0%, rgba(112, 240, 249, .35), transparent 60%), linear-gradient(135deg, var(--invest-from), var(--invest-to)); box-shadow: 0 20px 50px rgba(0, 63, 168, .3); }
+html.dark .tile.invest { --invest-from: #0A2F8F; --invest-to: #4A2FB8; box-shadow: 0 20px 50px rgba(2, 192, 255, .14); }
+.tile.invest { text-align: center; align-items: center; }
+.tile.invest p { color: rgba(255, 255, 255, .84); }
+.tile.invest .links { display: grid; gap: 10px; margin-top: auto; padding-top: 8px; width: min(100%, 260px); }
+.wefunder-btn, .check-code-btn { display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 999px; font-size: 14.5px; font-weight: 700; white-space: nowrap; transition: var(--moves); }
+.tile.invest .wefunder-btn { background: #fff; color: #0B1733; box-shadow: 0 6px 16px rgba(3, 12, 40, .2); }
+.tile.invest .check-code-btn { color: #fff; border: 1.5px solid rgba(255, 255, 255, .45); }
+.wefunder-btn .wefunder { height: 19px; width: auto; color: #0053D0; translate: 0 -1px; }
+.tile.invest a:focus-visible { outline-color: #fff; }
+@media (hover: hover) {
+  .tile.invest .wefunder-btn:hover, .tile.invest .check-code-btn:hover { text-decoration: none; }
+  .tile.invest .wefunder-btn:hover { box-shadow: 0 10px 22px rgba(3, 12, 40, .28); }
+  .tile.invest .check-code-btn:hover { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .7); }
+}
+.tile.invest .wefunder-btn:active, .tile.invest .check-code-btn:active { translate: 0 1px; }
+.tile.showcase { background: radial-gradient(55% 90% at 0% 100%, var(--glow-2), transparent 70%), radial-gradient(45% 80% at 100% 0%, var(--glow-1), transparent 70%), var(--surface); }
+/* Gradients laid out inside the border box repeat into the border and draw a thin line of the far side's colour along each edge. */
+.tile.invest, .tile.showcase { background-origin: border-box; }
+.scene { margin-top: auto; display: flex; align-items: center; gap: 12px; padding-top: 6px; }
+.scene .typed { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px 12px 16px; border-radius: 16px; border: 1.5px solid transparent; background: linear-gradient(var(--surface), var(--surface)) padding-box, var(--ring) border-box; box-shadow: var(--shadow); flex: none; }
+.scene .typed svg.i { color: var(--ink-3); }
+.scene .nm { font-family: var(--display); font-weight: 700; font-size: 18px; }
 /* at this size a gradient's lightest stop is too faint on the light ground, so the name is the brand blue */
-html:not(.dark) .preview .nm.grad { background: none; color: var(--brand); }
+html:not(.dark) .scene .nm.grad { background: none; color: var(--brand); }
+.scene .opens { flex: 1; min-width: 56px; display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--ink-3); font-size: 12.5px; font-weight: 700; }
+.scene .line { align-self: stretch; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--brand-line), var(--brand)); transform-origin: left; }
+.scene .line, .scene .word, .scene .contact, .scene .typed .nm { transition: scale var(--axis-ms) var(--emphasized), opacity var(--axis-ms) var(--ease), translate var(--axis-ms) var(--emphasized); }
+.scene[data-step="empty"] .line { scale: 0 1; opacity: 0; }
+.scene[data-step="empty"] .word, .scene[data-step="empty"] .contact, .scene[data-step="opens"] .contact { opacity: 0; }
+.scene[data-step="empty"] .contact, .scene[data-step="opens"] .contact { translate: 0 8px; }
+.scene[data-step="out"] .typed .nm, .scene[data-step="out"] .line, .scene[data-step="out"] .word, .scene[data-step="out"] .contact { opacity: 0; }
+.scene .typed.typing .nm::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -.12em; background: var(--brand); animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+.scene .contact { display: flex; align-items: center; gap: 12px; padding: 12px 18px 12px 12px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); min-width: 0; }
+.scene .avatar { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; color: #fff; font-weight: 800; flex: none; }
+.scene .who b { display: block; font-size: 15px; }
+.scene .who span { color: var(--ink-3); font-size: 13px; font-weight: 600; }
+.scene .who .mono { font-size: 12.5px; font-weight: 500; letter-spacing: -.01em; }
 
 /* inner pages: a left-aligned title with a stepper */
 .page-head { padding: 44px 0 26px; }
@@ -272,16 +316,17 @@ html:not(.dark) .preview .nm.grad { background: none; color: var(--brand); }
 .crumb { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; font-weight: 700; font-size: 13px; color: var(--ink-3); border: 1px solid var(--line); background: var(--surface); }
 .crumb i { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; font-style: normal; font-size: 11.5px; background: var(--surface-2); color: var(--ink-3); }
 .crumb.done i { background: var(--ok-soft); color: var(--ok); }
+.crumb i > .outgoing { inset: 0; display: grid; place-items: center; }
 .crumb.on { color: var(--ink); }
+a.crumb[href] { color: var(--ink-2); }
+a.crumb, a.crumb:hover { text-decoration: none; }
+a.crumb[href]:hover { color: var(--ink); border-color: var(--line-2); background: var(--surface-2); }
+a.crumb:not([href], .on) { cursor: not-allowed; }
 /* the current step's ring is a part of its own, which goes over to the next step as the order moves on */
-.crumb-ring { position: absolute; inset: -1px; border-radius: inherit; border: 1px solid var(--brand-line); box-shadow: 0 0 0 4px var(--brand-soft); pointer-events: none; view-transition-name: step-ring; }
+.crumb-ring { position: absolute; inset: -1px; border-radius: inherit; border: 1px solid var(--brand-line); box-shadow: 0 0 0 4px var(--brand-soft); pointer-events: none; view-transition-name: step-ring; view-transition-class: page-part box; }
 .crumb.on i { background: var(--button); color: var(--on-brand); }
 .crumb-sep { position: relative; width: 18px; height: 1px; background: var(--line-2); }
 .crumb-line { position: absolute; inset: 0; background: var(--ok); }
-/* the line to a step just reached fills from the step left; going back, it empties towards it */
-::view-transition-new(.line):only-child { animation: fill-across var(--axis-ms) var(--emphasized) both; transform-origin: left; }
-::view-transition-old(.line):only-child { animation: fill-across var(--axis-ms) var(--emphasized) reverse both; transform-origin: left; }
-@keyframes fill-across { from { scale: 0 1; } }
 .page-head h1 { font-size: 52px; margin-top: 22px; }
 .page-head .lead { margin-top: 10px; }
 
@@ -291,7 +336,7 @@ html:not(.dark) .preview .nm.grad { background: none; color: var(--brand); }
 .panel-sec { padding: 26px 28px; }
 .panel-sec + .panel-sec { border-top: 1px solid var(--line); }
 .sec-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
-.sec-title h2 { font-family: var(--display); font-size: 21px; letter-spacing: -.015em; }
+.sec-title h2 { font-family: var(--display); font-size: 21px; line-height: 1.2; letter-spacing: -.015em; }
 .sec-title .opt { color: var(--ink-3); font-weight: 700; font-size: 13px; }
 .sec-note { color: var(--ink-2); font-size: 14.5px; margin-bottom: 16px; }
 .input { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--surface-2); }
@@ -311,9 +356,10 @@ html:not(.dark) .preview .nm.grad { background: none; color: var(--brand); }
 .method.on .radio { border: 5px solid var(--brand); }
 
 .summary { position: sticky; top: 90px; padding: 24px; }
+.box-body { display: flow-root; }
 .rows { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
 .rows .r { display: flex; justify-content: space-between; gap: 12px; font-weight: 600; font-size: 15px; }
-.rows .r span:first-child { color: var(--ink-2); }
+.rows .r > span:first-child { color: var(--ink-2); }
 /* a long value, as a full reference, breaks within its side of the row */
 .rows .r > span:last-child { min-width: 0; text-align: right; }
 .total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--line-2); }
@@ -326,18 +372,21 @@ html:not(.dark) .preview .nm.grad { background: none; color: var(--brand); }
 .mini-invest a { display: inline-block; margin-top: 4px; }
 
 /* registration progress */
-.track { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 16px; margin-top: 8px; }
+/* The halo and ripple reach 16px past the node; the track keeps that room inside its own box so its two pictures lie on each other. */
+.track { --track-room: 18px; display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 16px; padding: var(--track-room); margin: calc(8px - var(--track-room)) calc(-1 * var(--track-room)) calc(-1 * var(--track-room)); }
 .stage { position: relative; padding-top: 34px; }
 .stage::before { content: ""; position: absolute; top: 13px; left: 0; right: 0; height: 4px; border-radius: 4px; background: var(--surface-2); }
 .stage.done::before { background: var(--ok); }
-.stage.active::before { background: linear-gradient(90deg, var(--brand-2) 0%, var(--brand) 60%, var(--surface-2) 60%); }
+@property --done { syntax: "<number>"; inherits: true; initial-value: .6; }
+.stage.active::before { background: linear-gradient(90deg, var(--brand-2) 0%, var(--brand) calc(var(--done) * 100%), var(--surface-2) calc(var(--done) * 100%)); }
 .stage.failed::before { background: var(--bad); }
 .stage .node { position: absolute; top: 0; left: 0; width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; background: var(--surface); border: 2px solid var(--line-2); font-weight: 800; font-size: 13px; color: var(--ink-3); }
 .stage.done .node { background: var(--ok); border-color: var(--ok); color: var(--bg); }
 .stage.active .node { border-color: var(--brand); color: var(--brand); box-shadow: 0 0 0 6px var(--brand-soft); }
 .stage.failed .node { background: var(--bad); border-color: var(--bad); color: var(--bg); }
+.stage::before, .stage .node { transition: var(--moves); }
 .stage b { display: block; margin-top: 10px; font-size: 16px; }
-.stage span { color: var(--ink-3); font-weight: 600; font-size: 13.5px; }
+.stage > span:last-child { display: block; color: var(--ink-3); font-weight: 600; font-size: 13.5px; }
 .countdown { display: flex; align-items: center; gap: 18px; margin-top: 26px; padding: 18px 20px; border-radius: 18px; background: var(--brand-soft); border: 1px solid var(--brand-line); }
 .countdown b { font-family: var(--display); font-size: 40px; letter-spacing: -.02em; color: var(--brand); line-height: 1; font-variant-numeric: tabular-nums; }
 .countdown p { color: var(--ink-2); font-size: 14.5px; }
@@ -348,12 +397,18 @@ html:not(.dark) .preview .nm.grad { background: none; color: var(--brand); }
 .tx .v { flex: 1; font-family: var(--mono); font-size: 13.5px; }
 
 .celebrate { text-align: center; padding: 56px 0 34px; }
-.celebrate .tick { width: 76px; height: 76px; margin: 0 auto; border-radius: 24px; display: grid; place-items: center; background: var(--ok); color: var(--bg); box-shadow: 0 0 0 10px var(--ok-soft), 0 20px 50px rgba(15, 143, 85, .3); }
+.celebrate .tick { position: relative; width: 76px; height: 76px; margin: 0 auto; border-radius: 24px; display: grid; place-items: center; background: var(--ok); color: var(--bg); box-shadow: 0 20px 50px rgba(15, 143, 85, .3); }
 .celebrate .tick svg.i { width: 36px; height: 36px; stroke-width: 3; }
+.celebrate .tick path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw .4s var(--emphasized) var(--crossed-ms) forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+/* Only transform and opacity change, so the ring moves without repainting the page. */
+.celebrate .tick::before { content: ""; position: absolute; inset: 0; border-radius: inherit; border: 2px solid var(--ok); opacity: 0; pointer-events: none; --ripple-from: .45; --ripple-to: 1.6; animation: ripple 2.4s linear calc(var(--crossed-ms) + .4s) 3; }
 .celebrate h1 { font-size: 64px; margin-top: 28px; }
 .celebrate .lead { margin-top: 12px; }
 .code-display { margin-top: 18px; padding: 22px 16px; border-radius: 18px; background: var(--surface-2); border: 1px dashed var(--brand-line); text-align: center; font: 700 19px var(--mono); letter-spacing: .02em; text-wrap: balance; }
-.code-actions { display: flex; align-items: center; gap: 16px; margin-top: 16px; }
+.code-display { position: relative; padding-inline: 52px; }
+.code-display > .corner-copy { position: absolute; top: 8px; right: 8px; margin: 0; }
+.tx .v { white-space: nowrap; }
 .alert { display: flex; gap: 12px; padding: 14px 16px; border-radius: 14px; font-size: 14px; font-weight: 600; margin-top: 16px; }
 .alert svg.i { margin-top: 1px; }
 .alert.warn { background: var(--warn-soft); color: var(--warn); }
@@ -387,7 +442,7 @@ html:not(.dark) .preview .nm.grad { background: none; color: var(--brand); }
 .banner { display: flex; align-items: flex-start; gap: 12px; max-width: 760px; margin: 28px auto 0; padding: 14px 18px; border-radius: 16px; background: var(--brand-soft); border: 1px solid var(--brand-line); text-align: left; font-size: 15px; font-weight: 600; color: var(--ink-2); }
 .banner b { color: var(--ink); }
 .banner svg.i { color: var(--brand); flex: none; margin-top: 2px; }
-.banner + .search { margin-top: 14px; }
+.banner-slot + .search { margin-top: 14px; }
 
 /* the line under a search that went wrong */
 .rule { margin-top: 14px; text-align: center; color: var(--bad); font-weight: 700; font-size: 15px; line-height: 24px; }
@@ -421,16 +476,19 @@ html:not(.dark) .preview .nm.grad { background: none; color: var(--brand); }
 .under-search { max-width: 760px; margin: 14px auto 0; text-align: left; }
 
 /* a popup over the page; the capture is a full page, so the overlay covers the document */
-.modal-overlay { position: fixed; inset: 0; overflow-y: auto; z-index: 20; background: rgba(3, 12, 40, .38); backdrop-filter: blur(4px); }
-html.dark .modal-overlay { background: rgba(0, 3, 16, .6); }
-.modal { position: absolute; left: 50%; top: 150px; transform: translateX(-50%); width: 460px; padding: 26px; border-radius: 24px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-lg); }
+.modal-overlay { position: fixed; inset: 0; overflow-y: auto; z-index: 20; background: var(--scrim); backdrop-filter: blur(4px); }
+/* Centred by margins, not a transform: the popup's opening scale would turn about the moved point and drift sideways. */
+.modal { position: absolute; left: 0; right: 0; margin-inline: auto; top: 150px; width: 460px; padding: 26px; border-radius: 24px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-lg); }
 /* Close stays at the top of a heading that wraps, as a long name's does */
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .modal-head h3 { font-family: var(--display); font-size: 24px; letter-spacing: -.015em; }
 .modal-head .icon-btn { width: 32px; height: 32px; }
 .modal .sec-note { margin-top: 6px; }
 .modal .btn { margin-top: 16px; }
-.code-input input { font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; }
+/* The longest code, a name code of 38 characters, fits whole beside the key icon and its gap (28px): a monospace
+   character is a little over .6em wide, plus its letter spacing. Below 11px it would not read, so a narrower field scrolls. */
+.code-input { container-type: inline-size; }
+.code-input input { font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(11px, (100cqi - 28px) / 23.8, 15px); }
 .verdict { display: flex; gap: 12px; align-items: flex-start; margin-top: 12px; padding: 14px 16px; border-radius: 14px; font-size: 14px; font-weight: 600; }
 .verdict b { display: block; font-size: 15px; }
 .verdict.ok { background: var(--ok-soft); color: var(--ok); }
@@ -439,13 +497,15 @@ html.dark .modal-overlay { background: rgba(0, 3, 16, .6); }
 
 /* checkout extras */
 /* an unavailable method is dimmed, all but the line saying why, which stays readable */
+.method > :not(div), .method b { transition: opacity var(--quick) var(--ease); }
+.method div > .live { display: inline; }
 .method.off > :not(div), .method.off b { opacity: .5; }
-.method.off div > span { color: var(--bad); }
+.method.off div > span, .method.off div > span span { color: var(--bad); }
 .covered-box { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: 16px; background: var(--ok-soft); color: var(--ok); font-weight: 700; }
 .covered-box p { color: var(--ink-2); font-weight: 600; font-size: 14px; }
 .code-entry { margin-top: 16px; }
 /* a whole prepaid code fits the order card's input */
-.summary .code-input input { font-size: 12.5px; letter-spacing: 0; }
+.summary .code-input input { font-size: clamp(11px, (100cqi - 28px) / 23.2, 12.5px); letter-spacing: 0; }
 .code-entry .line { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13.5px; font-weight: 700; }
 .code-entry .line.ok { color: var(--ok); }
 .code-entry .line.bad { color: var(--bad); }
@@ -456,8 +516,9 @@ html.dark .modal-overlay { background: rgba(0, 3, 16, .6); }
 .check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .check input:focus-visible + .box { outline: 2px solid var(--brand); outline-offset: 2px; }
 .check input:checked + .box { background: var(--brand); border-color: var(--brand); }
-.check input:checked + .box::after { content: ""; display: block; width: 5px; height: 10px; margin: 2px auto 0; border: solid var(--surface); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
+.check .box::after { content: ""; display: block; width: 5px; height: 10px; margin: 2px auto 0; border: solid var(--surface); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); opacity: 0; transition: opacity var(--quick) var(--ease); }
 .check .box { width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--line-2); background: var(--surface); flex: none; }
+.check input:checked + .box::after { opacity: 1; }
 .why { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
 .why div { display: flex; gap: 10px; color: var(--ink-2); font-size: 14px; font-weight: 600; }
 .why svg.i { color: var(--brand); width: 17px; height: 17px; margin-top: 1px; }
@@ -469,9 +530,21 @@ html.dark .modal-overlay { background: rgba(0, 3, 16, .6); }
 .pay-body .qr { width: 180px; }
 .copy-field + .copy-field { margin-top: 12px; }
 .copy-field .label { display: block; margin-bottom: 6px; }
-.copy-field .val { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); font: 600 14px var(--mono); word-break: break-all; text-wrap: balance; }
+.copy-field .val { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); font: 600 14px var(--mono); overflow-wrap: anywhere; text-wrap: balance; }
 .copy-field .val span { flex: 1; }
-.copy-field .val a { font-family: var(--body); font-size: 13px; flex: none; }
+.copy-field .val .word { word-break: break-all; }
+.copy-btn { position: relative; }
+.copy-icons { display: inline-grid; flex: none; }
+.copy-icons svg.i { grid-area: 1 / 1; transition: opacity var(--quick) var(--ease), scale var(--quick) var(--ease); }
+.copy-icons svg.i:last-child { opacity: 0; scale: .4; color: var(--ok); }
+.copy-btn.copied .copy-icons svg.i:first-child { opacity: 0; scale: .4; }
+.copy-btn.copied .copy-icons svg.i:last-child { opacity: 1; scale: 1; }
+.copied-note { position: absolute; left: 50%; bottom: calc(100% + 8px); translate: -50% 4px; padding: 5px 9px; border-radius: 8px; background: var(--ink); color: var(--surface); font: 700 12px/1 var(--body); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity var(--quick) var(--ease), translate var(--quick) var(--ease); }
+.copied-note::after { content: ""; position: absolute; left: 50%; top: 100%; translate: -50% 0; border: 5px solid transparent; border-top-color: var(--ink); }
+.copy-btn.copied .copied-note { opacity: 1; translate: -50% 0; }
+.field-copy { flex: none; display: grid; place-items: center; width: 32px; height: 32px; margin: -6px -6px -6px 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink-3); cursor: pointer; }
+.field-copy:hover { background: var(--line); color: var(--ink); }
+.field-copy svg.i { width: 16px; height: 16px; }
 .waiting { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); font-weight: 700; }
 .waiting .awaiting { display: inline-flex; align-items: center; gap: 10px; color: var(--warn); }
 .waiting .awaiting::before { content: ""; width: 9px; height: 9px; border-radius: 999px; background: currentColor; box-shadow: 0 0 0 5px var(--warn-soft); }
@@ -523,24 +596,27 @@ html.dark .modal-overlay { background: rgba(0, 3, 16, .6); }
 /* webapp additions to the mockups' rules */
 .mt-8 { margin-top: 8px; } .mt-10 { margin-top: 10px; } .mt-12 { margin-top: 12px; } .mt-14 { margin-top: 14px; }
 .mt-16 { margin-top: 16px; } .mt-18 { margin-top: 18px; } .mt-20 { margin-top: 20px; } .mt-22 { margin-top: 22px; }
-.mb-14 { margin-bottom: 14px; } .mb-18 { margin-bottom: 18px; }
+.mb-0 { margin-bottom: 0; } .mb-14 { margin-bottom: 14px; } .mb-18 { margin-bottom: 18px; }
 .center { display: flex; justify-content: center; }
 .left { text-align: left; }
 .narrow { max-width: 760px; }
 .smaller { font-size: 34px; }
 .ref-small { font-size: 13px; color: var(--ink-3); }
-.results { margin-top: 0; }
+/* the answer's shadow lies inside the part, so the part's clip while its height eases never cuts it */
+.results { margin-top: 0; padding-bottom: 44px; margin-bottom: -44px; }
 .field-error { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--bad); font-weight: 700; font-size: 14px; }
 .link-field + .link-field { margin-top: 14px; }
 .entity-wrap { margin: 10px 0; }
 .restore-link { display: block; margin-top: 10px; font-weight: 700; font-size: 14px; }
-.top.menu-open nav, .top.menu-closing nav { display: flex; position: absolute; top: 100%; left: 0; right: 0; flex-direction: column; padding: 8px 18px 14px; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow); margin: 0; }
-.top.menu-open .ghost-btn, .top.menu-closing .ghost-btn { display: inline-flex; }
+.top nav .nav-code { display: none; }
+.method:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 .alert.ok { background: var(--ok-soft); color: var(--ok); }
-.btn.danger { background: var(--bad); color: var(--surface); box-shadow: none; }
+.btn.danger { --button-top: var(--bad); --button-bottom: var(--bad); color: var(--surface); box-shadow: none; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .label.block { display: block; }
+/* a field's focus ring keeps clear of the label over it */
+.label + .link-field { margin-top: 8px; }
 .empty-list { padding: 6px 24px 22px; }
 .acts-inner { display: flex; gap: 8px; }
 
@@ -562,9 +638,9 @@ html.dark .when-light { display: none; }
 /* a name in a sentence moves to the next line whole; only a name longer than the line breaks, before its TLD first */
 .inline-name { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
 .ref-full { overflow-wrap: anywhere; }
-/* labels that take turns in one place: the inactive one is hidden from assistive technology and fades out */
+/* labels that take turns in one place: the inactive one is hidden from assistive technology and drawn clear */
 .swap { display: inline-grid; }
-.swap > * { grid-area: 1 / 1; transition: opacity var(--quick) var(--ease); }
+.swap > * { grid-area: 1 / 1; }
 .swap > [aria-hidden="true"] { opacity: 0; }
 .alert b { overflow-wrap: anywhere; }
 .monero-base { fill: #4C4C4C; }
@@ -574,35 +650,45 @@ html.dark .monero-base { fill: #fff; }
 /* motion: controls answer hover and press, and states ease from one to the next */
 :root {
   --ease: cubic-bezier(.2, .7, .2, 1); --quick: .16s;
-  /* a page's change: Material's emphasized easing over 300 ms, the old page gone in the first 90 */
-  --emphasized: cubic-bezier(.2, 0, 0, 1); --axis-ms: .3s; --axis-out-ms: 90ms; --axis-in-ms: 210ms;
-  --moves: color var(--quick) var(--ease), background-color var(--quick) var(--ease), border-color var(--quick) var(--ease),
+  /* what moves in a page's change: Material's emphasized easing over 300 ms */
+  --emphasized: cubic-bezier(.2, 0, 0, 1); --axis-ms: .3s;
+  /* A crossing, as CROSS_* in motion-values.ts: what goes dims to .6 as what comes rises to .2, then they trade places. */
+  --cross-ms: 160ms; --cross-out: linear(0, 0.4 50%, 0.8 50%, 1); --cross-in: linear(0, 0.2 50%, 0.6 50%, 1);
+  --crossed-ms: calc(var(--cross-ms) / 2);
+  --moves: color var(--quick) var(--ease), background-color var(--quick) var(--ease), border-color var(--quick) var(--ease), outline-color var(--quick) var(--ease),
     box-shadow var(--quick) var(--ease), translate var(--quick) var(--ease), opacity var(--quick) var(--ease);
 }
-/* the scrollbar's room is kept while a popup holds the page still, so the page does not shift under it */
-html { scrollbar-gutter: stable; }
+/* The gutter keeps the page from shifting under a popup. */
+html { scrollbar-gutter: stable; scroll-padding-top: calc(var(--top-h) + 12px); }
 a, .btn, .ghost-btn, .icon-btn, .small-btn, .method, .check, .input, .search, .crumb, .chip, .code-entry .line { transition: var(--moves); }
 /* a button's gradient eases through its colours, which a gradient itself cannot */
-.btn { transition: var(--moves), --button-top var(--quick) var(--ease), --button-bottom var(--quick) var(--ease); }
+.btn { --button-moves: var(--moves), --button-top var(--quick) var(--ease), --button-bottom var(--quick) var(--ease); transition: var(--button-moves); }
+.search { transition: var(--moves), --bad-ring var(--quick) var(--ease); }
+.method .radio, .check .box { transition: var(--moves), border-width var(--quick) var(--ease); }
 .method:not(.off), .check { cursor: pointer; }
 .btn:not([disabled]):active { translate: 0 1px; }
 @media (hover: hover) {
   a:hover { text-decoration: underline; text-underline-offset: .2em; text-decoration-thickness: 1px; }
   .btn:hover, .ghost-btn:hover, .icon-btn:hover, .small-btn:hover, .top nav a:hover, .brand:hover { text-decoration: none; }
   /* hover darkens a light button and lightens a dark one, so its label only gains contrast */
-  .btn:not([disabled]):not(.quiet):hover { --button-top: #1C76DA; --button-bottom: #004DC1; translate: 0 -1px; }
+  /* hover changes the colour only: a button lifted under the pointer would leave it at its edge, and flicker */
+  .btn:not([disabled]):not(.quiet):hover { --button-top: #1C76DA; --button-bottom: #004DC1; }
   html.dark .btn:not([disabled]):not(.quiet):hover { --button-top: #92FFFF; --button-bottom: #26D5FF; }
-  .btn.danger:not([disabled]):hover { background-color: #A32536; }
-  html.dark .btn.danger:not([disabled]):hover { background-color: #FFA3AD; }
-  .btn.quiet:not([disabled]):hover, .ghost-btn:hover, .icon-btn:hover, .small-btn:hover { background-color: var(--surface-2); border-color: var(--brand-line); color: var(--ink); }
+  .btn.danger:not([disabled]):hover { --button-top: #A32536; --button-bottom: #A32536; }
+  html.dark .btn.danger:not([disabled]):hover { --button-top: #FFA3AD; --button-bottom: #FFA3AD; }
+  .btn.quiet:not([disabled]):hover { --button-top: var(--surface-2); --button-bottom: var(--surface-2); border-color: var(--brand-line); color: var(--ink); }
+  .ghost-btn:hover, .icon-btn:hover, .small-btn:hover { background-color: var(--surface-2); border-color: var(--brand-line); color: var(--ink); }
   .top nav a:hover { color: var(--ink); background-color: var(--brand-soft); }
   .method:not(.off):not(.on):hover, .check:hover { border-color: var(--brand-line); }
   .foot .links a:hover { color: var(--ink); }
+  /* A control sliding under a still pointer passes in about 60 ms; the hover delay keeps it from lighting up. */
+  :where(.btn:not([disabled]):not(.working), .ghost-btn, .icon-btn, .small-btn, .method:not(.on), .check, .top nav a):hover { transition-delay: 80ms; }
+  :where(.btn, .ghost-btn, .icon-btn, .small-btn, .method, .check, .top nav a):active { transition-delay: 0s; }
 }
 
 /* something under way shows that it is alive */
 @keyframes breathe { 50% { opacity: .45; } }
-@keyframes ripple { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.35); } }
+@keyframes ripple { from { opacity: var(--ripple-from, 1); transform: scale(1); } to { opacity: 0; transform: scale(var(--ripple-to, 1.35)); } }
 @keyframes sweep { from { translate: -100% 0; } to { translate: 290% 0; } }
 @keyframes appear { from { opacity: 0; } }
 @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
@@ -614,66 +700,114 @@ a, .btn, .ghost-btn, .icon-btn, .small-btn, .method, .check, .input, .search, .c
 .skeleton { position: relative; overflow: hidden; border-color: transparent; box-shadow: none; background: var(--surface-2); }
 .skeleton::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 20%, var(--line) 50%, transparent 80%); animation: shimmer 1.4s linear infinite; }
 /* a page's placeholder shows only when its page is slow to come, so a quick one never flashes it */
-[data-placeholder] { animation: appear .3s var(--ease) .25s both; }
+[data-placeholder="delayed"] { animation: appear .3s var(--ease) .25s both; }
 /* the offline note keeps clear of the page: centred over its foot, above everything but a popup */
-.offline-note { position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 15; width: fit-content; max-width: 560px; margin: 0 auto; display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2); box-shadow: var(--shadow-lg); color: var(--ink); font-size: 14px; line-height: 1.4; }
+:root { --note-offset: 16px; }
+.offline-note { position: fixed; left: 16px; right: 16px; bottom: calc(var(--note-offset) + env(safe-area-inset-bottom)); z-index: 15; width: fit-content; max-width: 560px; margin: 0 auto; display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2); box-shadow: var(--shadow-lg); color: var(--ink); font-size: 14px; line-height: 1.4; }
 .offline-note svg.i { flex: none; width: 18px; height: 18px; color: var(--warn); }
-/* a page waiting for its view transition is laid out, for the code drawing it to measure, and not shown; its parts'
-   names wait too, as two parts of one name in the page would stop the transition */
-main.pending { position: fixed; inset: 0 0 auto; opacity: 0; visibility: hidden; pointer-events: none; }
-main.pending, main.pending * { view-transition-name: none !important; }
+/* the foot makes room for the note and as much again below and above it, so its last lines can be scrolled clear of it */
+.foot { transition: padding-bottom var(--quick) var(--ease); }
+html:has(.offline-note:not(.closing)) .foot { padding-bottom: calc(var(--offline-room, 0px) + 2 * var(--note-offset) + env(safe-area-inset-bottom)); }
+main.pending { position: fixed; inset: 0 0 auto; opacity: 0; pointer-events: none; }
+.page-leaving { position: fixed; overflow: hidden; pointer-events: none; }
+/* Under reduced motion, hiding by an inherited property such as visibility would hold every element hidden until its own transition starts. */
+body > main { transition-property: none; }
+main.pending, main.pending *, .page-leaving *, .outgoing, .outgoing *, .offline-note.closing { view-transition-name: none !important; }
 /* the page under a view transition is the new one already, and takes the pointer */
 ::view-transition { pointer-events: none; }
-/* Across a page's change the header stays and the footer moves with the page's height, each drawn as it is now. */
 .top { view-transition-name: page-top; }
 .foot { view-transition-name: page-foot; }
 .offline-note { view-transition-name: offline-note; }
-html:active-view-transition-type(forward, back, fill, redraw)::view-transition-old(page-top),
-html:active-view-transition-type(forward, back, fill, redraw)::view-transition-old(page-foot),
-html:active-view-transition-type(forward, back, fill, redraw)::view-transition-old(offline-note) { animation: none; opacity: 0; }
-html:active-view-transition-type(forward, back, fill, redraw)::view-transition-new(page-top),
-html:active-view-transition-type(forward, back, fill, redraw)::view-transition-new(page-foot),
-html:active-view-transition-type(forward, back, fill, redraw)::view-transition-new(offline-note) { animation: none; }
-/* Parts an order's pages share, its steps and its card, go over from where they were to where they are, rather than
-   leaving with the old page. */
-.crumbs { view-transition-name: order-steps; view-transition-class: part; }
-aside.summary { view-transition-name: order-card; view-transition-class: part; }
-/* Between two pages, Material's shared axis: the old page slides a little the way the reader goes and fades out early,
-   the new one slides in after it from the other side, so the two never print over each other. */
-html:active-view-transition-type(forward, back)::view-transition-old(root) { animation: var(--axis-ms) var(--emphasized) both axis-out, var(--axis-out-ms) linear both fade-out; }
-html:active-view-transition-type(forward, back)::view-transition-new(root) { animation: var(--axis-ms) var(--emphasized) both axis-in, var(--axis-in-ms) linear var(--axis-out-ms) both appear; }
-html:active-view-transition-type(forward) { --axis: 30px; }
-html:active-view-transition-type(back) { --axis: -30px; }
+body > main:not(.pending) { view-transition-name: page; view-transition-class: page-part; }
+.summary { view-transition-name: order-card; view-transition-class: page-part box; }
+.cols > .panel:first-child { view-transition-name: page-panel; view-transition-class: page-part box; }
+.summary > .box-body { view-transition-name: order-card-body; view-transition-class: page-part card-body; }
+.cols > .panel:first-child > .box-body { view-transition-name: page-panel-body; view-transition-class: page-part; }
+.page-head h1 { view-transition-name: page-title; view-transition-class: page-part; }
+.page-head .lead { view-transition-name: page-lead; view-transition-class: page-part; }
+.crumbs { view-transition-name: crumbs; view-transition-class: page-part; }
+::view-transition-group(page-top), ::view-transition-group(offline-note) { z-index: 2; }
+::view-transition-group(*) { animation-duration: var(--axis-ms); animation-timing-function: var(--emphasized); }
+/* Every picture crosses, in place of the browser's own fade, which adds the two pictures' light together. */
+::view-transition-old(*) { animation: var(--cross-ms) var(--cross-out) var(--cross-delay, 0s) both fade-out; }
+::view-transition-new(*) { animation: var(--cross-ms) var(--cross-in) var(--cross-delay, 0s) both appear; }
+html:active-view-transition-type(forward, back, fill, screen)::view-transition-old(root),
+html:active-view-transition-type(forward, back, fill, screen)::view-transition-old(page-top),
+html:active-view-transition-type(forward, back, fill, screen)::view-transition-old(page-foot),
+html:active-view-transition-type(forward, back, fill, screen)::view-transition-old(offline-note) { animation: none; opacity: 0; }
+html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(root),
+html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(page-top),
+html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(page-foot),
+html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(offline-note) { animation: none; }
+/* The theme pictures the whole page, which is opaque: the old stays whole under the new as it crosses in. */
+html:active-view-transition-type(theme) body * { view-transition-name: none !important; transition: none !important; }
+html:active-view-transition-type(theme) body *::before, html:active-view-transition-type(theme) body *::after { transition: none !important; }
+html:active-view-transition-type(theme)::view-transition-old(root) { animation: none; }
+/* A change that scrolls the window pictures the old page and foot apart from the new (motion.ts names them), each
+   crossing where it stands; a little scroll still pairs the order's card and name, a far one nothing. */
+html:active-view-transition-type(near) body > main :not(.summary, .summary > .box-body, .order-name),
+html:active-view-transition-type(far) body > main * { view-transition-name: none !important; }
+html:active-view-transition-type(near, far)::view-transition-new(page-foot) { animation: var(--cross-ms) var(--cross-in) both appear; }
+html:active-view-transition-type(forward, back)::view-transition-old(page),
+html:active-view-transition-type(forward, back)::view-transition-old(.page-part):only-child { animation: var(--axis-ms) var(--emphasized) both axis-out, var(--cross-ms) var(--cross-out) var(--cross-delay, 0s) both fade-out; }
+html:active-view-transition-type(forward, back)::view-transition-new(page),
+html:active-view-transition-type(forward, back)::view-transition-new(.page-part):only-child { animation: var(--axis-ms) var(--emphasized) both axis-in, var(--cross-ms) var(--cross-in) var(--cross-delay, 0s) both appear; }
+html:active-view-transition-type(forward) { --axis: 16px; }
+html:active-view-transition-type(back) { --axis: -16px; }
 @keyframes axis-out { to { translate: calc(-1 * var(--axis)) 0; } }
 @keyframes axis-in { from { translate: var(--axis) 0; } }
 @keyframes fade-out { to { opacity: 0; } }
-/* A page drawn again: each part the browser morphs moves and sizes from its old box to its new over a moment; what it
-   shows keeps its own size, pinned to the box's corner and cut at its edge, so no text stretches as the box changes. */
-::view-transition-group(.part), ::view-transition-group(page-foot), ::view-transition-group(step-ring) { animation-duration: var(--axis-ms); animation-timing-function: var(--emphasized); }
-::view-transition-old(.part), ::view-transition-new(.part) { height: 100%; object-fit: none; object-position: left top; overflow: clip; animation-duration: var(--axis-ms); }
-/* a part only the old page had goes quickly where it was; one only the new page has comes as the rest settles */
-::view-transition-group(.gone), ::view-transition-group(.fresh) { animation-duration: 0s; }
-::view-transition-old(.gone) { animation-duration: .12s; animation-timing-function: var(--ease); }
-::view-transition-new(.fresh) { animation-duration: .22s; animation-delay: .06s; animation-fill-mode: both; animation-timing-function: var(--ease); }
+/* A box on both sides is one surface, its contents pictured apart: the old stays whole under the new as it crosses in.
+   The rules name classes: Chromium crashes reading the style of a picture that a rule names with :only-child. */
+::view-transition-old(order-card), ::view-transition-new(order-card), ::view-transition-old(page-panel), ::view-transition-new(page-panel) { height: 100%; }
+::view-transition-old(.box) { animation: none; }
+::view-transition-old(.box):only-child { animation: var(--cross-ms) var(--cross-out) both fade-out; }
+::view-transition-old(order-card-body), ::view-transition-new(order-card-body), ::view-transition-old(page-panel-body), ::view-transition-new(page-panel-body) { height: auto; object-fit: none; object-position: left top; }
+::view-transition-old(page-title), ::view-transition-new(page-title), ::view-transition-old(page-lead), ::view-transition-new(page-lead) { height: 100%; object-fit: none; object-position: left top; }
+/* The name travels above the parts around it; a card that arrives with it fills in once it has landed. */
+.order-name { view-transition-name: order-name; view-transition-class: page-part; width: fit-content; max-width: 100%; }
+::view-transition-group(order-name) { z-index: 1; }
+.card-stays .summary .order-name { view-transition-group: nearest; }
+::view-transition-new(.card-body):only-child { --cross-delay: calc(var(--axis-ms) - var(--cross-ms)); }
+html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(.tick):only-child { animation: tick-in var(--axis-ms) var(--emphasized) var(--crossed-ms) both; }
+html:active-view-transition-type(forward, back, fill, screen)::view-transition-new(.line):only-child { animation: fill-across var(--axis-ms) var(--emphasized) both; transform-origin: left; }
+@keyframes tick-in { from { scale: .4; opacity: 0; } }
+@keyframes fill-across { from { scale: 0 1; } }
 .btn.counting { font-variant-numeric: tabular-nums; }
+/* the label and the spinner cross, so the button never shows empty */
+.btn.working { position: relative; color: transparent; cursor: progress; transition: var(--button-moves), color var(--cross-ms) var(--cross-out); }
+.btn.working[disabled] { --button-top: inherit; --button-bottom: inherit; box-shadow: var(--button-shadow); }
+.btn.quiet.working[disabled] { --button-top: var(--surface); --button-bottom: var(--surface); box-shadow: var(--shadow); }
+.btn.working::after, .btn.settling::after { content: ""; position: absolute; inset: 0; margin: auto; width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid var(--on-brand); border-right-color: transparent; }
+.btn.working::after { animation: spin .7s linear infinite, appear var(--cross-ms) var(--cross-in) both; }
+.btn.quiet.working::after, .btn.quiet.settling::after { border-color: var(--ink-2); border-right-color: transparent; }
+.btn.settling { position: relative; transition: var(--button-moves), color var(--cross-ms) var(--cross-in); }
+.btn.settling::after { animation: spin .7s linear infinite, fade-out var(--cross-ms) var(--cross-out) both; }
+@keyframes spin { to { rotate: 1turn; } }
+.row-item.entering { animation: rise-in var(--axis-ms) var(--emphasized) calc(var(--crossed-ms) + var(--i) * 40ms) both; }
+@keyframes rise-in { from { opacity: 0; translate: 0 8px; } }
 .result-shape { max-width: 760px; margin: 14px auto 0; height: 108px; border-radius: 22px; }
 .entity.skeleton { height: 68px; }
 .skeleton.line { height: 52px; width: min(560px, 80%); margin-top: 22px; border-radius: 14px; }
 .skeleton.line.short { height: 22px; width: min(360px, 55%); margin-top: 14px; border-radius: 8px; }
 .panel.skeleton { height: 260px; }
 .panel.skeleton.tall { height: 380px; }
-/* a live part's outgoing content fades out over the new, where it was */
 :where(.live) { position: relative; }
-.outgoing { position: absolute; inset: 0 0 auto; pointer-events: none; }
+.outgoing { position: absolute !important; inset: 0 0 auto; pointer-events: none; }
 /* the countdown's clock and the icon after it take the same room */
 .countdown b { display: inline-grid; place-items: center; min-height: 1em; }
 .countdown b svg.i { width: .8em; height: .8em; }
+.digits { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.count { display: inline-block; }
+.roll { display: inline-block; position: relative; overflow: clip; vertical-align: bottom; }
+/* a character rises into its box, which an inline box would not */
+.roll > span { display: inline-block; }
 /* a link at work, or held by a wait, shows it is not to be pressed */
 a[aria-disabled="true"] { opacity: .6; cursor: default; }
 /* A theme change without view transitions eases its colours across, and with them everything drawn in them. A
    control's own colour transition would start again at each step and trail behind, so it waits. */
 html.theme-easing body * { transition: none; }
-html.theme-easing { transition: --bg .3s var(--ease), --glow-1 .3s var(--ease), --glow-2 .3s var(--ease), --grid-line .3s var(--ease), --ink .3s var(--ease), --ink-2 .3s var(--ease), --ink-3 .3s var(--ease), --line .3s var(--ease), --line-2 .3s var(--ease), --surface .3s var(--ease), --surface-2 .3s var(--ease), --glass .3s var(--ease), --brand .3s var(--ease), --brand-2 .3s var(--ease), --brand-soft .3s var(--ease), --brand-line .3s var(--ease), --on-brand .3s var(--ease), --button-top .3s var(--ease), --button-bottom .3s var(--ease), --heading-1 .3s var(--ease), --heading-2 .3s var(--ease), --heading-3 .3s var(--ease), --ring-1 .3s var(--ease), --ring-2 .3s var(--ease), --ring-3 .3s var(--ease), --ok .3s var(--ease), --ok-soft .3s var(--ease), --bad .3s var(--ease), --bad-soft .3s var(--ease), --warn .3s var(--ease), --warn-soft .3s var(--ease); }
+html.theme-easing { transition: --bg .3s var(--ease), --glow-1 .3s var(--ease), --glow-2 .3s var(--ease), --grid-line .3s var(--ease), --ink .3s var(--ease), --ink-2 .3s var(--ease), --ink-3 .3s var(--ease), --line .3s var(--ease), --line-2 .3s var(--ease), --surface .3s var(--ease), --surface-2 .3s var(--ease), --glass .3s var(--ease), --brand .3s var(--ease), --brand-2 .3s var(--ease), --brand-soft .3s var(--ease), --brand-line .3s var(--ease), --on-brand .3s var(--ease), --button-top .3s var(--ease), --button-bottom .3s var(--ease), --heading-1 .3s var(--ease), --heading-2 .3s var(--ease), --heading-3 .3s var(--ease), --ring-1 .3s var(--ease), --ring-2 .3s var(--ease), --ring-3 .3s var(--ease), --ok .3s var(--ease), --ok-soft .3s var(--ease), --bad .3s var(--ease), --bad-soft .3s var(--ease), --warn .3s var(--ease), --warn-soft .3s var(--ease), --shadow-near .3s var(--ease), --shadow-far .3s var(--ease), --shadow-lg-far .3s var(--ease), --button-sheen .3s var(--ease), --button-glow .3s var(--ease), --button-glow-blur .3s var(--ease); }
 /* a search under way dims the answer it replaces */
 .result { transition: opacity var(--quick) var(--ease); }
 .result.busy { opacity: .55; }
@@ -682,10 +816,27 @@ html.theme-easing { transition: --bg .3s var(--ease), --glow-1 .3s var(--ease), 
 :where(.live) { display: flow-root; }
 
 /* the header's links, each on one line, and "Check a code" need about 760 px beside the logo, with a scrollbar's room
-   taken from the width; to 780 px they go into the menu */
+   taken from the width; to 780 px they go into the menu, which a window widened while it is open leaves for the row */
 @media (max-width: 780px) {
   .top nav, .ghost-btn { display: none; }
   .menu-btn { display: grid; margin-left: 8px; }
+  .top.menu-open nav, .top.menu-closing nav { display: flex; position: absolute; top: 100%; left: 0; right: 0; flex-direction: column; padding: 8px 18px 14px; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow); margin: 0; }
+  .top.menu-open nav .nav-code, .top.menu-closing nav .nav-code { display: flex; align-items: center; gap: 8px; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 14px; border-radius: 0 0 10px 10px; }
+  /* The open menu dims the page below the header and its hairline, so it reads as a layer over the page; the frosted
+     header stays clear. The fade lasts as long as the menu's roll, MENU_MS in shell.ts. */
+  :root::after { content: ""; position: fixed; inset: calc(var(--top-h) + 1px) 0 0; z-index: 5; background: var(--scrim); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .18s var(--ease), visibility 0s .18s; }
+  :root:has(.top.menu-open)::after, :root:has(.top.menu-closing)::after { visibility: visible; transition-delay: 0s; }
+  /* a tap on the dimmed page only closes the menu, rather than also following what is under it */
+  :root:has(.top.menu-open)::after { opacity: 1; pointer-events: auto; }
+}
+
+/* The tap area reaches past a control's edge to 44 px while the drawn size stays. */
+@media (pointer: coarse) {
+  .icon-btn, .small-btn, .field-copy { position: relative; }
+  .icon-btn::before, .small-btn::before, .field-copy::before { content: ""; position: absolute; inset: -6px; }
+  .top.menu-open nav a, .top.menu-closing nav a { padding-block: 12px; }
+  .waiting a, .summary .sub-links a, .next .item a, .result .yours a, .entity > a, .foot .links a, .covered a { padding-block: 12px; margin-block: -12px; }
+  .danger-link, .restore-link { padding-block: 12px; }
 }
 
 /* three of the home page's tiles to a row crowd their chips and links below about 820 px: they go two to a row */
@@ -713,8 +864,8 @@ html.theme-easing { transition: --bg .3s var(--ease), --glow-1 .3s var(--ease), 
 
 /* a phone */
 @media (max-width: 560px) {
+  :root { --top-h: 60px; }
   .wrap { padding: 0 18px; }
-  .top .wrap { height: 60px; }
   /* a phone has an arrow button and rarely an Enter key */
   .hint.keys { display: none; }
   .brand .logo { height: 22px; }
@@ -734,7 +885,9 @@ html.theme-easing { transition: --bg .3s var(--ease), --glow-1 .3s var(--ease), 
   /* an available name's card, the commonest answer, at phone width */
   .result-shape { height: 280px; }
   .result .deal { display: contents; }
-  .result .price { text-align: left; }
+  .result .what { flex: 1 1 0; }
+  .result .name { font-size: 26px; }
+  .result .price { align-self: flex-start; }
   .result .covered { flex-wrap: wrap; row-gap: 4px; }
   .entity .url { display: none; }
   .bento { grid-template-columns: 1fr; }
@@ -745,7 +898,7 @@ html.theme-easing { transition: --bg .3s var(--ease), --glow-1 .3s var(--ease), 
   .method { padding: 12px; }
   .method div > span { display: none; }
   /* two balanced lines, broken after a dash, read better than a long one squeezed small */
-  .code-display { font-size: 16px; letter-spacing: 0; padding: 16px 10px; }
+  .code-display { font-size: 16px; letter-spacing: 0; padding: 16px 46px; }
   .entity { flex-wrap: wrap; }
   .entity > a { flex-basis: 100%; padding-left: 56px; }
   /* the link has its own line, so the name takes the rest of the first beside its avatar, however long */
@@ -755,16 +908,19 @@ html.theme-easing { transition: --bg .3s var(--ease), --glow-1 .3s var(--ease), 
   .countdown b { font-size: 32px; }
   .tx .k { width: 80px; }
   .foot .wrap { padding: 18px; }
-  .preview { flex-wrap: wrap; }
-  .preview .nm { flex-basis: 100%; }
-  .preview .arrow { display: none; }
+  .scene { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .scene .opens { flex-direction: row; min-width: 0; padding-left: 18px; }
+  .scene .line { order: -1; align-self: auto; width: 2px; height: 22px; background: linear-gradient(180deg, var(--brand-line), var(--brand)); transform-origin: top; }
+  .scene[data-step="empty"] .line { scale: 1 0; opacity: 0; }
   .options { grid-template-columns: 1fr; }
   .toolbar { flex-direction: column; }
   .row-item { padding: 14px 18px; }
   .modal { width: calc(100% - 32px); top: 90px; padding: 20px; }
   .pay-body { grid-template-columns: 1fr; }
   .pay-body .qr { margin: 0 auto; }
-  .code-input input { font-size: 12.5px; letter-spacing: 0; }
+  .code-input { padding-inline: 12px; }
+  .code-input > svg.i { display: none; }
+  .code-input input { font-size: clamp(11px, 100cqi / 23.2, 12.5px); letter-spacing: 0; }
   .pay-head { flex-wrap: wrap; }
   .pay-head .amount { font-size: 32px; }
   .status-wrap { padding: 32px 18px 0; }
@@ -775,4 +931,7 @@ html.theme-easing { transition: --bg .3s var(--ease), --glow-1 .3s var(--ease), 
 /* a reader who asked for less motion gets the states without the easing */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
+  /* A still spinner would read as a fault, so it turns slowly; it shows only once the work takes a moment. */
+  .btn.working::after { animation: spin 1.6s linear infinite, appear .01ms linear var(--quick) both !important; }
+  [data-placeholder="delayed"] { animation-delay: .25s !important; }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { isSending, startSending, stopSending, type Checkout } from "../src/session.ts"
+import { isSending, scrolled, setScrolled, startSending, stopSending, type Checkout } from "../src/session.ts"
 
 const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
 
@@ -26,5 +26,15 @@ describe("orders on their way", () => {
     expect(isSending(checkout("samename", "SN-CCCCC"))).toBe(false)
     expect(isSending(checkout("samename", null, "0x0000000000000000000000000000000000000001"))).toBe(false)
     stopSending(checkout("samename", "SN-AAAAA"))
+  })
+})
+
+describe("scroll places", () => {
+  it("writes each history entry's place on its own, keeping the others", () => {
+    setScrolled(0, 120)
+    setScrolled(3, 40)
+    expect(scrolled()).toEqual({ 0: 120, 3: 40 })
+    setScrolled(0, 0)
+    expect(scrolled()).toEqual({ 0: 0, 3: 40 })
   })
 })

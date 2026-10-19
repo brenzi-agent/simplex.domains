@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ApiError, checkCode, previewLink, readInvoice, searchName } from "../src/api.ts"
+import { ApiError, checkCode, previewLink, readInvoice, retryDelay, searchName } from "../src/api.ts"
 
 const HASH = "ab".repeat(32)
 
@@ -15,6 +15,21 @@ async function errorOf(): Promise<ApiError> {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+describe("retryDelay", () => {
+  const USUAL = 5000
+  it("waits what the service asks, or the usual pause for a rate limit without a wait, a server failure or no answer", () => {
+    expect(retryDelay(new ApiError("rate_limited", 429, 12, {}), USUAL)).toBe(12_000)
+    expect(retryDelay(new ApiError("rate_limited", 429, null, {}), USUAL)).toBe(USUAL)
+    expect(retryDelay(new ApiError("provider_unavailable", 503, null, {}), USUAL)).toBe(USUAL)
+    expect(retryDelay(new ApiError("network", 0, null, {}), USUAL)).toBe(USUAL)
+    expect(retryDelay(new TypeError("Failed to fetch"), USUAL)).toBe(USUAL)
+  })
+  it("gives up on a refusal that asking again cannot change", () => {
+    expect(retryDelay(new ApiError("not_found", 404, null, {}), USUAL)).toBeNull()
+    expect(retryDelay(new ApiError("bad_signature", 400, null, {}), USUAL)).toBeNull()
+  })
 })
 
 describe("service errors", () => {

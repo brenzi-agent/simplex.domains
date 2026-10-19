@@ -28,6 +28,7 @@ export interface Checkout {
 
 const CHECKOUT = "simplex-names-checkout"
 const APPLIED = "simplex-names-code"
+const SCROLLED = "simplex-names-scrolled"
 const memory = new Map<string, string>()
 // keys whose last write did not reach sessionStorage, which then holds an older value
 const unsaved = new Set<string>()
@@ -57,6 +58,10 @@ function write(key: string, value: unknown): void {
     unsaved.add(key)
   }
 }
+
+// Each entry is written on its own so a page restored from the browser's cache, holding older places, keeps the others.
+export const scrolled = (): Record<number, number> => read<Record<number, number>>(SCROLLED) ?? {}
+export const setScrolled = (at: number, y: number) => write(SCROLLED, { ...scrolled(), [at]: y })
 
 // a checkout without its name or chain is a leftover of a page that outlived its order, not one to continue
 export function checkout(): Checkout | null {

@@ -1,33 +1,33 @@
 // The router: one page per route, redrawn on navigation.
 import "./styles.css"
+import { EDIT_PATH, viewOf } from "./screens/routes.ts"
 import { checkoutPage, ownerCodePage } from "./views/checkout.ts"
 import { codePopup } from "./views/codes.ts"
 import { editPage, historyPage, restorePage, trademarksPage } from "./views/names.ts"
 import { orderPage } from "./views/order.ts"
 import { searchPage } from "./views/search.ts"
-import { go, nextRoute, setRenderer, wentBack } from "./views/shell.ts"
+import { go, historyMoved, nextRoute, setRenderer } from "./views/shell.ts"
 
 function render(): void {
-  nextRoute()
   const query = new URLSearchParams(location.search)
-  const order = query.get("order")
-  const registration = query.get("registration")
-  if (order || registration) return orderPage(order, registration)
   const [path, hashQuery = ""] = location.hash.replace(/^#/, "").split("?")
-  const params = new URLSearchParams(hashQuery)
-  if (path === "/checkout") return checkoutPage()
-  if (path === "/checkout/code") return ownerCodePage()
-  if (path === "/names") return historyPage()
-  if (path === "/restore") return restorePage()
-  if (path === "/trademarks") return trademarksPage()
-  const edit = path.match(/^\/edit\/([\w-]+)$/)
-  if (edit) return void editPage(edit[1])
-  searchPage(params)
+  const view = viewOf(query, path)
+  nextRoute(view)
+  switch (view) {
+    case "order": return orderPage(query.get("order"), query.get("registration"))
+    case "checkout": return checkoutPage()
+    case "name-code": return ownerCodePage()
+    case "names": return historyPage()
+    case "restore": return restorePage()
+    case "trademarks": return trademarksPage()
+    case "edit": return void editPage(EDIT_PATH.exec(path)![1])
+    case "search": return searchPage(new URLSearchParams(hashQuery))
+  }
 }
 
 setRenderer(render, () => codePopup("check"))
 window.addEventListener("popstate", (e) => {
-  wentBack(e)
+  historyMoved(e)
   render()
 })
 // The second click of a double click is dropped everywhere: an action that redraws the page or opens a popup puts
@@ -37,6 +37,11 @@ document.addEventListener("click", (e) => {
   e.preventDefault()
   e.stopImmediatePropagation()
 }, true)
+document.addEventListener("keydown", (e) => {
+  if (e.key !== " " || !(e.target instanceof Element) || !e.target.matches('a[role="button"]')) return
+  e.preventDefault()
+  if (!e.repeat) (e.target as HTMLElement).click()
+})
 // A link from /?order=… to /#/… changes the query, so the browser would load a new document and drop what this page
 // holds in memory (all of it when storage is blocked); this page's own links switch views in place instead.
 document.addEventListener("click", (e) => {

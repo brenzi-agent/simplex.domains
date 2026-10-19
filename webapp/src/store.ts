@@ -26,10 +26,20 @@ export interface OrderRecord {
   tld: string
   // the prepaid code that paid, shown again if the name is taken first and the code is released
   prepaidCode?: string
+  // the service's error for that code once it can no longer pay for a failed registration
+  codeRefusal?: CodeRefusal
   // the link of the order that replaced this one with a new invoice; its old link leads there
   replacedBy?: string
+  // when a tab of this browser last saved the name's links, so every tab reads them again
+  linksSavedAt?: string
   createdAt: string
 }
+
+export type CodeRefusal = "code_used" | "code_invalid" | "code_expired"
+
+export const invoiceUrl = (invoiceId: string) => `/?order=${invoiceId}`
+export const orderUrl = (o: { invoiceId: string | null; registrationId: string }) =>
+  o.invoiceId ? invoiceUrl(o.invoiceId) : `/?registration=${o.registrationId}`
 
 export interface CodeRecord {
   code: string
@@ -187,8 +197,8 @@ export function dropPending(ownerCode: string): void {
 
 // a card payment submitted for an invoice, kept even for an order this browser has no record of, so a reload or
 // another tab does not offer the card form again while Stripe confirms
-export const markCardSubmitted = (invoiceId: string) => void put("card", invoiceId, new Date().toISOString())
-export const cardSubmitted = (invoiceId: string) => get<string>("card", invoiceId) !== undefined
+export const markCardSubmitted = (invoiceId: string, at: string) => void put("card", invoiceId, at)
+export const cardSubmittedAt = (invoiceId: string) => get<string>("card", invoiceId)
 export const clearCardSubmitted = (invoiceId: string) => remove("card", invoiceId)
 
 export function codes(): CodeRecord[] {

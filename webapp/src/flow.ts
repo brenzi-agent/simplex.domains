@@ -24,12 +24,7 @@ export function walletOf(code: string): Wallet | null {
   return parsed?.kind === "owner" ? walletFromEntropy(parsed.entropy) : null
 }
 
-export interface Links {
-  contact: string
-  channel: string
-}
-
-function registrationOf(label: string, owner: Uint8Array, secret: Uint8Array, links: Links, chain: api.ChainInfo, years: number): Registration {
+function registrationOf(label: string, owner: Uint8Array, secret: Uint8Array, links: api.Links, chain: api.ChainInfo, years: number): Registration {
   return {
     label, tld: chain.tld, owner, duration: durationFor(years), secret, resolver: fromHex(chain.resolver),
     contactLinks: links.contact ? [links.contact] : [], channelLinks: links.channel ? [links.channel] : [],
@@ -38,7 +33,7 @@ function registrationOf(label: string, owner: Uint8Array, secret: Uint8Array, li
 
 export interface Draft {
   label: string
-  links: Links
+  links: api.Links
   chain: api.ChainInfo
   years: number
   ownerCode: string | null
@@ -93,7 +88,7 @@ async function sha256Hex(text: string): Promise<string> {
 
 // Another name for a taken order, registered to the same wallet, so the same code owns it.
 // The order takes the new name's price, as the service answers it, which caps any later move.
-export async function retargetOrder(record: store.OrderRecord, label: string, links: Links, chain: api.ChainInfo): Promise<api.RegistrationView> {
+export async function retargetOrder(record: store.OrderRecord, label: string, links: api.Links, chain: api.ChainInfo): Promise<api.RegistrationView> {
   const draft: Draft = { label, links, chain, years: record.years, ownerCode: record.ownerCode }
   const built = await orderRequest(draft)
   const wallet = walletOf(record.ownerCode!)!
@@ -147,9 +142,6 @@ export async function syncRecord(record: store.OrderRecord, view: api.Registrati
     return null
   }
 }
-
-export const orderUrl = (o: { invoiceId: string | null; registrationId: string }) =>
-  o.invoiceId ? `/?order=${o.invoiceId}` : `/?registration=${o.registrationId}`
 
 type Found = Awaited<ReturnType<typeof api.findRegistrations>>["registrations"][number]
 
@@ -206,12 +198,12 @@ export async function newerOrder(record: store.OrderRecord): Promise<store.Order
   // Orders listed before this one are newer; one the service has forgotten is not listed, so then only orders made after
   // it count, by the service's clock. Never the one this record replaced, which would lead straight back here.
   const at = found.findIndex((r) => r.registrationId === record.registrationId)
-  const self = orderUrl(record)
+  const self = store.orderUrl(record)
   const newer = (at >= 0 ? found.slice(0, at) : found.filter((r) => Date.parse(r.createdAt) > Date.parse(record.createdAt)))
     .filter((r) => store.orderByRegistration(r.registrationId)?.replacedBy !== self)
   if (newer.length === 0) return none()
   const { record: next } = await reopen(wallet, record.ownerCode!, chooseOrder(newer))
-  store.updateOrder(record.registrationId, { replacedBy: orderUrl(next) })
+  store.updateOrder(record.registrationId, { replacedBy: store.orderUrl(next) })
   return next
 }
 
@@ -242,7 +234,7 @@ async function reopen(wallet: Wallet, code: string, chosen: Found): Promise<Rest
 export const KEYS = { contact: CONTACT_KEY, channel: CHANNEL_KEY } as const
 
 // One signed SetText per changed key, sent one at a time: each needs the nonce the previous one spent.
-export async function saveLinks(record: store.OrderRecord, chain: { chainId: number; resolver: string; tld: string }, nonce: number, changes: Partial<Links>, saved: (kind: keyof Links) => void): Promise<string[]> {
+export async function saveLinks(record: store.OrderRecord, chain: { chainId: number; resolver: string; tld: string }, nonce: number, changes: Partial<api.Links>, saved: (kind: keyof api.Links) => void): Promise<string[]> {
   const wallet = walletOf(record.ownerCode!)!
   const node = namehash(chain.tld, record.label)
   const lh = hex(labelHash(record.label))
