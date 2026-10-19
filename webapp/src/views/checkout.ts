@@ -8,7 +8,7 @@ import { type LinkKind, linkKind, linkProblem, PRICED_YEARS, priceFor } from "..
 import { changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, initialState, reduce, screenOf, type WaitingOrder } from "../screens/checkout.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
-import { CODE_ERRORS, codeField, type CodeVerdict } from "./codes.ts"
+import { CODE_ERRORS, codeField, type CodeVerdict, refuseCode } from "./codes.ts"
 import { entityCard } from "./search.ts"
 import { type Builder, currentRoute, draw, focusOn, go, isRedraw, isRoute, kept, keptLive, outcome, redirect, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
 import { every } from "./effects.ts"
@@ -137,22 +137,28 @@ function summaryCard(c: session.Checkout, blocked: boolean): HTMLElement {
       el("span", {}, ...(c.code ? [el("s", {}, dollars(priceFor(c.price, years(c)), true)), "$0.00"] : [dollars(c.price, true)]))))
 }
 
+// an order on its way is sent as it is: its links, method and code stay as they are until it is answered
+function locked<T extends HTMLElement>(node: T, sending: boolean): T {
+  for (const input of node.querySelectorAll("input")) input.disabled = sending
+  return node
+}
+
 // the link fields are kept through every change of the page, with what is typed and any preview still loading
-function linksBlock(c: session.Checkout): HTMLElement {
+function linksBlock({ checkout: c, sending }: CheckoutState): HTMLElement {
   return el("section", { class: "links" },
     heading("Point it at your SimpleX", el("span", { class: "opt" }, "Optional")),
     el("p", { class: "sec-note" }, "Set in the same registration. You can change them later."),
-    kept("link-contact", () => linkField("contact", "Paste your address", "Address", c.contact, (link) => setLink("contact", link))),
-    kept("link-channel", () => linkField("channel", "Paste your channel", "Channel", c.channel, (link) => setLink("channel", link))))
+    locked(kept("link-contact", () => linkField("contact", "Paste your address", "Address", c.contact, (link) => setLink("contact", link))), sending),
+    locked(kept("link-channel", () => linkField("channel", "Paste your channel", "Channel", c.channel, (link) => setLink("channel", link))), sending))
 }
 
 function chooseMethod(m: Method): void {
-  if (m === state.checkout.unavailable || !act({ type: "method-chosen", method: m })) return
+  if (state.sending || m === state.checkout.unavailable || !act({ type: "method-chosen", method: m })) return
   focusOn(`method-${m}`)
 }
 
 // The payment methods as one radio group, with a note of a method refused and of an unpaid invoice above them.
-function methodsBlock({ checkout: c, openOrder: order }: CheckoutState): HTMLElement {
+function methodsBlock({ checkout: c, openOrder: order, sending }: CheckoutState): HTMLElement {
   // one Tab stop for the group, as a radio group has; arrows move between the methods open to choose
   const keyed = (e: KeyboardEvent, m: Method) => {
     const open = METHOD_ORDER.filter((other) => other !== state.checkout.unavailable)
@@ -164,7 +170,7 @@ function methodsBlock({ checkout: c, openOrder: order }: CheckoutState): HTMLEle
   }
   const radios = METHOD_ORDER.map((m) => {
     const [on, off] = [m === c.method, m === c.unavailable]
-    return el("div", { class: "method", role: "radio", "data-method": m, "data-focus": `method-${m}`, "aria-checked": String(on), "aria-disabled": off ? "true" : undefined,
+    return el("div", { class: "method", role: "radio", "data-method": m, "data-focus": `method-${m}`, "aria-checked": String(on), "aria-disabled": off || sending ? "true" : undefined,
       tabindex: on ? "0" : "-1", onclick: () => chooseMethod(m), onkeydown: (e: Event) => keyed(e as KeyboardEvent, m) },
     methodMark(m), el("b", {}, methodName(m)), el("span", {}, off ? "Temporarily unavailable" : METHODS[m]))
   })
@@ -186,17 +192,15 @@ const waitingNotice = (blocked: WaitingOrder) => el("section", { class: "pay-wit
 // A code that pays is applied as it is judged, one for longer names is refused here, and anything else takes off the
 // code the field held. Read from the module's state, as the field is kept across draws.
 function onVerdict(v: CodeVerdict | null): string | null {
-  const { label, code } = state.checkout
+  const { label, code, codeError } = state.checkout
   const tooShort = v?.ok === true && label.length < v.code.minLength
   if (v?.ok && !tooShort) act({ type: "code-applied", code: v.code })
-  else if (code) act({ type: "code-removed" })
+  // an edit takes off the code the field held, and the service's last refusal of one
+  else if (code || codeError) act({ type: "code-removed" })
   return v?.ok && tooShort ? `This code covers names of ${v.code.minLength} or more letters; ${label} has ${label.length}.` : null
 }
 
-const codeEntry = () => codeField(CODE_FIELD, CODE_LABEL, onVerdict, state.checkout.code)
-
-// the service's last refusal of a code, whose field was emptied as it came
-const codeBlock = (c: session.Checkout) => el("div", {}, codeEntry(), c.codeError ? el("p", { class: "field-error" }, icon("x"), c.codeError) : null)
+const codeEntry = () => codeField(CODE_FIELD, CODE_LABEL, onVerdict, state.checkout.code, state.checkout.codeError ?? null)
 
 function nameCodeBlock(c: session.Checkout): HTMLElement {
   const box = el("input", { type: "checkbox", checked: c.saved, "data-focus": "saved" })
@@ -240,13 +244,13 @@ function buildCheckout(s: CheckoutState, signal: AbortSignal): HTMLElement {
   const c = s.checkout
   const fromApp = c.appOwner !== null
   const blocked = blockedBy(s)
-  const links = fromApp ? null : linksBlock(c)
+  const links = fromApp ? null : linksBlock(s)
   return screen({ title: "Check your order", back: searchLink(c.label, c.appOwner) },
     storageWarning(fromApp),
     summaryCard(c, blocked !== null),
     links,
     c.code ? coveredLine(c.code) : blocked ? waitingNotice(blocked) : methodsBlock(s),
-    fromApp ? null : codeBlock(c),
+    fromApp ? null : locked(codeEntry(), s.sending),
     fromApp ? null : nameCodeBlock(c),
     payBlock(s, blocked !== null, links, signal))
 }
@@ -469,12 +473,9 @@ function orderError(e: unknown, c: session.Checkout): void {
     return go(searchLink(c.label, c.appOwner))
   }
   if (code in CODE_ERRORS) {
+    // drawn first, so the field is open again for another code when it takes focus and says why
     act({ type: "order-refused", reason: "code", error: CODE_ERRORS[code] })
-    // the refused code leaves its field, and the line under it says why
-    const input = codeEntry().querySelector("input")!
-    input.value = ""
-    input.dispatchEvent(new Event("input"))
-    return
+    return refuseCode(codeEntry(), CODE_ERRORS[code])
   }
   if (code === "provider_unavailable") return void act({ type: "order-refused", reason: "method" })
   if (code === "catalog_changed" && e instanceof api.ApiError && typeof e.body.price === "number") return void act({ type: "price-changed", price: e.body.price })

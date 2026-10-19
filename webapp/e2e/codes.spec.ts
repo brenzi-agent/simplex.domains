@@ -131,6 +131,33 @@ test("a code entered at checkout stays with its name through Back and Register, 
   await expect(total(page)).not.toContainText("$0.00")
 })
 
+test("a code the service refuses as the order is sent leaves its field, says why there, and leaves the order to pay", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  await search(page, uniqueLabel("used"))
+  await page.getByRole("button", { name: "Register" }).click()
+  await checkoutCode(page).fill(code)
+  await expect(total(page)).toContainText("$0.00")
+  await savedCode(page)
+  await page.route("**/api/name/register", (route) => route.fulfill({ status: 409, json: { error: "code_used" } }))
+  await onStep(page).getByRole("button", { name: "Register", exact: true }).click()
+  const refusal = page.getByRole("status").filter({ hasText: "This code was already used." })
+  await expect(refusal, "the refusal is said in the field's live line").toBeVisible()
+  await expect(checkoutCode(page)).toHaveValue("")
+  await expect(checkoutCode(page), "focus moves to the field, off Pay, which now pays money").toBeFocused()
+  await expect(total(page)).not.toContainText("$0.00")
+  await expect(page.getByRole("radio")).toHaveCount(3)
+  await expect(payButton(page)).toHaveText(/^Pay \$[\d.,]+ with Bitcoin/)
+  await expect(payButton(page)).toBeEnabled()
+  // the refusal is the checkout's until the field is edited, also after a reload
+  await page.reload()
+  await expect(refusal).toBeVisible()
+  await checkoutCode(page).fill("S")
+  await expect(refusal).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await expect(page.getByText("This code was already used.")).toHaveCount(0)
+})
+
 test("the checkout's code field refuses a code for longer names, typos and owner codes", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 8 }) as { code: string }
   await search(page, uniqueLabel("k7").slice(0, 7))

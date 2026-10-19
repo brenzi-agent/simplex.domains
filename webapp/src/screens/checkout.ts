@@ -45,7 +45,7 @@ export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial
     case "method-chosen": return e.method === checkout.method || e.method === checkout.unavailable ? null : { method: e.method }
     case "link-set": return e.kind === "contact" ? { contact: e.link } : { channel: e.link }
     case "code-applied": return { code: e.code, codeError: undefined }
-    case "code-removed": return { code: null }
+    case "code-removed": return { code: null, codeError: undefined }
     case "saved": return { saved: e.saved }
     case "order-refused":
       if (e.reason === "code") return { code: null, codeError: e.error }

@@ -481,6 +481,30 @@ test("Back from a paused order keeps the order paused", async ({ page }) => {
   await expect(page.getByText("Too many attempts")).toBeVisible()
 })
 
+test("an order on its way keeps its links, method and code as sent until it is answered", async ({ page }) => {
+  await search(page, uniqueLabel("lock"))
+  await page.getByRole("button", { name: "Register" }).click()
+  await savedCode(page)
+  let answer: () => void = () => undefined
+  const answered = new Promise<void>((resolve) => { answer = resolve })
+  await page.route("**/api/invoice", async (route) => {
+    if (route.request().method() !== "POST") return route.continue()
+    await answered
+    await route.fulfill({ status: 500, json: { error: "internal" } })
+  })
+  await payButton(page).click()
+  await expect(page.getByLabel("Address")).toBeDisabled()
+  await expect(page.getByLabel("Channel")).toBeDisabled()
+  await expect(page.getByRole("textbox", { name: "I have a code" })).toBeDisabled()
+  for (const radio of await page.getByRole("radio").all()) await expect(radio).toHaveAttribute("aria-disabled", "true")
+  // a click Playwright would wait on, as on any control marked disabled, comes as the page hears it
+  await page.getByRole("radio", { name: "Monero" }).dispatchEvent("click")
+  await expect(page.getByRole("radio", { name: "Bitcoin" })).toHaveAttribute("aria-checked", "true")
+  answer()
+  await expect(page.getByRole("heading", { name: "That did not go through" })).toBeVisible()
+  await page.unrouteAll({ behavior: "wait" })
+})
+
 test("Find the order shows a wait met elsewhere in the tab", async ({ page, request }) => {
   await search(page, uniqueLabel("findh"))
   await page.getByRole("button", { name: "Register" }).click()

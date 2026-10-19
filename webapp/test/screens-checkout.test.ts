@@ -62,7 +62,7 @@ describe("changeOf", () => {
     expect(changeOf(s, { type: "link-set", kind: "contact", link: "https://smp8.simplex.im/a#x" })).toEqual({ contact: "https://smp8.simplex.im/a#x" })
     expect(changeOf(s, { type: "link-set", kind: "channel", link: "https://smp9.simplex.im/c#y" })).toEqual({ channel: "https://smp9.simplex.im/c#y" })
     expect(changeOf(s, { type: "code-applied", code: CODE })).toEqual({ code: CODE, codeError: undefined })
-    expect(changeOf(s, { type: "code-removed" })).toEqual({ code: null })
+    expect(changeOf(s, { type: "code-removed" })).toEqual({ code: null, codeError: undefined })
     expect(changeOf(s, { type: "saved", saved: true })).toEqual({ saved: true })
     expect(changeOf(s, { type: "order-refused", reason: "code", error: "This code was already used." })).toEqual({ code: null, codeError: "This code was already used." })
     expect(changeOf(s, { type: "price-changed", price: 2500 })).toEqual({ price: 2500 })
@@ -121,6 +121,13 @@ describe("reduce", () => {
   it("code-removed takes the code off", () => {
     const covered = { ...s, checkout: checkout({ code: CODE }) }
     expect(reduce(covered, { type: "code-removed" })).toEqual({ ...s, checkout: checkout({ code: null }) })
+  })
+  it("code-removed, as an edit of the code's field gives, drops the service's last refusal of a code", () => {
+    const refused = reduce(s, { type: "order-refused", reason: "code", error: "This code was already used." })
+    expect(refused.checkout.codeError).toBe("This code was already used.")
+    const edited = reduce(refused, { type: "code-removed" })
+    expect(edited.checkout).toHaveProperty("codeError", undefined)
+    expect(screenOf(edited)).toBe("checkout")
   })
   it("saved ticks and unticks the saved box", () => {
     const ticked = open({ checkout: checkout({ saved: true }) })

@@ -440,7 +440,6 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
 .field-error { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--danger-fg); font-weight: 700; font-size: 14px; }
 .link-field + .link-field { margin-top: 14px; }
 .entity-wrap { margin: 10px 0; }
-.restore-link { display: block; margin-top: 10px; font-weight: 700; font-size: 14px; }
 
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .label.block { display: block; }
@@ -495,7 +494,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .small-btn, .field-copy { position: relative; }
   .small-btn::before, .field-copy::before { content: ""; position: absolute; inset: -6px; }
   .waiting a, .next .item a, .answer .yours a, .entity > a { padding-block: 12px; margin-block: -12px; }
-  .danger-link, .restore-link { padding-block: 12px; }
+  .danger-link { padding-block: 12px; }
 }
 
 /* too narrow for a row's name beside its chip and buttons, the steps in one line, or the footer in one row: they wrap */

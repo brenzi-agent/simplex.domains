@@ -76,7 +76,7 @@ export function updateCheckout(label: string, change: Partial<Checkout>): boolea
   write(CHECKOUT, { ...c, ...change })
   return true
 }
-// The checkout whose order is on its way: its owner code page stays disabled and its links and code stay fixed meanwhile,
+// The checkout whose order is on its way: its Pay stays disabled and its links, method and code stay locked meanwhile,
 // so a re-ticked box or Back cannot send a second order or change the one sent.
 const sending = new Set<string>()
 const keyOf = (c: Checkout) => `${c.label} ${c.ownerCode ?? c.appOwner}`
