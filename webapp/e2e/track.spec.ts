@@ -8,9 +8,9 @@ const shift = (page: Page) => page.locator(".rail").evaluate((rail) => {
 })
 // the slide's duration the last move set on the rail
 const slideMs = (page: Page) => page.locator(".rail").evaluate((rail) => (rail as HTMLElement).style.getPropertyValue("--slide"))
-// the track's height over the height of the slide in view, which it follows
+// the track's height over the height of the slide in view, which it follows rounded up to a whole pixel
 const fit = (page: Page) => page.locator(".slide:not([inert])").evaluate((slide) =>
-  Math.round(slide.closest(".track")!.getBoundingClientRect().height - slide.getBoundingClientRect().height))
+  Math.round(slide.closest(".track")!.getBoundingClientRect().height - Math.ceil(slide.getBoundingClientRect().height)))
 const liveSlides = (page: Page) => page.locator(".track > .rail > .slide:not([inert])")
 
 test("search, checkout and payment move along one track a step at a time, the other steps inert", async ({ page }) => {

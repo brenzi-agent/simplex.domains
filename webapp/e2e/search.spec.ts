@@ -3,7 +3,7 @@ import { labelHash } from "../src/crypto/registration.ts"
 import { hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import { GRACE_S } from "../src/screens/names.ts"
-import { contactLink, control, savedCode, search, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { contactLink, control, payButton, SAVED, savedCode, search, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 test.afterEach(async ({ request }) => {
   await control(request, "search", { chainDown: false, limitSeconds: 0, invoiceError: null, cancelStillOpen: false, findLimitSeconds: 0 })
@@ -74,15 +74,16 @@ test("the checkout explains every refusal and keeps the order", async ({ page, r
   await search(page, label)
   await page.getByRole("button", { name: "Register" }).click()
   const pay = async () => {
-    await page.getByRole("button", { name: "Continue" }).click()
     await savedCode(page)
-    await page.getByRole("button", { name: "Continue to payment" }).click()
+    await payButton(page).click()
   }
 
   await page.getByLabel("Address").fill("https://smp8.simplex.im/c#notacontact")
   await expect(page.getByText("This is a channel link: paste it in the Channel field.")).toBeVisible()
   await shot(page, "N3g-link-wrong-kind")
-  await page.getByRole("button", { name: "Continue" }).click()
+  await savedCode(page)
+  await payButton(page).click()
+  await expect(page.getByLabel("Address")).toBeFocused()
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
   await page.getByLabel("Address").fill(contactLink("R1"))
   await expect(page.locator(".link-field .entity")).toBeVisible()
@@ -91,7 +92,7 @@ test("the checkout explains every refusal and keeps the order", async ({ page, r
   await pay()
   await expect(page.getByText("Bitcoin is temporarily unavailable")).toBeVisible()
   await shot(page, "N3a-method-unavailable")
-  await page.locator(".method", { hasText: "Monero" }).click()
+  await page.getByRole("radio", { name: "Monero" }).click()
 
   await control(request, "search", { invoiceError: "rate_limited" })
   await pay()
@@ -173,10 +174,10 @@ test("a double click acts once, whatever the redrawn page puts under the pointer
   await search(page, uniqueLabel("dbl"))
   await page.getByRole("button", { name: "Register" }).dblclick()
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
-  await expect(page.locator(".method.on")).toContainText("Bitcoin")
-  await page.getByRole("button", { name: "Continue" }).dblclick()
-  await expect(page.getByRole("heading", { name: "Save your name code" })).toBeVisible()
-  await expect(page.getByRole("checkbox", { name: "I have saved my code" })).not.toBeChecked()
+  await expect(page.getByRole("radio", { checked: true })).toContainText("Bitcoin")
+  await page.getByText(SAVED).dblclick()
+  await expect(page.getByRole("checkbox", { name: SAVED })).toBeChecked()
+  await expect(payButton(page)).toBeEnabled()
 })
 
 test("restore waits out a rate limit on finding a code's orders", async ({ page, request }) => {

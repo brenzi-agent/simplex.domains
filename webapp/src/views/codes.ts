@@ -1,11 +1,10 @@
-// The prepaid code popup that adds a code to Your names, and the code checks the checkout shares.
+// The prepaid code field that checkout and Your names share, judged as it is typed.
 import * as api from "../api.ts"
 import { codeProgress, parseNameCode } from "../crypto/code.ts"
 import { seconds } from "../format.ts"
-import { btn, disabled, el, icon, liveRegion } from "../dom.ts"
-import * as session from "../session.ts"
-import * as store from "../store.ts"
-import { closePopup, popup, refresh } from "./shell.ts"
+import { el, icon, liveRegion } from "../dom.ts"
+import type * as session from "../session.ts"
+import { kept } from "./shell.ts"
 
 export type CodeVerdict =
   | { ok: true; code: session.AppliedCode; line: string }
@@ -29,23 +28,18 @@ export const CODE_ERRORS: Record<string, string> = {
   code_not_covering: "This code does not cover this name.",
 }
 
-function covers(code: session.AppliedCode): string {
-  return `Covers names of ${code.minLength} or more letters, for ${code.years} years.`
-}
+const unused = (code: session.AppliedCode): CodeVerdict => ({ ok: true, code, line: `Covers names of ${code.minLength} or more letters, for ${code.years} years.` })
 
 const MISTYPED: CodeVerdict = { ok: false, title: "This code is not valid", line: "Check it for a mistyped character." }
 
 // A typo or an owner code is answered on the page; anything else asks the service, which spends nothing.
-export async function judgeCode(text: string): Promise<CodeVerdict> {
+async function judgeCode(text: string): Promise<CodeVerdict> {
   const parsed = parseNameCode(text)
   if (parsed === null) return MISTYPED
   if (parsed.kind === "owner") return { ok: false, title: "This is a name code", line: "It owns a name. Restore it in Your names." }
   try {
     const answer = await api.checkCode(parsed.display)
-    if (answer.state === "unused") {
-      const code = { display: parsed.display, minLength: answer.minLength, years: answer.years }
-      return { ok: true, code, line: covers(code) }
-    }
+    if (answer.state === "unused") return unused({ display: parsed.display, minLength: answer.minLength, years: answer.years })
     const [title, line] = STATE_LINES[answer.state]
     return { ok: false, title, line }
   } catch (e) {
@@ -61,7 +55,7 @@ const JUDGE_PAUSE_MS = 400
 
 // A code field judged as it is typed: no verdict while the code is on its way, a character no code has at once, and a
 // code long enough to judge once typing pauses. show gets null while there is nothing to say.
-export function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => void): void {
+function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => void): void {
   let seq = 0
   let pause: ReturnType<typeof setTimeout> | undefined
   const judge = async (mine: number) => {
@@ -79,54 +73,23 @@ export function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null)
   })
 }
 
-export function verdictNode(v: CodeVerdict): HTMLElement {
-  return v.ok
-    ? el("div", { class: "verdict ok" }, icon("check"), el("div", {}, el("b", {}, "Unused"), el("span", {}, v.line)))
-    : el("div", { class: "verdict bad" }, icon("x"), el("div", {}, el("b", {}, v.title), el("span", {}, v.line)))
-}
+const said = (v: CodeVerdict) => v.ok ? v.line : `${v.title}. ${v.line}`
 
-export function codePopup(): void {
-  const input = el("input", { type: "text", "aria-label": "Code", spellcheck: "false", placeholder: "SN6-…", autocomplete: "off" })
-  const box = el("div", { class: "input code-input" }, icon("key"), input)
-  const verdict = liveRegion()
-  let current: CodeVerdict | null = null
-  const action = disabled(btn("Add to your codes", "block", () => {
-    if (!current?.ok) return
-    store.addCode({ code: current.code.display, minLength: current.code.minLength, years: current.code.years, addedAt: new Date().toISOString() })
-    // the list is drawn again first, so focus lands on the redrawn page rather than on a button it replaced
-    refresh()
-    closePopup()
-  }))
-  const restore = el("a", { href: "/#/restore", class: "restore-link", onclick: () => closePopup() }, "Restore in Your names")
-  // the last verdict belongs to the last text: nothing is added until this one is judged
-  input.addEventListener("input", () => {
-    current = null
-    disabled(action)
-  })
-  watchCode(input, (judged) => {
-    if (!judged) {
-      box.className = "input code-input"
-      return verdict.replaceChildren()
+/** A kept code field with its verdict line under it. `judged` hears each verdict, null while there is nothing to judge,
+ * and may return a refusal to say instead. A field opened with `start` shows that code as judged. */
+export function codeField(key: string, label: string, judged: (v: CodeVerdict | null) => string | null, start: session.AppliedCode | null = null): HTMLElement {
+  return kept(key, () => {
+    const input = el("input", { type: "text", "aria-label": label, spellcheck: "false", placeholder: "SN6-…", autocomplete: "off", value: start?.display })
+    const box = el("label", { class: "field code-input" }, icon("key"), input)
+    const line = liveRegion("verdict")
+    const show = (v: CodeVerdict | null, instead: string | null) => {
+      const tone = instead !== null || v?.ok === false ? " bad" : v ? " ok" : ""
+      box.className = `field code-input${tone}`
+      line.className = `verdict${tone}`
+      line.textContent = instead ?? (v ? said(v) : "")
     }
-    // a code already listed is said so, rather than offered for adding again
-    const listed = judged.ok && store.codes().some((c) => c.code === judged.code.display)
-    const v: CodeVerdict = listed ? { ok: false, title: "Already in your codes", line: "It is listed under Codes in Your names." } : judged
-    current = v
-    box.className = `input code-input ${v.ok ? "ok" : "bad"}`
-    verdict.replaceChildren(verdictNode(v), !v.ok && v.title === "This is a name code" ? restore : "")
-    if (v.ok) action.removeAttribute("disabled")
+    if (start) show(unused(start), null)
+    watchCode(input, (v) => show(v, judged(v)))
+    return el("div", { class: "code-entry" }, el("span", { class: "label" }, label), box, line)
   })
-  input.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return
-    // the key's own press would land on the opener that closing the popup focuses, opening it again
-    e.preventDefault()
-    action.click()
-  })
-  popup(el("div", { class: "popup", role: "dialog", "aria-label": "Add a code" },
-    el("div", { class: "modal-head" },
-      el("h3", {}, "Add a code"),
-      el("a", { class: "icon-btn", href: "#", role: "button", "aria-label": "Close", onclick: (e: Event) => { e.preventDefault(); closePopup() } }, icon("x"))),
-    el("p", { class: "sec-note" }, "A code from SimpleX, for example for investors. Nothing is spent until a name is registered with it."),
-    box, verdict, action))
-  input.focus()
 }

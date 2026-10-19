@@ -95,7 +95,11 @@ export interface OrderOptions {
 
 const METHOD_NAMES = { card: "Card", btc: "Bitcoin", xmr: "Monero" }
 
-// Search, checkout and the owner code, up to the order's page; returns the invoice and the owner code.
+// the purchase step in view; the track keeps the steps beside it, inert, with what they last showed
+export const onStep = (page: Page) => page.locator(".slide:not([inert])")
+export const payButton = (page: Page) => onStep(page).getByRole("button", { name: /^Pay / })
+
+// Search and checkout, up to the order's page; returns the invoice and the owner code.
 export async function startOrder(page: Page, label: string, opts: OrderOptions = {}): Promise<{ invoiceId: string; ownerCode: string }> {
   await search(page, label)
   await page.getByRole("button", { name: "Register" }).click()
@@ -108,23 +112,24 @@ export async function startOrder(page: Page, label: string, opts: OrderOptions =
     await page.getByLabel("Channel").fill(opts.channel)
     await expect(page.locator(".link-field").nth(1).locator(".entity:not(.skeleton)")).toBeVisible()
   }
-  await page.locator(".method", { hasText: METHOD_NAMES[opts.method ?? "btc"] }).click()
-  if (opts.shots) await shot(page, `${opts.shots}-checkout`)
-  await page.getByRole("button", { name: "Continue" }).click()
-  await expect(page.getByRole("heading", { name: "Save your name code" })).toBeVisible()
-  const ownerCode = (await page.getByTestId("owner-code").textContent())!.trim()
-  await expect(page.getByRole("button", { name: "Continue to payment" })).toBeDisabled()
+  await page.getByRole("radio", { name: METHOD_NAMES[opts.method ?? "btc"] }).click()
+  const ownerCode = (await page.getByTestId("owner-code").locator(".code-text").textContent())!.trim()
+  const pay = payButton(page)
+  await expect(pay).toBeDisabled()
   await savedCode(page)
-  if (opts.shots) await shot(page, `${opts.shots}-owner-code`)
-  await page.getByRole("button", { name: "Continue to payment" }).click()
+  if (opts.shots) await shot(page, `${opts.shots}-checkout`)
+  await pay.click()
   await page.waitForURL(/\?order=/)
-  const invoiceId = new URL(page.url()).searchParams.get("order")!
-  return { invoiceId, ownerCode }
+  // the order's page has replaced the checkout in view, whose Pay a later locator would find otherwise
+  await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toHaveCount(0)
+  return { invoiceId: new URL(page.url()).searchParams.get("order")!, ownerCode }
 }
+
+export const SAVED = "I have saved my name code"
 
 // the box stays ticked for the tab's checkout, so a second pass must not untick it
 export async function savedCode(page: Page): Promise<void> {
-  if (!(await page.getByRole("checkbox", { name: "I have saved my code" }).isChecked())) await page.getByText("I have saved my code").click()
+  if (!(await page.getByRole("checkbox", { name: SAVED }).isChecked())) await page.getByText(SAVED).click()
 }
 
 export const test = base.extend<{}>({

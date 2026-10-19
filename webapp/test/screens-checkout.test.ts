@@ -20,29 +20,38 @@ function checkout(change: Partial<Checkout> = {}): Checkout {
 
 const opened = (s: CheckoutState, change: Partial<Extract<CheckoutEvent, { type: "opened" }>> = {}): CheckoutEvent =>
   ({ type: "opened", checkout: s.checkout, sending: false, waiting: null, hold: null, ...change })
-const open = (page: CheckoutState["page"], change: Partial<CheckoutState> = {}): CheckoutState => ({ ...initialState(page, checkout()), ...change })
+const open = (change: Partial<CheckoutState> = {}): CheckoutState => ({ ...initialState(checkout()), ...change })
 
 const STATES: Record<CheckoutKind, CheckoutState> = {
-  checkout: open("checkout"),
-  "owner-code": open("owner-code", { checkout: checkout({ saved: true }) }),
-  "status:price-changed": open("owner-code", { checkout: checkout({ price: 2500 }), refusal: "price-changed" }),
-  "status:too-many": open("owner-code", { hold: { until: NOW + 30_000, lead: NO_LEAD }, refusal: "too-many" }),
-  "status:failed": open("owner-code", { refusal: "failed" }),
+  checkout: open(),
+  "status:price-changed": open({ checkout: checkout({ price: 2500 }), refusal: "price-changed" }),
+  "status:too-many": open({ hold: { until: NOW + 30_000, lead: NO_LEAD }, refusal: "too-many" }),
+  "status:failed": open({ refusal: "failed" }),
 }
 
 describe("screenOf", () => {
   const cases: [string, CheckoutState, CheckoutKind][] = [
-    ["the checkout", open("checkout"), "checkout"],
-    ["the checkout with its order on its way", open("checkout", { sending: true, busy: true }), "checkout"],
-    ["the name code", open("owner-code"), "owner-code"],
-    ["the name code during a wait", open("owner-code", { hold: { until: NOW + 5000, lead: NO_LEAD } }), "owner-code"],
+    ["the checkout", open(), "checkout"],
+    ["the checkout with its order on its way", open({ sending: true, busy: true }), "checkout"],
+    ["the checkout with its code saved", open({ checkout: checkout({ saved: true }) }), "checkout"],
+    ["the checkout during a wait", open({ hold: { until: NOW + 5000, lead: NO_LEAD } }), "checkout"],
     ["an order refused for a changed price", STATES["status:price-changed"], "status:price-changed"],
     ["an order that met a rate limit", STATES["status:too-many"], "status:too-many"],
-    ["an order sent from the checkout that met a rate limit", open("checkout", { refusal: "too-many" }), "status:too-many"],
     ["an order that did not go through", STATES["status:failed"], "status:failed"],
   ]
   it.each(cases)("%s", (_, state, kind) => {
     expect(screenOf(state)).toBe(kind)
+  })
+  it("is the one checkout page until the service refuses the order", () => {
+    expect(screenOf(initialState(checkout()))).toBe("checkout")
+    expect(screenOf(reduce(initialState(checkout()), { type: "order-refused", reason: "failed" }))).toBe("status:failed")
+    expect(screenOf(reduce(initialState(checkout()), { type: "hold-started", until: 5 }))).toBe("status:too-many")
+  })
+  it("a code applied clears the code's last refusal and stays on the page", () => {
+    const refused = reduce(initialState(checkout()), { type: "order-refused", reason: "code", error: "This code was already used." })
+    const applied = reduce(refused, { type: "code-applied", code: CODE })
+    expect(applied.checkout.codeError).toBeUndefined()
+    expect(screenOf(applied)).toBe("checkout")
   })
 })
 
@@ -60,20 +69,20 @@ describe("changeOf", () => {
   })
   it("a method refused marks it unavailable and chooses the next one", () => {
     for (const method of ["card", "btc", "xmr"] as const) {
-      expect(changeOf(open("checkout", { checkout: checkout({ method }) }), { type: "order-refused", reason: "method" })).toEqual({ unavailable: method, method: FALLBACK_METHOD[method] })
+      expect(changeOf(open({ checkout: checkout({ method }) }), { type: "order-refused", reason: "method" })).toEqual({ unavailable: method, method: FALLBACK_METHOD[method] })
     }
     expect(FALLBACK_METHOD).toEqual({ card: "btc", btc: "xmr", xmr: "btc" })
   })
   it("a link is written even when the state has it, as a field saves it again before the page takes the first save", () => {
-    expect(changeOf(open("checkout", { checkout: checkout({ contact: "https://smp8.simplex.im/a#x" }) }), { type: "link-set", kind: "contact", link: "https://smp8.simplex.im/a#x" }))
+    expect(changeOf(open({ checkout: checkout({ contact: "https://smp8.simplex.im/a#x" }) }), { type: "link-set", kind: "contact", link: "https://smp8.simplex.im/a#x" }))
       .toEqual({ contact: "https://smp8.simplex.im/a#x" })
   })
   it("the method already chosen, or one unavailable, changes nothing", () => {
     expect(changeOf(s, { type: "method-chosen", method: "btc" })).toBeNull()
-    expect(changeOf(open("checkout", { checkout: checkout({ unavailable: "card" }) }), { type: "method-chosen", method: "card" })).toBeNull()
+    expect(changeOf(open({ checkout: checkout({ unavailable: "card" }) }), { type: "method-chosen", method: "card" })).toBeNull()
   })
   it("events that are not the stored checkout's change nothing in it", () => {
-    const others: CheckoutEvent[] = [opened(s), { type: "entry-opened" }, { type: "waiting-settled" }, { type: "open-order-seen", order: OPEN_ORDER },
+    const others: CheckoutEvent[] = [opened(s), { type: "waiting-settled" }, { type: "open-order-seen", order: OPEN_ORDER },
       { type: "send-started" }, { type: "order-refused", reason: "failed" }, { type: "hold-started", until: NOW }, { type: "hold-ended" }]
     for (const e of others) expect(changeOf(s, e), e.type).toBeNull()
   })
@@ -84,21 +93,20 @@ describe("reduce", () => {
 
   it("opened takes the checkout as stored and what the tab knew, ending a refusal and the page's own send", () => {
     const stored = checkout({ method: "card", contact: "https://smp8.simplex.im/a#x" })
-    const refused = { ...s, refusal: "too-many" as const, busy: true, sending: true, entry: true, openOrder: OPEN_ORDER }
+    const refused = { ...s, refusal: "too-many" as const, busy: true, sending: true, openOrder: OPEN_ORDER }
     expect(reduce(refused, opened(s, { checkout: stored, sending: true, waiting: WAITING, hold: { until: NOW + 1000, lead: NO_LEAD } }))).toEqual({
       ...refused, checkout: stored, sending: true, busy: false, waiting: WAITING, hold: { until: NOW + 1000, lead: NO_LEAD }, refusal: null,
     })
   })
-  it("opened with a code applied elsewhere, as from the popup, closes the code's field", () => {
-    const entering = { ...s, entry: true }
-    expect(reduce(entering, opened(s, { checkout: checkout({ code: CODE }) }))).toEqual({ ...s, checkout: checkout({ code: CODE }), entry: false })
+  it("opened keeps the code the tab's checkout carries, as Back and Register for the same name give it", () => {
+    expect(reduce(s, opened(s, { checkout: checkout({ code: CODE }) }))).toEqual({ ...s, checkout: checkout({ code: CODE }) })
   })
   it("method-chosen chooses the method", () => {
     expect(reduce(s, { type: "method-chosen", method: "card" }).checkout).toEqual(checkout({ method: "card" }))
   })
   it("method-chosen for the method chosen, or one unavailable, keeps the state", () => {
     expect(reduce(s, { type: "method-chosen", method: "btc" })).toBe(s)
-    const off = open("checkout", { checkout: checkout({ unavailable: "card" }) })
+    const off = open({ checkout: checkout({ unavailable: "card" }) })
     expect(reduce(off, { type: "method-chosen", method: "card" })).toBe(off)
   })
   it("link-set keeps the link typed, an emptied field too", () => {
@@ -106,21 +114,18 @@ describe("reduce", () => {
     expect(set).toEqual({ ...s, checkout: checkout({ contact: "https://smp8.simplex.im/a#x" }) })
     expect(reduce(set, { type: "link-set", kind: "contact", link: "" })).toEqual(s)
   })
-  it("entry-opened opens the code's field", () => {
-    expect(reduce(s, { type: "entry-opened" })).toEqual({ ...s, entry: true })
-  })
-  it("code-applied applies the code, clears the last refusal of one and closes the field", () => {
-    const entering = { ...s, entry: true, checkout: checkout({ codeError: "This code has expired." }) }
-    expect(reduce(entering, { type: "code-applied", code: CODE })).toEqual({ ...s, entry: false, checkout: { ...checkout(), code: CODE, codeError: undefined } })
+  it("code-applied applies the code and clears the last refusal of one", () => {
+    const refused = { ...s, checkout: checkout({ codeError: "This code has expired." }) }
+    expect(reduce(refused, { type: "code-applied", code: CODE })).toEqual({ ...s, checkout: { ...checkout(), code: CODE, codeError: undefined } })
   })
   it("code-removed takes the code off", () => {
     const covered = { ...s, checkout: checkout({ code: CODE }) }
     expect(reduce(covered, { type: "code-removed" })).toEqual({ ...s, checkout: checkout({ code: null }) })
   })
   it("saved ticks and unticks the saved box", () => {
-    const code = STATES["owner-code"]
-    expect(reduce(code, { type: "saved", saved: false }).checkout.saved).toBe(false)
-    expect(reduce(reduce(code, { type: "saved", saved: false }), { type: "saved", saved: true })).toEqual(code)
+    const ticked = open({ checkout: checkout({ saved: true }) })
+    expect(reduce(ticked, { type: "saved", saved: false }).checkout.saved).toBe(false)
+    expect(reduce(reduce(ticked, { type: "saved", saved: false }), { type: "saved", saved: true })).toEqual(ticked)
   })
   it("waiting-settled lets the card order that blocked a second one go", () => {
     expect(reduce({ ...s, waiting: WAITING }, { type: "waiting-settled" })).toEqual(s)
@@ -164,8 +169,8 @@ describe("reduce", () => {
 
 describe("initialState", () => {
   it("starts with the checkout as stored and nothing else known", () => {
-    expect(initialState("owner-code", checkout())).toEqual({
-      page: "owner-code", checkout: checkout(), sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null, entry: false,
+    expect(initialState(checkout())).toEqual({
+      checkout: checkout(), sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null,
     })
   })
 })

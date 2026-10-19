@@ -8,7 +8,6 @@ import { leaveTrack, placeOnTrack, type TrackStep } from "./track.ts"
 export const WEFUNDER_URL = "https://wefunder.com/simplex.chat?utm_source=domains"
 export const CONTACT_EMAIL = "chat@simplex.chat"
 export const INVEST_AMOUNT = "$500"
-export const INVEST_LINE = `Invest ${INVEST_AMOUNT}+ in SimpleX Chat and get a free SimpleX name.`
 
 let rerender: () => void = () => undefined
 

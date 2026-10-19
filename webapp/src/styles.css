@@ -177,8 +177,8 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
 .display { font-family: var(--display); font-weight: 700; letter-spacing: -.035em; line-height: .98; }
 .grad { background: var(--heading); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
-.answer .name, .summary .nm { font-family: var(--display); font-weight: 700; font-size: 30px; letter-spacing: -.025em; line-height: 1.1; overflow-wrap: anywhere; }
-.answer .name span, .summary .nm span { color: var(--ink-soft); white-space: nowrap; }
+.answer .name, .summary .nm, .summary-card .name { font-family: var(--display); font-weight: 700; font-size: 30px; letter-spacing: -.025em; line-height: 1.1; overflow-wrap: anywhere; }
+.answer .name span, .summary .nm span, .summary-card .name span { color: var(--ink-soft); white-space: nowrap; }
 .summary .nm.unknown { color: var(--ink-soft); font-size: 18px; letter-spacing: 0; }
 .chip .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
 
@@ -247,15 +247,31 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
 .input input { flex: 1; min-width: 0; text-overflow: ellipsis; border: 0; background: none; outline: none; color: var(--ink); font: 600 15px var(--body); }
 .input input::placeholder { color: var(--ink-soft); font-weight: 500; }
 .input .kind { color: var(--ink-soft); font-weight: 700; font-size: 12.5px; }
-.methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.method { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px; border: 1px solid var(--surface-line); background: var(--surface); }
+/* checkout: one column of blocks, the summary and the name code in cards */
+.summary-card { display: grid; gap: 16px; }
+.summary-card .rows { display: grid; gap: 10px; margin: 0; }
+.summary-card .row { display: flex; justify-content: space-between; gap: 16px; color: var(--ink-soft); }
+.summary-card .row b { color: var(--ink); font-weight: 600; text-align: right; }
+.summary-card .total { display: flex; justify-content: space-between; border-top: 1px solid var(--surface-line); padding-top: 14px; margin: 0; font-weight: 600; font-size: 20px; }
+.pay-with, .name-code, .code-entry, .pay-block, .add-code { display: grid; gap: 12px; }
+.add-code { justify-items: start; }
+.add-code .code-entry { width: 100%; }
+:is(.pay-with, .name-code) :is(.sec-title, .sec-note, .code-display, .check) { margin: 0; }
+.methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.method { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 12px; border: 1px solid var(--surface-line); border-radius: 20px; background: var(--surface); cursor: pointer; text-align: center; }
 .method svg { width: 28px; height: 28px; }
-.method b { font-size: 15.5px; }
-.method span { color: var(--ink-soft); font-size: 12.5px; font-weight: 600; }
-/* an unchosen radio's ring keeps 3:1 against its card, as a control's outline needs */
-.method .radio { position: absolute; top: 16px; right: 16px; width: 18px; height: 18px; border-radius: 999px; border: 1.5px solid var(--ink-soft); }
-.method.on { border-color: var(--primary); box-shadow: 0 0 0 4px var(--chip); }
-.method.on .radio { border: 5px solid var(--primary); }
+.method span { color: var(--ink-soft); font-size: var(--fs-small); }
+.method[aria-checked="true"] { border-color: var(--primary); color: var(--primary); }
+.method[aria-disabled="true"] { color: var(--ink-soft); background: var(--chip); cursor: default; }
+.method[aria-disabled="true"] span { color: var(--danger-fg); }
+.method:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.verdict { font-size: var(--fs-small); font-weight: 600; }
+.verdict:empty { display: none; }
+.verdict.ok { color: var(--ok-fg); }
+.verdict.bad { color: var(--danger-fg); }
+.fine { display: flex; gap: 8px; color: var(--ink-soft); font-size: 13px; font-weight: 600; }
+.fine svg.i { width: 16px; height: 16px; margin-top: 1px; }
+@media (max-width: 480px) { .methods { grid-template-columns: 1fr; } }
 
 .summary { padding: 24px; }
 .rows { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
@@ -266,11 +282,6 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
 .total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--surface-line); }
 .total b { font-family: var(--display); font-size: 34px; letter-spacing: -.02em; }
 .summary .btn { margin-top: 20px; }
-.summary .sub-links { display: flex; justify-content: center; margin-top: 14px; font-size: 14.5px; }
-.summary .fine { margin-top: 14px; display: flex; gap: 8px; color: var(--ink-soft); font-size: 13px; font-weight: 600; }
-.summary .fine svg.i { width: 16px; height: 16px; margin-top: 1px; }
-.mini-invest { margin-top: 16px; padding: 14px 16px; border-radius: 16px; background: var(--chip); border: 1px solid var(--surface-line); font-size: 13.5px; color: var(--ink-soft); }
-.mini-invest a { display: inline-block; margin-top: 4px; }
 
 /* registration progress */
 .stages { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 16px; margin-top: 8px; }
@@ -346,24 +357,7 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
    character is a little over .6em wide, plus its letter spacing. Below 11px it would not read, so a narrower field scrolls. */
 .code-input { container-type: inline-size; }
 .code-input input { font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(11px, (100cqi - 28px) / 23.8, 15px); }
-.verdict { display: flex; gap: 12px; align-items: flex-start; margin-top: 12px; padding: 14px 16px; border-radius: 14px; font-size: 14px; font-weight: 600; }
-.verdict b { display: block; font-size: 15px; }
-.verdict.ok { background: var(--ok-bg); color: var(--ok-fg); }
-.verdict.bad { background: var(--danger-bg); color: var(--danger-fg); }
-.verdict span { color: var(--ink-soft); }
 
-/* checkout extras */
-/* an unavailable method is dimmed, all but the line saying why, which stays readable */
-.method.off > :not(div), .method.off b { opacity: .5; }
-.method.off div > span, .method.off div > span span { color: var(--danger-fg); }
-.covered-box { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: 16px; background: var(--ok-bg); color: var(--ok-fg); font-weight: 700; }
-.covered-box p { color: var(--ink-soft); font-weight: 600; font-size: 14px; }
-.code-entry { margin-top: 16px; }
-/* a whole prepaid code fits the order card's input */
-.summary .code-input input { font-size: clamp(11px, (100cqi - 28px) / 23.2, 12.5px); letter-spacing: 0; }
-.code-entry .line { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13.5px; font-weight: 700; }
-.code-entry .line.ok { color: var(--ok-fg); }
-.code-entry .line.bad { color: var(--danger-fg); }
 .input.ok { border-color: var(--ok-fg); }
 .input.bad { border-color: var(--danger-fg); }
 .total s { color: var(--ink-soft); font-size: 20px; margin-right: 8px; }
@@ -447,7 +441,6 @@ html.modal-open, html:has(.modal[open]) { overflow: hidden; }
 .link-field + .link-field { margin-top: 14px; }
 .entity-wrap { margin: 10px 0; }
 .restore-link { display: block; margin-top: 10px; font-weight: 700; font-size: 14px; }
-.method:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .label.block { display: block; }
@@ -479,11 +472,10 @@ html.dark .monero-base { fill: #fff; }
 
 /* The gutter keeps the page from shifting under a popup. */
 html { scrollbar-gutter: stable; }
-.method:not(.off), .check { cursor: pointer; }
 @media (hover: hover) {
   .small-btn:hover, .brand:hover { text-decoration: none; }
   .small-btn:hover { background-color: var(--chip); border-color: var(--chip-line); color: var(--ink); }
-  .method:not(.off):not(.on):hover, .check:hover { border-color: var(--chip-line); }
+  .method[aria-checked="false"]:not([aria-disabled]):hover, .check:hover { border-color: var(--chip-line); }
 }
 /* the offline note keeps clear of the page: centred over its foot, above everything but a popup */
 :root { --note-offset: 16px; }
@@ -502,7 +494,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 @media (pointer: coarse) {
   .small-btn, .field-copy { position: relative; }
   .small-btn::before, .field-copy::before { content: ""; position: absolute; inset: -6px; }
-  .waiting a, .summary .sub-links a, .next .item a, .answer .yours a, .entity > a { padding-block: 12px; margin-block: -12px; }
+  .waiting a, .next .item a, .answer .yours a, .entity > a { padding-block: 12px; margin-block: -12px; }
   .danger-link, .restore-link { padding-block: 12px; }
 }
 
@@ -519,8 +511,6 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .wrap { padding: 0 18px; }
   .entity .url { display: none; }
   .panel-sec { padding: 20px; }
-  .method { padding: 12px; }
-  .method div > span { display: none; }
   /* two balanced lines, broken after a dash, read better than a long one squeezed small */
   .code-display { font-size: 16px; letter-spacing: 0; padding: 16px 46px; }
   .entity { flex-wrap: wrap; }

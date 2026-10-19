@@ -1,5 +1,7 @@
 import { expect, type Page } from "@playwright/test"
-import { contactLink, control, mockRegistration, REGISTRATION_MS, registrationOf, search, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import {
+  channelLink, contactLink, control, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, savedCode, search, shot, startOrder, test, uniqueLabel, waitRegistered,
+} from "./helpers.ts"
 
 test("a second tab's order survives a write from a tab opened earlier", async ({ browser, request }) => {
   const context = await browser.newContext()
@@ -8,9 +10,8 @@ test("a second tab's order survives a write from a tab opened earlier", async ({
   const label = uniqueLabel("tab")
   await startOrder(late, label, { method: "btc" })
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await early.getByRole("button", { name: "Add a code" }).click()
-  await early.getByRole("textbox", { name: "Code", exact: true }).fill(code)
-  await early.getByRole("button", { name: "Add to your codes" }).click()
+  await early.getByRole("textbox", { name: "Add a code" }).fill(code)
+  await early.getByRole("button", { name: "Add", exact: true }).click()
   await early.reload()
   await expect(early.locator(".row-item", { hasText: `${label}.simplex` })).toBeVisible()
   await expect(early.locator(".row-item", { hasText: code })).toBeVisible()
@@ -98,14 +99,15 @@ test("the invest popup closes by Escape, its backdrop and its Close, giving focu
 
 test("a card payment settled while its page was closed frees checkout", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("frees"), { method: "card" })
-  await page.getByRole("button", { name: /^Pay \$/ }).click()
+  await onStep(page).getByRole("button", { name: /^Pay \$/ }).click()
   await expect(page.getByText("Waiting for Stripe to confirm")).toBeVisible()
   await page.goto("/")
   await control(request, `settle/${invoiceId}`)
   await search(page, uniqueLabel("next"))
   await page.getByRole("button", { name: "Register" }).click()
   await expect(page.getByText("You have an order waiting to be confirmed")).toHaveCount(0)
-  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled()
+  await savedCode(page)
+  await expect(payButton(page)).toBeEnabled()
 })
 
 test("an unpaid invoice is pointed at from checkout without blocking a new order", async ({ page }) => {
@@ -115,7 +117,8 @@ test("an unpaid invoice is pointed at from checkout without blocking a new order
   await page.getByRole("button", { name: "Register" }).click()
   await expect(page.getByText(`${first}.simplex is waiting for its payment`)).toBeVisible()
   await expect(page.getByRole("link", { name: "Open that order" })).toHaveAttribute("href", `/?order=${invoiceId}`)
-  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled()
+  await savedCode(page)
+  await expect(payButton(page)).toBeEnabled()
   await shot(page, "N3e2-open-invoice")
 })
 
@@ -194,14 +197,12 @@ test("a failed retarget shows one message below the result, however often it is 
   await shot(page, "N8a2-retarget-failed")
 })
 
-test("a partly paid invoice offers no cancel, and the steps skip what an order does not have", async ({ page, request }) => {
+test("a partly paid invoice offers no cancel", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("part"), { method: "btc" })
   await expect(page.getByText("Cancel this invoice")).toBeVisible()
   await control(request, `partial/${invoiceId}`)
   await expect(page.getByText("Part of the payment arrived")).toBeVisible()
   await expect(page.getByText("Cancel this invoice")).toHaveCount(0)
-  await expect(page.locator(".crumb.on")).toHaveText("4Payment")
-  await expect(page.locator(".crumb.done")).toHaveCount(3)
 })
 
 test("Your names tells part-paid and confirming orders from unpaid ones, and a new invoice replaces an unpaid one", async ({ page, request }) => {
@@ -254,20 +255,21 @@ test("full storage that still reads is warned about before the name code is show
   await search(page, uniqueLabel("full"))
   await page.getByRole("button", { name: "Register" }).click()
   await expect(page.getByText("This browser will not keep your name code")).toBeVisible()
-  await page.getByRole("button", { name: "Continue" }).click()
-  await expect(page.getByText("This browser will not keep your name code")).toBeVisible()
   await expect(page.getByText("Your saved copy will be the only one.")).toBeVisible()
+  await expect(page.getByTestId("owner-code")).toBeVisible()
   await context.close()
 })
 
 test("Forget everything also drops the tab's unfinished checkout", async ({ page }) => {
   await search(page, uniqueLabel("forget"))
   await page.getByRole("button", { name: "Register" }).click()
-  await page.getByRole("button", { name: "Continue" }).click()
   await expect(page.getByTestId("owner-code")).toBeVisible()
   await page.goto("/#/names")
   await page.getByText("Forget everything in this browser").click()
   await page.getByRole("button", { name: "Forget everything" }).click()
+  await page.goto("/#/checkout")
+  await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
+  // the name code's own page is gone: its old address is a search
   await page.goto("/#/checkout/code")
   await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
   await page.goto("/#/names")
@@ -401,7 +403,7 @@ test("paying by card during an outage keeps the order on screen", async ({ page 
   await startOrder(page, uniqueLabel("offpay"), { method: "card" })
   await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
   await page.route("**/api/**", (route) => route.abort())
-  await page.getByRole("button", { name: /^Pay \$/ }).click()
+  await onStep(page).getByRole("button", { name: /^Pay \$/ }).click()
   await expect(page.getByRole("heading", { name: "Paying by card" })).toBeVisible()
   await page.waitForTimeout(4000)
   await expect(page.getByRole("heading", { name: "This order could not be loaded" })).toHaveCount(0)
@@ -421,24 +423,26 @@ test("a link preview the service cannot answer now is checked again by itself", 
   await expect(page.locator(".link-field").first().locator(".entity")).toBeVisible({ timeout: 10_000 })
 })
 
-test("a link preview already shown stays as it is when Details is gone back to from the name code", async ({ page }) => {
+test("link previews stay as they are when a code is applied or taken off in place at checkout", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   await search(page, uniqueLabel("keep"))
   await page.getByRole("button", { name: "Register" }).click()
   await page.getByLabel("Address").fill(contactLink("keep"))
   await expect(page.locator(".link-field").first().locator(".entity:not(.skeleton)")).toBeVisible()
-  await page.getByRole("button", { name: "Continue" }).click()
-  await expect(page.getByRole("heading", { name: "Save your name code" })).toBeVisible()
-  await page.evaluate(() => {
-    const w = window as unknown as { __skeletons: number }
-    w.__skeletons = 0
-    new MutationObserver((records) => {
-      for (const n of records.flatMap((r) => [...r.addedNodes])) if (n instanceof Element && (n.matches(".entity.skeleton") || n.querySelector(".entity.skeleton"))) w.__skeletons++
-    }).observe(document.body, { childList: true, subtree: true })
-  })
-  await page.locator(".crumb", { hasText: "Details" }).click()
-  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
-  await expect(page.locator(".link-field").first().locator(".entity:not(.skeleton)")).toBeVisible()
-  expect(await page.evaluate(() => (window as unknown as { __skeletons: number }).__skeletons), "loading cards drawn for a link already shown").toBe(0)
+  // a channel still being checked when the code is applied is kept, and its check goes on
+  await page.route("**/api/link/preview", async (route) => { await new Promise((r) => setTimeout(r, 2000)); await route.continue() })
+  await page.getByLabel("Channel").fill(channelLink("keep"))
+  // the fields are marked, so a field built again in their place would show
+  await page.locator(".link-field").evaluateAll((fields) => fields.forEach((f) => f.setAttribute("data-seen", "")))
+  const codeField = page.getByRole("textbox", { name: "I have a code" })
+  await codeField.fill(code)
+  await expect(page.getByText("Paid with your code")).toBeVisible()
+  await expect(page.getByLabel("Channel")).toHaveValue(channelLink("keep"))
+  await expect(page.locator(".link-field").nth(1).locator(".entity:not(.skeleton)")).toBeVisible({ timeout: 10_000 })
+  await codeField.fill("")
+  await expect(page.getByRole("radio")).toHaveCount(3)
+  await expect(page.locator(".link-field[data-seen]"), "the link fields drawn before the code").toHaveCount(2)
+  await expect(page.locator(".link-field .entity:not(.skeleton)")).toHaveCount(2)
 })
 
 test("a rate-limited cancel holds, and the hold outlives the page drawing itself again", async ({ page, request }) => {
@@ -465,21 +469,21 @@ test("a rate-limited cancel holds, and the hold outlives the page drawing itself
 test("Back from a paused order keeps the order paused", async ({ page }) => {
   await search(page, uniqueLabel("pause"))
   await page.getByRole("button", { name: "Register" }).click()
-  await page.getByRole("button", { name: "Continue" }).click()
-  await page.getByText("I have saved my code").click()
+  await savedCode(page)
   await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": "20" }, json: { error: "rate_limited" } }) : route.continue())
-  await page.getByRole("button", { name: "Continue to payment" }).click()
+  await payButton(page).click()
   await expect(page.getByText("ordering is paused")).toBeVisible()
   await page.goBack()
-  await page.getByRole("button", { name: "Continue" }).click()
-  await expect(page.getByRole("button", { name: "Continue to payment" })).toBeDisabled()
+  await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
+  await page.goForward()
+  await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await expect(payButton(page)).toBeDisabled()
   await expect(page.getByText("Too many attempts")).toBeVisible()
 })
 
 test("Find the order shows a wait met elsewhere in the tab", async ({ page, request }) => {
   await search(page, uniqueLabel("findh"))
   await page.getByRole("button", { name: "Register" }).click()
-  await page.getByRole("button", { name: "Continue" }).click()
   await expect(page.getByTestId("owner-code")).toBeVisible()
   await control(request, "search", { findLimitSeconds: 20 })
   await page.goto("/#/restore")

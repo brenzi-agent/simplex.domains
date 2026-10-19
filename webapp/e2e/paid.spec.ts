@@ -1,7 +1,9 @@
 import { expect } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
-import { channelLink, contactLink, control, mockRegistration, REGISTRATION_MS, registrationOf, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import {
+  channelLink, contactLink, control, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, savedCode, searchName, shot, startOrder, test, uniqueLabel, waitRegistered,
+} from "./helpers.ts"
 
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
 const RING_ROOM_PX = 6
@@ -223,7 +225,7 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   const { invoiceId } = await startOrder(page, label, { method: "card" })
   await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
   await shot(page, "N10-card")
-  await page.getByRole("button", { name: /^Pay \$/ }).click()
+  await onStep(page).getByRole("button", { name: /^Pay \$/ }).click()
   await expect(page.getByText("Waiting for Stripe to confirm")).toBeVisible()
   await shot(page, "N10b-card-confirming")
 
@@ -232,7 +234,8 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   await page.getByLabel("Name", { exact: true }).press("Enter")
   await page.getByRole("button", { name: "Register" }).click()
   await expect(page.getByText("You have an order waiting to be confirmed")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled()
+  await savedCode(page)
+  await expect(payButton(page)).toBeDisabled()
   await shot(page, "N3e-open-card-order")
   await page.getByRole("button", { name: "Open the waiting order" }).click()
 
@@ -270,7 +273,7 @@ test("the card form stays in place while another tab writes the order, the same 
     const w = window as unknown as { __moved: number; __parent: Element }
     return { moved: w.__moved, sameParent: document.querySelector(".stripe")?.parentElement === w.__parent }
   })).toEqual({ moved: 0, sameParent: true })
-  await expect(page.getByRole("button", { name: /^Pay \$/ })).toBeEnabled()
+  await expect(onStep(page).getByRole("button", { name: /^Pay \$/ })).toBeEnabled()
   await other.close()
 })
 

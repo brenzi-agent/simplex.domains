@@ -1,7 +1,7 @@
 // Your names: this browser's orders and codes, restoring an order with its name code, and editing a name's links.
 import * as api from "../api.ts"
 import { parseNameCode } from "../crypto/code.ts"
-import { alertBox, btn, chip, codeDisplay, copyButton, el, gradName, icon, type Kid, nameText, setAction, waitOut } from "../dom.ts"
+import { alertBox, btn, chip, codeDisplay, copyButton, disabled, el, gradName, icon, type Kid, nameText, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, methodName, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
@@ -14,7 +14,7 @@ import {
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { linkField } from "./checkout.ts"
-import { codePopup, verdictNode } from "./codes.ts"
+import { codeField } from "./codes.ts"
 import {
   type Builder, closePopup, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusOn, go, isRedraw, isRoute, kept, keptLive, popup, redirect, screen, whenDropped, whenLeaving,
 } from "./shell.ts"
@@ -207,17 +207,41 @@ function forgetPart(s: ListState): HTMLElement | null {
   el("div", { class: "actions mt-14" }, btn("Forget everything", "danger", forgetEverything), keep))
 }
 
+const ADD_CODE = "add-code"
+
+// Your names' code field and its Add, kept across draws: Add takes a code judged unused and not listed yet.
+function addCodeBox(): HTMLElement {
+  let addable: session.AppliedCode | null = null
+  const add = disabled(btn("Add", "quiet", () => {
+    const code = addable
+    if (!code) return
+    store.addCode({ code: code.display, minLength: code.minLength, years: code.years, addedAt: new Date().toISOString() })
+    input.value = ""
+    input.dispatchEvent(new Event("input"))
+    input.focus()
+    dispatchList(storedEvent())
+  }))
+  const field = codeField(`${ADD_CODE}-field`, "Add a code", (v) => {
+    const listed = v?.ok === true && store.codes().some((c) => c.code === v.code.display)
+    addable = v?.ok && !listed ? v.code : null
+    add.disabled = addable === null
+    return listed ? "Already in your codes. It is listed under Codes in Your names." : null
+  })
+  const input = field.querySelector("input")!
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") add.click() })
+  return el("div", { class: "add-code" }, field, add)
+}
+
 function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
   const orderRows = [...s.pending.map((p) => pendingRow(p, s, signal)), ...listedOrders(s).map((o) => orderRow(o, s))]
   const codeRows = s.codes.map((c) => codeRow(c, s))
   const empty = (text: string) => el("p", { class: "sec-note empty-list" }, text)
-  const addCode = btn([icon("key"), "Add a code"], "quiet", codePopup)
-  addCode.dataset.focus = "add-code"
   const restoreLink = btn([icon("refresh"), "Restore with a name code"], "quiet", () => go("/#/restore"))
   restoreLink.dataset.focus = "restore-code"
   return screen({ title: "Your names", lead: leadOf(s.canPersist) },
-    el("div", { class: "toolbar" }, addCode, restoreLink),
+    kept(ADD_CODE, addCodeBox),
+    el("div", { class: "toolbar" }, restoreLink),
     el("div", { class: "panel" }, el("div", { class: "list-title" }, el("h2", {}, "Names")), el("div", {}, orderRows.length ? orderRows : empty("No names in this browser yet."))),
     el("div", { class: "panel mt-16" }, el("div", { class: "list-title" }, el("h2", {}, "Codes")), el("div", {}, codeRows.length ? codeRows : empty("No codes in this browser yet."))),
     forgetPart(s))
@@ -387,7 +411,7 @@ function buildRestore(s: RestoreState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchRestore({ type: "hold-ended" }))(s.hold !== null)
   const note = s.busy ? el("p", { class: "hint" }, "Finding the code's orders…")
     : s.hold ? holdNotice(s.hold, signal)
-      : refusal ? el("div", { class: "mt-14" }, refusal.verdict ? verdictNode({ ok: false, title: refusal.title, line: refusal.text }) : alertBox("danger", "alert", refusal.title, refusal.text))
+      : refusal ? el("div", { class: "mt-14" }, refusal.verdict ? el("p", { class: "verdict bad" }, `${refusal.title}. ${refusal.text}`) : alertBox("danger", "alert", refusal.title, refusal.text))
         : null
   return screen({ title: "Restore with a name code", lead: "The code stays in this browser. The service sees only a signature from the name's key." },
     el("div", { class: "panel" }, el("div", { class: "panel-sec" },

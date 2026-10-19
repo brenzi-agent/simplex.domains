@@ -6,7 +6,7 @@ describe("viewOf", () => {
     ["?order=inv1", "/", "order"],
     ["?registration=reg1", "/names", "order"],
     ["", "/checkout", "checkout"],
-    ["", "/checkout/code", "name-code"],
+    ["", "/checkout/code", "search"],
     ["", "/names", "names"],
     ["", "/restore", "restore"],
     ["", "/trademarks", "trademarks"],
