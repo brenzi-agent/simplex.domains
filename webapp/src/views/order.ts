@@ -398,6 +398,7 @@ function payCryptoScreen(s: OrderState, signal: AbortSignal): HTMLElement {
   return screen({ title: `Pay with ${methodName(coin)}`, lead: "Bookmark this page: the address and the countdown live on its link." },
     partial ? alertBox("warn", "alert", "Part of the payment arrived", partSentence(inv, coin)) : null,
     orderLine(s),
+    unkeptCode(s),
     uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`)) : null,
     copyField(partial ? "Send the rest" : "Amount", `${due} ${TICKER[coin]}`, due),
     copyField(`${methodName(coin)} address`, inv.address!),
@@ -477,7 +478,7 @@ function payCardScreen(s: OrderState): HTMLElement {
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
   const forgetful = store.canPersist() ? null : alertBox("warn", "alert", "This browser cannot remember a card payment",
     "After paying, keep this page open until it moves on. Reloading would show the card form again.")
-  return screen({ title: "Pay by card" }, orderLine(s), forgetful, form, actionNote(s, null), payButton)
+  return screen({ title: "Pay by card" }, orderLine(s), unkeptCode(s), forgetful, form, actionNote(s, null), payButton)
 }
 
 function cardStandIn(form: HTMLElement): void {
@@ -631,7 +632,7 @@ function confirmingScreen(s: OrderState): HTMLElement {
     ? alertBox("info", "clock", confirmations(invoice.requiredConfirmations ?? 1),
       `${invoice.cryptoAmount} ${TICKER[coin]} arrived. Registration starts once it confirms; this page moves on by itself.`)
     : alertBox("info", "clock", "Waiting for Stripe to\u00a0confirm", "Stripe usually confirms within a minute. Registration starts by itself; this page moves on.")
-  return screen({ title: coin ? "Confirming your payment" : "Paying by card" }, orderLine(s), notice, referenceLine(invoice.invoiceId))
+  return screen({ title: coin ? "Confirming your payment" : "Paying by card" }, orderLine(s), notice, unkeptCode(s), referenceLine(invoice.invoiceId))
 }
 
 function enterCardAgain(): void {
@@ -830,10 +831,13 @@ function nameCodeCard(record: store.OrderRecord, code: string): HTMLElement {
   const box = el("input", { type: "checkbox", checked: record.codeSaved === true, "data-focus": "saved" })
   box.addEventListener("change", () => markSaved(record.registrationId, box.checked))
   return el("div", { class: "card name-code" }, el("span", { class: "label" }, "Your name code"), codeDisplay(code, "owner-code"),
-    store.canPersist() ? alertBox("warn", "shield", null, "Whoever has this code controls the name. Nobody else has a copy, not even us.")
+    store.canPersist() ? alertBox("warn", "shield", null, "Whoever has this code controls the name. If you lose it, nothing can recover it.")
       : alertBox("danger", "alert", "This code could not be saved in this browser", "Save a copy now: it will be the only one."),
     el("label", { class: "check" }, box, el("span", { class: "box" }), SAVED_LABEL))
 }
+
+// An order this browser cannot keep shows its code while it is paid too, as a reload would lose it.
+const unkeptCode = ({ record }: OrderState) => !store.canPersist() && record?.ownerCode ? nameCodeCard(record, record.ownerCode) : null
 
 // read from the module's state, which may have moved on to another order since the box was drawn
 function markSaved(registrationId: string, codeSaved: boolean): void {

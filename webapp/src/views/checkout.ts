@@ -122,7 +122,7 @@ async function showOpenOrder(signal: AbortSignal): Promise<void> {
 function summaryCard(c: session.Checkout): HTMLElement {
   const y = years(c)
   return el("section", { class: "card summary-card" }, nameTitle(c.label, "name", c.chain.tld),
-    el("p", { class: "term-line" }, `${termText(y)}${SEP}until ${dateOf(untilFromNow(y), true)}`),
+    el("p", { class: "term-line" }, termText(y), SEP, el("span", { class: "nowrap" }, `until ${dateOf(untilFromNow(y), true)}`)),
     el("div", { class: "total" }, el("span", {}, "Total"),
       el("span", {}, ...(c.code ? [el("s", {}, dollars(priceFor(c.price, y), true)), "$0.00"] : [dollars(c.price, true)]))))
 }
@@ -207,7 +207,7 @@ function storageWarning(fromApp: boolean): HTMLElement | null {
   if (store.canPersist()) return null
   return fromApp
     ? alertBox("warn", "alert", "This browser will not keep this order", "Keep this page open until the name is registered; a reload loses it.")
-    : alertBox("warn", "alert", "This browser will not keep your name code", "Your saved copy will be the only one.")
+    : alertBox("warn", "alert", "This browser will not keep your name code", "It is shown on the payment page: save it there before paying.")
 }
 
 function buildCheckout(s: CheckoutState, signal: AbortSignal): HTMLElement {

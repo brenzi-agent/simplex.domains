@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  checkoutCode, control, mockRegistration, onStep, openCode, payButton, REGISTRATION_MS, registrationOf, search, shot, startOrder, test, uniqueLabel, waitRegistered,
+  checkoutCode, checkoutOwnerCode, control, mockRegistration, onStep, openCode, payButton, REGISTRATION_MS, registrationOf, search, shot, startOrder, test, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 test("a second tab's order survives a write from a tab opened earlier", async ({ browser, request }) => {
@@ -240,7 +240,7 @@ test("after taking a code, the other-name search says the payment became a code"
   await expect(page.getByText("Covered by your payment")).toHaveCount(0)
 })
 
-test("full storage that still reads is warned about at checkout, before the order is paid", async ({ browser }) => {
+test("full storage that still reads is warned about at checkout, and the payment page shows the name code to save", async ({ browser }) => {
   const context = await browser.newContext()
   await context.addInitScript(() => {
     const setItem = Storage.prototype.setItem
@@ -253,7 +253,13 @@ test("full storage that still reads is warned about at checkout, before the orde
   await search(page, uniqueLabel("full"))
   await page.getByRole("button", { name: "Register" }).click()
   await expect(page.getByText("This browser will not keep your name code")).toBeVisible()
-  await expect(page.getByText("Your saved copy will be the only one.")).toBeVisible()
+  await expect(page.getByText("It is shown on the payment page: save it there before paying.")).toBeVisible()
+  await expect(page.getByTestId("owner-code")).toHaveCount(0)
+  const ownerCode = await checkoutOwnerCode(page)
+  await payButton(page).click()
+  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await expect(page.getByTestId("owner-code"), "a reload would lose the order, so its code shows before it is paid").toHaveText(ownerCode)
+  await expect(page.getByText("This code could not be saved in this browser")).toBeVisible()
   await context.close()
 })
 

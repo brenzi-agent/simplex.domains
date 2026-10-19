@@ -80,9 +80,8 @@ export function alertBox(tone: Tone, ic: IconName, title: string | null, text: K
   return el("div", { class: `notice ${tone}` }, icon(ic), el("div", {}, title ? el("b", {}, title) : null, text))
 }
 
-// punctuation after the name is kept on its line
-export function nameText(label: string, tld: string, after = ""): HTMLSpanElement {
-  return el("span", { class: "inline-name" }, label, el("wbr"), `.${tld}${after}`)
+export function nameText(label: string, tld: string): HTMLSpanElement {
+  return el("span", { class: "inline-name" }, label, el("wbr"), `.${tld}`)
 }
 
 // a long name breaks before its top-level domain first

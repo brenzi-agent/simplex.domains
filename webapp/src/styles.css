@@ -176,6 +176,8 @@ body > main { flex: 1 0 auto; }
 html.modal-open, html:has(.modal[open]) { overflow: hidden; }
 
 .grad { background: var(--heading); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* balance would break a name before its TLD to even the lines; a name that fits its line stays whole */
+h1:has(.grad) { text-wrap: pretty; }
 
 .answer .name, .summary-card .name { font-family: var(--display); font-weight: 700; font-size: 30px; letter-spacing: -.025em; line-height: 1.1; overflow-wrap: anywhere; }
 .answer .name span, .summary-card .name span { color: var(--ink-soft); white-space: nowrap; }
