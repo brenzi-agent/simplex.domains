@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
-  CARD_SLOW_MS, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState,
+  CARD_SLOW_MS, type ClosedCase, closedCase, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState,
   reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
@@ -50,24 +50,21 @@ const answered = (s: OrderState, next: OrderState): Extract<OrderEvent, { type: 
 const submittedAgo = (ms: number) => new Date(NOW - ms).toISOString()
 const committed = { phase: "committed", commitTx: "0xc0", revealAfter: NOW / 1000 - 1, revealBefore: NOW / 1000 + 3600, intentNonce: 4 } as const
 
+const SLOW = read(card(), undefined, { record: record({ method: "card" }), cardSubmittedAt: submittedAgo(CARD_SLOW_MS + 1000) })
+
 const STATES: Record<OrderKind, OrderState> = {
   "pay-crypto": read(crypto()),
   "pay-card": read(card(), undefined, { record: record({ method: "card" }) }),
   confirming: read(crypto({ paidInFull: true, cryptoAmountPaid: "0.00025" })),
-  slow: read(card(), undefined, { record: record({ method: "card" }), cardSubmittedAt: submittedAgo(CARD_SLOW_MS + 1000) }),
   registering: read(null, registration({ phase: "committing" })),
   registered: read(null, registration({ phase: "registered", label: "alice", registerTx: "0xe9", expiresAt: NOW / 1000 + 63072000 })),
   taken: read(crypto({ status: "paid", paidInFull: true }, { phase: "taken" })),
   "code-issued": read(crypto({ status: "paid", paidInFull: true }, { phase: "code_issued" })),
   failed: read(crypto({ status: "paid", paidInFull: true }, { phase: "failed", error: "The registration ran out of gas" })),
   "not-on-device": read(null, registration({ phase: "committing" }), { record: null }),
-  "status:paid-late": read(crypto({ status: "paid", paidInFull: true })),
+  "status:closed": read(crypto({ status: "expired" })),
+  "status:card-unconfirmed": read(card(), undefined, { record: record({ method: "card" }), cardFailed: true }),
   "status:paid-by-invoice": read(null, registration(), { reference: "reg-1" }),
-  "status:still-open": read(crypto(), undefined, { record: record({ cancelled: true }) }),
-  "status:expired-cancelled": read(crypto({ status: "expired" }), undefined, { record: record({ cancelled: true }) }),
-  "status:expired-received": read(crypto({ status: "expired", cryptoAmountPaid: "0.0001", cryptoAmountDue: "0.00015" })),
-  "status:expired": read(crypto({ status: "expired" })),
-  "status:card-failed": read(card(), undefined, { record: record({ method: "card" }), cardFailed: true }),
   "status:unreadable": initialState("inv-1", null),
   "status:unknown-link": read(crypto({ status: "expired" }), undefined, { gone: true }),
   "status:price-changed": read(crypto({ status: "expired" }), undefined, { price: 2500 }),
@@ -78,21 +75,20 @@ describe("screenOf", () => {
     ["a link the service does not know", STATES["status:unknown-link"], "status:unknown-link"],
     ["a new invoice refused for a changed price", STATES["status:price-changed"], "status:price-changed"],
     ["an order not read yet", initialState("inv-1", null), "status:unreadable"],
-    ["an open invoice this browser cancelled", STATES["status:still-open"], "status:still-open"],
+    ["an open invoice this browser cancelled", read(crypto(), undefined, { record: record({ cancelled: true }) }), "status:closed"],
     ["an open crypto invoice", STATES["pay-crypto"], "pay-crypto"],
     ["a crypto invoice paid in full", STATES.confirming, "confirming"],
     ["a cancelled invoice paid in full anyway", read(crypto({ paidInFull: true }), undefined, { record: record({ cancelled: true }) }), "confirming"],
     ["a card invoice with nothing submitted", STATES["pay-card"], "pay-card"],
-    ["a card form that did not load", STATES["status:card-failed"], "status:card-failed"],
+    ["a card form that did not load", STATES["status:card-unconfirmed"], "status:card-unconfirmed"],
     ["a card submitted a moment ago", read(card(), undefined, { cardSubmittedAt: submittedAgo(1000) }), "confirming"],
-    ["a card submitted longer ago than Stripe takes", STATES.slow, "slow"],
+    ["a card submitted longer ago than Stripe takes", SLOW, "status:card-unconfirmed"],
     ["a card submitted long ago from a browser without the record", read(card(), undefined, { record: null, cardSubmittedAt: submittedAgo(CARD_SLOW_MS * 2) }), "confirming"],
     ["a card payment the service has seen", read(card({ amountPaid: 1500 })), "confirming"],
-    ["a payment after the invoice closed", STATES["status:paid-late"], "status:paid-late"],
-    ["an invoice cancelled with nothing received", STATES["status:expired-cancelled"], "status:expired-cancelled"],
-    ["a cancelled invoice that money reached", read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }), undefined, { record: record({ cancelled: true }) }), "status:expired-received"],
-    ["an expired invoice that money reached", STATES["status:expired-received"], "status:expired-received"],
-    ["an expired invoice with nothing received", STATES["status:expired"], "status:expired"],
+    ["a payment after the invoice closed", read(crypto({ status: "paid", paidInFull: true })), "status:closed"],
+    ["an invoice cancelled with nothing received", read(crypto({ status: "expired" }), undefined, { record: record({ cancelled: true }) }), "status:closed"],
+    ["a cancelled invoice that money reached", read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }), undefined, { record: record({ cancelled: true }) }), "status:closed"],
+    ["an expired invoice with nothing received", STATES["status:closed"], "status:closed"],
     ["a registration link of an unpaid order", STATES["status:paid-by-invoice"], "status:paid-by-invoice"],
     ["a registered order", STATES.registered, "registered"],
     ["a name taken first", STATES.taken, "taken"],
@@ -109,6 +105,43 @@ describe("screenOf", () => {
   })
 })
 
+describe("closedCase", () => {
+  const cases: [string, ClosedCase, OrderState][] = [
+    ["a payment after the invoice closed", "paid-late", read(crypto({ status: "paid", paidInFull: true }))],
+    ["a cancel the service still shows open", "still-open", read(crypto(), undefined, { record: record({ cancelled: true }) })],
+    ["a cancel the service still shows open, part paid", "still-open", read(crypto({ cryptoAmountPaid: "0.0001" }), undefined, { record: record({ cancelled: true }) })],
+    ["a cancelled invoice that closed with nothing received", "cancelled", read(crypto({ status: "expired" }), undefined, { record: record({ cancelled: true }) })],
+    ["an expired invoice that money reached", "received", read(crypto({ status: "expired", cryptoAmountPaid: "0.0001", cryptoAmountDue: "0.00015" }))],
+    ["a cancelled invoice that money reached", "received", read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }), undefined, { record: record({ cancelled: true }) })],
+    ["an expired card invoice with nothing paid", "expired", read(card({ status: "expired" }))],
+    ["an expired invoice with nothing received", "expired", read(crypto({ status: "expired" }))],
+  ]
+  it.each(cases)("%s is %s, on the one closed screen", (_, expected, s) => {
+    expect(closedCase(s)).toBe(expected)
+    expect(screenOf(s)).toBe("status:closed")
+  })
+  it.each([
+    ["an open invoice nobody cancelled", STATES["pay-crypto"]],
+    ["a cancelled invoice paid in full anyway", read(crypto({ paidInFull: true }), undefined, { record: record({ cancelled: true }) })],
+    ["a paid invoice whose registration went on", STATES.taken],
+    ["a registration link without an invoice", STATES["status:paid-by-invoice"]],
+    ["an order not read yet", initialState("inv-1", null)],
+  ])("%s is not closed", (_, s) => {
+    expect(closedCase(s)).toBeNull()
+  })
+})
+
+describe("card not confirmed", () => {
+  it("a form that failed and a confirmation past CARD_SLOW_MS are one screen", () => {
+    const failed = reduce(STATES["pay-card"], { type: "card-failed" })
+    expect(screenOf(failed)).toBe("status:card-unconfirmed")
+    expect(screenOf(SLOW)).toBe("status:card-unconfirmed")
+  })
+  it("a form that failed after Stripe saw a payment waits for it rather than offering the form again", () => {
+    expect(screenOf(read(card({ amountPaid: 1500 }), undefined, { cardFailed: true }))).toBe("confirming")
+  })
+})
+
 describe("reduce", () => {
   const paying = STATES["pay-crypto"]
 
@@ -118,7 +151,7 @@ describe("reduce", () => {
   })
   it("answered to an earlier read changes nothing", () => {
     const later = reduce(paying, answered(paying, STATES.confirming))
-    expect(reduce(later, { ...answered(paying, STATES["status:expired"]), seq: 1 })).toBe(later)
+    expect(reduce(later, { ...answered(paying, STATES["status:closed"]), seq: 1 })).toBe(later)
   })
   it("record-changed takes this browser's record and card submission", () => {
     expect(reduce(paying, { type: "record-changed", record: null, cardSubmittedAt: submittedAgo(5) })).toEqual({ ...paying, record: null, cardSubmittedAt: submittedAgo(5) })
@@ -184,7 +217,7 @@ describe("reduce", () => {
     const failing = { ...STATES.failed, note: WARN }
     const cases: [OrderEvent["type"], OrderEvent["type"], OrderState, OrderState["busy"]][] = [
       ["cancel-started", "cancel-failed", { ...paying, note: WARN }, "cancel"],
-      ["reorder-started", "reorder-failed", { ...STATES["status:expired"], note: WARN }, "reorder"],
+      ["reorder-started", "reorder-failed", { ...STATES["status:closed"], note: WARN }, "reorder"],
       ["code-started", "code-failed", { ...STATES.taken, note: WARN }, "code"],
       ["retry-started", "retry-failed", failing, "retry"],
     ]
@@ -247,12 +280,12 @@ describe("reduce", () => {
       expect(reduce(reduce(paying, { type: "cancel-started" }), { type: "cancel-answered", note: null })).toEqual(paying)
     })
     it("price-changed ends a new invoice's request with the new price", () => {
-      const working = reduce(STATES["status:expired"], { type: "reorder-started" })
+      const working = reduce(STATES["status:closed"], { type: "reorder-started" })
       expect(reduce(working, { type: "price-changed", price: 2500 })).toMatchObject({ busy: null, price: 2500 })
     })
     it("a screen change leaves the last screen's note, action and hold words behind", () => {
       const s = { ...paying, busy: "cancel" as const, note: WARN, hold: { until: NOW + 20_000, lead: "The invoice is still open. " } }
-      expect(reduce(s, answered(s, STATES["status:expired"]))).toMatchObject({ busy: null, note: null, hold: { until: NOW + 20_000, lead: NO_LEAD } })
+      expect(reduce(s, answered(s, STATES["status:closed"]))).toMatchObject({ busy: null, note: null, hold: { until: NOW + 20_000, lead: NO_LEAD } })
     })
   })
 
@@ -323,15 +356,15 @@ describe("wakeAt", () => {
   it("sleeps when nothing waits on the clock", () => {
     expect(wakeAt(STATES["pay-crypto"])).toBeNull()
     expect(wakeAt(STATES.registered)).toBeNull()
-    expect(wakeAt(STATES.slow)).toBeNull()
+    expect(wakeAt(SLOW)).toBeNull()
     expect(wakeAt(read(null, registration(committed)))).toBeNull()
     expect(wakeAt({ ...paying, record: null })).toBeNull()
     expect(wakeAt({ ...paying, invoice: card({ status: "expired" }) })).toBeNull()
   })
-  it("a tick on the very millisecond of a card's wait turns the page slow, and nothing is left to wake for", () => {
+  it("a tick on the very millisecond of a card's wait turns the page to not confirmed, and nothing is left to wake for", () => {
     const woken = reduce(paying, { type: "tick", now: wakeAt(paying)! })
     expect(screenOf(paying)).toBe("confirming")
-    expect(screenOf(woken)).toBe("slow")
+    expect(screenOf(woken)).toBe("status:card-unconfirmed")
     expect(wakeAt(woken)).toBeNull()
   })
   it("a tick one millisecond before a card's wait ends keeps the page waking for it", () => {

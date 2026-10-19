@@ -2,7 +2,7 @@
 import * as api from "../api.ts"
 import { alertBox, btn, codeDisplay, el, icon, type Kid, nameText, nameTitle, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, dollars, methodName, seconds, shortAddress, termText, untilFromNow } from "../format.ts"
+import { dateOf, dollars, methodName, shortAddress, termText, untilFromNow } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
 import { type LinkKind, linkKind, linkProblem, PRICED_YEARS, priceFor } from "../names.ts"
 import { changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, initialState, reduce, screenOf, type WaitingOrder } from "../screens/checkout.ts"
@@ -10,9 +10,8 @@ import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { CODE_ERRORS, codeField, type CodeVerdict, refuseCode } from "./codes.ts"
 import { entityCard } from "./search.ts"
-import { type Builder, currentRoute, draw, focusOn, go, isRedraw, isRoute, kept, keptLive, outcome, redirect, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
-import { every } from "./effects.ts"
-import { holdEnd, holdEnder, holdFrom, holding, holdNotice, secondsLeft, tabHold } from "./hold.ts"
+import { type Builder, currentRoute, draw, focusOn, go, isRedraw, isRoute, kept, keptLive, limitScreen, outcome, redirect, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
+import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./hold.ts"
 import { CHECKOUT_STEP } from "./track.ts"
 
 const METHOD_ORDER: Method[] = ["card", "btc", "xmr"]
@@ -261,23 +260,10 @@ function buildPriceChanged({ checkout: c }: CheckoutState): HTMLElement {
     action: btn("Search again", "", () => go(searchLink(c.label, c.appOwner))) })
 }
 
-function buildTooMany(s: CheckoutState, signal: AbortSignal): HTMLElement {
-  const c = s.checkout
-  const hold = s.hold
-  // the checkout the order was sent from is drawn again
-  const again = setAction(btn("Try again", "counting", refresh), false, hold !== null)
-  const count = () => {
-    const text = hold === null ? "Try again" : `Try again in ${seconds(Math.max(1, secondsLeft(hold)))}`
-    if (again.textContent === text) return
-    // the button keeps the width of its longest line, so the count moves neither it nor the button beside it
-    if (again.isConnected && !again.style.minWidth) again.style.minWidth = `${again.offsetWidth}px`
-    again.textContent = text
-  }
-  count()
-  every(1000, count, signal)
+// Try again draws the checkout the order was sent from again
+function buildTooMany({ checkout: c, hold }: CheckoutState, signal: AbortSignal): HTMLElement {
   holdEnds(signal)(hold !== null)
-  return outcome({ tone: "warn", icon: "clock", title: "Too many attempts", text: "Too many orders were tried from here, so ordering is paused. Nothing was charged.",
-    action: el("div", { class: "actions" }, again, btn("Back", "quiet", () => go(searchLink(c.label, c.appOwner)))) })
+  return limitScreen(hold, refresh, searchLink(c.label, c.appOwner), signal)
 }
 
 function buildFailed(s: CheckoutState): HTMLElement {

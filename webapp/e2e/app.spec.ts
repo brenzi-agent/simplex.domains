@@ -71,9 +71,9 @@ test("an order opened from the app that meets a rate limit stays held and stays 
   await page.getByRole("button", { name: "Register" }).click()
   await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": "20" }, json: { error: "rate_limited" } }) : route.continue())
   await page.getByRole("button", { name: "Continue" }).click()
-  await expect(page.getByText("ordering is paused")).toBeVisible()
+  await expect(page.locator(".outcome .notice span[aria-hidden=true]")).toHaveText(/^Too many orders were tried from here\. Try again in \d+ seconds\.$/)
   // Back keeps the search opened from the app
-  await page.getByRole("button", { name: "Back" }).click()
+  await page.getByRole("link", { name: "Back" }).click()
   await expect(page.getByText("Opened from SimpleX.")).toBeVisible()
   await page.goBack()
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()

@@ -3,14 +3,15 @@ import type { IconName } from "../icons.ts"
 import type { CodeRefusal, OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
 
-// a card payment Stripe has not confirmed after this long gets the "taking longer" page
+// a card payment Stripe has not confirmed after this long gets the "not confirmed" page
 export const CARD_SLOW_MS = 10 * 60 * 1000
 // refusals of the signed registration after which the page stops signing and says so
 export const REVEAL_ATTEMPTS = 3
 
-export type OrderKind = "pay-crypto" | "pay-card" | "confirming" | "slow" | "registering" | "registered" | "taken" | "code-issued" | "failed" | "not-on-device"
-  | "status:paid-late" | "status:paid-by-invoice" | "status:still-open" | "status:expired-cancelled" | "status:expired-received" | "status:expired"
-  | "status:card-failed" | "status:unreadable" | "status:unknown-link" | "status:price-changed"
+export type OrderKind = "pay-crypto" | "pay-card" | "confirming" | "registering" | "registered" | "taken" | "code-issued" | "failed" | "not-on-device"
+  | "status:closed" | "status:card-unconfirmed" | "status:paid-by-invoice" | "status:unreadable" | "status:unknown-link" | "status:price-changed"
+
+export type ClosedCase = "paid-late" | "still-open" | "cancelled" | "received" | "expired"
 
 type Action = "card" | "cancel" | "reorder" | "code" | "retry"
 
@@ -145,12 +146,8 @@ export function screenOf(s: OrderState): OrderKind {
   if (s.price !== null) return "status:price-changed"
   const { invoice, view, record } = s
   if (!view) return "status:unreadable"
-  if (invoice && view.phase === "unpaid") {
-    if (invoice.status === "open") return paymentKind(s, invoice)
-    if (invoice.status === "paid") return "status:paid-late"
-    if (record?.cancelled && !holdsPayment(invoice)) return "status:expired-cancelled"
-    return holdsPayment(invoice) ? "status:expired-received" : "status:expired"
-  }
+  if (closedCase(s)) return "status:closed"
+  if (invoice && view.phase === "unpaid") return paymentKind(s, invoice)
   if (view.phase === "unpaid") return "status:paid-by-invoice"
   if (view.phase === "registered") return "registered"
   if (view.phase === "taken") return "taken"
@@ -160,12 +157,20 @@ export function screenOf(s: OrderState): OrderKind {
   return "registering"
 }
 
+// An unpaid order's invoice that takes no more payment: closed, or cancelled while the service still shows it open.
+export function closedCase({ invoice, view, record }: OrderState): ClosedCase | null {
+  if (!invoice || view?.phase !== "unpaid") return null
+  if (invoice.status === "paid") return "paid-late"
+  if (invoice.status === "open") return record?.cancelled && !invoice.paidInFull ? "still-open" : null
+  if (record?.cancelled && !holdsPayment(invoice)) return "cancelled"
+  return holdsPayment(invoice) ? "received" : "expired"
+}
+
 function paymentKind(s: OrderState, invoice: InvoiceView): OrderKind {
-  if (s.record?.cancelled && !invoice.paidInFull) return "status:still-open"
   if (coinOf(invoice)) return invoice.paidInFull ? "confirming" : "pay-crypto"
-  if (!s.cardSubmittedAt && !invoice.amountPaid) return s.cardFailed ? "status:card-failed" : "pay-card"
+  if (!s.cardSubmittedAt && !invoice.amountPaid) return s.cardFailed ? "status:card-unconfirmed" : "pay-card"
   const slow = s.record !== null && s.cardSubmittedAt !== null && s.now >= Date.parse(s.cardSubmittedAt) + CARD_SLOW_MS
-  return slow ? "slow" : "confirming"
+  return slow ? "status:card-unconfirmed" : "confirming"
 }
 
 export const revealKey = (view: RegistrationView) => `${view.id} ${view.commitment} ${view.intentNonce} ${view.revealBefore}`

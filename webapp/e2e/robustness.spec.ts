@@ -130,7 +130,7 @@ test("Get a new invoice keeps an invoice the service would not cancel", async ({
   })
   await page.route("https://js.stripe.com/**", (route) => route.abort())
   await page.reload()
-  await expect(page.getByRole("heading", { name: "The card form did not load" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
   const answers = [
     { status: 409, body: { error: "funded" }, text: "A payment has reached this invoice, so it is kept." },
     { status: 503, body: { error: "provider_unavailable" }, text: "The invoice could not be cancelled now." },
@@ -148,7 +148,7 @@ test("Get a new invoice keeps an invoice the service would not cancel", async ({
   })
   await page.getByRole("button", { name: "Get a new invoice" }).click()
   await expect(page.getByText("This invoice was cancelled, but the service still shows it open. Do not pay it again.")).toBeVisible()
-  await expect(page.getByRole("heading", { name: "Invoice cancelled" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await expect(page.getByRole("button", { name: "Load the card form again" })).toHaveCount(0)
   await shot(page, "N10a2-cancel-still-open")
 })
@@ -213,7 +213,7 @@ test("Your names tells part-paid and confirming orders from unpaid ones, and a n
   await control(request, `confirming/${seenOrder.invoiceId}`)
   const plainOrder = await startOrder(page, plain, { method: "btc" })
   await control(request, `expire/${plainOrder.invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Invoice expired" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await page.getByRole("button", { name: "Get a new invoice" }).click()
   await page.waitForURL((url) => url.searchParams.get("order") !== plainOrder.invoiceId)
   await page.goto("/#/names")
@@ -280,9 +280,10 @@ test("a payment that arrives after expiry turns the open page into the refund pa
   const label = uniqueLabel("late")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await control(request, `expire/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Invoice expired" })).toBeVisible()
+  await expect(page.getByText("Nothing was received before its rate window closed.")).toBeVisible()
   await control(request, `settle/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Paid after the invoice closed" })).toBeVisible()
+  await expect(page.getByText("The payment arrived after this invoice had closed")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await page.goto("/#/names")
   await expect(page.locator(".row-item", { hasText: `${label}.simplex` })).toHaveCount(1)
   await expect(page.locator(".row-item", { hasText: `${label}.simplex` }).locator(".sub")).toContainText("support refunds it")
@@ -455,7 +456,7 @@ test("a rate-limited cancel holds, and the hold outlives the page drawing itself
   expect(cancels).toBe(1)
   // the invoice closes and the page draws its expired state: the new button starts held
   await control(request, `expire/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Invoice expired" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await expect(page.getByRole("button", { name: "Get a new invoice" })).toBeDisabled()
   await expect(page.getByText("Too many attempts")).toBeVisible()
   // the other actions of the tab wait too: search is paused, and a restore would wait
@@ -472,7 +473,7 @@ test("Back from a paused order keeps the order paused", async ({ page }) => {
   await savedCode(page)
   await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": "20" }, json: { error: "rate_limited" } }) : route.continue())
   await payButton(page).click()
-  await expect(page.getByText("ordering is paused")).toBeVisible()
+  await expect(page.locator(".outcome .notice span[aria-hidden=true]")).toHaveText(/^Too many orders were tried from here\. Try again in \d+ seconds\.$/)
   await page.goBack()
   await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
   await page.goForward()

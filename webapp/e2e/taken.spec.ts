@@ -9,11 +9,13 @@ test("a name taken first moves the paid order to another name, owned by the same
   await control(request, "take", { label })
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
-  const gap = await page.evaluate(() => {
-    const options = document.querySelector("body > main .options")!
-    return options.getBoundingClientRect().top - options.parentElement!.querySelector(".sec-note")!.getBoundingClientRect().bottom
-  })
-  expect(gap).toBeCloseTo(18, 0)
+  await expect(page.getByText(/^Choose another name of up to \$100\.00, .* or take a code for names of \d+ or more letters, for 2 years\.$/)).toBeVisible()
+  // the two ways forward are stacked, the move to another name first
+  const [other, code] = [page.getByRole("button", { name: "Choose another name" }), page.getByRole("button", { name: "Take a code" })]
+  const [otherBox, codeBox] = [(await other.boundingBox())!, (await code.boundingBox())!]
+  expect(otherBox.x).toBeCloseTo(codeBox.x, 0)
+  expect(otherBox.y + otherBox.height).toBeLessThanOrEqual(codeBox.y)
+  await expect(page.getByText(`Reference ${invoiceId}`)).toBeVisible()
   await shot(page, "N8-taken")
 
   await page.getByRole("button", { name: "Choose another name" }).click()

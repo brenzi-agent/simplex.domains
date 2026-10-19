@@ -150,7 +150,7 @@ test("without storage two expired invoices of one order do not lead to each othe
   await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
   const second = new URL(page.url()).searchParams.get("order")!
   await control(request, `expire/${second}`)
-  await expect(page.getByRole("heading", { name: "Invoice expired" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   // a redirect loop would move the page off this invoice within a poll or two
   await page.waitForTimeout(3000)
   expect(new URL(page.url()).searchParams.get("order")).toBe(second)

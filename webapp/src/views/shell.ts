@@ -1,8 +1,10 @@
 // The page's frame: theme switch, popups, and navigation between views; index.html draws the header and footer.
-import { alertBox, el, icon, type Kid, liveRegion, refill, type Tone } from "../dom.ts"
+import { alertBox, btn, el, icon, type Kid, liveRegion, refill, type Tone, waitOut } from "../dom.ts"
 import type { IconName } from "../icons.ts"
+import type { Hold } from "../screens/hold.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
+import { secondsLeft } from "./hold.ts"
 import { leaveTrack, placeOnTrack, type TrackStep } from "./track.ts"
 
 export const WEFUNDER_URL = "https://wefunder.com/simplex.chat?utm_source=domains"
@@ -122,7 +124,7 @@ export function refresh(): void {
 
 export type Builder<S> = (state: S, signal: AbortSignal) => HTMLElement
 interface ScreenHead { title: Kid; lead?: Kid; back?: string }
-interface Outcome { tone: Tone; icon: IconName; title: string; text: Kid; action?: Node | null; reference?: string; extra?: Kid }
+interface Outcome { tone: Tone; icon: IconName; title: string; text: Kid; action?: Node | null; reference?: string; extra?: Kid; back?: string }
 
 export function kept<T extends HTMLElement>(key: string, make: () => T): T {
   const known = keptNodes.get(key)
@@ -209,9 +211,11 @@ const titleOf = (next: HTMLElement) => {
   return heading ? `${heading} · ${SITE_TITLE}` : SITE_TITLE
 }
 
+const backLink = (href: string | undefined) => href ? el("a", { class: "back", href }, icon("back"), "Back") : null
+
 export function screen(head: ScreenHead, ...body: Kid[]): HTMLElement {
   return el("section", { class: "screen" },
-    head.back ? el("a", { class: "back", href: head.back }, icon("back"), "Back") : null,
+    backLink(head.back),
     el("h1", {}, head.title),
     head.lead ? el("p", { class: "lead" }, head.lead) : null,
     ...body)
@@ -220,11 +224,25 @@ export function screen(head: ScreenHead, ...body: Kid[]): HTMLElement {
 // the badges pattern: a heading, one notice, one action
 export function outcome(o: Outcome): HTMLElement {
   return el("section", { class: "screen outcome" },
+    backLink(o.back),
     el("h1", {}, o.title),
     alertBox(o.tone, o.icon, null, o.text),
     o.extra ?? null,
     o.action ?? null,
     o.reference ? referenceLine(o.reference) : null)
+}
+
+const LIMITED = "Too many orders were tried from here."
+
+/** The tab's wait as one screen: Try again turns on once the wait is over, which the caller redraws it for. */
+export function limitScreen(hold: Hold | null, again: () => void, back: string, signal: AbortSignal): HTMLElement {
+  const line = el("span", {}, `${LIMITED} Nothing was charged.`)
+  const tryAgain = btn("Try again", "block", again)
+  tryAgain.disabled = hold !== null
+  const shown = outcome({ tone: "warn", icon: "clock", title: "Too many attempts", text: line, action: tryAgain, back })
+  // the count goes in once the line is in its notice, where its spoken copy goes beside it
+  if (hold) waitOut(line, Math.max(1, secondsLeft(hold)), (left) => `${LIMITED} Try again in ${left}.`, () => undefined, signal)
+  return shown
 }
 
 export const referenceLine = (reference: string) => el("p", { class: "note ref" }, "Reference ", el("span", { class: "mono" }, reference))

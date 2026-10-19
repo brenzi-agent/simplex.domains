@@ -303,7 +303,8 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   const cancels: string[] = []
   page.on("request", (r) => { if (r.url().endsWith("/cancel")) cancels.push(r.url()) })
   await page.getByText("Cancel this invoice").dblclick()
-  await expect(page.getByRole("heading", { name: "Invoice cancelled" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
+  await expect(page.getByText("This invoice was cancelled and nothing was received.")).toBeVisible()
   expect(cancels).toHaveLength(1)
   await shot(page, "N4b-cancelled")
 
@@ -316,8 +317,8 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   const { invoiceId: second } = await startOrder(page, label, { method: "btc" })
   expect(second).not.toBe(invoiceId)
   await control(request, `expire/${second}`)
-  await expect(page.getByRole("heading", { name: "Invoice expired" })).toBeVisible()
-  await expect(page.getByText("Nothing was received")).toBeVisible()
+  await expect(page.getByText("Nothing was received before its rate window closed.")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await shot(page, "N4c-expired")
 
   await page.getByRole("button", { name: "Get a new invoice" }).click()
@@ -364,7 +365,8 @@ test("a replaced invoice leads to its new order until a late payment reaches it"
   await control(request, `settle/${invoiceId}`)
   for (const p of [page, restored]) {
     await p.goto(`/?order=${invoiceId}`)
-    await expect(p.getByRole("heading", { name: "Paid after the invoice closed" })).toBeVisible()
+    await expect(p.getByText("The payment arrived after this invoice had closed")).toBeVisible()
+    await expect(p.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
     expect(new URL(p.url()).searchParams.get("order")).toBe(invoiceId)
     await p.goto("/#/names")
     await expect(row(p).locator(".chip")).toHaveText(["Waiting for payment", "Paid late"])
@@ -386,7 +388,7 @@ test("an invoice that received part of its payment and was replaced leads on to 
   const second = new URL(page.url()).searchParams.get("order")!
   await control(request, `settle/${invoiceId}`)
   await page.goto(`/?order=${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Paid after the invoice closed" })).toBeVisible()
+  await expect(page.getByText("The payment arrived after this invoice had closed")).toBeVisible()
   await page.goto("/#/names")
   await expect(page.locator(".row-item:visible", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText(["Waiting for payment", "Paid late"])
   await page.goto(`/?order=${invoiceId}`)
@@ -400,7 +402,7 @@ test("an invoice that closed while its payment was confirming says a payment rea
   await control(request, `confirming/${invoiceId}`)
   await control(request, `expire/${invoiceId}`)
   await page.reload()
-  await expect(page.getByRole("heading", { name: "Invoice expired" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await expect(page.getByText("A payment did not complete before the invoice closed.")).toBeVisible()
   await shot(page, "N4e-expired-confirming")
   await page.goto("/#/names")
@@ -591,11 +593,13 @@ test("a card form that does not load says so and offers a new invoice", async ({
   })
   await page.route("https://js.stripe.com/**", (route) => route.abort())
   await page.reload()
-  await expect(page.getByRole("heading", { name: "The card form did not load" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
+  await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
   await shot(page, "N10a-card-not-loaded")
   await page.getByRole("button", { name: "Get a new invoice" }).click()
   await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
-  await expect(page.getByRole("heading", { name: "The card form did not load" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
+  await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
 })
 
 test("links saved in another tab show in an open Your names, and in one opened again, never as the old ones", async ({ page, request }) => {

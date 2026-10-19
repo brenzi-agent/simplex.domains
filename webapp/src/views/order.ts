@@ -1,12 +1,12 @@
 // An order's page (?order=<invoice>) or a code registration's (?registration=<id>): payment, registration, and every ending.
 import * as api from "../api.ts"
 import { codeTier, LONGEST_TIER, parseNameCode } from "../crypto/code.ts"
-import { alertBox, btn, chip, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, nameTitle, setAction } from "../dom.ts"
+import { alertBox, btn, chip, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, setAction, type Tone } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress, shortHash, termText } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
-  coinOf, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
+  type ClosedCase, closedCase, coinOf, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, wakeAt,
 } from "../screens/order.ts"
 import * as store from "../store.ts"
@@ -316,19 +316,19 @@ function releasedCode(view: api.RegistrationView, record: store.OrderRecord | nu
   return { code, minLength, years: view.years }
 }
 
-function noteNode(note: Note, cls?: string): HTMLElement {
+function noteNode(note: Note): HTMLElement {
   const text = note.link ? [note.text, el("a", { href: note.link.href }, note.link.text), note.link.after] : note.text
-  return el("div", { class: cls }, alertBox(note.tone, note.icon, note.title, text))
+  return alertBox(note.tone, note.icon, note.title, text)
 }
 
 // holdsFor is the screen's signal where the screen holds an action for the tab's wait
-function noteOf(s: OrderState, cls: string | undefined, holdsFor: AbortSignal | null): HTMLElement | null {
+function noteOf(s: OrderState, holdsFor: AbortSignal | null): HTMLElement | null {
   if (holdsFor && s.hold) return holdNotice(s.hold, holdsFor)
-  return s.note ? noteNode(s.note, cls) : null
+  return s.note ? noteNode(s.note) : null
 }
 
 // the answer to the screen's action, or the tab's wait that holds it, in the route's one live region
-const actionNote = (s: OrderState, holdsFor: AbortSignal | null) => keptLive(ORDER_NOTE, undefined, noteOf(s, undefined, holdsFor))
+const actionNote = (s: OrderState, holdsFor: AbortSignal | null) => keptLive(ORDER_NOTE, undefined, noteOf(s, holdsFor))
 
 function buildUnreadable({ reference }: OrderState): HTMLElement {
   return outcome({ tone: "warn", icon: "alert", title: "This order could not be loaded", text: "The page keeps trying. If it does not load, quote the reference below.", reference })
@@ -339,35 +339,15 @@ function buildUnknownLink(): HTMLElement {
     action: btn("Search a name", "", () => go("/#/")) })
 }
 
-function buildPaidLate({ view, record, invoice }: OrderState): HTMLElement {
-  return outcome({ tone: "warn", icon: "alert", title: "Paid after the invoice closed",
-    text: "The payment arrived after this invoice had closed, so nothing was registered. Support refunds it: quote the reference below.",
-    action: record?.replacedBy ? btn("Open the new invoice", "quiet", () => go(record.replacedBy!)) : btn("Search a name", "quiet", () => go(searchFrom(view!, record))),
-    reference: invoice!.invoiceId })
-}
-
 function buildPaidByInvoice({ view, record }: OrderState): HTMLElement {
   return outcome({ tone: "info", icon: "link", title: "This order is paid by invoice", text: "Its page is the payment link it was made with.",
     action: record?.invoiceId ? btn("Open its payment", "", () => go(store.orderUrl(record))) : btn("Search a name", "quiet", () => go(searchFrom(view!, record))),
     reference: view!.id })
 }
 
-const shortRef = (reference: string) => el("span", { class: "mono" }, `${reference.slice(0, 8)}…`)
-// in full where the page leads to support, which asks for it
-const fullRef = (reference: string) => el("span", { class: "mono ref-full" }, reference)
-
-function orderCard(name: Node, rows: [string, string | Node][], ...rest: Kid[]): HTMLElement {
-  return el("aside", { class: "panel summary" },
-    el("span", { class: "label" }, "Your order"),
-    name,
-    el("div", { class: "rows" }, ...rows.map(([k, v]) => el("div", { class: "r" }, el("span", {}, k), typeof v === "string" ? el("span", {}, v) : v))),
-    ...rest)
-}
-
 // a browser without the order's record learns the name only once it is revealed on chain
 const labelOf = (view: api.RegistrationView, record: store.OrderRecord | null) => view.label ?? record?.label ?? null
 const UNKNOWN_NAME = "The name shows once it is registered"
-const cardName = (label: string | null, tld: string) => label ? nameTitle(label, "nm order-name", tld) : el("div", { class: "nm unknown" }, UNKNOWN_NAME)
 
 function orderLine({ view, record, invoice }: OrderState): HTMLElement {
   const label = labelOf(view!, record)
@@ -514,25 +494,67 @@ function withoutRecord(view: api.RegistrationView, cls: string, text = "Enter yo
   return view.sealed === null ? btn("Search a name", cls, () => go(searchFrom(view, null))) : btn(text, cls, () => go("/#/restore"), icon("key"))
 }
 
-// A cancel the service still shows open: nothing more is paid into the invoice, so the page offers no way to pay it.
-// The page keeps following it, and shows it as cancelled once the service closes it.
+const CLOSED_TITLE = "Invoice closed"
 const partlyPaid = (invoice: api.InvoiceView) => Number(invoice.cryptoAmountPaid ?? "0") > 0
-function buildStillOpen({ invoice, record }: OrderState): HTMLElement {
-  const inv = invoice!
-  return outcome({ tone: "warn", icon: "alert", title: "Invoice cancelled",
-    text: `${cancelStillOpen(inv)}${partlyPaid(inv) ? " Part of the payment arrived; quote the reference below to support." : ""}`,
-    action: btn("Search a name", "quiet", () => go(searchFrom(inv.registration, record))), reference: inv.invoiceId })
+
+function closedScreen(s: OrderState, signal: AbortSignal): HTMLElement {
+  const inv = s.invoice!
+  const closed = closedCase(s)!
+  const [tone, text] = closedWords(closed, inv)
+  // only a new invoice is held for the tab's wait
+  const reorders = (closed === "received" || closed === "expired") && s.record !== null && !s.record.replacedBy
+  holdEnds(signal)(s.hold !== null)
+  return outcome({ tone, icon: "alert", title: CLOSED_TITLE, text, reference: inv.invoiceId,
+    extra: actionNote(s, reorders ? signal : null), action: closedAction(s, closed) })
 }
 
-function buildCardFailed(s: OrderState, signal: AbortSignal): HTMLElement {
-  const inv = s.invoice!
-  const again = setAction(btn("Get a new invoice", "quiet", () => void reorderAfterCancel()), s.busy === "reorder", s.hold !== null)
+// an invoice that took a payment says how support gives it back
+function closedWords(closed: ClosedCase, inv: api.InvoiceView): [Tone, Kid] {
+  switch (closed) {
+    case "paid-late": return ["warn", "The payment arrived after this invoice had closed, so nothing was registered. Support refunds it: quote the reference below."]
+    case "still-open": return ["warn", `${cancelStillOpen(inv)}${partlyPaid(inv) ? " Part of the payment arrived; quote the reference below to support." : ""}`]
+    case "cancelled": return ["info", "This invoice was cancelled and nothing was received."]
+    case "received": {
+      const coin = coinOf(inv)
+      const arrived = coin && partlyPaid(inv) && !inv.paidInFull ? `${inv.cryptoAmountPaid} ${TICKER[coin]} arrived, which is not the full amount.` : "A payment did not complete before the invoice closed."
+      return ["warn", [`${arrived} Write to `, el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with the reference below and we will sort it out."]]
+    }
+    case "expired": return ["info", inv.cryptoCurrency ? "Nothing was received before its rate window closed." : "Nothing was paid before it closed."]
+  }
+}
+
+// a new invoice reuses this order's commitment, which only the browser holding its name code can rebuild
+function closedAction(s: OrderState, closed: ClosedCase): HTMLButtonElement {
+  const { view, record } = s
+  if (record?.replacedBy) return btn("Open the new invoice", "quiet", () => go(record.replacedBy!))
+  // a cancel the service still shows open takes no more payment, so nothing here pays it
+  if (closed === "paid-late" || closed === "still-open") return btn("Search a name", "quiet", () => go(searchFrom(view!, record)))
+  if (!record) return withoutRecord(view!, "quiet")
+  if (closed === "cancelled") return btn("Order the name again", "", () => go(searchLink(record.label, record.ownerCode === null ? record.owner : null)), icon("arrow"))
+  return newInvoiceButton(s, closed === "received" && !record.cancelled ? "quiet" : "", reorder)
+}
+
+function newInvoiceButton(s: OrderState, cls: string, get: () => void): HTMLButtonElement {
+  const again = setAction(btn("Get a new invoice", cls, get), s.busy === "reorder", s.hold !== null)
   again.dataset.focus = "reorder"
+  return again
+}
+
+// A card never submitted is on this screen only because its form failed to load.
+function cardUnconfirmedScreen(s: OrderState, signal: AbortSignal): HTMLElement {
+  const inv = s.invoice!
+  const formFailed = s.cardSubmittedAt === null
   holdEnds(signal)(s.hold !== null)
-  return outcome({ tone: "warn", icon: "alert", title: "The card form did not load", text: "Stripe's form was blocked or failed to load. Nothing was charged.",
-    extra: keptLive(ORDER_NOTE, undefined, noteOf(s, "left mt-18", s.record !== null ? signal : null)),
-    action: el("div", { class: "actions" }, btn("Load the card form again", "", () => dispatch({ type: "card-retried" })), s.record ? again : withoutRecord(s.view!, "quiet")),
-    reference: inv.invoiceId })
+  return outcome({ tone: "warn", icon: "alert", title: "Card payment not confirmed", reference: inv.invoiceId,
+    text: formFailed ? "Stripe's form was blocked or failed to load. Nothing was charged."
+      : "The payment has not been confirmed. This page keeps checking: come back to it later, or quote the reference below.",
+    extra: actionNote(s, formFailed && s.record !== null ? signal : null), action: cardAction(s, formFailed) })
+}
+
+// Once the service has seen a card payment, entering the card again could charge twice.
+function cardAction(s: OrderState, formFailed: boolean): HTMLButtonElement | null {
+  if (formFailed) return s.record ? newInvoiceButton(s, "", () => void reorderAfterCancel()) : btn("Load the card form again", "", () => dispatch({ type: "card-retried" }))
+  return s.invoice!.amountPaid ? null : btn("Enter the card again", "", enterCardAgain)
 }
 
 async function reorderAfterCancel(): Promise<void> {
@@ -612,45 +634,11 @@ function confirmingScreen(s: OrderState): HTMLElement {
   return screen({ title: coin ? "Confirming your payment" : "Paying by card" }, orderLine(s), notice, referenceLine(invoice.invoiceId))
 }
 
-// A card refused after Stripe's first answer leaves the invoice open with nothing paid; once the service has seen the payment, entering it again could charge twice.
-function buildSlow({ invoice }: OrderState): HTMLElement {
-  const check = btn("Check again", "", refresh)
-  return outcome({ tone: "warn", icon: "clock", title: "This is taking longer than expected",
-    text: "The payment has not been confirmed. This page keeps working: come back to it later, or quote the reference below.",
-    action: invoice!.amountPaid ? check : el("div", { class: "actions" }, check, btn("Enter the card again", "quiet", enterCardAgain)), reference: invoice!.invoiceId })
-}
-
 function enterCardAgain(): void {
   const { invoice, record } = state
   store.clearCardSubmitted(invoice!.invoiceId)
   if (record) store.updateOrder(record.registrationId, { cardSubmittedAt: undefined })
   dispatch({ type: "record-changed", record: record && { ...record, cardSubmittedAt: undefined }, cardSubmittedAt: null })
-}
-
-function buildExpired(s: OrderState, signal: AbortSignal): HTMLElement {
-  const inv = s.invoice!
-  const record = s.record
-  // a new invoice reuses this order's commitment, which only the browser holding its name code can rebuild
-  const received = api.holdsPayment(inv)
-  if (record?.cancelled && !received) {
-    const { label, ownerCode, owner } = record
-    return outcome({ tone: "info", icon: "x", title: "Invoice cancelled", text: "This invoice was cancelled and nothing was received.",
-      action: btn("Order the name again", "", () => go(searchLink(label, ownerCode === null ? owner : null)), icon("arrow")), reference: inv.invoiceId })
-  }
-  const note = keptLive(ORDER_NOTE, undefined, noteOf(s, "left mt-18", record !== null && !record.replacedBy ? signal : null))
-  const again = setAction(btn("Get a new invoice", received && !record?.cancelled ? "quiet" : "", reorder), s.busy === "reorder", s.hold !== null)
-  again.dataset.focus = "reorder"
-  holdEnds(signal)(s.hold !== null)
-  const action = record?.replacedBy ? btn("Open the new invoice", "quiet", () => go(record.replacedBy!)) : record ? again : withoutRecord(inv.registration, "quiet")
-  if (received) {
-    const coin = coinOf(inv)
-    const arrived = coin && partlyPaid(inv) && !inv.paidInFull ? `${inv.cryptoAmountPaid} ${TICKER[coin]} arrived, which is not the full amount.` : "A payment did not complete before the invoice closed."
-    return outcome({ tone: "warn", icon: "alert", title: "Invoice expired",
-      text: [`${arrived} Write to `, el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with the reference below and we will sort it out."],
-      extra: note, action, reference: inv.invoiceId })
-  }
-  return outcome({ tone: "info", icon: "clock", title: "Invoice expired", text: inv.cryptoCurrency ? "Nothing was received before its rate window closed." : "Nothing was paid before it closed.",
-    extra: note, action, reference: inv.invoiceId })
 }
 
 function reorder(): void {
@@ -733,11 +721,6 @@ function txRows(view: api.RegistrationView, states: StageState[], now: number, r
     : view.revealAfter !== null && now / 1000 >= view.revealAfter ? (refused ? chip("Not signed", "bad") : chip("Signing", "brand")) : chip("After the wait")
   return el("div", { class: "card txs" }, tx("Commit", hash(view.commitTx), el("span", {}, commitChip)), tx("Register", hash(view.registerTx), el("span", {}, registerChip)),
     tx("Owner", el("span", { class: "v mono" }, onChain(view, "address", view.owner, shortAddress(view.owner)))))
-}
-
-function paidRows(view: api.RegistrationView, invoice: api.InvoiceView | null): [string, string | Node][] {
-  const paid: [string, string] = invoice ? ["Paid", `${dollars(invoice.amount, true)} · ${methodName(invoice.cryptoCurrency ?? "card")}`] : ["Paid", "With a code"]
-  return [paid, ["Term", termText(view.years)], ["Reference", shortRef(invoice?.invoiceId ?? view.id)]]
 }
 
 const stagesOf = (view: api.RegistrationView): StageState[] => view.phase === "registering" ? ["done", "done", "active"] : view.phase === "committed" ? ["done", "active", ""] : ["active", "", ""]
@@ -877,7 +860,6 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
   if (!invoice) return buildTakenWithCode(s)
   const view = taken!
   const label = labelOf(view, record)
-  const paid = dollars(invoice.amount, true)
   // the order's worth caps another name; after a move to a cheaper name it is lower than what was paid
   const worth = dollars(view.price, true)
   const canAct = Boolean(record?.ownerCode)
@@ -886,19 +868,17 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
   const code = setAction(btn("Take a code", "quiet block", () => void takeCode()), canAct && s.busy === "code", !canAct || s.hold !== null)
   code.dataset.focus = "take-code"
   holdEnds(signal)(s.hold !== null)
-  const cannot = canAct ? null : el("div", { class: "mt-16" }, fromApp
+  const cannot = canAct ? null : fromApp
     ? alertBox("info", "phone", "This order was opened from SimpleX", "Choose another name or take a code in the app.")
-    : alertBox("info", "key", "The name code is not in this browser", "Restore it in Your names to choose another name or take a code."))
+    : alertBox("info", "key", "The name code is not in this browser", "Restore it in Your names to choose another name or take a code.")
   return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."] },
-    el("div", { class: "panel" },
-      el("div", { class: "panel-sec" }, stages(["done", "done", "failed"]),
-        el("p", { class: "sec-note mt-18 mb-0" }, "Another registration of this name went through first, so ours could not."),
-        cannot,
-        el("div", { class: "options" },
-          el("div", { class: "option" }, el("b", {}, "Choose another name"), el("p", {}, `Any name of up to ${worth}, registered to the same wallet, so your code owns it.`), other),
-          el("div", { class: "option" }, el("b", {}, "Take a code instead"), el("p", {}, `A code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for 2 years, to use here or in the app.`), code)),
-        keptLive(ORDER_NOTE, undefined, noteOf(s, "mt-14", canAct ? signal : null)))),
-    orderCard(cardName(label, view.tld), [["Paid", `${paid} · ${methodName(invoice.cryptoCurrency ?? "card")}`], ["Kept", worth], ["Reference", fullRef(invoice.invoiceId)]]))
+    orderLine(s),
+    stages(["done", "done", "failed"]),
+    el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it, or take a code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for 2 years.`),
+    cannot,
+    el("div", { class: "actions" }, other, code),
+    actionNote(s, canAct ? signal : null),
+    referenceLine(invoice.invoiceId))
 }
 
 async function takeCode(): Promise<void> {
@@ -946,7 +926,6 @@ const failedLead = ({ invoice, codeRefused, codeKept, record }: OrderState) => i
 function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   const { view: failed, record, invoice } = s
   const view = failed!
-  const label = labelOf(view, record)
   // a code refused for good leaves nothing to try again, so the page offers another search as the other endings do
   const retry = setAction(btn("Try again", "", () => void retryRegistration(), icon("refresh")), s.busy === "retry", s.hold !== null)
   retry.dataset.focus = "retry"
@@ -954,11 +933,12 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   holdEnds(signal)(s.hold !== null)
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
   return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s) },
-    el("div", { class: "panel" },
-      el("div", { class: "panel-sec" }, stages(failedAt),
-        el("div", { class: "mt-22" }, alertBox("danger", "alert", view.error ?? "The registration did not go through", "The service's own retries gave up.")),
-        keptLive(ORDER_NOTE, undefined, noteOf(s, "mt-14", signal)), el("div", { class: "mt-18" }, action))),
-    orderCard(cardName(label, view.tld), [...paidRows(view, invoice).slice(0, 1), ["Charged again", "Never"], ["Reference", fullRef(invoice?.invoiceId ?? view.id)]]))
+    orderLine(s),
+    stages(failedAt),
+    alertBox("danger", "alert", view.error ?? "The registration did not go through", "The service's own retries gave up."),
+    actionNote(s, signal),
+    action,
+    referenceLine(invoice?.invoiceId ?? view.id))
 }
 
 // The refusal is kept with the order, so the page opened again says it from its first frame.
@@ -1000,20 +980,15 @@ const BUILDERS: Record<OrderKind, Builder<OrderState>> = {
   "pay-crypto": payCryptoScreen,
   "pay-card": payCardScreen,
   confirming: confirmingScreen,
-  slow: buildSlow,
   registering: registeringScreen,
   registered: registeredScreen,
   taken: buildTaken,
   "code-issued": buildCodeIssued,
   failed: buildFailed,
   "not-on-device": buildNotOnDevice,
-  "status:paid-late": buildPaidLate,
+  "status:closed": closedScreen,
+  "status:card-unconfirmed": cardUnconfirmedScreen,
   "status:paid-by-invoice": buildPaidByInvoice,
-  "status:still-open": buildStillOpen,
-  "status:expired-cancelled": buildExpired,
-  "status:expired-received": buildExpired,
-  "status:expired": buildExpired,
-  "status:card-failed": buildCardFailed,
   "status:unreadable": buildUnreadable,
   "status:unknown-link": buildUnknownLink,
   "status:price-changed": buildPriceChanged,
