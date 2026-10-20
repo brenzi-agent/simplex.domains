@@ -163,6 +163,8 @@ function arrivals(screen: Element): [Element, string][] {
     return [node, `${kind}#${seen.get(kind)}`]
   })
 }
+// a node put in the place held for it, as a preview in its skeleton's, is there already rather than arriving
+export const inPlace = <T extends Element>(node: T) => { node.classList.add(SHOWN); return node }
 let fontsAwaited = false
 // the key of a control a redraw turned off, whose focus dropped to the page: a later redraw that offers it gives it back
 let lostKey: string | null = null

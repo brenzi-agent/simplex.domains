@@ -3,7 +3,7 @@ import * as api from "../api.ts"
 import { el, icon, refill, waitOut } from "../dom.ts"
 import { type LinkKind, linkKind, linkProblem } from "../names.ts"
 import { entityCard } from "./search.ts"
-import { whenDropped } from "./shell.ts"
+import { inPlace, whenDropped } from "./shell.ts"
 
 const FIELD_TEXT: Record<LinkKind, { name: string; placeholder: string }> = {
   contact: { name: "Contact address", placeholder: "Paste your address" },
@@ -26,7 +26,7 @@ export function linkPreview(link: string): HTMLElement {
   const place = previewPlace()
   void api.previewLink(link).then((profile) => {
     previews.set(link, profile)
-    place.replaceWith(entityCard(profile))
+    place.replaceWith(inPlace(entityCard(profile)))
   }, () => place.replaceWith(el("span", {}, link)))
   return place
 }
@@ -102,7 +102,7 @@ export function linkField(kind: LinkKind, value: string, save: (v: string) => vo
       previews.set(link, profile)
       if (mine !== seq || !shown() || !field.isConnected) return
       accept()
-      show(entityCard(profile))
+      show(inPlace(entityCard(profile)))
     } catch (e) {
       if (mine !== seq || !shown() || !field.isConnected) return
       // the service refusing the link is about the link; a rate limit or no answer is not, and the field checks again

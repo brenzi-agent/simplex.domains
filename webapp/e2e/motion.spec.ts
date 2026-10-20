@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  control, onStep, payButton, recordedFrames, recordFrames, registrationOf, savedToReview, search, startOrder, test, toCodeStep, toReview, uniqueLabel,
+  contactLink, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, registrationOf, savedToReview, search, startOrder, test, toCodeStep, toReview, uniqueLabel,
 } from "./helpers.ts"
 
 const SIZES = [{ width: 1280, height: 800 }, { width: 390, height: 844 }]
@@ -146,4 +146,33 @@ test("a redraw that only changes the words of what is shown, as a rate limit's w
   await expect(shownScreen(page).locator(".notice")).toHaveText(/Nothing was charged/)
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
   expect((await recordedFrames<string[]>(page)).flat(), "animations run as the wait ends").not.toContain("arrive")
+})
+
+// longer than an arrival, as a real preview takes
+const PREVIEW_DELAY_MS = 700
+
+test("a link's profile takes its placeholder's place as it is, rather than arriving again", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await page.route("**/api/link/preview", async (route) => {
+    await new Promise((done) => setTimeout(done, PREVIEW_DELAY_MS))
+    await route.fulfill({ json: { type: "address", displayName: "Late profile", image: null } })
+  })
+  await search(page, uniqueLabel("inplace"))
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
+  await settled(page)
+  // each frame's opacity of the profile drawn in the field, once it is there
+  await recordFrames(page, () => {
+    const card = document.querySelector(".slide:not([inert]) .link-field .entity:not(.skeleton)")
+    return card ? getComputedStyle(card).opacity : null
+  })
+  await onStep(page).getByRole("textbox", { name: "Contact address" }).fill(contactLink("IP"))
+  // the field left while its profile is asked for shows the placeholder
+  await onStep(page).getByRole("textbox", { name: "Channel" }).focus()
+  await expect(onStep(page).locator(".link-field .entity.skeleton")).toBeVisible()
+  await expect(onStep(page).locator(".link-field .entity", { hasText: "Late profile" })).toBeVisible()
+  await settled(page)
+  const frames = await recordedFrames<string>(page)
+  expect(frames.length, "frames with the profile").toBeGreaterThan(0)
+  expect([...new Set(frames)], "the profile's opacity, frame by frame").toEqual(["1"])
 })
