@@ -338,10 +338,11 @@ function measureFrame(): void {
   const resized = new ResizeObserver(fitFrame)
   for (const part of frameParts()) resized.observe(part)
   fitFrame()
-  // a window resized opens the screen in view anew; a scrollbar coming or going, or the offline note, leaves the window as it was
+  // A window resized opens the screen in view anew, and again once the fonts its new layout asked for have loaded; a
+  // scrollbar coming or going, or the offline note, leaves the window as it was.
   const sized = () => `${innerWidth}x${innerHeight}`
   let size = sized()
-  addEventListener("resize", () => { if (sized() !== size) { size = sized(); reopen() } })
+  addEventListener("resize", () => { if (sized() !== size) { size = sized(); reopen(); void document.fonts.ready.then(reopen) } })
 }
 
 const reopen = () => { fitFrame(); if (shownScreen) holdSpacers(shownScreen) }
