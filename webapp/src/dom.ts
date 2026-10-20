@@ -138,7 +138,7 @@ let lastCopied: { button: HTMLElement; note: HTMLElement } | null = null
 function uncopy(button: HTMLElement, note: HTMLElement): void {
   copiedTimers.get(button)?.forEach(clearTimeout)
   button.classList.remove("copied")
-  copiedTimers.set(button, [setTimeout(() => { note.textContent = "" }, COPIED_FADE_MS)])
+  copiedTimers.set(button, [setTimeout(() => { note.textContent = ""; if (lastCopied?.button === button) lastCopied = null }, COPIED_FADE_MS)])
 }
 
 const COPY = "Copy"
