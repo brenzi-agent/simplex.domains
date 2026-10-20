@@ -1,8 +1,8 @@
 import { expect, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  channelLink, checkoutCode, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, previewsShown, recordedFrames, recordFrames, REGISTRATION_MS, savedToReview, search, shot,
-  startOrder, test, toFullReview, toReview, uniqueLabel, waitRegistered,
+  channelLink, checkoutCode, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, previewsShown, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf,
+  savedToReview, search, shot, startOrder, test, toFullReview, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // the rail's shift in slides: its translateX over the track's width
@@ -409,6 +409,43 @@ for (const length of [10, MAX_LABEL_LENGTH]) {
     await shot(page, `names-g5-home-own-order-${length}`)
   })
 }
+
+test(`Edit links and Restore sit centred as the steps do, and Edit links keeps still and fits both windows as it saves, for a name of ${MAX_LABEL_LENGTH} wide letters`, async ({ page, request }) => {
+  const label = wideLabel(MAX_LABEL_LENGTH)
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await control(request, `settle/${invoiceId}`)
+  await waitRegistered(page, label)
+  await page.goto(`/#/edit/${await registrationOf(request, invoiceId)}`)
+  const save = page.getByRole("button", { name: "Save links" })
+  await expect(save).toBeEnabled()
+  await fitsWindow(page, "8-edit-links")
+  for (const [i, size] of FIT_SIZES.entries()) {
+    await page.setViewportSize(size)
+    await page.reload()
+    await expect(save).toBeEnabled()
+    const before = await headingAt(page)
+    // each frame's overflow and heading top, from the change through the save to its answer
+    await recordFrames(page, () => [document.scrollingElement!.scrollHeight - innerHeight, Math.round(document.querySelector("main h1")!.getBoundingClientRect().top)])
+    await page.getByRole("textbox", { name: "Channel" }).fill(channelLink(`E${i}`))
+    await page.getByRole("textbox", { name: "Channel" }).blur()
+    await save.click()
+    await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
+    expect(await headingAt(page), `the heading once saved at ${size.width}x${size.height}`).toEqual(before)
+    const frames = await recordedFrames<[number, number]>(page)
+    expect(Math.max(...frames.map(([over]) => over)), `each frame's overflow at ${size.width}x${size.height}`).toBe(0)
+    expect([...new Set(frames.map(([, top]) => top))], `the heading's tops at ${size.width}x${size.height}`).toEqual([before.y])
+  }
+  await shot(page, "names-g7-edit-links-saved")
+  await page.goto("/#/restore")
+  await fitsWindow(page, "9-restore")
+  await page.getByLabel("Name code").fill("SN-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA")
+  await page.getByRole("button", { name: "Restore" }).click()
+  await expect(page.getByText("This code is not valid")).toBeVisible()
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    expect(await overflow(page), `Restore refused at ${size.width}x${size.height}`).toBe(0)
+  }
+})
 
 // the share of its field a focused link's text has, all but the field's icon and padding
 const FOCUSED_INPUT_SHARE = 0.7

@@ -17,7 +17,7 @@ import * as store from "../store.ts"
 import { codeField } from "./codes.ts"
 import { focusUnsettled, linkEntry, linkField } from "./links.ts"
 import {
-  type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusHeading, focusOn, go, isRoute, kept, keptLive, redirect, screen, whenLeaving,
+  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusHeading, focusOn, go, isRoute, kept, keptLive, redirect, screen, whenLeaving,
 } from "./shell.ts"
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, secondsLeft, tabHold } from "./hold.ts"
@@ -352,7 +352,7 @@ export function restorePage(): void {
 
 function dispatchRestore(event: RestoreEvent): void {
   restore = reduceRestore(restore, event)
-  if (isRoute(restoreRoute)) draw(RESTORE, (signal) => buildRestore(restore, signal))
+  if (isRoute(restoreRoute)) draw(RESTORE, (signal) => asStep(buildRestore(restore, signal)))
 }
 
 function restoreBox(): HTMLElement {
@@ -413,7 +413,7 @@ export function editPage(registrationId: string): void {
   edit = initialEdit(registrationId, store.orderByRegistration(registrationId) ?? null)
   editRoute = currentRoute()
   if (screenOfEdit(edit) === "edit-no-code") return dispatchEdit({ type: "opened" })
-  drawLoading("Reading the name…")
+  drawLoading("Reading the name…", asStep)
   void readEdit(editRoute)
 }
 
@@ -421,7 +421,7 @@ function dispatchEdit(event: EditEvent): void {
   edit = reduceEdit(edit, event)
   if (!isRoute(editRoute)) return
   const kind = screenOfEdit(edit)
-  draw(kind, (signal) => EDIT_BUILDERS[kind](edit, signal))
+  draw(kind, (signal) => asStep(EDIT_BUILDERS[kind](edit, signal)))
 }
 
 const answerEdit = (route: number, event: EditEvent) => { if (isRoute(route)) dispatchEdit(event) }

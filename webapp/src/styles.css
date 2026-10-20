@@ -213,6 +213,8 @@ body > main { flex: 1 0 auto; }
 .screen.step:has(.review) { --room: calc(1.4 * 14px + 12px); }
 /* a link refused: its line under the field, after the field's gap and the line's margin */
 .screen.step:has(.link-fields) { --room: calc(2 * 8px + 1.5 * 14px); }
+/* Edit links saved: its notice of a title and its words, a line or a phone's two, after the gap */
+.screen.step:has(> .link-entry) { --room: calc(var(--saved-lines, 2) * 1.5 * var(--fs-small) + 26px + var(--screen-gap)); }
 /* a part paid: its notice, of two lines with its padding and border, in place of the lead and the lead's pull to the heading */
 .screen.step:has(.waiting) { --room: calc(3 * var(--fs-small) + 26px + var(--lead-pull) - 1.5 * var(--fs-lead)); }
 /* an empty live region keeps its place in the column without adding a gap */
@@ -542,7 +544,8 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 /* a laptop's short window draws the steps tighter, so a name of any length leaves the room their changes take */
 @media (min-width: 561px) and (max-height: 860px) {
   .screen.step { --screen-gap: 12px; --control-pad: 12px; --fs-h1: 32px; }
-  .screen.step:has(.review) { --screen-gap: 8px; }
+  .screen.step:is(:has(.review), :has(> .link-entry)) { --screen-gap: 8px; }
+  .screen-head:has(h1 .long) { --fs-h1: 26px; }
   .summary-card { padding-block: 16px; }
   .review :is(.pay-with, .code-entry) { --block-gap: 8px; }
 }
@@ -568,7 +571,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   /* a line on another order stands as far from Pay with as the blocks around it do */
   .other-order { margin-bottom: 6px; }
   .screen { --control-pad: 11px; }
-  .screen.step { --screen-gap: 12px; }
+  .screen.step { --screen-gap: 12px; --saved-lines: 3; }
   .method { flex-direction: column; padding: 8px 6px; gap: 2px; font-size: 16px; line-height: 1.3; }
   .method span { flex-basis: auto; }
   .method svg { width: 22px; height: 22px; }
