@@ -48,7 +48,7 @@ export type OrderEvent =
   | { type: "card-started" }
   | { type: "card-submitted"; at: string }
   | { type: "card-failed" }
-  | { type: "card-refused"; note: Note }
+  | { type: "card-refused"; note: Note | null }
   | { type: "reveal-sent"; key: string }
   | { type: "reveal-refused"; key: string }
   | { type: "reveal-failed"; key: string }

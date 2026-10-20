@@ -308,15 +308,11 @@ function releasedCode(view: api.RegistrationView, record: store.OrderRecord | nu
   return { code, minLength, years: view.years }
 }
 
-function noteNode(note: Note): HTMLElement {
-  const text = note.link ? [note.text, el("a", { href: note.link.href }, note.link.text), note.link.after] : note.text
-  return alertBox(note.tone, note.icon, note.title, text)
-}
-
 // holdsFor is the screen's signal where the screen holds an action for the tab's wait
-function noteOf(s: OrderState, holdsFor: AbortSignal | null): HTMLElement | null {
-  if (holdsFor && s.hold) return holdNotice(s.hold, holdsFor)
-  return s.note ? noteNode(s.note) : null
+function noteOf({ hold, note }: OrderState, holdsFor: AbortSignal | null): HTMLElement | null {
+  if (holdsFor && hold) return holdNotice(hold, holdsFor)
+  if (!note) return null
+  return alertBox(note.tone, note.icon, note.title, note.link ? [note.text, el("a", { href: note.link.href }, note.link.text), note.link.after] : note.text)
 }
 
 const actionNote = (s: OrderState, holdsFor: AbortSignal | null) => keptLive(ORDER_NOTE, undefined, noteOf(s, holdsFor))
@@ -458,7 +454,7 @@ async function payByCard(): Promise<void> {
   dispatch({ type: "card-started" })
   const confirmed = await card.confirm()
   if (!isOpen(gen)) return
-  if (confirmed.kind === "error") return dispatch({ type: "card-refused", note: { tone: "danger", icon: "alert", title: null, text: confirmed.message } })
+  if (confirmed.kind !== "submitted") return dispatch({ type: "card-refused", note: confirmed.kind === "error" ? { tone: "danger", icon: "alert", title: null, text: confirmed.message } : null })
   // The page knows the card was submitted without asking the service, so it shows that at once, in an outage too.
   const at = new Date(api.serviceNow()).toISOString()
   store.markCardSubmitted(invoice!.invoiceId, at)
@@ -506,7 +502,6 @@ function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
     extra: actionNote(s, reorders ? signal : null), action: closedAction(s, closed) })
 }
 
-// an invoice that took a payment says how support gives it back
 function closedWords(closed: ClosedCase, inv: api.InvoiceView): [Tone, Kid] {
   switch (closed) {
     case "paid-late": return ["warn", "The payment arrived after this invoice had closed, so nothing was registered. Support refunds it: quote the reference below."]

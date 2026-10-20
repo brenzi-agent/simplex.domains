@@ -179,6 +179,10 @@ describe("reduce", () => {
     expect(confirming).toEqual({ ...STATES["pay-card"], busy: "card" })
     expect(reduce(confirming, { type: "card-refused", note })).toEqual({ ...STATES["pay-card"], note })
   })
+  it("card-refused without a note, as for a mistake Stripe shows in its own form, ends the confirm and clears the last note", () => {
+    const confirming = reduce({ ...STATES["pay-card"], note: WARN }, { type: "card-started" })
+    expect(reduce(confirming, { type: "card-refused", note: null })).toEqual({ ...STATES["pay-card"], note: null })
+  })
   it("card-refused of a confirm no longer at work changes nothing", () => {
     expect(reduce(STATES["pay-card"], { type: "card-refused", note: WARN })).toBe(STATES["pay-card"])
   })

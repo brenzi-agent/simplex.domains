@@ -98,7 +98,6 @@ export function gradName(label: string, tld = "simplex"): HTMLSpanElement {
   return el("span", { class: `grad ${nameClass(label)}` }, label, el("wbr"), `.${tld}`)
 }
 
-// where a page writes the answer to an action, announced by screen readers when it changes
 export function liveRegion(cls?: string): HTMLDivElement {
   return el("div", { class: cls, role: "status", "aria-live": "polite" })
 }

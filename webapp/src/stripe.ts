@@ -4,6 +4,8 @@
 const STRIPE_JS_URL = "https://js.stripe.com/dahlia/stripe.js"
 const KEY_META = "stripe-publishable-key"
 const CONFIRM_FAILED = "The card was not accepted. Check the details and try again."
+// a form that neither loads nor fails, as on a stalled network, has failed once this long has gone by
+export const CARD_FORM_TIMEOUT_MS = 20_000
 
 interface PaymentElement {
   mount(target: HTMLElement): void
@@ -15,7 +17,7 @@ interface StripeElements {
 }
 interface StripeInstance {
   elements(options: { clientSecret: string; appearance: Appearance }): StripeElements
-  confirmPayment(options: { elements: StripeElements; confirmParams: { return_url: string }; redirect: "if_required" }): Promise<{ paymentIntent?: { status?: string }; error?: { message?: string } }>
+  confirmPayment(options: { elements: StripeElements; confirmParams: { return_url: string }; redirect: "if_required" }): Promise<{ paymentIntent?: { status?: string }; error?: { type?: string; message?: string } }>
 }
 type StripeGlobal = (publishableKey: string) => StripeInstance
 interface Appearance {
@@ -87,7 +89,7 @@ function appearance(dark: boolean): Appearance {
   }
 }
 
-type ConfirmOutcome = { kind: "submitted" } | { kind: "error"; message: string }
+type ConfirmOutcome = { kind: "submitted" } | { kind: "invalid" } | { kind: "error"; message: string }
 export type MountedCard = { confirm: () => Promise<ConfirmOutcome>; destroy: () => void }
 
 // The form once ready, or null when the script, the SDK or the form fails: the page then shows that it did not load.
@@ -97,7 +99,9 @@ export async function mountCard(key: string, clientSecret: string, target: HTMLE
     const elements = sdk.elements({ clientSecret, appearance: appearance(dark) })
     const element = elements.create("payment", { wallets: { applePay: "never", googlePay: "never", link: "never" } })
     element.mount(target)
-    const loaded = await new Promise<boolean>((done) => { element.on("ready", () => done(true)); element.on("loaderror", () => done(false)) })
+    let stalled: ReturnType<typeof setTimeout> | undefined
+    const loaded = await new Promise<boolean>((done) => { stalled = setTimeout(done, CARD_FORM_TIMEOUT_MS, false); element.on("ready", () => done(true)); element.on("loaderror", () => done(false)) })
+    clearTimeout(stalled)
     if (!loaded) {
       element.destroy()
       return null
@@ -107,6 +111,8 @@ export async function mountCard(key: string, clientSecret: string, target: HTMLE
         try {
           // a card stays in the frame with redirect "if_required", so the return URL is never visited
           const r = await sdk.confirmPayment({ elements, confirmParams: { return_url: location.href }, redirect: "if_required" })
+          // Stripe draws a mistake in a field beside the field
+          if (r.error?.type === "validation_error") return { kind: "invalid" }
           if (r.error) return { kind: "error", message: r.error.message ?? CONFIRM_FAILED }
           const status = r.paymentIntent?.status
           return status === "succeeded" || status === "processing" ? { kind: "submitted" } : { kind: "error", message: CONFIRM_FAILED }

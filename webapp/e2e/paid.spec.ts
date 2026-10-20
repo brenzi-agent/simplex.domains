@@ -1,7 +1,8 @@
-import { expect, type Locator } from "@playwright/test"
+import { expect, type Locator, type Page } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
+import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
   channelLink, CHECKOUT_KEY, checkoutCode, checkoutOwnerCode, CODE_HEADING, contactLink, control, LINKS_HEADING, MOCK, mockRegistration, onStep, openCode, payButton, REGISTRATION_MS,
   registrationOf, SAVED, savedToReview, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
@@ -769,14 +770,17 @@ test("an unknown order link says so", async ({ page }) => {
   await shot(page, "N11-unknown")
 })
 
+// a configured key makes the order's page load Stripe.js
+const withStripeKey = (page: Page) => page.route(/\/\?order=/, async (route) => {
+  const res = await route.fetch()
+  await route.fulfill({ response: res, body: (await res.text()).replace('name="stripe-publishable-key" content=""', 'name="stripe-publishable-key" content="pk_test_e2e"') })
+})
+
 test("a card form that does not load says so and offers a new invoice", async ({ page }) => {
   const label = uniqueLabel("nocard")
   const { invoiceId } = await startOrder(page, label, { method: "card" })
-  // a configured key makes the page load Stripe.js, which is blocked here
-  await page.route(/\/\?order=/, async (route) => {
-    const res = await route.fetch()
-    await route.fulfill({ response: res, body: (await res.text()).replace('name="stripe-publishable-key" content=""', 'name="stripe-publishable-key" content="pk_test_e2e"') })
-  })
+  // Stripe.js is blocked here
+  await withStripeKey(page)
   await page.route("https://js.stripe.com/**", (route) => route.abort())
   await page.reload()
   await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
@@ -796,10 +800,7 @@ const STRIPE_FORM_FAILS = `window.Stripe = () => ({ elements: () => ({ create: (
 
 test("a card form that Stripe cannot load says so and offers a new invoice, rather than a form that never comes", async ({ page }) => {
   await startOrder(page, uniqueLabel("cardfail"), { method: "card" })
-  await page.route(/\/\?order=/, async (route) => {
-    const res = await route.fetch()
-    await route.fulfill({ response: res, body: (await res.text()).replace('name="stripe-publishable-key" content=""', 'name="stripe-publishable-key" content="pk_test_e2e"') })
-  })
+  await withStripeKey(page)
   await page.route("https://js.stripe.com/**", (route) => route.fulfill({ contentType: "text/javascript", body: STRIPE_FORM_FAILS }))
   await page.reload()
   await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
@@ -807,12 +808,26 @@ test("a card form that Stripe cannot load says so and offers a new invoice, rath
   await expect(page.getByRole("button", { name: "Get a new invoice" })).toBeEnabled()
 })
 
+// a Stripe.js whose card form, once mounted, neither loads nor says it failed, as on a stalled network
+const STRIPE_FORM_STALLS = `window.Stripe = () => ({ elements: () => ({ create: () => ({ on: () => undefined, mount: () => undefined, destroy: () => undefined }) }) })`
+// room past the bound for the page to draw what follows
+const CARD_FORM_SLACK_MS = 15_000
+
+test("a card form that neither loads nor fails gives up after its bound and offers a new invoice, rather than Pay off for good", async ({ page }) => {
+  await startOrder(page, uniqueLabel("cardstall"), { method: "card" })
+  await withStripeKey(page)
+  await page.route("https://js.stripe.com/**", (route) => route.fulfill({ contentType: "text/javascript", body: STRIPE_FORM_STALLS }))
+  await page.reload()
+  await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
+  await expect(payButton(page)).toBeDisabled()
+  await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible({ timeout: CARD_FORM_TIMEOUT_MS + CARD_FORM_SLACK_MS })
+  await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Get a new invoice" })).toBeEnabled()
+})
+
 test("a card form that does not load, in a browser without the order, leads to the name code", async ({ page }) => {
   await startOrder(page, uniqueLabel("nocardrec"), { method: "card" })
-  await page.route(/\/\?order=/, async (route) => {
-    const res = await route.fetch()
-    await route.fulfill({ response: res, body: (await res.text()).replace('name="stripe-publishable-key" content=""', 'name="stripe-publishable-key" content="pk_test_e2e"') })
-  })
+  await withStripeKey(page)
   await page.route("https://js.stripe.com/**", (route) => route.abort())
   await page.evaluate(() => localStorage.clear())
   await page.reload()

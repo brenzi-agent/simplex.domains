@@ -94,7 +94,7 @@ const setLink = (kind: LinkKind, link: string) => void act({ type: "link-set", k
 
 // Follows an invoice, each answer coming once it moves on from the one seen, while `followed` returns true; an invoice the
 // service no longer knows is null.
-async function follow(invoiceId: string, signal: AbortSignal, followed: (seen: api.InvoiceView | null) => boolean | void, seen?: api.InvoiceView): Promise<void> {
+async function follow(invoiceId: string, signal: AbortSignal, followed: (seen: api.InvoiceView | null) => boolean, seen?: api.InvoiceView): Promise<void> {
   while (!signal.aborted) {
     try {
       seen = await api.readInvoice(invoiceId, seen && { status: seen.status, phase: seen.registration.phase, paid: seen.cryptoAmountPaid ?? "", full: seen.paidInFull === true }, signal)
@@ -112,12 +112,13 @@ async function follow(invoiceId: string, signal: AbortSignal, followed: (seen: a
 // The card order blocks a second one only while its invoice is open, so checkout follows it and opens up when it settles or closes.
 const settleWaiting = (waiting: WaitingOrder, signal: AbortSignal) => follow(waiting.invoiceId, signal, (seen) => seen?.status === "open" || settled(waiting, signal))
 
-function settled(waiting: WaitingOrder, signal: AbortSignal): void {
+function settled(waiting: WaitingOrder, signal: AbortSignal): false {
   store.updateOrder(waiting.registrationId, { cardSubmittedAt: undefined })
   store.clearCardSubmitted(waiting.invoiceId)
-  if (signal.aborted) return
+  if (signal.aborted) return false
   dispatch({ type: "waiting-settled" })
   void showOpenOrder(signal)
+  return false
 }
 
 const OPEN_ORDER_LOOKBACK = 5
@@ -131,14 +132,14 @@ async function showOpenOrder(signal: AbortSignal): Promise<void> {
   const open = invoices.find(unpaid)
   if (!open || signal.aborted) return
   const show = (seen: api.InvoiceView | null) => {
-    if (!signal.aborted) dispatch({ type: "open-order-seen", order: unpaid(seen) ? { invoiceId: open.invoiceId, confirming: seen.paidInFull === true } : null })
-    return unpaid(seen)
+    const order = unpaid(seen) ? { invoiceId: open.invoiceId, confirming: seen.paidInFull === true } : null
+    if (!signal.aborted && JSON.stringify(order) !== JSON.stringify(state.openOrder)) dispatch({ type: "open-order-seen", order })
+    return order !== null
   }
   show(open)
   void follow(open.invoiceId, signal, show, open)
 }
 
-// Change opens the links step with focus in the field chosen
 function linkLine(kind: LinkKind, key: string, value: Node | string, action: string, name: string): HTMLElement {
   const change = link(action, () => { go(checkoutUrl("links")); focusOn(`link-${kind}`) })
   change.setAttribute("aria-label", name)
@@ -154,7 +155,6 @@ function linkLines(c: session.Checkout): HTMLElement | null {
     : linkLine("contact", "Links", el("span", {}, "None"), "Add", "Add links"))
 }
 
-// the term and its price on one line, as the search answer shows them
 function summaryCard(c: session.Checkout): HTMLElement {
   const y = years(c)
   return el("section", { class: "card summary-card" }, nameTitle(c.label, "name", c.chain.tld),

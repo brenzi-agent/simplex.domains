@@ -390,7 +390,8 @@ svg.qr { display: block; width: 132px; height: auto; }
 .waiting a { color: var(--danger-fg); }
 .stripe { border-radius: 16px; }
 /* Stripe's card form mounts after its step is drawn, so its box holds the form's height from the start: card only, with
-   Stripe.js dahlia, 221-230 px tall on the 640 px column and 306-320 px on a phone's, in Chromium and Firefox */
+   Stripe.js dahlia, 221-230 px tall on the 640 px column and 306-320 px on a phone's, in Chromium and Firefox. The
+   column is whole from 672 px: 640 px and its 16 px gutters. */
 .stripe:not(:has(> .label)) { min-height: 320px; }
 @media (min-width: 672px) { .stripe:not(:has(> .label)) { min-height: 230px; } }
 /* the development stand-in, framed as the form it stands in for */
