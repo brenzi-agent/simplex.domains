@@ -11,6 +11,7 @@ export type Answer =
   | { kind: "rule"; label: string; problem: LabelProblem }
   | { kind: "found"; label: string; answer: SearchAnswer; mine: Mine | null; now: number }
   | { kind: "unchecked" }
+  | { kind: "checking" }
 
 export type Moved = { to: "code"; url: string } | { to: "name"; url: string; label: string; tld: string }
 type RegisterRefusal = { why: "taken" | "failed" } | { why: "other"; invoiceId: string }
@@ -55,8 +56,10 @@ export const initialSearch = (): SearchState => ({
   retarget: null, moved: null, hold: null, paused: false, ownOrder: null, register: IDLE,
 })
 
-export function returnedTo(s: SearchState, opening: Opening, name: string): SearchState {
-  return s.opening === opening && s.name === name && s.answer?.kind === "found" ? { ...s, searching: null, register: IDLE } : initialSearch()
+// An available name this browser has ordered since may be taken now, by its own order too, so it is checked again first.
+export function returnedTo(s: SearchState, opening: Opening, name: string, ordered: boolean): SearchState {
+  if (s.opening !== opening || s.name !== name || s.answer?.kind !== "found") return initialSearch()
+  return { ...s, searching: null, register: IDLE, answer: ordered && s.answer.answer.status === "available" ? { kind: "checking" } : s.answer }
 }
 
 const unsearched = (s: SearchState) => foldLabel(s.typed) !== s.name
@@ -95,7 +98,7 @@ export function reduce(s: SearchState, e: SearchEvent): SearchState {
     }
     case "unanswered": return e.seq === s.seq ? { ...s, searching: null, answer: { kind: "unchecked" } } : s
     case "search-held": return e.seq === s.seq ? { ...s, searching: null, answer: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: NO_LEAD }, paused: true } : s
-    case "hold-ended": return { ...s, hold: null, paused: false }
+    case "hold-ended": return { ...s, hold: null, paused: false, answer: s.paused && foldLabel(s.typed) ? { kind: "checking" } : s.answer }
     case "own-order-seen": return s.answer?.kind === "found" && s.answer.label === e.label ? { ...s, ownOrder: e.url } : s
     case "retarget-read":
       if (s.retarget?.registrationId !== e.record.registrationId) return s

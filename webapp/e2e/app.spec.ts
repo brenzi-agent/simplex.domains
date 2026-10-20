@@ -2,7 +2,7 @@ import { expect, type APIRequestContext, type Locator, type Page } from "@playwr
 import { randomBytes } from "node:crypto"
 import { durationFor, registerIntentDigest, type Registration } from "../src/crypto/registration.ts"
 import { checksumAddress, fromHex, hex, signDigest, walletFromEntropy, type Wallet } from "../src/crypto/wallet.ts"
-import { control, MOCK, onStep, REGISTRATION_MS, registrationOf, search, searchName, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
+import { CHECKOUT_KEY, control, MOCK, onStep, REGISTRATION_MS, registrationOf, search, searchName, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
 
 const APP_SIGNS = "Waiting for SimpleX to sign the registration with your app's wallet."
 
@@ -199,8 +199,6 @@ test("offline, the footer scrolls clear of the note, and its last link takes a c
           && Math.abs(frame + height("body > main") - windowHeight) < 1
           && getComputedStyle(document.documentElement).getPropertyValue("--frame-h") === `${frame}px`
           && Math.round(height(".track")) === Math.ceil(height(".slide:not([inert])"))
-          // reduced motion still eases each style change over a frame, so the note grows to its height then
-          && document.getAnimations().length === 0
         scrollTo(0, document.documentElement.scrollHeight)
         const noteTop = document.querySelector(".offline-note")!.getBoundingClientRect().top
         return { settled, overlaps: [...document.querySelectorAll("body > footer > *")].map((n) => Math.max(0, Math.ceil(n.getBoundingClientRect().bottom - noteTop))) }
@@ -217,4 +215,67 @@ test("offline, the footer scrolls clear of the note, and its last link takes a c
   } finally {
     await context.setOffline(false)
   }
+})
+
+test("Restore keeps its place while it looks for the code's orders, saying so on the button", async ({ page }) => {
+  await search(page, uniqueLabel("restbusy"))
+  await toCodeStep(page)
+  const ownerCode = await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).ownerCode as string, CHECKOUT_KEY)
+  await page.goto("/#/restore")
+  await page.getByLabel("Name code").fill(ownerCode)
+  const restore = page.getByRole("button", { name: "Restore" })
+  const top = (await restore.boundingBox())!.y
+  // the button's top in each frame it says it is busy
+  await page.evaluate(() => {
+    const w = window as unknown as { __busy: number[] }
+    w.__busy = []
+    const look = () => {
+      const button = document.querySelector<HTMLElement>("main .btn.block")
+      if (button?.getAttribute("aria-busy") === "true") w.__busy.push(Math.round(button.getBoundingClientRect().top))
+      requestAnimationFrame(look)
+    }
+    requestAnimationFrame(look)
+  })
+  await restore.click()
+  await expect(page.getByText("No order was found for this code")).toBeVisible()
+  const busy = await page.evaluate(() => (window as unknown as { __busy: number[] }).__busy)
+  expect(busy.length, "frames drawn while it looked").toBeGreaterThan(0)
+  expect([...new Set(busy)], "the button's top while it looked").toEqual([Math.round(top)])
+})
+
+test("on a phone, Forget's question glides into view rather than jumping there", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto("/#/trademarks")
+  // codes enough that the question opens below the window's foot
+  await page.evaluate(() => {
+    for (const n of [1, 2, 3]) localStorage.setItem(`simplex-names:code:SN6-GLIDE${n}`, JSON.stringify({ code: `SN6-Z6VPA-7YPF0-XN8B4-9S1Z${n}`, minLength: 6, years: 2, addedAt: new Date().toISOString() }))
+  })
+  await page.goto("/#/names")
+  const ask = page.getByText("Forget everything in this browser")
+  await ask.scrollIntoViewIfNeeded()
+  // resolves once the first frame is sampled, so a jump at the click shows between two samples
+  await page.evaluate(() => new Promise<void>((started) => {
+    const w = window as unknown as { __scrolled: number[] }
+    w.__scrolled = []
+    const look = () => {
+      w.__scrolled.push(scrollY)
+      if (w.__scrolled.length === 1) started()
+      requestAnimationFrame(look)
+    }
+    requestAnimationFrame(look)
+  }))
+  // a pointer's own click, as Playwright's scrolls the link into view first
+  const box = (await ask.boundingBox())!
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  await expect(page.getByRole("button", { name: "Keep them" })).toBeInViewport({ ratio: 1 })
+  // until the page has stood still for a few frames
+  const still = () => page.evaluate(() => {
+    const at = (window as unknown as { __scrolled: number[] }).__scrolled
+    return at.length > 5 && new Set(at.slice(-5)).size === 1
+  })
+  await expect.poll(still).toBe(true)
+  const scrolled = await page.evaluate(() => (window as unknown as { __scrolled: number[] }).__scrolled)
+  const moves = scrolled.slice(1).map((y, i) => y - scrolled[i]).filter((d) => d !== 0)
+  expect(moves.length, `the frames the page scrolled in: ${scrolled.join(",")}`).toBeGreaterThan(2)
 })

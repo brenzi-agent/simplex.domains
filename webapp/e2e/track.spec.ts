@@ -89,34 +89,57 @@ test("a move to the next step slides; a first mount, a jump over a step and a re
 
 // the sizes a purchase step must fit without scrolling, a laptop's and a phone's
 const FIT_SIZES = [{ width: 1280, height: 800 }, { width: 390, height: 844 }]
-// how far a step's content may sit off the middle between the header and the footer
+// how far a step's content may sit off the middle between the header and the footer, or off the room it keeps below it
 const CENTRE_PX = 2
 
-// Where the heading of the screen in view starts, once the track has taken its step's height, a frame after a change, and
-// moved: under reduced motion its move is a transition too, of almost no length, which starts from where the track was.
-const headingAt = (page: Page) => page.evaluate(async () => {
-  await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
-  await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)))
-  const box = (document.querySelector(".slide:not([inert]) h1") ?? document.querySelector("body > main h1"))!.getBoundingClientRect()
-  return { x: Math.round(box.left), y: Math.round(box.top) }
+// The frame's height for the window, which its observer sets a frame or more after the window changes, and the track's
+// for its step, which follows the step's own the same way.
+const frameSettled = (page: Page) => page.waitForFunction(() => {
+  const parts = [...document.querySelectorAll("body > header, body > footer, body > .offline")]
+  const frame = Math.ceil(parts.reduce((h, p) => h + p.getBoundingClientRect().height, 0))
+  const track = document.querySelector(".track")
+  const slide = document.querySelector(".slide:not([inert])")
+  return getComputedStyle(document.documentElement).getPropertyValue("--frame-h") === `${frame}px`
+    && (!track || !slide || Math.round(track.getBoundingClientRect().height) === Math.ceil(slide.getBoundingClientRect().height))
 })
 
-// The screen in view fits the window at each size, its content centred between the header and the footer unless it is
-// the home, which lays itself out as the landing does; and is captured for review when shots are asked for. Returns where
-// its heading starts on the laptop's window.
+// Where the heading of the screen in view starts, once the frame and the track have their heights, a frame after a
+// change, and the track has moved.
+async function headingAt(page: Page): Promise<{ x: number; y: number }> {
+  await frameSettled(page)
+  return page.evaluate(async () => {
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+    await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)))
+    const box = (document.querySelector(".slide:not([inert]) h1") ?? document.querySelector("body > main h1"))!.getBoundingClientRect()
+    return { x: Math.round(box.left), y: Math.round(box.top) }
+  })
+}
+
+const overflow = (page: Page) => page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight)
+
+// The screen in view fits the window at each size, its content centred between the header and the footer, or as much
+// higher as keeps below it the room its biggest change takes, unless it is the home, which lays itself out as the landing
+// does; and is captured for review when shots are asked for. Returns where its heading starts on the laptop's window.
 async function fitsWindow(page: Page, name: string, centred = true): Promise<number> {
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
-    const measured = () => page.evaluate(() => {
+    const measured = () => page.evaluate((bound) => {
       const shown = document.querySelector(".slide:not([inert]) > *, body > main > .screen")!
-      const kids = [...shown.children].filter((k) => k.getBoundingClientRect().height > 0)
+      const kids = [...shown.children].filter((k) => !k.matches(".vspace") && k.getBoundingClientRect().height > 0)
       const above = kids[0].getBoundingClientRect().top - document.querySelector("body > header")!.getBoundingClientRect().bottom
       const below = document.querySelector("body > footer")!.getBoundingClientRect().top - kids.at(-1)!.getBoundingClientRect().bottom
+      // the room the step keeps, resolved by a box out of its flow, and its own padding under its spacer
+      const probe = shown.appendChild(document.createElement("div"))
+      probe.style.position = "absolute"
+      probe.style.height = "max(var(--note-room), var(--room, 0px))"
+      const room = probe.getBoundingClientRect().height + parseFloat(getComputedStyle(shown).paddingBottom)
+      probe.remove()
       // the track follows its step's height a frame or two after the window changes
       const track = document.querySelector(".track")
       const settled = !track || !shown.closest(".slide") || Math.round(track.getBoundingClientRect().height) === Math.ceil(shown.parentElement!.getBoundingClientRect().height)
-      return { settled, overflow: Math.max(0, document.scrollingElement!.scrollHeight - innerHeight), offCentre: Math.round(Math.abs(above - below)) }
-    })
+      const roomed = above < below && Math.abs(below - room) <= bound
+      return { settled, overflow: Math.max(0, document.scrollingElement!.scrollHeight - innerHeight), offCentre: roomed ? 0 : Math.round(Math.abs(above - below)) }
+    }, CENTRE_PX)
     // an offset within the bound reads as none, so a failure shows how far off it is
     await expect.poll(async () => {
       const { settled, overflow, offCentre } = await measured()
@@ -281,3 +304,81 @@ for (const length of [15, 25, MAX_LABEL_LENGTH]) {
     await fitsWindow(page, `${shots}-7-registered`)
   })
 }
+
+// Search, Register, both links, the name code saved, to Check your order with its code field open: the review at its fullest.
+async function toFullReview(page: Page, prefix: string): Promise<void> {
+  await search(page, uniqueLabel(prefix))
+  const step = onStep(page)
+  await step.getByRole("button", { name: "Register" }).click()
+  await step.getByLabel("Address").fill(contactLink("R1"))
+  await step.getByLabel("Channel").fill(channelLink("R2"))
+  for (const field of await step.locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
+  await step.getByRole("button", { name: "Continue" }).click()
+  await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
+  await savedToReview(page)
+  await openCode(page)
+}
+
+test("a part paid takes the lead's place with its notice, the payment keeping its heading still and fitting both windows", async ({ page, request }) => {
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    const { invoiceId } = await startOrder(page, uniqueLabel("part"), { method: "btc" })
+    await expect(onStep(page).getByText("Bookmark this page to come back to this payment.")).toBeVisible()
+    const before = await headingAt(page)
+    await control(request, `partial/${invoiceId}`)
+    await expect(onStep(page).locator(".notice.warn", { hasText: "Part of the payment arrived" })).toBeVisible()
+    expect(await headingAt(page), `the heading at ${size.width}x${size.height}`).toEqual(before)
+    expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
+    await expect(onStep(page).getByText(/^Part of the payment arrived: [\d.]+ of [\d.]+ BTC is seen\./)).toBeVisible()
+    await expect(onStep(page).getByText("Bookmark this page to come back to this payment.")).toHaveCount(0)
+  }
+  await shot(page, "names-g4-part-paid")
+})
+
+test("the review keeps its heading still as a code's verdict comes and goes, with both links, at both sizes", async ({ page }) => {
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    await toFullReview(page, "verdict")
+    const before = await headingAt(page)
+    await checkoutCode(page).fill("Q")
+    await expect(onStep(page).locator(".verdict.bad")).toBeVisible()
+    expect(await headingAt(page), `the heading with the verdict at ${size.width}x${size.height}`).toEqual(before)
+    expect(await overflow(page), `the page's overflow with the verdict at ${size.width}x${size.height}`).toBe(0)
+    await checkoutCode(page).fill("")
+    await expect(onStep(page).locator(".verdict.bad")).toHaveCount(0)
+    expect(await headingAt(page), `the heading once the verdict clears at ${size.width}x${size.height}`).toEqual(before)
+  }
+  // a field takes its colour at once: no state eases in outside the track
+  expect(await checkoutCode(page).evaluate((input) => getComputedStyle(input.closest(".field")!).transitionDuration)).toBe("0s")
+  await checkoutCode(page).fill("Q")
+  await shot(page, "names-g4-review-verdict")
+})
+
+test("going offline and back moves neither the home's heading nor the review's, and scrolls neither, at both sizes", async ({ page, context }) => {
+  const offlineAndBack = async (where: string) => {
+    const before = await headingAt(page)
+    await context.setOffline(true)
+    try {
+      await expect(page.locator(".offline-note")).toBeVisible()
+      expect(await headingAt(page), `${where}'s heading offline`).toEqual(before)
+      expect(await overflow(page), `${where}'s overflow offline`).toBe(0)
+    } finally {
+      await context.setOffline(false)
+    }
+    await expect(page.locator(".offline-note")).toBeHidden()
+    expect(await headingAt(page), `${where}'s heading back online`).toEqual(before)
+    expect(await overflow(page), `${where}'s overflow back online`).toBe(0)
+  }
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    await page.goto("/")
+    await page.evaluate(() => document.fonts.ready)
+    await offlineAndBack(`the home at ${size.width}`)
+    await toFullReview(page, "offline")
+    await offlineAndBack(`the review at ${size.width}`)
+  }
+  await context.setOffline(true)
+  await expect(page.locator(".offline-note")).toBeVisible()
+  await shot(page, "names-g4-review-offline")
+  await context.setOffline(false)
+})

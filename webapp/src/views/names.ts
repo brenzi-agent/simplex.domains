@@ -1,7 +1,7 @@
 // Your names: this browser's orders and codes, restoring an order with its name code, and editing a name's links.
 import * as api from "../api.ts"
 import { parseNameCode } from "../crypto/code.ts"
-import { alertBox, btn, chip, codeDisplay, copyButton, disabled, el, gradName, icon, type Kid, setAction, waitOut } from "../dom.ts"
+import { alertBox, btn, chip, codeDisplay, copyButton, disabled, el, gradName, icon, type Kid, reducedMotion, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, methodName, SEP, termText } from "../format.ts"
 import type { IconName } from "../icons.ts"
@@ -39,7 +39,6 @@ function row(key: string, mark: string, title: string, sub: Kid, state: Node, ac
 let list: ListState = initialList({ orders: [], pending: [], codes: [], canPersist: true }, null, {}, {}, 0)
 let listRoute = -1
 let listStop: AbortSignal = AbortSignal.abort()
-let lastSeen: Record<string, RowSeen> = {}
 let lastChecked: Record<string, CodeCheck> = {}
 const readIds = new Set<string>()
 const retried = new Set<string>()
@@ -47,7 +46,8 @@ const readCodes = new Set<string>()
 
 // an order page that saw its name registered tells the list, which then draws the row registered from the start
 export function seenRegistered(view: api.RegistrationView, invoice: api.InvoiceView | null): void {
-  lastSeen = { ...lastSeen, [view.id]: { ...lastSeen[view.id], view, invoice } }
+  const seen = session.seen<RowSeen>()
+  session.setSeen({ ...seen, [view.id]: { ...seen[view.id], view, invoice } })
 }
 
 const storedNow = (): Stored => ({ orders: store.orders(), pending: store.pendingCodes(), codes: store.codes(), canPersist: store.canPersist() })
@@ -61,7 +61,7 @@ export function historyPage(): void {
   readIds.clear()
   retried.clear()
   readCodes.clear()
-  list = initialList(storedNow(), tabHold(), lastSeen, lastChecked, api.serviceNow())
+  list = initialList(storedNow(), tabHold(), session.seen<RowSeen>(), lastChecked, api.serviceNow())
   showList()
 }
 
@@ -71,7 +71,7 @@ function dispatchList(event: ListEvent): void {
 }
 
 function showList(): void {
-  lastSeen = list.seen
+  session.setSeen(list.seen)
   lastChecked = list.checked
   if (!isRoute(listRoute)) return
   draw("names", (signal) => buildNames(list, signal))
@@ -191,8 +191,8 @@ function forgetBlock(s: ListState): HTMLElement | null {
       dispatchList(storedEvent())
       dispatchList({ type: "forget-asked" })
       focusOn(KEEP)
-      // the question and both its answers come into view, as focus does not scroll
-      document.querySelector(".forget")?.scrollIntoView({ block: "nearest" })
+      // the question and both its answers come into view, as focus does not scroll, gliding there unless asked not to
+      document.querySelector(".forget")?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "instant" : "smooth" })
     } }, "Forget everything in this browser")
   }
   const keep = btn("Keep them", "quiet", () => {
@@ -314,7 +314,8 @@ function rowChip(s: ListState, o: store.OrderRecord, seen: RowSeen | undefined):
 function pendingRow(p: store.PendingCode, s: ListState, open: session.Checkout | null, signal: AbortSignal): HTMLElement {
   const key = pendingKey(p)
   const finding = s.finding[p.ownerCode]
-  const resume = open?.ownerCode === p.ownerCode ? small("Continue checkout", `${key}-continue`, () => go(checkoutUrl(open.step))) : null
+  const resume = open?.ownerCode === p.ownerCode ? small("Continue checkout", `${key}-continue`,
+    () => session.checkout()?.ownerCode === p.ownerCode ? go(checkoutUrl(open.step)) : dispatchList(storedEvent())) : null
   const findable = resume === null && finding !== "none"
   const hold = findable ? s.hold : null
   const find = findable ? small("Find the order", `${key}-find`, () => void findOrder(p), "refresh") : null
@@ -396,13 +397,12 @@ function buildRestore(s: RestoreState, signal: AbortSignal): HTMLElement {
   const box = kept("restore-code", restoreBox)
   const refusal = s.refusal && REFUSALS[s.refusal]
   box.className = `field code-input${refusal ? " bad" : ""}`
-  const action = setAction(btn("Restore", "block", () => void runRestore(), icon("arrow")), s.busy, restoreOff(s))
+  const action = setAction(btn(s.busy ? "Finding the code's orders…" : "Restore", "block", () => void runRestore(), s.busy ? null : icon("arrow")), s.busy, restoreOff(s))
   action.dataset.focus = RESTORE
   holdEnder(signal, () => dispatchRestore({ type: "hold-ended" }))(s.hold !== null)
-  const note = s.busy ? el("p", { class: "note" }, "Finding the code's orders…")
-    : s.hold ? holdNotice(s.hold, signal)
-      : refusal ? refusal.verdict ? el("p", { class: "verdict bad" }, `${refusal.title}. ${refusal.text}`) : alertBox("danger", "alert", refusal.title, refusal.text)
-        : null
+  const note = s.hold ? holdNotice(s.hold, signal)
+    : refusal ? refusal.verdict ? el("p", { class: "verdict bad" }, `${refusal.title}. ${refusal.text}`) : alertBox("danger", "alert", refusal.title, refusal.text)
+      : null
   return screen({ title: "Restore with a name code", lead: "Enter the name code you saved to find your order. The code never leaves this browser.", back: NAMES },
     el("div", { class: "code-entry" }, el("span", { class: "label" }, "Name code"), box),
     keptLive("restore-note", undefined, note),

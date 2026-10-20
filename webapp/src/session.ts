@@ -34,6 +34,7 @@ export interface Checkout {
 
 const CHECKOUT = "simplex-names-checkout"
 const SCROLLED = "simplex-names-scrolled"
+const SEEN = "simplex-names-seen"
 const memory = new Map<string, string>()
 // keys whose last write did not reach sessionStorage, which then holds an older value
 const unsaved = new Set<string>()
@@ -68,10 +69,14 @@ function write(key: string, value: unknown): void {
 export const scrolled = (): Record<number, number> => read<Record<number, number>>(SCROLLED) ?? {}
 export const setScrolled = (at: number, y: number) => write(SCROLLED, { ...scrolled(), [at]: y })
 
-// a checkout without its name or chain is a leftover of a page that outlived its order, not one to continue
+// what Your names last read of each order, so the list loaded again draws the rows it knows in their last shape at once
+export const seen = <T>(): Record<string, T> => read<Record<string, T>>(SEEN) ?? {}
+export const setSeen = (rows: object) => write(SEEN, rows)
+
+// a checkout without its name or chain is a leftover, not one to continue; one kept without its step opens the review, which sends it on
 export function checkout(): Checkout | null {
   const c = read<Checkout>(CHECKOUT)
-  return c?.label && c.chain ? c : null
+  return c?.label && c.chain ? { ...c, step: c.step ?? "review" } : null
 }
 export const setCheckout = (c: Checkout | null) => write(CHECKOUT, c)
 

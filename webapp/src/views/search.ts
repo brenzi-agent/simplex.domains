@@ -16,7 +16,7 @@ import {
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import {
-  type Builder, CONTACT_EMAIL, currentRoute, draw, focusOn, go, historyPlace, INVEST_AMOUNT, isRedraw, isRoute, kept, keptLive, outcome, searchLink, throughHistory, WEFUNDER_URL,
+  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, focusOn, go, historyPlace, INVEST_AMOUNT, isRedraw, isRoute, kept, keptLive, outcome, searchLink, spacer, throughHistory, WEFUNDER_URL,
   whenDropped,
 } from "./shell.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
@@ -70,7 +70,7 @@ export function searchPage(params: URLSearchParams): void {
   const fresh = !isRedraw() || shown === null || state.opening !== opening
   const returned = fresh && throughHistory()
   if (fresh) {
-    state = returned ? returnedTo(state, opening, name) : initialSearch()
+    state = returned ? returnedTo(state, opening, name, store.orders().some((o) => o.label === name)) : initialSearch()
     shown = null
     opens += 1
   }
@@ -81,7 +81,7 @@ export function searchPage(params: URLSearchParams): void {
   if (opening === "bad-app-link") return
   if (state.retarget) void checkRetarget(state.retarget)
   if (searchDue(state)) submit()
-  else if (returned && state.answer?.kind === "found") void runSearch(state.name, state.seq)
+  else if (returned && state.answer) void runSearch(state.name, state.seq)
   // WebKit scrolls a focused field into view when a web font loaded later resizes its text, so focus is taken after the fonts.
   const page = opens
   void document.fonts.ready.then(() => { if (onPage(page) && document.activeElement === document.body) field?.focus({ preventScroll: true }) })
@@ -169,9 +169,8 @@ async function checkRetarget(record: store.OrderRecord): Promise<void> {
 }
 
 function holdEnded(): void {
-  const paused = state.paused
   dispatch({ type: "hold-ended" })
-  if (paused && foldLabel(state.typed)) submit()
+  if (state.answer?.kind === "checking") submit()
 }
 
 type Found = Extract<Answer, { kind: "found" }>
@@ -223,9 +222,9 @@ const BUILDERS: Record<SearchKind, Builder<SearchState>> = {
 }
 
 function buildBadAppLink(s: SearchState): HTMLElement {
-  return outcome({ tone: "warn", icon: "alert", title: "This link from SimpleX does not work",
+  return asStep(outcome({ tone: "warn", icon: "alert", title: "This link from SimpleX does not work",
     text: "The wallet it names is not a valid address. Open the link again from the app, or search here for a name owned by a wallet made in this browser.",
-    action: el("a", { class: "btn quiet", href: searchLink(s.name, null) }, "Search here") })
+    action: el("a", { class: "btn quiet", href: searchLink(s.name, null) }, "Search here") }))
 }
 
 function searchBox(): HTMLElement {
@@ -269,9 +268,9 @@ function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
   }
   holdEnder(signal, holdEnded)(s.hold !== null)
   return el("section", { class: "home" },
-    el("div", { class: "vspace" }),
+    kept("home-top", spacer),
     el("div", { class: "headline" }, el("h1", {}, HEADLINE), el("p", { class: "sub" }, SUB)),
-    el("div", { class: "vspace cap" }),
+    kept("home-cap", () => el("div", { class: "vspace cap" })),
     openingLine(s),
     box,
     // the answer takes the invest block's place below the search, so the page above it stays still
@@ -298,7 +297,7 @@ function answerOf(s: SearchState, retry: () => void, signal: AbortSignal): Kid {
   const answer = s.answer
   if (answer?.kind === "rule") return ruleLine(answer)
   if (answer?.kind === "unchecked") return line("warn", "alert", "This name could not be checked. ", link("Try again", retry))
-  if (answer?.kind !== "found") return null
+  if (answer?.kind !== "found") return answer?.kind === "checking" ? line("", "clock", "Checking the name…") : null
   const found = answer.answer
   if (found.status === "available") return availableAnswer(s, answer.label, found, signal)
   if (found.status === "reserved") {

@@ -630,3 +630,17 @@ for (const other of ["Monero", "a code"]) {
     await copy.close()
   })
 }
+
+test("a Continue checkout drawn before its checkout ended draws the list anew rather than open a checkout that is gone", async ({ page }) => {
+  await search(page, uniqueLabel("ended"))
+  await toCodeStep(page)
+  await page.goto("/#/names")
+  const resume = page.getByRole("button", { name: "Continue checkout" })
+  await expect(resume).toBeVisible()
+  // the checkout ends in this tab, as its order going out ends it, while the list stays drawn
+  await page.evaluate((key) => sessionStorage.removeItem(key), CHECKOUT_KEY)
+  await resume.click()
+  await expect(page.getByRole("button", { name: "Find the order" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
+  expect(new URL(page.url()).hash).toBe("#/names")
+})

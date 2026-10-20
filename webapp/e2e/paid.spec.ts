@@ -802,3 +802,38 @@ test("a card form that does not load, in a browser without the order, leads to t
   await page.getByRole("button", { name: "Enter your name code" }).click()
   await expect(page.getByLabel("Name code", { exact: true })).toBeVisible()
 })
+
+test("once a name is registered, Back to its search never offers it again, and Your names draws its row registered at once after a reload", async ({ page, request }) => {
+  const label = uniqueLabel("mine")
+  const { invoiceId } = await startOrder(page, label)
+  await control(request, `settle/${invoiceId}`)
+  await waitRegistered(page, label)
+  // every Register the search draws from here on, however briefly
+  await page.evaluate(() => {
+    const w = window as unknown as { __offers: number }
+    w.__offers = 0
+    new MutationObserver(() => {
+      if ([...document.querySelectorAll(".answer button")].some((b) => b.textContent!.includes("Register"))) w.__offers += 1
+    }).observe(document.body, { childList: true, subtree: true, characterData: true })
+  })
+  await page.goBack()
+  await expect(page.locator(".answer .chip", { hasText: "Yours" })).toBeVisible()
+  expect(await page.evaluate(() => (window as unknown as { __offers: number }).__offers), "draws offering the name again").toBe(0)
+
+  await page.reload()
+  await expect(page.locator(".answer .chip", { hasText: "Yours" })).toBeVisible()
+  // each chip the name's row is drawn with, from the list's first draw
+  await page.evaluate((title) => {
+    const w = window as unknown as { __chips: string[] }
+    w.__chips = []
+    new MutationObserver(() => {
+      const row = [...document.querySelectorAll(".list-row")].find((r) => r.querySelector("b")?.textContent === title)
+      const chip = row?.querySelector(".chip")?.textContent
+      if (chip && w.__chips.at(-1) !== chip) w.__chips.push(chip)
+    }).observe(document.body, { childList: true, subtree: true, characterData: true })
+  }, `${label}.simplex`)
+  await page.getByRole("link", { name: "Your names" }).first().click()
+  const row = page.locator(".list-row", { hasText: `${label}.simplex` })
+  await expect(row.getByRole("button", { name: "Edit links" })).toBeVisible()
+  expect(await page.evaluate(() => (window as unknown as { __chips: string[] }).__chips), "the row's chips from its first draw").toEqual(["Registered"])
+})

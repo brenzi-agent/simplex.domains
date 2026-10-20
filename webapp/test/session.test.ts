@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { isSending, scrolled, setScrolled, startSending, stopSending, type Checkout } from "../src/session.ts"
+import { checkout as tabCheckout, isSending, scrolled, seen, setCheckout, setScrolled, setSeen, startSending, stopSending, type Checkout } from "../src/session.ts"
 
 const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
 
@@ -36,5 +36,25 @@ describe("scroll places", () => {
     expect(scrolled()).toEqual({ 0: 120, 3: 40 })
     setScrolled(0, 0)
     expect(scrolled()).toEqual({ 0: 0, 3: 40 })
+  })
+})
+
+describe("the tab's checkout", () => {
+  it("one kept before the step was kept opens at the review, which sends it on to the step it is at", () => {
+    const { step: _, ...older } = checkout("oldername", "SN-AAAAA")
+    setCheckout(older as Checkout)
+    expect(tabCheckout()).toEqual({ ...older, step: "review" })
+    setCheckout(checkout("newername", "SN-BBBBB"))
+    expect(tabCheckout()!.step).toBe("code")
+    setCheckout(null)
+    expect(tabCheckout()).toBeNull()
+  })
+})
+
+describe("rows seen", () => {
+  it("keeps what Your names last read of each order for the tab, and nothing before it was written", () => {
+    expect(seen()).toEqual({})
+    setSeen({ "reg-1": { view: { phase: "registered" }, invoice: null } })
+    expect(seen<{ view: { phase: string } }>()["reg-1"].view.phase).toBe("registered")
   })
 })

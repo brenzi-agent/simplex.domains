@@ -383,8 +383,8 @@ function rateLine(invoice: api.InvoiceView, signal: AbortSignal): HTMLElement {
   return el("span", {}, "Rate held ", time)
 }
 
-const partSentence = (invoice: api.InvoiceView, coin: "btc" | "xmr") =>
-  `${invoice.cryptoAmountPaid} of ${invoice.cryptoAmount} ${TICKER[coin]} is seen. Send the remaining ${invoice.cryptoAmountDue} ${TICKER[coin]} to the same address.`
+const partSentence = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Part of the payment arrived: ${invoice.cryptoAmountPaid} of ${invoice.cryptoAmount} ${TICKER[coin]} is seen. `
+  + `Send the remaining ${invoice.cryptoAmountDue} ${TICKER[coin]} to the same address.`
 
 function cancelLink(s: OrderState): HTMLAnchorElement {
   const working = s.busy === "cancel"
@@ -401,8 +401,8 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
   const due = partial ? inv.cryptoAmountDue! : inv.cryptoAmount!
   const uri = paymentUri(coin, inv.address!, due)
   holdEnds(signal)(s.hold !== null)
-  return screen({ title: `Pay with ${methodName(coin)}`, lead: "Bookmark this page to come back to this payment." },
-    partial ? alertBox("warn", "alert", "Part of the payment arrived", partSentence(inv, coin)) : null,
+  return screen({ title: `Pay with ${methodName(coin)}`, lead: partial ? undefined : "Bookmark this page to come back to this payment." },
+    partial ? alertBox("warn", "alert", null, partSentence(inv, coin)) : null,
     orderLine(s),
     insteadLine(inv),
     el("div", { class: "qr-grid" },

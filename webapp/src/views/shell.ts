@@ -169,13 +169,15 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, 
   const caret = active instanceof HTMLInputElement ? [active.selectionStart, active.selectionEnd] as const : null
   const focusKey = active === null || active === document.body ? lostKey : active.dataset.focus ?? null
   const first = shownKind === null
+  const redrawn = kind === shownKind && drawnRoute === route
   // the heading the last draw focused is replaced with its screen, so the redrawn screen's heading takes focus
-  const toHeading = kind !== shownKind || drawnRoute !== route || (active !== null && active === shownScreen?.querySelector("h1"))
+  const toHeading = !redrawn || (active !== null && active === shownScreen?.querySelector("h1"))
   screenStop?.abort()
   screenStop = new AbortController()
   const next = build(screenStop.signal)
   if (step === null) leaveTrack(main, next)
   else placeOnTrack(main, step, next)
+  if (!redrawn) holdSpacers(next)
   shownScreen = next
   main.inert = false
   shownKind = kind
@@ -239,16 +241,24 @@ export function screen(head: ScreenHead, ...body: Kid[]): HTMLElement {
     ...body)
 }
 
-// A purchase step or an outcome is centred so it fits the window; a list starts under the header, so rows never shift.
-export const asStep = (screen: HTMLElement) => { screen.classList.add("step"); return screen }
+// A purchase step or an outcome fills the window, its content between two spacers; a list starts under the header, so rows never shift.
+export const asStep = (screen: HTMLElement) => { screen.classList.add("step"); screen.replaceChildren(kept("step-top", spacer), ...screen.children, spacer()); return screen }
+export const spacer = () => el("div", { class: "vspace" })
 
 export function outcome(o: Outcome): HTMLElement {
-  return el("section", { class: "screen step outcome" },
+  return el("section", { class: "screen outcome" },
     screenHead(o.title, o.back),
     alertBox(o.tone, o.icon, null, o.text),
     o.extra ?? null,
     o.action ?? null,
     o.reference ? referenceLine(o.reference) : null)
+}
+
+// The spacers above a step's or the home's content, kept for the route, hold where it opened; what changes moves only what is below.
+function holdSpacers(screen: HTMLElement): void {
+  const spacers = [...screen.querySelectorAll<HTMLElement>(":scope > .vspace:not(:last-child)")]
+  for (const spacer of spacers) spacer.removeAttribute("style")
+  spacers.map((spacer) => `0 0 ${spacer.getBoundingClientRect().height}px`).forEach((flex, i) => { spacers[i].style.flex = flex })
 }
 
 const LIMITED = "Too many orders were tried from here."
@@ -321,4 +331,7 @@ function measureFrame(): void {
   const fit = () => document.documentElement.style.setProperty("--frame-h", `${Math.ceil(parts.reduce((h, p) => h + p.getBoundingClientRect().height, 0))}px`)
   const resized = new ResizeObserver(fit)
   for (const part of parts) resized.observe(part)
+  fit()
+  // a window resized opens the screen in view anew, at the frame's new height; the offline note coming or going does not
+  addEventListener("resize", () => { fit(); if (shownScreen) holdSpacers(shownScreen) })
 }
