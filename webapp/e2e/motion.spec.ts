@@ -85,7 +85,9 @@ async function moveAround(page: Page): Promise<string[]> {
   await page.getByRole("button", { name: "Register" }).click()
   await expect(onStep(page).getByRole("heading", { name: "What should your name open?" })).toBeVisible()
   await page.locator(".theme-switch").click()
-  await page.evaluate(() => new Promise((done) => setTimeout(done, 500)))
+  // the switch's transitions have started two frames on, and are recorded until they end
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
+  await settled(page)
   return (await recordedFrames<string[]>(page)).flat()
 }
 
