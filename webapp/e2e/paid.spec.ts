@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from "@playwright/test"
+import { expect, type Locator, type Page, type Route } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
@@ -813,17 +813,25 @@ const STRIPE_FORM_STALLS = `window.Stripe = () => ({ elements: () => ({ create: 
 // room past the bound for the page to draw what follows
 const CARD_FORM_SLACK_MS = 15_000
 
-test("a card form that neither loads nor fails gives up after its bound and offers a new invoice, rather than Pay off for good", async ({ page }) => {
-  await startOrder(page, uniqueLabel("cardstall"), { method: "card" })
-  await withStripeKey(page)
-  await page.route("https://js.stripe.com/**", (route) => route.fulfill({ contentType: "text/javascript", body: STRIPE_FORM_STALLS }))
-  await page.reload()
-  await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
-  await expect(payButton(page)).toBeDisabled()
-  await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible({ timeout: CARD_FORM_TIMEOUT_MS + CARD_FORM_SLACK_MS })
-  await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Get a new invoice" })).toBeEnabled()
-})
+// Stripe.js loaded with a form that never says how it went, or a request for Stripe.js that is never answered
+const STALLS: [string, (route: Route) => Promise<void> | undefined][] = [
+  ["form", (route) => route.fulfill({ contentType: "text/javascript", body: STRIPE_FORM_STALLS })],
+  ["script", () => undefined],
+]
+
+for (const [stalled, answer] of STALLS) {
+  test(`a card ${stalled} that neither loads nor fails gives up after its bound and offers a new invoice, rather than Pay off for good`, async ({ page }) => {
+    await startOrder(page, uniqueLabel("cardstall"), { method: "card" })
+    await withStripeKey(page)
+    await page.route("https://js.stripe.com/**", answer)
+    await page.reload()
+    await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
+    await expect(payButton(page)).toBeDisabled()
+    await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible({ timeout: CARD_FORM_TIMEOUT_MS + CARD_FORM_SLACK_MS })
+    await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
+    await expect(page.getByRole("button", { name: "Get a new invoice" })).toBeEnabled()
+  })
+}
 
 test("a card form that does not load, in a browser without the order, leads to the name code", async ({ page }) => {
   await startOrder(page, uniqueLabel("nocardrec"), { method: "card" })

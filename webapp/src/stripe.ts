@@ -92,16 +92,18 @@ function appearance(dark: boolean): Appearance {
 type ConfirmOutcome = { kind: "submitted" } | { kind: "invalid" } | { kind: "error"; message: string }
 export type MountedCard = { confirm: () => Promise<ConfirmOutcome>; destroy: () => void }
 
-// The form once ready, or null when the script, the SDK or the form fails: the page then shows that it did not load.
+// The form once ready, or null when the script, the SDK or the form fails or is not ready within the bound.
 export async function mountCard(key: string, clientSecret: string, target: HTMLElement, dark: boolean): Promise<MountedCard | null> {
+  let stalled: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<false>((done) => { stalled = setTimeout(done, CARD_FORM_TIMEOUT_MS, false) })
   try {
-    const sdk = (await loadStripeJs())(key)
+    const stripe = await Promise.race([loadStripeJs(), late])
+    if (!stripe) return null
+    const sdk = stripe(key)
     const elements = sdk.elements({ clientSecret, appearance: appearance(dark) })
     const element = elements.create("payment", { wallets: { applePay: "never", googlePay: "never", link: "never" } })
     element.mount(target)
-    let stalled: ReturnType<typeof setTimeout> | undefined
-    const loaded = await new Promise<boolean>((done) => { stalled = setTimeout(done, CARD_FORM_TIMEOUT_MS, false); element.on("ready", () => done(true)); element.on("loaderror", () => done(false)) })
-    clearTimeout(stalled)
+    const loaded = await Promise.race([new Promise<boolean>((done) => { element.on("ready", () => done(true)); element.on("loaderror", () => done(false)) }), late])
     if (!loaded) {
       element.destroy()
       return null
@@ -126,5 +128,7 @@ export async function mountCard(key: string, clientSecret: string, target: HTMLE
     }
   } catch {
     return null
+  } finally {
+    clearTimeout(stalled)
   }
 }
