@@ -10,11 +10,12 @@ import {
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
 const RING_ROOM_PX = 6
 
-// a stage's drawn line: where the bar's gradient turns from the fill to the track
+// a stage's drawn line: where the bar's gradient turns from the fill to the track; null for a stage the page has just
+// replaced, which has no style left to read
 const drawnFill = (stage: Locator) => stage.evaluate((node) => {
   if (node.classList.contains("done")) return 1
-  const stops = getComputedStyle(node, "::before").backgroundImage.match(/[\d.]+%/g)!
-  return parseFloat(stops[1]) / 100
+  const stops = getComputedStyle(node, "::before").backgroundImage.match(/[\d.]+%/g)
+  return stops ? parseFloat(stops[1]) / 100 : null
 })
 
 test("the wait's line fills as the wait goes, and is full when it ends", async ({ page, request }) => {
@@ -35,14 +36,14 @@ test("the wait's line fills as the wait goes, and is full when it ends", async (
   const wait = page.locator("body > main .stage", { hasText: "Waiting" })
   await expect(wait).toHaveClass(/\bactive\b/, { timeout: REGISTRATION_MS })
   const filled = () => drawnFill(wait)
-  const first = await filled()
+  const first = (await filled())!
   expect(first, "the line starts short of full").toBeLessThan(1)
   const fills = await page.evaluate(() => (window as unknown as { __fills: string[] }).__fills)
   expect(fills.length, "the wait stage was drawn").toBeGreaterThan(0)
   expect(fills.filter((f) => f === ""), `every wait stage is drawn with its fill set: ${fills}`).toEqual([])
   await expect.poll(filled, { message: "the line fills as the wait goes" }).toBeGreaterThan(first)
   await page.locator(".countdown b > svg").waitFor({ timeout: REGISTRATION_MS })
-  expect(await filled(), "the line is full when the wait ends").toBe(1)
+  await expect.poll(filled, { message: "the line is full when the wait ends" }).toBe(1)
 })
 
 test("a stage with no timed wait, as the register transaction being mined, draws no fill", async ({ page, request }) => {
