@@ -136,6 +136,7 @@ test("a font face that a step's change loads leaves the step where it holds, aft
   await onStep(page).getByRole("textbox", { name: "Channel" }).fill(contactLink("fc"))
   await expect(onStep(page).locator(".field-error")).toBeVisible()
   await onStep(page).getByRole("textbox", { name: "Contact address" }).fill(contactLink("fc"))
+  await onStep(page).getByRole("textbox", { name: "Contact address" }).blur()
   await expect(onStep(page).locator(".entity", { hasText: NON_LATIN_NAME })).toBeVisible()
   await page.evaluate(() => document.fonts.ready.then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))))
   expect(await loadedFaces(), "faces loaded for the profile's name").toBeGreaterThan(faces)

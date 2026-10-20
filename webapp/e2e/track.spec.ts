@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  channelLink, checkoutCode, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, recordedFrames, recordFrames, REGISTRATION_MS, savedToReview, search, shot,
+  channelLink, checkoutCode, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, previewsShown, recordedFrames, recordFrames, REGISTRATION_MS, savedToReview, search, shot,
   startOrder, test, toFullReview, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
@@ -184,7 +184,7 @@ test("every purchase step fits a laptop's and a phone's window without scrolling
   const linksAt = await headingAt(page)
   await step.getByLabel("Address").fill(contactLink("F2"))
   await step.getByLabel("Channel").fill(channelLink("G2"))
-  for (const field of await step.locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
+  await previewsShown(page)
   expect(await headingAt(page), "the links step as its previews come").toEqual(linksAt)
   lefts.links = await fitsWindow(page, "2-links")
   await backInView(page, "links")
@@ -279,7 +279,7 @@ for (const length of [15, 25, MAX_LABEL_LENGTH]) {
     const step = onStep(page)
     await step.getByLabel("Address").fill(contactLink("W1"))
     await step.getByLabel("Channel").fill(channelLink("W2"))
-    for (const field of await step.locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
+    await previewsShown(page)
     await fitsWindow(page, `${shots}-2-links`)
     await step.getByRole("button", { name: "Continue" }).click()
     await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
@@ -410,6 +410,34 @@ for (const length of [10, MAX_LABEL_LENGTH]) {
   })
 }
 
+// the share of its field a focused link's text has, all but the field's icon and padding
+const FOCUSED_INPUT_SHARE = 0.7
+
+test("a link field focused shows its link alone, from its start, across the field, at both sizes", async ({ page }) => {
+  await search(page, uniqueLabel("focuslink"))
+  const step = onStep(page)
+  await step.getByRole("button", { name: "Register" }).click()
+  await step.getByRole("textbox", { name: "Contact address" }).fill(contactLink("FL"))
+  await step.getByRole("textbox", { name: "Channel" }).fill(channelLink("FL"))
+  await previewsShown(page)
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    for (const name of ["Contact address", "Channel"]) {
+      const input = step.getByRole("textbox", { name })
+      const field = step.locator(".link-field .field", { has: page.getByRole("textbox", { name }) })
+      // a person's click on the profile the field shows
+      await field.locator(".entity").click()
+      await expect(input).toBeFocused()
+      await expect(field.locator(".preview")).toBeHidden()
+      const drawn = await input.evaluate((node) => ({ scrolled: node.scrollLeft, share: node.getBoundingClientRect().width / node.closest(".field")!.getBoundingClientRect().width }))
+      expect(drawn.scrolled, `${name} at ${size.width}x${size.height}: the link scrolled from its start`).toBe(0)
+      expect(drawn.share, `${name} at ${size.width}x${size.height}: the link's share of its field`).toBeGreaterThan(FOCUSED_INPUT_SHARE)
+      await input.blur()
+      await expect(field.locator(".entity:not(.skeleton)"), `${name}: the profile once the field is left`).toBeVisible()
+    }
+  }
+})
+
 for (const length of [25, MAX_LABEL_LENGTH]) {
   test(`a refused link keeps the links step still and fitting both windows, for a name of ${length} wide letters`, async ({ page }) => {
     for (const size of FIT_SIZES) {
@@ -418,6 +446,7 @@ for (const length of [25, MAX_LABEL_LENGTH]) {
       const step = onStep(page)
       await step.getByRole("button", { name: "Register" }).click()
       await step.getByRole("textbox", { name: "Contact address" }).fill(contactLink("V3"))
+      await step.getByRole("textbox", { name: "Contact address" }).blur()
       await expect(step.locator(".link-field .entity:not(.skeleton)")).toBeVisible()
       const before = await headingAt(page)
       await step.getByRole("textbox", { name: "Channel" }).fill(contactLink("V3"))

@@ -138,6 +138,12 @@ export async function toReview(page: Page): Promise<void> {
   await savedToReview(page)
 }
 
+// Each link field's profile, shown once focus has left the field, which shows its link alone while focused.
+export async function previewsShown(page: Page): Promise<void> {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  for (const field of await onStep(page).locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
+}
+
 // Search, Register, both links, the name code saved, to Check your order with its code field open: the review at its fullest.
 // The field opens to a pointer's click, as Playwright's own click over WebDriver BiDi first scrolls its target to the window's centre.
 export async function toFullReview(page: Page, label: string): Promise<void> {
@@ -146,7 +152,7 @@ export async function toFullReview(page: Page, label: string): Promise<void> {
   await step.getByRole("button", { name: "Register" }).click()
   await step.getByRole("textbox", { name: "Contact address" }).fill(contactLink("R1"))
   await step.getByRole("textbox", { name: "Channel" }).fill(channelLink("R2"))
-  for (const field of await step.locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
+  await previewsShown(page)
   await step.getByRole("button", { name: "Continue" }).click()
   await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
   await savedToReview(page)

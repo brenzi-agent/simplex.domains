@@ -229,6 +229,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await step.getByLabel("Address").fill(contact)
   await expect(step.getByRole("button", { name: "Skip for now" }), "a typed link leaves only Continue").toHaveCount(0)
   await step.getByLabel("Channel").fill(channel)
+  await step.getByLabel("Channel").blur()
   for (const field of await step.locator(".link-field").all()) {
     await expect(field).toHaveAttribute("data-state", "ok")
     await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
@@ -346,6 +347,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   })
   await page.getByLabel("Address").fill(contactLink("prev"))
   await expect(page.locator(".field-error [aria-hidden=true]", { hasText: /The link could not be checked now/ })).toBeVisible()
+  await page.getByLabel("Address").blur()
   await expect(page.locator(".link-field").first().locator(".entity")).toBeVisible({ timeout: 10_000 })
   await page.unrouteAll({ behavior: "wait" })
 })

@@ -338,9 +338,11 @@ h1 .long { font-size: inherit; }
    A link whose profile could not be read is already in the field, so its text is not shown again. */
 .link-field .preview { display: flex; flex: 0 1 auto; max-width: 50%; min-width: 0; }
 .link-field .preview > span { display: none; }
-/* a link whose profile shows is drawn as that profile, its text coming back while the field is focused to edit it */
+/* a link whose profile shows is drawn as that profile, its text coming back in its place while the field is focused */
 .link-field .field:has(.entity:not(.skeleton)):not(:focus-within) input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
 .link-field .field:has(.entity:not(.skeleton)):not(:focus-within) .preview { max-width: none; }
+/* while the field is focused its link shows alone, from its start, at the field's whole width */
+.link-field .field:focus-within .preview { display: none; }
 .link-field .entity.skeleton { width: 120px; }
 /* Skip would drop a link typed, so the step's button is Skip for now only while both fields are empty */
 .link-fields:has(input:not(:placeholder-shown)) + .btn .skip, .link-fields:not(:has(input:not(:placeholder-shown))) + .btn .go { display: none; }

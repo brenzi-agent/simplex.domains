@@ -118,6 +118,8 @@ export function linkField(kind: LinkKind, value: string, save: (v: string) => vo
     }
   }
   input.addEventListener("input", () => void check())
+  // the link is left at its start, where focus brings it back, as a browser shows a field from its last caret and scroll
+  input.addEventListener("blur", () => { input.setSelectionRange(0, 0); input.scrollLeft = 0 })
   field.dataset.state = "empty"
   if (value) void check()
   return field
