@@ -72,6 +72,17 @@ test("the home fills the window between its header and footer without scrolling,
   }
 })
 
+test("the home's field, Search and Register are one height, on a laptop and on a phone", async ({ page }) => {
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport)
+    await search(page, uniqueLabel("height"))
+    await expect(page.getByRole("button", { name: "Register" })).toBeVisible()
+    const heights = await Promise.all([page.locator(".search-row .field"), page.getByRole("button", { name: "Search" }), page.getByRole("button", { name: "Register" })]
+      .map((control) => control.evaluate((node) => Math.round(node.getBoundingClientRect().height))))
+    expect(new Set(heights).size, `${viewport.width} px: the field's, Search's and Register's heights ${heights}`).toBe(1)
+  }
+})
+
 test("the checkout explains every refusal and keeps the order", async ({ page, request }) => {
   const label = uniqueLabel("ref")
   await search(page, label)

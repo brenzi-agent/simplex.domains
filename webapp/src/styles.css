@@ -254,7 +254,7 @@ h1 .long { font-size: inherit; }
 .home .vspace.cap { min-height: 12px; max-height: 108px; }
 /* Below the search the room is the invest block's and its two spacers' shares, as on the landing; the answer takes the
    block's place there, so the page above it stays still while the answer fits. --invest-h is the block's button, gap and note. */
-.home { --invest-h: calc(56px + clamp(14px, 1.8vh, 20px) + 26px); }
+.home { --invest-h: calc(2 * var(--control-pad) + 24px + clamp(14px, 1.8vh, 20px) + 26px); }
 .home .below { flex: 2 1 var(--invest-h); display: flex; flex-direction: column; align-items: center; width: 100%; }
 .below:has(> .answer:not(:empty)) > :is(.cta, .cap) { display: none; }
 /* The landing sizes its headline in its own width's units (cqw); these are the same sizes from that width, as Firefox,
@@ -265,7 +265,8 @@ h1 .long { font-size: inherit; }
 .home > .notice { width: 100%; max-width: var(--column); margin-bottom: 14px; }
 .search-row { display: flex; gap: 10px; width: 100%; max-width: var(--column); }
 .search-row .field { flex: 1; }
-.search-row .tld { color: var(--ink-soft); }
+/* the TLD's line is the input's, so the field is a button's height */
+.search-row .tld { color: var(--ink-soft); line-height: calc(4em / 3); }
 .answer { width: 100%; max-width: var(--column); text-align: left; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .answer:not(:empty) { margin-top: 14px; }
 .answer .card { display: grid; gap: 12px; padding-block: 20px; }
@@ -281,7 +282,7 @@ h1 .long { font-size: inherit; }
 .perk-br { display: none; }
 @media (max-width: 540px) {
   .perk-br { display: inline; }
-  .home { --invest-h: calc(56px + clamp(14px, 1.8vh, 20px) + 52px); }
+  .home { --invest-h: calc(2 * var(--control-pad) + 24px + clamp(14px, 1.8vh, 20px) + 52px); }
 }
 /* a field with its action at its right end; a phone stacks them, as the code needs the field's whole width */
 .field-row { display: flex; gap: 10px; }
@@ -570,12 +571,11 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .review :is(.pay-with, .code-entry) { --block-gap: 6px; }
   /* a line on another order stands as far from Pay with as the blocks around it do */
   .other-order { margin-bottom: 6px; }
-  .screen { --control-pad: 11px; }
+  .screen, .home { --control-pad: 11px; }
   .screen.step { --screen-gap: 12px; --saved-lines: 3; }
   .method { flex-direction: column; padding: 8px 6px; gap: 2px; font-size: 16px; line-height: 1.3; }
   .method span { flex-basis: auto; }
   .method svg { width: 22px; height: 22px; }
-  .home .field { padding-block: 9px; }
   .entity .who b, .entity > a { font-size: 14px; }
   .entity .who span { font-size: 12px; }
   .link-fields { gap: 8px; }
