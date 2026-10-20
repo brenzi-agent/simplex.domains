@@ -155,6 +155,7 @@ const LOADING = "loading"
 // classes and how many before it share them, not by its words, which a countdown changes each second.
 const ARRIVING = ".answer > *, .notice, .entity, .other-order, .field-error, .verdict:not(:empty)"
 const SHOWN = "shown"
+const ENTER = "enter"
 function arrivals(screen: Element): [Element, string][] {
   const seen = new Map<string, number>()
   return [...screen.querySelectorAll(ARRIVING)].map((node) => {
@@ -187,7 +188,7 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, 
   for (const [node, key] of arrivals(next)) if (!drawn || drawn.has(key)) node.classList.add(SHOWN)
   const slid = step !== null && placeOnTrack(main, step, next)
   if (step === null) leaveTrack(main, next)
-  if (!redrawn && !slid && !first) next.classList.add("enter")
+  if (!redrawn && !slid && !first) next.classList.add(ENTER)
   if (!redrawn) holdSpacers(next)
   // the first page opens anew once the fonts its layout asked for have loaded; a face a later change asks for moves nothing
   if (!fontsAwaited && kind !== LOADING) void document.fonts.ready.then(reopen)
