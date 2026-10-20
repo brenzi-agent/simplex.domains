@@ -788,6 +788,25 @@ test("a card form that does not load says so and offers a new invoice", async ({
   await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
 })
 
+// a Stripe.js whose card form reports, once mounted, that it could not load, as it does for an intent Stripe refuses
+const STRIPE_FORM_FAILS = `window.Stripe = () => ({ elements: () => ({ create: () => {
+  const handlers = {}
+  return { on: (event, handler) => { handlers[event] = handler }, mount: () => setTimeout(() => handlers.loaderror?.({ elementType: "payment" })), destroy: () => undefined }
+} }) })`
+
+test("a card form that Stripe cannot load says so and offers a new invoice, rather than a form that never comes", async ({ page }) => {
+  await startOrder(page, uniqueLabel("cardfail"), { method: "card" })
+  await page.route(/\/\?order=/, async (route) => {
+    const res = await route.fetch()
+    await route.fulfill({ response: res, body: (await res.text()).replace('name="stripe-publishable-key" content=""', 'name="stripe-publishable-key" content="pk_test_e2e"') })
+  })
+  await page.route("https://js.stripe.com/**", (route) => route.fulfill({ contentType: "text/javascript", body: STRIPE_FORM_FAILS }))
+  await page.reload()
+  await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
+  await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Get a new invoice" })).toBeEnabled()
+})
+
 test("a card form that does not load, in a browser without the order, leads to the name code", async ({ page }) => {
   await startOrder(page, uniqueLabel("nocardrec"), { method: "card" })
   await page.route(/\/\?order=/, async (route) => {

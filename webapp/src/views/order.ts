@@ -90,7 +90,6 @@ function wakeOnTime(): void {
 const isOpen = (gen: number) => gen === opened && isRoute(pageRoute)
 
 const answer = (gen: number, event: OrderEvent) => { if (isOpen(gen)) dispatch(event) }
-
 const reread = (gen: number) => { if (isOpen(gen)) refresh() }
 
 function holdOn(e: unknown, lead: string, gen: number): boolean {

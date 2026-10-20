@@ -15,9 +15,7 @@ const EDIT_DEADLINE_SECONDS = 3600
 // signed timestamps and deadlines are judged by the service's clock
 const now = () => Math.floor(api.serviceNow() / 1000)
 
-export function newOwnerCode(): string {
-  return formatOwnerCode(crypto.getRandomValues(new Uint8Array(16)))
-}
+export const newOwnerCode = () => formatOwnerCode(crypto.getRandomValues(new Uint8Array(16)))
 
 export function walletOf(code: string): Wallet | null {
   const parsed = parseNameCode(code)
@@ -58,9 +56,7 @@ export async function orderRequest(draft: Draft): Promise<BuiltOrder> {
 }
 
 // An order can be answered with the commitment's existing order, paid another way or by code.
-export function paidWith(res: api.CreatedOrder): { method: api.Method | "code"; paid: number } {
-  return res.invoiceId ? { method: res.cryptoCurrency ?? "card", paid: res.amount } : { method: "code", paid: 0 }
-}
+export const paidWith = (res: api.CreatedOrder): { method: api.Method | "code"; paid: number } => res.invoiceId ? { method: res.cryptoCurrency ?? "card", paid: res.amount } : { method: "code", paid: 0 }
 
 export function recordFor(draft: Draft, built: BuiltOrder, method: api.Method | "code", paid: number, ids: { registrationId: string; invoiceId: string | null }): store.OrderRecord {
   return {

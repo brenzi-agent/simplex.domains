@@ -7,10 +7,11 @@ const CONFIRM_FAILED = "The card was not accepted. Check the details and try aga
 
 interface PaymentElement {
   mount(target: HTMLElement): void
+  on(event: "ready" | "loaderror", handler: () => void): void
   destroy(): void
 }
 interface StripeElements {
-  create(kind: "payment"): PaymentElement
+  create(kind: "payment", options: { wallets: Record<"applePay" | "googlePay" | "link", "never"> }): PaymentElement
 }
 interface StripeInstance {
   elements(options: { clientSecret: string; appearance: Appearance }): StripeElements
@@ -89,13 +90,18 @@ function appearance(dark: boolean): Appearance {
 type ConfirmOutcome = { kind: "submitted" } | { kind: "error"; message: string }
 export type MountedCard = { confirm: () => Promise<ConfirmOutcome>; destroy: () => void }
 
-// Null when the script or the SDK fails: the page then shows that the card form did not load.
+// The form once ready, or null when the script, the SDK or the form fails: the page then shows that it did not load.
 export async function mountCard(key: string, clientSecret: string, target: HTMLElement, dark: boolean): Promise<MountedCard | null> {
   try {
     const sdk = (await loadStripeJs())(key)
     const elements = sdk.elements({ clientSecret, appearance: appearance(dark) })
-    const element = elements.create("payment")
+    const element = elements.create("payment", { wallets: { applePay: "never", googlePay: "never", link: "never" } })
     element.mount(target)
+    const loaded = await new Promise<boolean>((done) => { element.on("ready", () => done(true)); element.on("loaderror", () => done(false)) })
+    if (!loaded) {
+      element.destroy()
+      return null
+    }
     return {
       confirm: async () => {
         try {
