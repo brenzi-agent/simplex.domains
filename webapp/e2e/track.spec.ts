@@ -382,3 +382,28 @@ test("going offline and back moves neither the home's heading nor the review's, 
   await shot(page, "names-g4-review-offline")
   await context.setOffline(false)
 })
+
+test("a line on another order waiting comes into the room the review keeps, the review fitting both windows", async ({ page }) => {
+  await startOrder(page, uniqueLabel("waiting"), { method: "btc" })
+  // the review heading's top in each frame of every page from here on
+  await page.addInitScript(() => {
+    const w = window as unknown as { __tops: number[] }
+    w.__tops = []
+    const look = () => {
+      const heading = document.querySelector(".slide:not([inert]) h1")
+      if (heading?.textContent === "Check your order") w.__tops.push(Math.round(heading.getBoundingClientRect().top))
+      requestAnimationFrame(look)
+    }
+    requestAnimationFrame(look)
+  })
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    await toFullReview(page, "other")
+    await expect(onStep(page).getByText("Another order is waiting for its payment.")).toBeVisible()
+    await headingAt(page)
+    const tops = await page.evaluate(() => [...new Set((window as unknown as { __tops: number[] }).__tops)])
+    expect(tops, `the review heading's tops at ${size.width}x${size.height}`).toHaveLength(1)
+    expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
+  }
+  await shot(page, "names-g4-review-other-order")
+})

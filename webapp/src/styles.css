@@ -177,7 +177,7 @@ body > main { flex: 1 0 auto; }
 /* A step opens keeping below it the room its biggest change takes, the offline note's or its own (--room), until shell.ts
    holds the spacer above at its height; then a change takes the room below. */
 .screen.step > .vspace:not([style]) ~ .vspace:last-child { min-height: max(var(--note-room), var(--room, 0px)); }
-/* a code's verdict: a line under the field */
+/* a code's verdict, or a line on another order waiting, which arrives after the review is drawn */
 .screen.step:has(.review) { --room: calc(1.5 * var(--fs-small) + 12px); }
 /* a part paid: its notice, of two lines, in place of the lead */
 .screen.step:has(.waiting) { --room: calc(3 * var(--fs-small) + 30px - 1.5 * var(--fs-lead)); }

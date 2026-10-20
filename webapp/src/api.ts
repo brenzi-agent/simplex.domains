@@ -34,6 +34,7 @@ export interface ChainInfo {
   tld: string
 }
 
+export const LINK_KINDS = ["contact", "channel"] as const
 export interface Links {
   contact: string
   channel: string

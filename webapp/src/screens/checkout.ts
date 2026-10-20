@@ -10,7 +10,7 @@ export type Refusal = "price-changed" | "too-many" | "failed" | "taken"
 export type CheckoutKind = CheckoutStep | `status:${Refusal}`
 
 export interface WaitingOrder { registrationId: string; invoiceId: string }
-interface OpenOrder { invoiceId: string; label: string; tld: string; confirming: boolean }
+interface OpenOrder { invoiceId: string; confirming: boolean }
 
 export interface CheckoutState {
   step: CheckoutStep

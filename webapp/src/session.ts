@@ -26,7 +26,6 @@ export interface Checkout {
   searchAt: number
   // the step last opened, where Your names continues the checkout
   step: CheckoutStep
-  // a method the provider refused just now
   unavailable?: Method
   // why the service refused the code this checkout carried
   codeError?: string

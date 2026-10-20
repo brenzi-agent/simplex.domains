@@ -1,4 +1,4 @@
-import { holdsPayment, type CodeState, type InvoiceView, type Links, type Phase, type RegistrationView, type SearchAnswer } from "../api.ts"
+import { holdsPayment, type CodeState, type InvoiceView, LINK_KINDS, type Links, type Phase, type RegistrationView, type SearchAnswer } from "../api.ts"
 import { dateOf } from "../format.ts"
 import { type CodeRecord, type OrderRecord, orderUrl, type PendingCode } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
@@ -17,7 +17,6 @@ export interface ListState extends Stored {
   checked: Record<string, CodeCheck>
   finding: Record<string, Finding>
   asking: boolean
-  // the registered row expanded with its name code
   shownCode: string | null
 }
 
@@ -209,7 +208,6 @@ export type EditEvent =
 export const initialEdit = (registrationId: string, record: OrderRecord | null): EditState => ({ registrationId, record, read: null, form: null, failures: 0, reading: false })
 
 export const LINK_NAMES: Record<keyof Links, string> = { contact: "address", channel: "channel" }
-const LINK_KINDS = ["contact", "channel"] as const
 
 export const changesOf = (f: EditForm): Partial<Links> => Object.fromEntries(LINK_KINDS.filter((k) => f.values[k] !== f.current[k]).map((k) => [k, f.values[k]]))
 

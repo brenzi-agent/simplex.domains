@@ -141,3 +141,45 @@ test.describe("a small phone", () => {
     expect(await page.evaluate(() => scrollY)).toBe(before)
   })
 })
+
+test.describe("a phone", () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  test("going offline on the fullest review lays out no frame taller than the window, and leaves nothing to scroll", async ({ page, context }) => {
+    await search(page, uniqueLabel("offframe"))
+    await onStep(page).getByRole("button", { name: "Register" }).click()
+    await onStep(page).getByRole("textbox", { name: "Contact address" }).fill(contactLink("of"))
+    await onStep(page).getByRole("textbox", { name: "Channel" }).fill(channelLink("of"))
+    for (const field of await onStep(page).locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
+    await onStep(page).getByRole("button", { name: "Continue" }).click()
+    await heading(page, CODE_HEADING)
+    await savedToReview(page)
+    await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
+    const box = (await onStep(page).getByRole("button", { name: CODE_LABEL }).boundingBox())!
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    await expect(checkoutCode(page)).toBeFocused()
+    const top = () => page.evaluate(() => Math.round(document.querySelector(".slide:not([inert]) h1")!.getBoundingClientRect().top))
+    const before = await top()
+    // how far each frame's layout reaches past the window, from just before the network goes
+    await page.evaluate(() => new Promise<void>((started) => {
+      const w = window as unknown as { __over: number[] }
+      w.__over = []
+      const look = () => {
+        w.__over.push(document.scrollingElement!.scrollHeight - innerHeight)
+        if (w.__over.length === 1) started()
+        requestAnimationFrame(look)
+      }
+      requestAnimationFrame(look)
+    }))
+    await context.setOffline(true)
+    try {
+      await expect(page.locator(".offline-note")).toBeVisible()
+      await page.evaluate(() => new Promise((done) => { let n = 0; const next = () => (++n > 10 ? done(null) : requestAnimationFrame(next)); requestAnimationFrame(next) }))
+      const over = await page.evaluate(() => (window as unknown as { __over: number[] }).__over)
+      expect(Math.max(...over), `each frame's overflow: ${over.join(",")}`).toBe(0)
+      expect(await top(), "the heading's top offline").toBe(before)
+    } finally {
+      await context.setOffline(false)
+    }
+  })
+})

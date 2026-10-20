@@ -74,7 +74,6 @@ export function searchPage(params: URLSearchParams): void {
     shown = null
     opens += 1
   }
-  // a popup open on the page closes once the page is left
   if (!isRedraw()) whenDropped(() => investDialog?.close(LEFT))
   pageRoute = currentRoute()
   dispatch({ type: "opened", opening, name, fromApp, retarget, hold: tabHold() })

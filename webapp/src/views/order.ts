@@ -17,7 +17,7 @@ import { seenRegistered } from "./names.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
 import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
 
-const RETRY_MS = 3000
+export const RETRY_MS = 3000
 // The badge service's words for a cancel the provider took while the service still shows the invoice open; a card
 // invoice has no address. The browser keeps the cancel, so the warning stays until the invoice closes.
 const cancelStillOpen = (invoice: api.InvoiceView) => invoice.cryptoCurrency
@@ -214,7 +214,6 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
     }
     // a finished order whose siblings could not be read is read once more before the page stops following it
     if (finished(invoice, view) && unread === null) return
-    // only a closed invoice reads siblings
     if (unread !== null && invoice?.status !== "open") {
       await sleep(unread)
       // forgetting the last answer makes the next read answer at once
@@ -361,7 +360,6 @@ const TICKER: Record<"btc" | "xmr", string> = { btc: "BTC", xmr: "XMR" }
 // the invoice an earlier try made, which a checkout opened in place of paying as it chose; said until its page is left
 let instead: { invoiceId: string; had: string; chosen: string } | null = null
 export const openedInstead = (opened: typeof instead) => { instead = opened }
-// a method as a sentence names it
 const methodWord = (method: string) => method === "card" ? "card" : methodName(method)
 const insteadLine = (invoice: api.InvoiceView) => instead?.invoiceId !== invoice.invoiceId ? null : el("p", { class: "note" },
   `This name already has a ${methodWord(instead.had)} invoice from an earlier try, so it opened instead of ${instead.chosen === "code" ? "using your code" : `a new ${methodWord(instead.chosen)} one`}.`)

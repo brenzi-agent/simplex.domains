@@ -15,7 +15,7 @@ import {
   asStep, type Builder, currentRoute, draw, focusOn, go, goFrom, isRedraw, isRoute, kept, keptLive, limitScreen, outcome, redirect, refresh, screen, searchLink, whenLeaving,
 } from "./shell.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./hold.ts"
-import { openedInstead } from "./order.ts"
+import { openedInstead, RETRY_MS } from "./order.ts"
 
 const METHOD_ORDER: Method[] = ["card", "btc", "xmr"]
 // a field per name, so what was typed in it stays with its checkout
@@ -24,7 +24,6 @@ const CODE_LABEL = "I have a code"
 const CHECKOUT_NOTE = "checkout-note"
 const PAY_WITH_ID = "pay-with-label"
 const SAVED_LABEL = "I have saved my name code"
-const LINK_KINDS: LinkKind[] = ["contact", "channel"]
 
 const years = (c: session.Checkout) => c.code?.years ?? PRICED_YEARS
 // a card order waiting for Stripe holds a second paid order; a code pays nothing, so it holds none
@@ -93,8 +92,6 @@ function act(event: CheckoutEvent, apply: (event: CheckoutEvent) => void = dispa
 // a link typed is shown by its own field, so the page takes it without drawing
 const setLink = (kind: LinkKind, link: string) => void act({ type: "link-set", kind, link }, (event) => { state = reduce(state, event) })
 
-const RETRY_MS = 3000
-
 // The card order blocks a second one only while its invoice is open, so checkout follows it and opens up when it settles or closes.
 async function settleWaiting(waiting: WaitingOrder, signal: AbortSignal): Promise<void> {
   let seen: api.InvoiceView | undefined
@@ -129,8 +126,7 @@ async function showOpenOrder(signal: AbortSignal): Promise<void> {
   const invoices = await Promise.all(recent.map((o) => api.readInvoice(o.invoiceId!).catch(() => null)))
   const at = invoices.findIndex((i) => i?.status === "open" && i.registration.phase === "unpaid")
   if (at < 0 || signal.aborted) return
-  const { invoiceId, label, tld } = recent[at]
-  dispatch({ type: "open-order-seen", order: { invoiceId: invoiceId!, label, tld, confirming: invoices[at]!.paidInFull === true } })
+  dispatch({ type: "open-order-seen", order: { invoiceId: recent[at].invoiceId!, confirming: invoices[at]!.paidInFull === true } })
 }
 
 // Change opens the links step with focus in the field chosen
@@ -143,7 +139,7 @@ function linkLine(kind: LinkKind, key: string, value: Node | string, action: str
 
 function linkLines(c: session.Checkout): HTMLElement | null {
   if (c.appOwner) return null
-  const set = LINK_KINDS.filter((kind) => c[kind])
+  const set = api.LINK_KINDS.filter((kind) => c[kind])
   return el("div", { class: "link-lines" }, set.length
     ? set.map((kind) => linkLine(kind, linkName(kind), linkPreview(c[kind]), "Change", `Change the ${linkName(kind).toLowerCase()}`))
     : linkLine("contact", "Links", el("span", {}, "None"), "Add", "Add links"))
@@ -186,7 +182,7 @@ function methodsBlock({ checkout: c, openOrder: order, sending }: CheckoutState)
     methodMark(m), el("b", {}, methodName(m)), off ? el("span", {}, "Temporarily unavailable") : null)
   })
   return el("section", { class: "pay-with" },
-    order ? alertBox("info", "clock", `${order.label}.${order.tld} ${order.confirming ? "is confirming its payment" : "is waiting for its payment"}`,
+    order ? el("p", { class: "note" }, `Another order ${order.confirming ? "is confirming its payment" : "is waiting for its payment"}. `,
       el("a", { href: store.invoiceUrl(order.invoiceId) }, "Open that order")) : null,
     c.unavailable ? alertBox("warn", "alert", `${methodName(c.unavailable)} is temporarily unavailable`, "Try another method, or come back later.") : null,
     el("span", { class: "label", id: PAY_WITH_ID }, "Pay with"),

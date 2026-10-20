@@ -10,7 +10,6 @@ import { checksumAddress, fromHex, hex, personalDigest, signDigest, walletFromEn
 import { PRICED_YEARS } from "./names.ts"
 import * as store from "./store.ts"
 
-// how long a signed link edit stays valid
 const EDIT_DEADLINE_SECONDS = 3600
 
 // signed timestamps and deadlines are judged by the service's clock
@@ -192,7 +191,6 @@ export async function newerOrder(record: store.OrderRecord): Promise<store.Order
   try {
     found = await findOrders(wallet)
   } catch (e) {
-    // the code has no orders left at all
     if (e instanceof api.ApiError && e.code === "not_found") return none()
     throw e
   }

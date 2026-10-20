@@ -9,7 +9,7 @@ const NOW = Date.parse("2026-10-17T12:00:00Z")
 const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
 const CODE = { display: "SN6-AAAAA-BBBBB-CCCCC", minLength: 6, years: 3 }
 const WAITING = { registrationId: "reg-0", invoiceId: "inv-0" }
-const OPEN_ORDER = { invoiceId: "inv-9", label: "bobby", tld: "simplex", confirming: false }
+const OPEN_ORDER = { invoiceId: "inv-9", confirming: false }
 
 function checkout(change: Partial<Checkout> = {}): Checkout {
   return {

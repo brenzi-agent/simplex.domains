@@ -5,7 +5,7 @@ import type { Hold } from "../screens/hold.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { secondsLeft } from "./hold.ts"
-import { leaveTrack, placeOnTrack, type TrackStep } from "./track.ts"
+import { fitHeight, leaveTrack, placeOnTrack, type TrackStep } from "./track.ts"
 
 export const WEFUNDER_URL = "https://wefunder.com/simplex.chat?utm_source=domains"
 export const CONTACT_EMAIL = "chat@simplex.chat"
@@ -305,7 +305,16 @@ export const OFFLINE_NOTE = "You are offline. Searches, payments and order updat
 // only its words change, which a screen reader announces where it may miss a note being shown.
 const offlineText = el("span", {})
 const offline = el("div", { class: "offline", role: "status" }, el("div", { class: "offline-note" }, icon("offline"), offlineText))
-const showConnection = () => { offlineText.textContent = navigator.onLine ? "" : OFFLINE_NOTE }
+// The frame and track take the note's height before it joins the flow: a layout taller than the window gets a scrollbar in Firefox, which can rewrap lines and stay.
+function showConnection(): void {
+  const text = navigator.onLine ? "" : OFFLINE_NOTE
+  if (offlineText.textContent === text) return
+  offline.style.position = "absolute"
+  offlineText.textContent = text
+  fitFrame()
+  fitHeight(0)
+  offline.style.removeProperty("position")
+}
 
 // Checked again whenever the page is drawn or looked at, as Firefox does not always tell a page opened offline that
 // the network is back.
@@ -326,14 +335,15 @@ function frame(): HTMLElement {
 
 // The header's, footer's and offline note's height, which wrap on a narrow screen, so the home fills what is left of the window. Rounded
 // up, as the track rounds its height up too and a fraction more would scroll the page.
+const frameParts = () => [...document.querySelectorAll<HTMLElement>("body > header, body > footer, body > .offline")]
+const fitFrame = () => document.documentElement.style.setProperty("--frame-h", `${Math.ceil(frameParts().reduce((h, p) => h + p.getBoundingClientRect().height, 0))}px`)
+
 function measureFrame(): void {
-  const parts = [...document.querySelectorAll<HTMLElement>("body > header, body > footer, body > .offline")]
-  const fit = () => document.documentElement.style.setProperty("--frame-h", `${Math.ceil(parts.reduce((h, p) => h + p.getBoundingClientRect().height, 0))}px`)
-  const resized = new ResizeObserver(fit)
-  for (const part of parts) resized.observe(part)
-  fit()
+  const resized = new ResizeObserver(fitFrame)
+  for (const part of frameParts()) resized.observe(part)
+  fitFrame()
   // a window resized, or text laid out anew in the fonts just loaded, opens the screen in view anew; the offline note does not
-  const reopen = () => { fit(); if (shownScreen) holdSpacers(shownScreen) }
+  const reopen = () => { fitFrame(); if (shownScreen) holdSpacers(shownScreen) }
   addEventListener("resize", reopen)
   document.fonts.addEventListener("loadingdone", reopen)
 }

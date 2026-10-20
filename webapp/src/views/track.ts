@@ -16,7 +16,7 @@ const slideMs = (smooth: boolean) => smooth && !reducedMotion() ? SLIDE_MS : 0
 const slideHeight = () => Math.ceil(slides[index].getBoundingClientRect().height)
 
 // The CSP refuses style attributes but not the style object, so styles are set through it.
-function fitHeight(ms: number): void {
+export function fitHeight(ms: number): void {
   shownHeight = slideHeight()
   track.style.setProperty("--slide", `${ms}ms`)
   track.style.height = shownHeight > 0 ? `${shownHeight}px` : ""

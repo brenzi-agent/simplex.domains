@@ -133,7 +133,7 @@ test("an unpaid invoice is pointed at from checkout without blocking a new order
   const { invoiceId } = await startOrder(page, first, { method: "btc" })
   await search(page, uniqueLabel("second"))
   await toReview(page)
-  await expect(page.getByText(`${first}.simplex is waiting for its payment`)).toBeVisible()
+  await expect(page.getByText("Another order is waiting for its payment.")).toBeVisible()
   await expect(page.getByRole("link", { name: "Open that order" })).toHaveAttribute("href", `/?order=${invoiceId}`)
   await expect(payButton(page)).toBeEnabled()
   await shot(page, "N3e2-open-invoice")
