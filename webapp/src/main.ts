@@ -50,8 +50,7 @@ document.addEventListener("click", (e) => {
   go(href)
 })
 render()
-// The worker keeps this build for opening offline. Registered once the page has loaded, so its install does not slow
-// the first visit; the dev server has no built worker.
+// The worker keeps this build for opening offline, registered after load so it does not slow the first visit; the dev server has none.
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   addEventListener("load", () => {
     // checked for updates past the HTTP cache, which could keep a returning reader on an old worker

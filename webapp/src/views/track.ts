@@ -22,8 +22,7 @@ export function fitHeight(ms: number): void {
   track.style.height = shownHeight > 0 ? `${shownHeight}px` : ""
 }
 
-// A slide whose content grows or shrinks after it was placed resizes the track at once. The observer's first report
-// is the height just set, and acting on it would cut that move's height transition short.
+// A slide whose content changes size resizes the track at once; the observer's first report, the height just set, would cut its transition short.
 const resized = new ResizeObserver(() => { if (slideHeight() !== shownHeight) fitHeight(0) })
 
 function moveTrack(smooth: boolean): void {

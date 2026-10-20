@@ -207,8 +207,7 @@ export function focusHeading(): void {
   heading.focus({ preventScroll: true })
 }
 
-// A new kind of screen, or one whose heading had focus, gives its heading focus; the same kind drawn again gives it back
-// to the keyed control it was on, or leaves it where it is.
+// A new kind of screen, or one whose heading had focus, focuses its heading; a redraw returns focus to its keyed control or leaves it.
 function settleFocus(active: HTMLElement | null, caret: readonly [number | null, number | null] | null, toHeading: boolean, focusKey: string | null): void {
   if (active?.isConnected && shownScreen?.contains(active)) {
     active.focus({ preventScroll: true })
@@ -286,8 +285,7 @@ export function drawLoading(title: string, place = (screen: HTMLElement) => scre
 
 export const isDark = () => document.documentElement.classList.contains("dark")
 
-// The browser's own bars, as a phone's or an installed app's, in the page's background for the theme on screen, which
-// the reader may have chosen over the one their system prefers.
+// The browser's own bars, as a phone's or an installed app's, take the ground of the theme on screen, which may not be the system's.
 function paintBars(): void {
   const ground = getComputedStyle(document.documentElement).getPropertyValue("--page-color").trim()
   for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) meta.content = ground
@@ -302,8 +300,7 @@ function toggleTheme(): void {
 
 export const OFFLINE_NOTE = "You are offline. Searches, payments and order updates need the connection."
 
-// After the footer and counted in the frame, so the footer's end scrolls clear of the note. The note stays in place and
-// only its words change, which a screen reader announces where it may miss a note being shown.
+// After the footer and counted in the frame, so the footer scrolls clear of it; it stays and only its words change, which a reader hears.
 const offlineText = el("span", {})
 const offline = el("div", { class: "offline", role: "status" }, el("div", { class: "offline-note" }, icon("offline"), offlineText))
 // The frame and track take the note's height before it joins the flow: a layout taller than the window gets a scrollbar in Firefox, which can rewrap lines and stay.
@@ -317,8 +314,7 @@ function showConnection(): void {
   offline.style.removeProperty("position")
 }
 
-// Checked again whenever the page is drawn or looked at, as Firefox does not always tell a page opened offline that
-// the network is back.
+// Checked whenever the page is drawn or looked at, as Firefox does not always tell a page opened offline that the network is back.
 for (const event of ["online", "offline", "focus"]) addEventListener(event, showConnection)
 document.addEventListener("visibilitychange", showConnection)
 
@@ -333,8 +329,7 @@ function frame(): HTMLElement {
   return main
 }
 
-// The header's, footer's and offline note's height, which wrap on a narrow screen, so the home fills what is left of the window. Rounded
-// up, as the track rounds its height up too and a fraction more would scroll the page.
+// The header's, footer's and offline note's heights, rounded up as the track's is, so the home fills the rest of the window unscrolled.
 const frameParts = () => [...document.querySelectorAll<HTMLElement>("body > header, body > footer, body > .offline")]
 const fitFrame = () => document.documentElement.style.setProperty("--frame-h", `${Math.ceil(frameParts().reduce((h, p) => h + p.getBoundingClientRect().height, 0))}px`)
 
@@ -342,8 +337,7 @@ function measureFrame(): void {
   const resized = new ResizeObserver(fitFrame)
   for (const part of frameParts()) resized.observe(part)
   fitFrame()
-  // A window resized opens the screen in view anew, and again once the fonts its new layout asked for have loaded; a
-  // scrollbar coming or going, or the offline note, leaves the window as it was.
+  // A resized window opens its screen anew, and again once its layout's fonts load; a scrollbar or the offline note leaves it as it was.
   const sized = () => `${innerWidth}x${innerHeight}`
   let size = sized()
   addEventListener("resize", () => { if (sized() !== size) { size = sized(); reopen(); void document.fonts.ready.then(reopen) } })

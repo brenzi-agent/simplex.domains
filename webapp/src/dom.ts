@@ -34,8 +34,7 @@ function append(node: Node, kids: Kid[]): void {
 
 const COUNT_MARK = "\u0000"
 
-// A wait the service asked for, counted down in node until signal ends it; done runs when it is over.
-// A screen reader hears the wait once rather than every second: the countdown is hidden from it, a still copy is not.
+// Counts a wait down in node until signal ends it, then runs done; a screen reader hears a still copy once rather than every second.
 export function waitOut(node: HTMLElement, waitSeconds: number, text: (left: string) => string, done: () => void, signal: AbortSignal): void {
   node.setAttribute("aria-hidden", "true")
   node.before(el("span", { class: "sr-only" }, text(seconds(waitSeconds))))
@@ -118,8 +117,7 @@ const COPIED_MS = 1500
 const COPIED_FADE_MS = 200
 const copiedTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>[]>()
 export function codeDisplay(code: string, testId?: string): HTMLElement {
-  // Firefox ends no line at a hyphen before a digit, so each hyphen past the first is followed by a break opportunity;
-  // a line never starts with a hyphen.
+  // Firefox ends no line at a hyphen before a digit, so a break opportunity follows each hyphen past the first; no line starts with one.
   const groups = code.split("-")
   const parts = groups.flatMap((group, i) => {
     const text = i < groups.length - 1 ? `${group}-` : group

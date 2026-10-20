@@ -202,8 +202,7 @@ export async function newerOrder(record: store.OrderRecord): Promise<store.Order
   return next
 }
 
-// When the service made one of the code's orders; the page learns an order it adopts only from its invoice, which
-// does not say. Null when the service does not list it.
+// When the service made one of the code's orders, which an adopted order's invoice does not say; null when the service does not list it.
 export async function createdAtOf(record: store.OrderRecord, registrationId: string): Promise<string | null> {
   const wallet = record.ownerCode ? walletOf(record.ownerCode) : null
   if (!wallet) return null

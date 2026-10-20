@@ -180,8 +180,7 @@ function answer<T>(res: Response, json: Record<string, unknown>): T {
   return json as T
 }
 
-// An answer the page cannot draw, or that holds what cannot be so (a negative price, an unknown state), is no
-// answer, as a body cut off is.
+// An answer the page cannot draw, or holding what cannot be (a negative price, an unknown state), is no answer, as a body cut off is.
 const noAnswer = () => new ApiError("network", 0, null, {})
 async function checked<T>(answer: Promise<unknown>, drawable: (a: Record<string, unknown>) => boolean): Promise<T> {
   const a = await answer

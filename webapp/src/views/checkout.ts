@@ -80,8 +80,7 @@ function dispatch(event: CheckoutEvent): void {
 
 const holdEnds = (signal: AbortSignal) => holdEnder(signal, () => dispatch({ type: "hold-ended" }))
 
-// A change of the order is written to the tab's checkout before the page takes it; a page whose checkout the tab has
-// moved on from changes nothing. False when it did not take it.
+// A change is written to the tab's checkout before the page takes it; false, changing nothing, once the tab moved to another checkout.
 function act(event: CheckoutEvent, apply: (event: CheckoutEvent) => void = dispatch): boolean {
   const change = changeOf(state, event)
   if (change && !session.updateCheckout(state.checkout.label, change)) return false
@@ -92,8 +91,7 @@ function act(event: CheckoutEvent, apply: (event: CheckoutEvent) => void = dispa
 // a link typed is shown by its own field, so the page takes it without drawing
 const setLink = (kind: LinkKind, link: string) => void act({ type: "link-set", kind, link }, (event) => { state = reduce(state, event) })
 
-// Follows an invoice, each answer coming once it moves on from the one seen, while `followed` returns true; an invoice the
-// service no longer knows is null.
+// Follows an invoice, each answer once it moves on from the one seen, while `followed` returns true; an invoice the service forgot is null.
 async function follow(invoiceId: string, signal: AbortSignal, followed: (seen: api.InvoiceView | null) => boolean, seen?: api.InvoiceView): Promise<void> {
   while (!signal.aborted) {
     try {
@@ -207,8 +205,7 @@ const waitingNotice = (blocked: WaitingOrder) => el("section", { class: "pay-wit
 
 const tooShort = (v: CodeVerdict | null, label: string) => v?.ok === true && label.length < v.code.minLength
 
-// A code that pays is applied, and anything else takes off the code the field held. Read from the module's state, as
-// the field is kept across draws.
+// A code that pays is applied, anything else takes off the field's code; read from the module's state, as the field is kept across draws.
 function heed(v: CodeVerdict | null): void {
   const { label, code, codeError } = state.checkout
   if (v?.ok && !tooShort(v, label)) act({ type: "code-applied", code: v.code })
@@ -393,8 +390,7 @@ async function sendOrder(): Promise<void> {
   }
 }
 
-// This commitment already has an order, so this browser's code owns it: its record is kept before it opens, and its page
-// says why it pays another way than the one chosen.
+// This commitment already has an order, which this browser's code owns: its record is kept first, and its page says why it pays another way.
 async function openInvoice(draft: flow.Draft, built: flow.BuiltOrder, invoiceId: string, chosen: Method | "code", done: (url: string) => void): Promise<void> {
   const invoice = await api.readInvoice(invoiceId).catch(() => null)
   if (invoice) {

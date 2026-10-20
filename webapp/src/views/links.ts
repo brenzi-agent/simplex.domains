@@ -31,8 +31,7 @@ export function linkPreview(link: string): HTMLElement {
   return place
 }
 
-// The field's data-state says whether its link is "ok", "bad", or "empty". save hears each link that is ok and the field
-// emptied; a link being checked or refused leaves the last one saved.
+// data-state is "ok", "bad", "checking" or "empty"; save hears each good link and the field emptied, never one checked or refused.
 export function linkField(kind: LinkKind, value: string, save: (v: string) => void): HTMLElement {
   const errorId = `link-error-${++linkFields}`
   const input = el("input", { type: "text", placeholder: FIELD_TEXT[kind].placeholder, value, "aria-label": FIELD_TEXT[kind].name, spellcheck: "false", autocomplete: "off",
@@ -80,8 +79,7 @@ export function linkField(kind: LinkKind, value: string, save: (v: string) => vo
       save(link)
     }
     const known = previews.get(link)
-    // The value the field opened with, or one the page gave it since, as the chain has it, is kept as it is, even several
-    // links set elsewhere or one whose preview fails.
+    // the value the field opened with, or the chain's given since, is kept as it is, even several links or one whose preview fails
     const kept = field.dataset.kept ?? value
     if (link === kept) {
       accept()
