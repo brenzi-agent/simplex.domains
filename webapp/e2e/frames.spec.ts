@@ -1,5 +1,7 @@
 import { expect, type Page } from "@playwright/test"
-import { CODE_HEADING, control, LINKS_HEADING, onStep, payButton, SAVED, search, test, uniqueLabel } from "./helpers.ts"
+import {
+  channelLink, checkoutCode, CODE_HEADING, CODE_LABEL, contactLink, control, LINKS_HEADING, onStep, payButton, SAVED, savedToReview, search, test, uniqueLabel,
+} from "./helpers.ts"
 
 // the slide runs at full length, as for a reader who has not asked for less movement
 test.use({ reducedMotion: "no-preference" })
@@ -114,5 +116,28 @@ test("the purchase track slides and other screens swap without a near-empty fram
   await expectNoEmptyFrame(page, "Your names back to the order", async () => {
     await page.goBack()
     await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible()
+  })
+})
+
+test.describe("a small phone", () => {
+  test.use({ viewport: { width: 360, height: 740 }, hasTouch: true })
+
+  test("opening the code field keeps the page where it is", async ({ page }) => {
+    await search(page, uniqueLabel("still"))
+    await onStep(page).getByRole("button", { name: "Register" }).click()
+    await onStep(page).getByRole("textbox", { name: "Contact address" }).fill(contactLink("st"))
+    await onStep(page).getByRole("textbox", { name: "Channel" }).fill(channelLink("st"))
+    await onStep(page).getByRole("button", { name: "Continue" }).click()
+    await heading(page, CODE_HEADING)
+    await savedToReview(page)
+    // the slide to the review ends before the link is aimed at
+    await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
+    const before = await page.evaluate(() => scrollY)
+    // a person's click: Playwright's own click over WebDriver BiDi first scrolls its target to the window's centre
+    const box = (await onStep(page).getByRole("button", { name: CODE_LABEL }).boundingBox())!
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    await expect(checkoutCode(page)).toBeFocused()
+    await page.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))))
+    expect(await page.evaluate(() => scrollY)).toBe(before)
   })
 })

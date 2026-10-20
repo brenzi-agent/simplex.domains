@@ -291,8 +291,8 @@ function toggleTheme(): void {
 
 export const OFFLINE_NOTE = "You are offline. Searches, payments and order updates need the connection."
 
-// After the footer and counted in the frame, so the footer's end scrolls clear of the note. The note stays in place and
-// only its words change, which a screen reader announces where it may miss a note being shown.
+// After the footer, so the footer scrolls clear of the note, and outside the frame, so a centred step stays still as it shows.
+// Only its words change, which a screen reader announces where it may miss a note being shown.
 const offlineText = el("span", {})
 const offline = el("div", { class: "offline", role: "status" }, el("div", { class: "offline-note" }, icon("offline"), offlineText))
 const showConnection = () => { offlineText.textContent = navigator.onLine ? "" : OFFLINE_NOTE }
@@ -314,10 +314,10 @@ function frame(): HTMLElement {
   return main
 }
 
-// The header's, footer's and offline note's height, which wrap on a narrow screen, so the home fills what is left of the window. Rounded
+// The header's and footer's height, which wrap on a narrow screen, so the home fills what is left of the window. Rounded
 // up, as the track rounds its height up too and a fraction more would scroll the page.
 function measureFrame(): void {
-  const parts = [...document.querySelectorAll<HTMLElement>("body > header, body > footer, body > .offline")]
+  const parts = [...document.querySelectorAll<HTMLElement>("body > header, body > footer")]
   const fit = () => document.documentElement.style.setProperty("--frame-h", `${Math.ceil(parts.reduce((h, p) => h + p.getBoundingClientRect().height, 0))}px`)
   const resized = new ResizeObserver(fit)
   for (const part of parts) resized.observe(part)

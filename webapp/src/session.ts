@@ -1,5 +1,6 @@
 // This tab's checkout in progress, which ends with the tab.
 import type { ChainInfo, Method } from "./api.ts"
+import type { CheckoutStep } from "./screens/routes.ts"
 
 export interface AppliedCode {
   display: string
@@ -23,6 +24,8 @@ export interface Checkout {
   appSecret: string | null
   // the history entry of the search the checkout started from
   searchAt: number
+  // the step last opened, where Your names continues the checkout
+  step: CheckoutStep
   // a method the provider refused just now
   unavailable?: Method
   // why the service refused the code this checkout carried

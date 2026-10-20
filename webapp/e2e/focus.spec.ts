@@ -117,12 +117,14 @@ test("a restore the service refuses puts focus back in the code's field", async 
 
 test("a pending code with no order leaves focus on the page when its Find link goes", async ({ page }) => {
   await openCodeStep(page, uniqueLabel("nofind"))
-  await page.goto("/#/names")
-  const row = page.locator(".list-row").first()
+  // another tab, which does not hold this checkout, looks for its order
+  const other = await page.context().newPage()
+  await other.goto("/#/names")
+  const row = other.locator(".list-row").first()
   await row.getByText("Find the order").focus()
-  await page.keyboard.press("Enter")
+  await other.keyboard.press("Enter")
   await expect(row.getByText("No order was made")).toBeVisible()
-  await focusOnPage(page)
+  await focusOnPage(other)
 })
 
 test("Forget everything asks first with focus on Keep them, and keeping them gives focus back to the link", async ({ page }) => {

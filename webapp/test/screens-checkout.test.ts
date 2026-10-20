@@ -14,7 +14,7 @@ const OPEN_ORDER = { invoiceId: "inv-9", label: "bobby", tld: "simplex", confirm
 function checkout(change: Partial<Checkout> = {}): Checkout {
   return {
     label: "alice1", price: 1500, chain: CHAIN, contact: "", channel: "", method: "btc", code: null, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF",
-    saved: true, appOwner: null, appSecret: null, searchAt: 0, ...change,
+    saved: true, appOwner: null, appSecret: null, searchAt: 0, step: "review", ...change,
   }
 }
 

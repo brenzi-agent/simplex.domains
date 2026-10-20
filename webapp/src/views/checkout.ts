@@ -9,7 +9,7 @@ import { changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, in
 import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
-import { CODE_ERRORS, codeField, type CodeVerdict, refuseCode } from "./codes.ts"
+import { clearTyped, CODE_ERRORS, codeField, type CodeVerdict, refuseCode } from "./codes.ts"
 import { focusUnsettled, linkEntry, linkField, linkName, linkPreview } from "./links.ts"
 import {
   asStep, type Builder, currentRoute, draw, focusOn, go, goFrom, isRedraw, isRoute, kept, keptLive, limitScreen, outcome, redirect, refresh, screen, searchLink, whenLeaving,
@@ -48,12 +48,12 @@ export function checkoutPage(asked: CheckoutStep): void {
   if (!stored) return redirect("/#/")
   const step = stepFor(stored, asked)
   if (step !== asked) return redirect(checkoutUrl(step))
-  if (step === "code" && !stored.ownerCode) session.setCheckout({ ...stored, ownerCode: flow.newOwnerCode() })
+  session.setCheckout({ ...stored, step, ownerCode: stored.ownerCode ?? (step === "code" ? flow.newOwnerCode() : null) })
   const c = session.checkout()!
   if (c.ownerCode) store.addPending({ ownerCode: c.ownerCode, label: c.label, tld: c.chain.tld, createdAt: new Date().toISOString() })
   if (!isRedraw() || shown === null || state.checkout.label !== c.label) {
     // a code field opened stays open over Change and Back within the same checkout
-    state = initialState(c, step, shown !== null && state.checkout.label === c.label && state.codeOpen)
+    state = initialState(c, step, shown !== null && state.checkout.label === c.label && state.checkout.ownerCode === c.ownerCode && state.codeOpen)
     shown = null
     unheard = undefined
   }
@@ -300,7 +300,7 @@ function buildTooMany({ checkout: c, hold }: CheckoutState, signal: AbortSignal)
 }
 
 function buildTaken({ checkout: c }: CheckoutState): HTMLElement {
-  return outcome({ tone: "info", icon: "info", title: "Someone registered it first", text: [nameText(c.label, c.chain.tld), " was taken after you searched for it. Nothing was charged."],
+  return outcome({ tone: "info", icon: "info", title: "This name is no longer available", text: [nameText(c.label, c.chain.tld), " became unavailable after you searched for it. Nothing was charged."],
     action: btn("Search another name", "", () => go(searchLink("", c.appOwner))) })
 }
 
@@ -353,6 +353,7 @@ async function sendOrder(): Promise<void> {
   const mine = currentRoute()
   const search = searchLink(c.label, c.appOwner)
   const done = (url: string) => {
+    clearTyped(codeKey(c.label))
     const current = session.checkout()
     const ours = current?.label === c.label && current.ownerCode === c.ownerCode
     if (ours) session.setCheckout(null)

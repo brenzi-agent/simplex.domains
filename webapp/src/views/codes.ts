@@ -120,3 +120,5 @@ export function codeField(key: string, label: string, judged: (v: CodeVerdict | 
 }
 
 export const refuseCode = (entry: HTMLElement, text: string) => refusers.get(entry)?.(text)
+
+export const clearTyped = (key: string) => void typed.delete(key)

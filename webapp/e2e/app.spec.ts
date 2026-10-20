@@ -2,7 +2,7 @@ import { expect, type APIRequestContext, type Locator, type Page } from "@playwr
 import { randomBytes } from "node:crypto"
 import { durationFor, registerIntentDigest, type Registration } from "../src/crypto/registration.ts"
 import { checksumAddress, fromHex, hex, signDigest, walletFromEntropy, type Wallet } from "../src/crypto/wallet.ts"
-import { control, MOCK, onStep, REGISTRATION_MS, registrationOf, search, searchName, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
+import { control, LINKS_HEADING, MOCK, onStep, REGISTRATION_MS, registrationOf, search, searchName, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
 
 const APP_SIGNS = "Waiting for SimpleX to sign the registration with your app's wallet."
 
@@ -165,6 +165,45 @@ test("a name code too long for its line breaks after a hyphen, so no line starts
 
 // a laptop's, a phone's and a small phone's window
 const NOTE_SIZES = [{ width: 1280, height: 900 }, { width: 390, height: 844 }, { width: 360, height: 740 }]
+const drawn = (page: Page) => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
+
+test("going offline leaves a centred step where it is", async ({ page, context }) => {
+  const heading = onStep(page).getByRole("heading", { name: LINKS_HEADING })
+  for (const size of NOTE_SIZES.slice(0, 2)) {
+    await page.setViewportSize(size)
+    await search(page, uniqueLabel("still"))
+    await onStep(page).getByRole("button", { name: "Register" }).click()
+    await expect(heading).toBeVisible()
+    await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
+    await drawn(page)
+    const before = await heading.evaluate((h) => h.getBoundingClientRect().top)
+    await context.setOffline(true)
+    try {
+      await expect(page.locator(".offline-note")).toBeVisible()
+      // the frame's measure follows the note on the frame after it shows
+      await drawn(page)
+      expect(await heading.evaluate((h) => h.getBoundingClientRect().top), `the heading's top at ${size.width}x${size.height}`).toBe(before)
+    } finally {
+      await context.setOffline(false)
+    }
+    await expect(page.locator(".offline-note")).toBeHidden()
+  }
+})
+
+test("on a phone, Forget's two answers are an equal pair, both in view", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await search(page, uniqueLabel("pair"))
+  await toCodeStep(page)
+  // a code under the name makes the list reach past the window, as a browser that has bought some has
+  await page.evaluate(() => localStorage.setItem("simplex-names:code:SN6-PAIR", JSON.stringify({ code: "SN6-Z6VPA-7YPF0-XN8B4-9S1ZD", minLength: 6, years: 2, addedAt: new Date().toISOString() })))
+  await page.goto("/#/names")
+  await page.getByText("Forget everything in this browser").click()
+  const boxes = await Promise.all(["Forget everything", "Keep them"].map(async (name) => (await page.getByRole("button", { name }).boundingBox())!))
+  expect(boxes[0].width, "the two answers' widths").toBeCloseTo(boxes[1].width, 0)
+  const height = await page.evaluate(() => innerHeight)
+  for (const box of boxes) expect(box.y >= 0 && box.y + box.height <= height, `an answer at ${box.y}-${box.y + box.height} in a window ${height} high`).toBe(true)
+  await shot(page, "N12f-forget-ask")
+})
 
 test("offline, the footer scrolls clear of the note, and its last link takes a click there", async ({ page, context }) => {
   await page.goto("/")
@@ -175,17 +214,22 @@ test("offline, the footer scrolls clear of the note, and its last link takes a c
     const lastLink = page.locator("body > footer").getByRole("link", { name: "Trademark owners" })
     for (const size of NOTE_SIZES) {
       await page.setViewportSize(size)
-      // how far each of the footer's items reaches past the note's top, scrolled to the end once the frame's measure and
-      // the track have caught up with the new window, as the page's end moves until then
-      const overlaps = () => page.evaluate(() => {
+      // how far each of the footer's items reaches past the note's top, scrolled to the end once the window has its new
+      // size (Firefox takes it after Playwright's call returns), the note has its own and the frame and track have caught up
+      const overlaps = () => page.evaluate(({ width, height: windowHeight }) => {
         const height = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().height
-        const frame = Math.ceil(height("body > header") + height("body > footer") + height("body > .offline"))
-        const settled = getComputedStyle(document.documentElement).getPropertyValue("--frame-h") === `${frame}px`
+        const frame = Math.ceil(height("body > header") + height("body > footer"))
+        // the home fills the window, so its parts add up to the window's height once its size has reached the page's layout
+        const settled = innerWidth === width && innerHeight === windowHeight
+          && Math.abs(height("body > header") + height("body > main") + height("body > footer") - windowHeight) < 1
+          && getComputedStyle(document.documentElement).getPropertyValue("--frame-h") === `${frame}px`
           && Math.round(height(".track")) === Math.ceil(height(".slide:not([inert])"))
+          // reduced motion still eases each style change over a frame, so the note grows to its height then
+          && document.getAnimations().length === 0
         scrollTo(0, document.documentElement.scrollHeight)
         const noteTop = document.querySelector(".offline-note")!.getBoundingClientRect().top
         return { settled, overlaps: [...document.querySelectorAll("body > footer > *")].map((n) => Math.max(0, Math.ceil(n.getBoundingClientRect().bottom - noteTop))) }
-      })
+      }, size)
       await expect.poll(overlaps, { message: `the footer's items under the note at ${size.width}x${size.height}` }).toEqual({ settled: true, overlaps: [0, 0] })
       // WebKit hit-tests a mouse event against the last frame it drew, so the scroll is drawn first
       await page.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))))

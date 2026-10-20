@@ -199,7 +199,7 @@ h1 .long { font-size: inherit; }
 .chip .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
 
 /* the landing's first screen (landing:144-168), its countdown replaced by the search */
-/* --frame-h is the header's, footer's and offline note's height, which shell.ts measures, so the home fills the first screen as the landing's hero does.
+/* --frame-h is the header's and footer's height, which shell.ts measures, so the home fills the first screen as the landing's hero does.
    WebKit rounds each of the four spacers' share of the room to its 1/64 px unit, which can take the home past the window and
    scroll the page a pixel; --spacer-rounding leaves room for the four rounded up. */
 .home { --spacer-rounding: calc(4px / 64); display: flex; flex-direction: column; align-items: center; text-align: center; padding-inline: 16px;
@@ -417,6 +417,10 @@ svg.qr { display: block; width: 132px; height: auto; }
 .row-code .code-display { width: 100%; }
 .small-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--surface-line); background: var(--surface); color: var(--ink); font-weight: 700; font-size: 13.5px; }
 .danger-link { display: block; text-align: center; color: var(--danger-fg); font-size: 14px; }
+/* Forget's question comes into view with room below it; its answers are an equal pair, side by side when each gets the
+   220 px that holds "Forget everything" */
+.forget { scroll-margin-bottom: 24px; }
+.forget .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 
 /* webapp additions to the mockups' rules */
 .mt-14 { margin-top: 14px; } .mt-16 { margin-top: 16px; }

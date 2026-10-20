@@ -192,7 +192,7 @@ function register(): void {
   }
   session.setCheckout({
     label, price: answer.price, chain, contact: "", channel: "", method: "btc", code: null, ownerCode: null, saved: false,
-    appOwner: s.fromApp, appSecret: null, searchAt: historyPlace(),
+    appOwner: s.fromApp, appSecret: null, searchAt: historyPlace(), step: "links",
   })
   go(checkoutUrl("links"))
 }

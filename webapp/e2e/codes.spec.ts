@@ -2,8 +2,8 @@ import { type APIRequestContext, type Browser, expect, type Locator, type Page }
 import { durationFor } from "../src/crypto/registration.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  CHECKOUT_KEY, checkoutCode, CODE_HEADING, CODE_LABEL, control, MOCK, onStep, openCode, payButton, search, searchName, shot, startOrder, test, toCodeStep, toReview,
-  uniqueLabel, waitRegistered,
+  CHECKOUT_KEY, checkoutCode, CODE_HEADING, CODE_LABEL, control, LINKS_HEADING, MOCK, onStep, openCode, payButton, savedToReview, search, searchName, shot, startOrder, test,
+  toCodeStep, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
@@ -274,14 +274,55 @@ test("an owner code made at checkout is kept in Your names until its order exist
   await page.getByLabel("Name", { exact: true }).fill(label)
   await page.getByLabel("Name", { exact: true }).press("Enter")
   await toCodeStep(page)
-  await page.goto("/#/names")
-  const row = page.locator(".list-row", { hasText: `${label}.simplex` })
+  // another tab, which does not hold this checkout, looks for its order
+  const other = await page.context().newPage()
+  await other.goto("/#/names")
+  const row = other.locator(".list-row", { hasText: `${label}.simplex` })
   await expect(row.locator(".chip")).toHaveText("Checkout not finished")
   await row.getByText("Find the order").click()
   await expect(row.locator(".chip")).toHaveText("No order was made")
-  await shot(page, "N12d-unfinished-checkout")
+  await shot(other, "N12d-unfinished-checkout")
   await row.getByText("Remove").click()
-  await expect(page.locator(".list-row", { hasText: `${label}.simplex` })).toHaveCount(0)
+  await expect(other.locator(".list-row", { hasText: `${label}.simplex` })).toHaveCount(0)
+})
+
+test("Your names continues this tab's unfinished checkout at the step it was left on", async ({ page }) => {
+  const label = uniqueLabel("cont")
+  await search(page, label)
+  await toCodeStep(page)
+  const row = page.locator(".list-row", { hasText: `${label}.simplex` })
+  const resume = async (heading: string) => {
+    await page.goto("/#/names")
+    await expect(row.locator(".chip")).toHaveText("Checkout not finished")
+    await expect(row.getByText("Find the order"), "this tab's checkout is continued, not looked for").toHaveCount(0)
+    await row.getByRole("button", { name: "Continue checkout" }).click()
+    await expect(onStep(page).getByRole("heading", { name: heading })).toBeVisible()
+  }
+  await resume(CODE_HEADING)
+  await savedToReview(page)
+  await resume("Check your order")
+  await onStep(page).getByRole("button", { name: "Add links" }).click()
+  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
+  await resume(LINKS_HEADING)
+})
+
+test("text typed in the code field is gone from a later checkout of the name once its order is made", async ({ page, request }) => {
+  const label = uniqueLabel("typed")
+  await search(page, label)
+  await toReview(page)
+  await openCode(page)
+  await checkoutCode(page).fill("SN6-AB")
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  // a closed invoice lets the name be ordered again
+  await control(request, `expire/${new URL(page.url()).searchParams.get("order")}`)
+  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
+  // Back returns to the name's search in the same document, which keeps what fields were typed
+  await page.goBack()
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue(label)
+  await toReview(page)
+  await openCode(page)
+  await expect(checkoutCode(page)).toHaveValue("")
 })
 
 test("an order refused at checkout for a name taken meanwhile leaves no unfinished checkout in Your names", async ({ page }) => {

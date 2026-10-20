@@ -11,6 +11,7 @@ import {
   againLine, initialRestore, lapsed, LINK_NAMES, ranOut, type EditRead, moneyReached, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
   reduceList, reduceRestore, REFUSALS, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
+import { checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { codeField } from "./codes.ts"
@@ -233,7 +234,8 @@ const restoreLink = () => el("a", { href: "/#/restore" }, "Restore with a name c
 
 function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
-  const names = [...s.pending.map((p) => pendingRow(p, s, signal)), ...listedOrders(s).map((o) => orderRow(o, s))]
+  const open = session.checkout()
+  const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...listedOrders(s).map((o) => orderRow(o, s))]
   return screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME },
     el("div", { class: "card list" }, el("h2", {}, "Names"), names.length ? names : el("p", { class: "note" }, "No names in this browser yet. ", restoreLink())),
     names.length ? el("p", { class: "note" }, restoreLink()) : null,
@@ -308,17 +310,20 @@ function rowChip(s: ListState, o: store.OrderRecord, seen: RowSeen | undefined):
   return chip(text, tone, tone !== "bad")
 }
 
-function pendingRow(p: store.PendingCode, s: ListState, signal: AbortSignal): HTMLElement {
+// a checkout this tab still holds is continued rather than looked for
+function pendingRow(p: store.PendingCode, s: ListState, open: session.Checkout | null, signal: AbortSignal): HTMLElement {
   const key = pendingKey(p)
   const finding = s.finding[p.ownerCode]
-  const hold = finding === "none" ? null : s.hold
-  const find = finding === "none" ? null : small("Find the order", `${key}-find`, () => void findOrder(p), "refresh")
+  const resume = open?.ownerCode === p.ownerCode ? small("Continue checkout", `${key}-continue`, () => go(checkoutUrl(open.step))) : null
+  const findable = resume === null && finding !== "none"
+  const hold = findable ? s.hold : null
+  const find = findable ? small("Find the order", `${key}-find`, () => void findOrder(p), "refresh") : null
   if (find && (finding === "finding" || s.hold)) find.setAttribute("aria-disabled", "true")
   const state = hold ? chip("", "warn")
     : finding === "none" ? chip("No order was made", "bad")
       : finding === "unchecked" ? chip("Not checked", "bad") : chip("Checkout not finished", "warn")
   const node = row(key, markOf(p.label), `${p.label}.${p.tld}`, `Name code made ${dateOf(Date.parse(p.createdAt) / 1000, true)}`, state,
-    [find, small("Remove", `${key}-remove`, () => removePending(p))])
+    [resume ?? find, small("Remove", `${key}-remove`, () => removePending(p))])
   // the count goes in once the chip is in its row, where its spoken copy goes beside it
   if (hold) waitOut(state, secondsLeft(hold), (left) => `Try again in ${left}`, () => undefined, signal)
   return node
