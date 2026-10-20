@@ -314,8 +314,7 @@ function rowChip(s: ListState, o: store.OrderRecord, seen: RowSeen | undefined):
 function pendingRow(p: store.PendingCode, s: ListState, open: session.Checkout | null, signal: AbortSignal): HTMLElement {
   const key = pendingKey(p)
   const finding = s.finding[p.ownerCode]
-  const resume = open?.ownerCode === p.ownerCode ? small("Continue checkout", `${key}-continue`,
-    () => session.checkout()?.ownerCode === p.ownerCode ? go(checkoutUrl(open.step)) : dispatchList(storedEvent())) : null
+  const resume = open?.ownerCode === p.ownerCode ? small("Continue checkout", `${key}-continue`, () => session.checkout()?.ownerCode === p.ownerCode ? go(checkoutUrl(open.step)) : dispatchList(storedEvent())) : null
   const findable = resume === null && finding !== "none"
   const hold = findable ? s.hold : null
   const find = findable ? small("Find the order", `${key}-find`, () => void findOrder(p), "refresh") : null

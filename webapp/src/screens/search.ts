@@ -56,7 +56,6 @@ export const initialSearch = (): SearchState => ({
   retarget: null, moved: null, hold: null, paused: false, ownOrder: null, register: IDLE,
 })
 
-// An available name this browser has ordered since may be taken now, by its own order too, so it is checked again first.
 export function returnedTo(s: SearchState, opening: Opening, name: string, ordered: boolean): SearchState {
   if (s.opening !== opening || s.name !== name || s.answer?.kind !== "found") return initialSearch()
   return { ...s, searching: null, register: IDLE, answer: ordered && s.answer.answer.status === "available" ? { kind: "checking" } : s.answer }

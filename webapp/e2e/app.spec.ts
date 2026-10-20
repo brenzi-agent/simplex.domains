@@ -252,6 +252,8 @@ test("on a phone, Forget's question glides into view rather than jumping there",
     for (const n of [1, 2, 3]) localStorage.setItem(`simplex-names:code:SN6-GLIDE${n}`, JSON.stringify({ code: `SN6-Z6VPA-7YPF0-XN8B4-9S1Z${n}`, minLength: 6, years: 2, addedAt: new Date().toISOString() }))
   })
   await page.goto("/#/names")
+  // the list is drawn again as each code is read, which replaces the link
+  await expect(page.locator(".list-row .chip", { hasText: "Checking" })).toHaveCount(0)
   const ask = page.getByText("Forget everything in this browser")
   await ask.scrollIntoViewIfNeeded()
   // resolves once the first frame is sampled, so a jump at the click shows between two samples

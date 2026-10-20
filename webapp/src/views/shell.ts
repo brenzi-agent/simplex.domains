@@ -332,6 +332,8 @@ function measureFrame(): void {
   const resized = new ResizeObserver(fit)
   for (const part of parts) resized.observe(part)
   fit()
-  // a window resized opens the screen in view anew, at the frame's new height; the offline note coming or going does not
-  addEventListener("resize", () => { fit(); if (shownScreen) holdSpacers(shownScreen) })
+  // a window resized, or text laid out anew in the fonts just loaded, opens the screen in view anew; the offline note does not
+  const reopen = () => { fit(); if (shownScreen) holdSpacers(shownScreen) }
+  addEventListener("resize", reopen)
+  document.fonts.addEventListener("loadingdone", reopen)
 }
