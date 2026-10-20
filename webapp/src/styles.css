@@ -211,8 +211,8 @@ body > main { flex: 1 0 auto; }
 .screen.step > .vspace:not([style]) ~ .vspace:last-child { min-height: max(var(--note-room), var(--room, 0px)); }
 /* a code's verdict, or a line on another order waiting, which arrives after the review is drawn */
 .screen.step:has(.review) { --room: calc(1.4 * 14px + 12px); }
-/* a link refused: its line under the field, after the field's gap and the line's margin */
-.screen.step:has(.link-fields) { --room: calc(2 * 8px + 1.5 * 14px); }
+/* a link refused: its line under the field, after the field's gap */
+.screen.step:has(.link-fields) { --room: calc(8px + 1.4 * 14px); }
 /* Edit links saved: its notice of a title and its words, a line or a phone's two, after the gap */
 .screen.step:has(> .link-entry) { --room: calc(var(--saved-lines, 2) * 1.5 * var(--fs-small) + 26px + var(--screen-gap)); }
 /* a part paid: its notice, of two lines with its padding and border, in place of the lead and the lead's pull to the heading */
@@ -362,10 +362,13 @@ h1 .long { font-size: inherit; }
 .method[aria-disabled="true"] { color: var(--ink-soft); background: var(--chip); cursor: default; }
 .method[aria-disabled="true"] span { color: var(--danger-fg); }
 .method:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.verdict, .other-order { font-size: 14px; line-height: 1.4; }
-.verdict { font-weight: 600; }
+/* a refused link and a refused code read alike: a line 8 px under the field, its icon before it */
+.verdict, .field-error, .other-order { font-size: 14px; line-height: 1.4; }
+.verdict:not(:empty), .field-error { display: flex; gap: 8px; font-weight: 600; }
+.code-entry > .verdict:not(:empty) { margin-top: calc(8px - var(--block-gap)); }
+.screen > [role="status"] > .verdict { margin-top: calc(8px - var(--screen-gap)); }
 .verdict.ok { color: var(--ok-fg); }
-.verdict.bad { color: var(--danger-fg); }
+.verdict.bad, .field-error { color: var(--danger-fg); }
 
 /* payment: the QR, with its wallet link, beside the amount and the address; the name code: its QR beside the words */
 /* qrSvg draws its own white frame */
@@ -434,7 +437,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .code-display { display: flex; align-items: center; gap: 12px; padding: 16px 16px 16px 24px; border-radius: 16px; background: var(--chip); border: 1px solid var(--chip-line);
   font: 700 19px var(--mono); letter-spacing: .02em; }
 .code-display .code-text { flex: 1; text-align: center; text-wrap: balance; }
-.notice svg.i { margin-top: 1px; }
+.notice svg.i, .field-error svg.i, .verdict svg.i { margin-top: 1px; }
 .notice.info svg.i { color: var(--primary); }
 .notice b { display: block; overflow-wrap: anywhere; }
 .next-step > :nth-child(2) { display: grid; gap: 8px; align-self: center; }
@@ -492,7 +495,6 @@ svg.qr { display: block; width: 132px; height: auto; }
 .mt-14 { margin-top: 14px; } .mt-16 { margin-top: 16px; }
 .center { display: flex; justify-content: center; }
 .left { text-align: left; }
-.field-error { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--danger-fg); font-weight: 700; font-size: 14px; }
 
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .actions.pair { display: grid; grid-template-columns: 1fr 1fr; }
@@ -579,7 +581,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .entity .who b, .entity > a { font-size: 14px; }
   .entity .who span { font-size: 12px; }
   .link-fields { gap: 8px; }
-  .link-entry, .link-field { gap: 6px; }
+  .link-entry { gap: 6px; }
   /* a review line's label goes above its profile, so the name has the line and the avatars align */
   .link-lines { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .link-line { grid-column: auto; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; }

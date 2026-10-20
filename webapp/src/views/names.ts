@@ -398,7 +398,7 @@ function buildRestore(s: RestoreState, signal: AbortSignal): HTMLElement {
   action.dataset.focus = RESTORE
   holdEnder(signal, () => dispatchRestore({ type: "hold-ended" }))(s.hold !== null)
   const note = s.hold ? holdNotice(s.hold, signal)
-    : refusal ? refusal.verdict ? el("p", { class: "verdict bad" }, `${refusal.title}. ${refusal.text}`) : alertBox("danger", "alert", refusal.title, refusal.text)
+    : refusal ? refusal.verdict ? el("p", { class: "verdict bad" }, icon("alert"), `${refusal.title}. ${refusal.text}`) : alertBox("danger", "alert", refusal.title, refusal.text)
       : null
   return screen({ title: "Restore with a name code", lead: "Enter the name code you saved to find your order. The code never leaves this browser.", back: NAMES },
     el("div", { class: "code-entry" }, el("span", { class: "label" }, "Name code"), box),

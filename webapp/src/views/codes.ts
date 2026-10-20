@@ -2,7 +2,7 @@
 import * as api from "../api.ts"
 import { codeProgress, parseNameCode } from "../crypto/code.ts"
 import { seconds, termText } from "../format.ts"
-import { el, icon, liveRegion } from "../dom.ts"
+import { el, icon, liveRegion, refill } from "../dom.ts"
 import type * as session from "../session.ts"
 import { kept, whenDropped } from "./shell.ts"
 
@@ -98,7 +98,7 @@ export function codeField(key: string, label: string, judged: (v: CodeVerdict | 
       const tone = instead !== null || v?.ok === false ? " bad" : v ? " ok" : ""
       box.className = `field code-input${tone}`
       line.className = `verdict${tone}`
-      line.textContent = instead ?? (v ? said(v) : "")
+      refill(line, tone === " bad" && icon("alert"), instead ?? (v ? said(v) : null))
     }
     if (start || refusal) show(start && unused(start), refusal)
     const life = new AbortController()

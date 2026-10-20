@@ -381,6 +381,38 @@ test(`Edit links and Restore sit centred as the steps do, and Edit links keeps s
   }
 })
 
+// how a refusal under a field is drawn: its weight, its line, whether an icon leads it, and how far under the field it is
+async function refusalLook(refusal: Locator, field: Locator) {
+  await expect(refusal).toBeVisible()
+  const [drawn, box] = [(await refusal.boundingBox())!, (await field.boundingBox())!]
+  const style = await refusal.evaluate((node) => ({ weight: getComputedStyle(node).fontWeight, line: getComputedStyle(node).lineHeight, icon: node.querySelector("svg") !== null }))
+  return { ...style, under: Math.round(drawn.y - box.y - box.height) }
+}
+
+test("a refused link, a refused code and a refused name code are drawn alike under their fields, at both sizes", async ({ page }) => {
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    await search(page, uniqueLabel("refusal"))
+    const step = onStep(page)
+    await step.getByRole("button", { name: "Register" }).click()
+    const channel = step.getByRole("textbox", { name: "Channel" })
+    await channel.fill(contactLink("RF"))
+    const link = await refusalLook(step.locator(".field-error"), step.locator(".link-field .field", { has: page.getByRole("textbox", { name: "Channel" }) }))
+    await channel.fill("")
+    await step.getByRole("button", { name: "Skip for now" }).click()
+    await savedToReview(page)
+    await openCode(page)
+    await checkoutCode(page).fill("Q")
+    const code = await refusalLook(step.locator(".verdict.bad"), step.locator(".code-input"))
+    await page.goto("/#/restore")
+    await page.getByLabel("Name code").fill("SN-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA")
+    await page.getByRole("button", { name: "Restore" }).click()
+    const restore = await refusalLook(onStep(page).locator(".verdict.bad"), onStep(page).locator(".code-input"))
+    expect(code, `the refused code beside the refused link at ${size.width}x${size.height}`).toEqual(link)
+    expect(restore, `the refused name code beside the refused link at ${size.width}x${size.height}`).toEqual(link)
+  }
+})
+
 // The payment's line of name, term and amount: how many lines it takes, and how many of its separator dots start a line,
 // drawn at the line's left edge.
 const separatorsOf = (line: Locator) => line.evaluate((node) => {
