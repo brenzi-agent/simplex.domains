@@ -165,7 +165,6 @@ body > main { flex: 1 0 auto; }
   border-radius: 999px; border: 1px solid transparent; background: var(--primary); color: var(--primary-ink); font: 600 18px/22px var(--body);
   letter-spacing: .01em; white-space: nowrap; cursor: pointer; }
 .btn:not([disabled]):hover { text-decoration: none; }
-.btn:not([disabled], [aria-busy="true"]):active { filter: brightness(.94); }
 .btn.block { display: flex; width: 100%; }
 .btn.quiet { --spin: var(--primary); background: none; color: var(--primary); border-color: var(--line-strong); }
 .btn.danger { background: var(--danger-fg); color: var(--page-color); }
@@ -513,6 +512,8 @@ html.dark .monero-base { fill: #fff; }
   .method[aria-checked="false"]:not([aria-disabled]):hover { border-color: var(--line-strong); background: color-mix(in srgb, var(--surface), var(--primary) 4%); }
   .check:hover { border-color: var(--line-strong); }
 }
+/* after the hover rules and as specific as the quiet one, as a button pressed with a mouse still matches them */
+:is(.btn, .btn.quiet):not([disabled], [aria-busy="true"]):active { filter: brightness(.94); }
 /* The offline note follows the footer, over the end of its padding, and stays at the window's foot, passing clicks beside
    it through to the page. Its room, which a step keeps below it as it opens, is its lines, padding, border and offsets
    less the padding it covers; its words take two lines below the width where they fit one. */

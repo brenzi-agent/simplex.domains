@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test"
+import { expect, type Locator, type Page } from "@playwright/test"
 import {
   contactLink, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, registrationOf, savedToReview, search, startOrder, test, toCodeStep, toReview, uniqueLabel,
 } from "./helpers.ts"
@@ -207,4 +207,28 @@ test("a switch of theme moves the controls' colours with the page's, frame by fr
     expect(frames.length, `frames recorded switching to ${theme}`).toBeGreaterThan(2)
     expect(apart, `controls apart from their tokens switching to ${theme}`).toEqual([])
   }
+})
+
+const PRESSED = "brightness(0.94)"
+
+// a button's filter while a mouse holds it down, released away from it so it does not click
+async function pressedLook(page: Page, button: Locator): Promise<string> {
+  await button.hover()
+  await page.mouse.down()
+  const filter = await button.evaluate((node) => getComputedStyle(node).filter)
+  await page.mouse.move(0, 0)
+  await page.mouse.up()
+  return filter
+}
+
+test("a button held down under a mouse shows its press over its hover, a primary and a quiet one", async ({ page }) => {
+  await search(page, uniqueLabel("press"))
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  const skip = onStep(page).getByRole("button", { name: "Skip for now" })
+  expect(await pressedLook(page, skip), "Skip for now held down").toBe(PRESSED)
+  await skip.click()
+  await expect(onStep(page).getByRole("heading", { name: "Save your name code" })).toBeVisible()
+  await page.goto("/#/names")
+  await page.getByText("Forget everything in this browser").click()
+  expect(await pressedLook(page, page.getByRole("button", { name: "Keep them" })), "Keep them held down").toBe(PRESSED)
 })
