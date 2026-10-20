@@ -54,7 +54,6 @@ async function payWithCode(page: Page, label: string, code: string): Promise<voi
   await openCode(page)
   await checkoutCode(page).fill(code)
   await expect(page.getByText("Paid with your code")).toBeVisible()
-  // the search's Register stays on its inert slide beside the checkout
   await onStep(page).getByRole("button", { name: "Register", exact: true }).click()
   await page.waitForURL(/\?registration=/)
 }
@@ -333,7 +332,7 @@ test("an order refused at checkout for a name taken meanwhile leaves no unfinish
   await toReview(page)
   await page.route("**/api/invoice", (route) => route.fulfill({ status: 409, json: { error: "name_taken" } }))
   await payButton(page).click()
-  await expect(page.getByLabel("Name", { exact: true })).toHaveValue(label)
+  await expect(onStep(page).getByRole("heading", { name: "This name is no longer available" })).toBeVisible()
   await page.getByRole("link", { name: "Your names" }).first().click()
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
   await expect(page.getByText("No names in this browser yet.").or(page.locator(".list-row").first())).toBeVisible()

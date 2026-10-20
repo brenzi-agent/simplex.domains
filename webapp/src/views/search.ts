@@ -91,7 +91,7 @@ function dispatch(event: SearchEvent): void {
   if (!isRoute(pageRoute)) return
   const kind = screenOf(state)
   shown = kind
-  draw(kind, (signal) => BUILDERS[kind](state, signal), kind === "status:bad-app-link" ? null : "search")
+  draw(kind, (signal) => BUILDERS[kind](state, signal))
 }
 
 // what is typed is shown by the field itself, so the page takes it without drawing

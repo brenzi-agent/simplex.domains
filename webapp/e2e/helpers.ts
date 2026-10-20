@@ -65,12 +65,6 @@ export async function shot(page: Page, name: string): Promise<void> {
   const themes = browser === "webkit" ? [false] : [false, true]
   for (const [device, size] of [["desktop", DESKTOP], ["phone", PHONE]] as const) {
     await page.setViewportSize(size)
-    // the track takes its step's height for the new size a frame or two after the window changes
-    await page.waitForFunction(() => {
-      const track = document.querySelector(".track")
-      const slide = document.querySelector(".slide:not([inert])")
-      return !track || !slide || Math.round(track.getBoundingClientRect().height) === Math.ceil(slide.getBoundingClientRect().height)
-    })
     for (const dark of themes) {
       await page.evaluate((d) => document.documentElement.classList.toggle("dark", d), dark)
       await painted()
@@ -94,8 +88,8 @@ interface OrderOptions {
 
 const METHOD_NAMES = { card: "Card", btc: "Bitcoin", xmr: "Monero" }
 
-// the purchase step in view; the track keeps the steps beside it, inert, with what they last showed
-export const onStep = (page: Page) => page.locator(".slide:not([inert])")
+// the screen in view, a purchase step or any other: main holds one at a time
+export const onStep = (page: Page) => page.locator("body > main > section")
 export const payButton = (page: Page) => onStep(page).getByRole("button", { name: /^Pay / })
 
 export const CODE_LABEL = "I have a code"
@@ -156,7 +150,7 @@ export async function toFullReview(page: Page, label: string): Promise<void> {
   await step.getByRole("button", { name: "Continue" }).click()
   await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
   await savedToReview(page)
-  // the slide to the review ends before the link is aimed at
+  // the review's rise ends before the link is aimed at
   await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
   // a redraw, as a line on another order brings, can replace the link as it is aimed at
   await expect(async () => {

@@ -15,13 +15,13 @@ const DRAWN_BEFORE = "data-drawn-before"
 
 // The screen in view is marked, and the redraw puts a new one in its place.
 async function drawnAgain(page: Page, invoiceId: string, redraw: () => Promise<void>): Promise<void> {
-  await onStep(page).locator("section.screen").evaluate((n, mark) => n.setAttribute(mark, ""), DRAWN_BEFORE)
+  await onStep(page).evaluate((n, mark) => n.setAttribute(mark, ""), DRAWN_BEFORE)
   const read = page.waitForResponse((r) => new URL(r.url()).pathname === `/api/invoice/${invoiceId}` && !r.url().includes("?"))
   await redraw()
   await read
   await expect(page.locator("main[aria-busy]")).toHaveCount(0)
   await expect(page.locator(`section.screen[${DRAWN_BEFORE}]`), "the screen drawn before the change").toHaveCount(0)
-  await expect(onStep(page).locator("section.screen")).toHaveCount(1)
+  await expect(onStep(page)).toHaveCount(1)
 }
 
 // another tab writes the same record again with a space more or less, which this tab hears as a change

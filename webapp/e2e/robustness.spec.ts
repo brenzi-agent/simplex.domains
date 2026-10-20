@@ -576,10 +576,6 @@ test("Back returns to where a page was left, a slow page included, and a reload 
   const { invoiceId } = await startOrder(page, uniqueLabel("place"), { method: "btc" })
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   const scrollRoom = () => page.evaluate(() => Math.min(400, document.documentElement.scrollHeight - innerHeight))
-  // the track takes the payment's height, from the review's, a frame after it moves there
-  const trackSettled = () => page.evaluate(() =>
-    Math.round(document.querySelector(".track")!.getBoundingClientRect().height) === Math.ceil(document.querySelector(".slide:not([inert])")!.getBoundingClientRect().height))
-  await expect.poll(trackSettled).toBe(true)
   await expect.poll(scrollRoom).toBeGreaterThan(100)
   const orderPlace = await scrollRoom()
   await page.evaluate((y) => scrollTo(0, y), orderPlace)

@@ -1,17 +1,14 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import {
-  contactLink, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, registrationOf, savedToReview, search, startOrder, test, toCodeStep, toReview, uniqueLabel,
+  CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, registrationOf, savedToReview, search, startOrder, test, toReview, uniqueLabel,
 } from "./helpers.ts"
 
 const SIZES = [{ width: 1280, height: 800 }, { width: 390, height: 844 }]
 const BACK_PX = 40
 
-// The screen in view: a purchase step on the track, or a screen that fills main alone.
-const shownScreen = (page: Page) => page.locator(".slide:not([inert]) > section, body > main > section")
-
 // Back sits wholly in the window as a 40 px circle at each size, and is the first stop after the header for the keyboard.
 async function backReady(page: Page, name: string): Promise<void> {
-  const back = shownScreen(page).locator(".back")
+  const back = onStep(page).locator(".back")
   await expect(back, `${name}: Back`).toHaveAttribute("aria-label", "Back")
   for (const size of SIZES) {
     await page.setViewportSize(size)
@@ -47,19 +44,19 @@ test("the round Back is in the window and reached by the keyboard on every scree
   // an order refused for a rate limit shows its own screen, with Back to the search
   await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": "30" }, json: { error: "rate_limited" } }) : route.continue())
   await payButton(page).click()
-  await expect(shownScreen(page).getByRole("heading", { name: "Too many attempts" })).toBeVisible()
+  await expect(onStep(page).getByRole("heading", { name: "Too many attempts" })).toBeVisible()
   await backReady(page, "Too many attempts")
   await page.unroute("**/api/invoice")
 
   for (const [path, heading] of [["/#/names", "Your names"], ["/#/restore", "Restore with a name code"], ["/#/trademarks", "Trademark owners"]]) {
     await page.goto(path)
-    await expect(shownScreen(page).getByRole("heading", { name: heading })).toBeVisible()
+    await expect(onStep(page).getByRole("heading", { name: heading })).toBeVisible()
     await backReady(page, heading)
   }
   await page.goto(`/?order=${invoiceId}`)
   await expect(page.getByRole("heading", { name: /is\s+yours/ })).toBeVisible({ timeout: 120_000 })
   await page.goto(`/#/edit/${registrationId}`)
-  await expect(shownScreen(page).getByRole("heading", { name: /^Edit links for / })).toBeVisible()
+  await expect(onStep(page).getByRole("heading", { name: /^Edit links for / })).toBeVisible()
   await backReady(page, "Edit links")
 })
 
@@ -69,7 +66,7 @@ const RUNNING = () => {
   return running.length ? running : null
 }
 
-// A whole-screen swap, a slide along the track, an addition within a step and a change of theme, each recorded frame by frame.
+// Whole-screen swaps, a purchase step's among them, an addition within a step and a change of theme, each recorded frame by frame.
 async function moveAround(page: Page): Promise<string[]> {
   await page.goto("/")
   await expect(page.getByLabel("Name", { exact: true })).toBeVisible()
@@ -95,14 +92,14 @@ test("asking for less movement turns off every animation and transition the same
   // the config asks every page for reduced motion; a reader who has not asked sees the changes move
   await page.emulateMedia({ reducedMotion: "no-preference" })
   const moving = new Set(await moveAround(page))
-  for (const name of ["rise", "fade-in", "arrive"]) expect(moving, `animations run for a reader who has not asked: ${[...moving]}`).toContain(name)
+  for (const name of ["rise", "arrive"]) expect(moving, `animations run for a reader who has not asked: ${[...moving]}`).toContain(name)
   await page.emulateMedia({ reducedMotion: "reduce" })
   expect(await moveAround(page), "animations run for a reader who asked for less movement").toEqual([])
 })
 
 const settled = (page: Page) => page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
 
-// Screens laid out in view in a frame, a purchase step or a screen of its own: main clips the track's other steps.
+// Screens laid out in view in a frame.
 const SCREENS_SHOWN = () => {
   const view = document.querySelector("body > main")!.getBoundingClientRect()
   return [...document.querySelectorAll("body > main :is(.screen, .home)")].filter((s) => {
@@ -114,19 +111,20 @@ const SCREENS_SHOWN = () => {
 test("a whole-screen swap shows one screen in every frame, never the old one beside the new", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await search(page, uniqueLabel("swap"))
-  await toCodeStep(page)
-  // the slide to the name code, where two steps share the window by design, ends before the swaps are recorded
+  await expect(page.getByRole("button", { name: "Register" })).toBeEnabled()
   await settled(page)
   await recordFrames(page, SCREENS_SHOWN)
   const swaps: [string, () => Promise<unknown>][] = [
+    [LINKS_HEADING, () => page.getByRole("button", { name: "Register" }).click()],
+    [CODE_HEADING, () => onStep(page).getByRole("button", { name: "Skip for now" }).click()],
     ["Your names", () => page.locator("body > header").getByRole("link", { name: "Your names" }).click()],
     ["Restore with a name code", () => page.getByRole("link", { name: "Restore with a name code" }).first().click()],
     ["Your names", () => page.goBack()],
-    ["Save your name code", () => page.getByRole("button", { name: "Continue checkout" }).first().click()],
+    [CODE_HEADING, () => page.getByRole("button", { name: "Continue checkout" }).first().click()],
   ]
   for (const [heading, swap] of swaps) {
     await swap()
-    await expect(shownScreen(page).getByRole("heading", { name: heading })).toBeVisible()
+    await expect(onStep(page).getByRole("heading", { name: heading })).toBeVisible()
     await settled(page)
   }
   const frames = await recordedFrames<number>(page)
@@ -140,12 +138,12 @@ test("a redraw that only changes the words of what is shown, as a rate limit's w
   await toReview(page)
   await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": "2" }, json: { error: "rate_limited" } }) : route.continue())
   await payButton(page).click()
-  await expect(shownScreen(page).getByRole("heading", { name: "Too many attempts" })).toBeVisible()
+  await expect(onStep(page).getByRole("heading", { name: "Too many attempts" })).toBeVisible()
   await settled(page)
   await recordFrames(page, RUNNING)
   // the wait's end draws the screen again, its notice saying the same thing in other words
-  await expect(shownScreen(page).getByRole("button", { name: "Try again" })).toBeEnabled()
-  await expect(shownScreen(page).locator(".notice")).toHaveText(/Nothing was charged/)
+  await expect(onStep(page).getByRole("button", { name: "Try again" })).toBeEnabled()
+  await expect(onStep(page).locator(".notice")).toHaveText(/Nothing was charged/)
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
   expect((await recordedFrames<string[]>(page)).flat(), "animations run as the wait ends").not.toContain("arrive")
 })
@@ -165,7 +163,7 @@ test("a link's profile takes its placeholder's place as it is, rather than arriv
   await settled(page)
   // each frame's opacity of the profile drawn in the field, once it is there
   await recordFrames(page, () => {
-    const card = document.querySelector(".slide:not([inert]) .link-field .entity:not(.skeleton)")
+    const card = document.querySelector("body > main .link-field .entity:not(.skeleton)")
     return card ? getComputedStyle(card).opacity : null
   })
   await onStep(page).getByRole("textbox", { name: "Contact address" }).fill(contactLink("IP"))
@@ -182,8 +180,8 @@ test("a link's profile takes its placeholder's place as it is, rather than arriv
 // each frame's theme tokens beside the colours of the controls drawn with them
 const CONTROL_COLOURS = () => {
   const root = getComputedStyle(document.documentElement)
-  const button = getComputedStyle(document.querySelector(".slide:not([inert]) .btn")!)
-  const back = getComputedStyle(document.querySelector(".slide:not([inert]) .back")!)
+  const button = getComputedStyle(document.querySelector("body > main .btn")!)
+  const back = getComputedStyle(document.querySelector("body > main .back")!)
   return [
     [root.getPropertyValue("--primary"), button.backgroundColor],
     [root.getPropertyValue("--primary-ink"), button.color],

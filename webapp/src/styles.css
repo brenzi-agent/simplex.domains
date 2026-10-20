@@ -591,22 +591,15 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .screen.step .lead { font-size: 15px; line-height: 1.4; }
 }
 
-/* .track clips and takes the height of the slide in view; .rail is the row of slides and is what moves */
-.track { overflow: clip; transition: height var(--slide, 320ms) var(--ease); }
-.rail { display: flex; align-items: flex-start; width: 100%; transition: transform var(--slide, 320ms) var(--ease); }
-.slide { flex: 0 0 100%; min-width: 0; }
-
-/* Motion: a step sliding in fades in as it comes; a screen swapped in, or a step jumped to, rises into place; what a step
-   adds comes in. Nothing goes out but at once, so two screens never show together. */
-.rail > .slide:not([inert]) { animation: fade-in calc(var(--slide) * .625) var(--ease) backwards; }
+/* Motion: a screen swapped in, a purchase step as any other, rises into place; what a step adds comes in. Nothing goes out
+   but at once, so two screens never show together. */
 .enter { animation: rise 220ms var(--ease) backwards; }
 /* controls ease their colours as the pointer, a choice or a state changes them, and follow the theme's tokens as it switches */
 html:not(.theming) :is(.btn, .field, .back, .method, .field-copy, .small-btn, .check, .check .box) { transition: background-color var(--fast), border-color var(--fast), box-shadow var(--fast), color var(--fast), filter var(--fast); }
 .copied-note { transition: opacity var(--fast), translate var(--fast) var(--ease); }
 :where(.answer > *, .notice, .entity, .other-order, .field-error, .verdict:not(:empty), .offline-note:not(:has(> span:empty))) { animation: arrive 180ms var(--ease) backwards; }
-/* shell.ts marks what a redraw draws again as shown; a slide out of view runs nothing */
-.shown, .shown::before, .shown::after, .slide[inert] *, .slide[inert] *::after { animation: none !important; }
-@keyframes fade-in { from { opacity: 0; } }
+/* shell.ts marks what a redraw draws again as shown */
+.shown, .shown::before, .shown::after { animation: none !important; }
 /* what went before is gone at once, so what replaces it starts in sight, never leaving a frame empty */
 @keyframes rise { from { opacity: .4; transform: translateY(8px); } }
 @keyframes arrive { from { opacity: .25; transform: translateY(5px); } }

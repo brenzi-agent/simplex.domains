@@ -72,7 +72,7 @@ function dispatch(event: OrderEvent): void {
   const kind = screenOf(state)
   document.querySelector("main")?.removeAttribute("aria-busy")
   if (cardStays(before, kind)) showCard()
-  else draw(kind, (signal) => asStep(BUILDERS[kind](state, signal)), kind === "pay-crypto" || kind === "pay-card" ? "payment" : null)
+  else draw(kind, (signal) => asStep(BUILDERS[kind](state, signal)))
   if (kind !== "pay-card") dropCard()
   if (kind === "registered") seenRegistered(state.view!, state.invoice)
   if (revealDue(state)) reveal(state.view!, state.record!)

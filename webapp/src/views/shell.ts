@@ -5,7 +5,6 @@ import type { Hold } from "../screens/hold.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { secondsLeft } from "./hold.ts"
-import { fitHeight, leaveTrack, placeOnTrack, type TrackStep } from "./track.ts"
 
 export const WEFUNDER_URL = "https://wefunder.com/simplex.chat?utm_source=domains"
 export const CONTACT_EMAIL = "chat@simplex.chat"
@@ -170,7 +169,7 @@ let fontsAwaited = false
 // the key of a control a redraw turned off, whose focus dropped to the page: a later redraw that offers it gives it back
 let lostKey: string | null = null
 
-export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, step: TrackStep | null = null): void {
+export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement): void {
   const main = frame()
   showConnection()
   const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -186,9 +185,8 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, 
   screenStop = new AbortController()
   const next = build(screenStop.signal)
   for (const [node, key] of arrivals(next)) if (!drawn || drawn.has(key)) node.classList.add(SHOWN)
-  const slid = step !== null && placeOnTrack(main, step, next)
-  if (step === null) leaveTrack(main, next)
-  if (!redrawn && !slid && !first) next.classList.add(ENTER)
+  main.replaceChildren(next)
+  if (!redrawn && !first) next.classList.add(ENTER)
   if (!redrawn) holdSpacers(next)
   // the first page opens anew once the fonts its layout asked for have loaded; a face a later change asks for moves nothing
   if (!fontsAwaited && kind !== LOADING) void document.fonts.ready.then(reopen)
@@ -320,14 +318,13 @@ export const OFFLINE_NOTE = "You are offline. Searches, payments and order updat
 // After the footer and counted in the frame, so the footer scrolls clear of it; it stays and only its words change, which a reader hears.
 const offlineText = el("span", {})
 const offline = el("div", { class: "offline", role: "status" }, el("div", { class: "offline-note" }, icon("offline"), offlineText))
-// The frame and track take the note's height before it joins the flow: a layout taller than the window gets a scrollbar in Firefox, which can rewrap lines and stay.
+// The frame takes the note's height before it joins the flow: a layout taller than the window gets a scrollbar in Firefox, which can rewrap lines and stay.
 function showConnection(): void {
   const text = navigator.onLine ? "" : OFFLINE_NOTE
   if (offlineText.textContent === text) return
   offline.style.position = "absolute"
   offlineText.textContent = text
   fitFrame()
-  fitHeight(0)
   offline.style.removeProperty("position")
 }
 
@@ -347,7 +344,7 @@ function frame(): HTMLElement {
   return main
 }
 
-// The header's, footer's and offline note's heights, rounded up as the track's is, so the home fills the rest of the window unscrolled.
+// The header's, footer's and offline note's heights, rounded up, so a screen filling the rest of the window never scrolls it.
 const frameParts = () => [...document.querySelectorAll<HTMLElement>("body > header, body > footer, body > .offline")]
 const fitFrame = () => document.documentElement.style.setProperty("--frame-h", `${Math.ceil(frameParts().reduce((h, p) => h + p.getBoundingClientRect().height, 0))}px`)
 

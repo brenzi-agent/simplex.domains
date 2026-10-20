@@ -4,7 +4,7 @@ import {
   toFullReview, uniqueLabel,
 } from "./helpers.ts"
 
-// the slide runs at full length, as for a reader who has not asked for less movement
+// the swaps run at full length, as for a reader who has not asked for less movement
 test.use({ reducedMotion: "no-preference" })
 
 // The main column is sampled on a grid each frame. A frame whose drawn points fall below this share of the fewer of its
@@ -13,7 +13,7 @@ const COLUMNS = 12
 const ROWS = 24
 const NEAR_EMPTY_SHARE = 0.4
 // boxes that only lay the screens out; a point where one of them is the topmost box shows nothing of a screen
-const LAYOUT_BOXES = "main, .track, .rail, .slide, .screen, .home"
+const LAYOUT_BOXES = "main, .screen, .home"
 
 interface Recorder { stopRecording: () => number[] }
 
@@ -36,9 +36,9 @@ async function startRecording(page: Page): Promise<void> {
     }
     const look = () => {
       if (!recording) return
-      // hit testing skips inert content, which is still drawn, so inert is lifted for the reads and put back before anything else runs
-      const inert = [main, ...main.querySelectorAll<HTMLElement>("[inert]")].filter((n) => n.inert)
-      for (const n of inert) n.inert = false
+      // hit testing skips inert content, which is still drawn, so main's inert is lifted for the reads and put back before anything else runs
+      const inert = main.inert
+      main.inert = false
       const box = main.getBoundingClientRect()
       const top = Math.max(box.top, 0)
       const bottom = Math.min(box.bottom, innerHeight)
@@ -46,7 +46,7 @@ async function startRecording(page: Page): Promise<void> {
       for (let i = 0; i < columns; i++) {
         for (let j = 0; j < rows; j++) if (drawn(box.left + (i + 0.5) * box.width / columns, top + (j + 0.5) * (bottom - top) / rows)) hits++
       }
-      for (const n of inert) n.inert = true
+      main.inert = inert
       frames.push(hits)
       if (frames.length === 1) started()
       requestAnimationFrame(look)
@@ -55,8 +55,8 @@ async function startRecording(page: Page): Promise<void> {
   }), [COLUMNS, ROWS, LAYOUT_BOXES] as const)
 }
 
-// A slide is a pair of CSS transitions, which the document lists among its animations until they end; a check that the
-// new screen is visible has already made the browser start them.
+// A swap is a CSS animation, which the document lists among its animations until it ends; a check that the new screen
+// is visible has already made the browser start it.
 async function stopRecording(page: Page): Promise<number[]> {
   await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
@@ -73,9 +73,9 @@ async function expectNoEmptyFrame(page: Page, change: string, act: () => Promise
 }
 
 const heading = (page: Page, name: string | RegExp) => expect(onStep(page).getByRole("heading", { name })).toBeVisible()
-const headingTop = (page: Page) => page.evaluate(() => Math.round(document.querySelector(".slide:not([inert]) h1")!.getBoundingClientRect().top))
+const headingTop = (page: Page) => page.evaluate(() => Math.round(document.querySelector("body > main h1")!.getBoundingClientRect().top))
 
-test("the purchase track slides and other screens swap without a near-empty frame", async ({ page, request }) => {
+test("the purchase steps and other screens swap without a near-empty frame", async ({ page, request }) => {
   await search(page, uniqueLabel("frames"))
   const register = page.getByRole("button", { name: "Register" })
   await expect(register).toBeEnabled()
@@ -154,7 +154,7 @@ test.describe("a small phone", () => {
     await onStep(page).getByRole("button", { name: "Continue" }).click()
     await heading(page, CODE_HEADING)
     await savedToReview(page)
-    // the slide to the review ends before the link is aimed at
+    // the review's rise ends before the link is aimed at
     await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
     const before = await page.evaluate(() => scrollY)
     // a person's click: Playwright's own click over WebDriver BiDi first scrolls its target to the window's centre

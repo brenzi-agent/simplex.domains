@@ -71,7 +71,7 @@ function dispatch(event: CheckoutEvent): void {
   if (!isRoute(pageRoute)) return
   const kind = screenOf(state)
   shown = kind
-  draw(kind, (signal) => asStep(BUILDERS[kind](state, signal)), state.step)
+  draw(kind, (signal) => asStep(BUILDERS[kind](state, signal)))
   if (kind !== "review" || state.sending || unheard === undefined) return
   const late = unheard
   unheard = undefined

@@ -192,7 +192,7 @@ test("offline, the footer scrolls clear of the note, and its last link takes a c
     for (const size of NOTE_SIZES) {
       await page.setViewportSize(size)
       // how far each of the footer's items reaches past the note's top, scrolled to the end once the window has its new
-      // size (Firefox takes it after Playwright's call returns), the note has its own and the frame and track have caught up
+      // size (Firefox takes it after Playwright's call returns), the note has its own and the frame has caught up
       const overlaps = () => page.evaluate(({ width, height: windowHeight }) => {
         const height = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().height
         const frame = Math.ceil(height("body > header") + height("body > footer") + height("body > .offline"))
@@ -200,7 +200,6 @@ test("offline, the footer scrolls clear of the note, and its last link takes a c
         const settled = innerWidth === width && innerHeight === windowHeight
           && Math.abs(frame + height("body > main") - windowHeight) < 1
           && getComputedStyle(document.documentElement).getPropertyValue("--frame-h") === `${frame}px`
-          && Math.round(height(".track")) === Math.ceil(height(".slide:not([inert])"))
         scrollTo(0, document.documentElement.scrollHeight)
         const noteTop = document.querySelector(".offline-note")!.getBoundingClientRect().top
         return { settled, overlaps: [...document.querySelectorAll("body > footer > *")].map((n) => Math.max(0, Math.ceil(n.getBoundingClientRect().bottom - noteTop))) }
