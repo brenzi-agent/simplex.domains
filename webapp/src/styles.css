@@ -199,7 +199,7 @@ h1 .long { font-size: inherit; }
 .chip .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
 
 /* the landing's first screen (landing:144-168), its countdown replaced by the search */
-/* --frame-h is the header's and footer's height, which shell.ts measures, so the home fills the first screen as the landing's hero does.
+/* --frame-h is the header's, footer's and offline note's height, which shell.ts measures, so the home fills the first screen as the landing's hero does.
    WebKit rounds each of the four spacers' share of the room to its 1/64 px unit, which can take the home past the window and
    scroll the page a pixel; --spacer-rounding leaves room for the four rounded up. */
 .home { --spacer-rounding: calc(4px / 64); display: flex; flex-direction: column; align-items: center; text-align: center; padding-inline: 16px;

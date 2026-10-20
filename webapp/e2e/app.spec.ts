@@ -2,7 +2,7 @@ import { expect, type APIRequestContext, type Locator, type Page } from "@playwr
 import { randomBytes } from "node:crypto"
 import { durationFor, registerIntentDigest, type Registration } from "../src/crypto/registration.ts"
 import { checksumAddress, fromHex, hex, signDigest, walletFromEntropy, type Wallet } from "../src/crypto/wallet.ts"
-import { control, LINKS_HEADING, MOCK, onStep, REGISTRATION_MS, registrationOf, search, searchName, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
+import { control, MOCK, onStep, REGISTRATION_MS, registrationOf, search, searchName, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
 
 const APP_SIGNS = "Waiting for SimpleX to sign the registration with your app's wallet."
 
@@ -165,31 +165,6 @@ test("a name code too long for its line breaks after a hyphen, so no line starts
 
 // a laptop's, a phone's and a small phone's window
 const NOTE_SIZES = [{ width: 1280, height: 900 }, { width: 390, height: 844 }, { width: 360, height: 740 }]
-const drawn = (page: Page) => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
-
-test("going offline leaves a centred step where it is", async ({ page, context }) => {
-  const heading = onStep(page).getByRole("heading", { name: LINKS_HEADING })
-  for (const size of NOTE_SIZES.slice(0, 2)) {
-    await page.setViewportSize(size)
-    await search(page, uniqueLabel("still"))
-    await onStep(page).getByRole("button", { name: "Register" }).click()
-    await expect(heading).toBeVisible()
-    await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
-    await drawn(page)
-    const before = await heading.evaluate((h) => h.getBoundingClientRect().top)
-    await context.setOffline(true)
-    try {
-      await expect(page.locator(".offline-note")).toBeVisible()
-      // the frame's measure follows the note on the frame after it shows
-      await drawn(page)
-      expect(await heading.evaluate((h) => h.getBoundingClientRect().top), `the heading's top at ${size.width}x${size.height}`).toBe(before)
-    } finally {
-      await context.setOffline(false)
-    }
-    await expect(page.locator(".offline-note")).toBeHidden()
-  }
-})
-
 test("on a phone, Forget's two answers are an equal pair, both in view", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await search(page, uniqueLabel("pair"))
@@ -218,10 +193,10 @@ test("offline, the footer scrolls clear of the note, and its last link takes a c
       // size (Firefox takes it after Playwright's call returns), the note has its own and the frame and track have caught up
       const overlaps = () => page.evaluate(({ width, height: windowHeight }) => {
         const height = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().height
-        const frame = Math.ceil(height("body > header") + height("body > footer"))
+        const frame = Math.ceil(height("body > header") + height("body > footer") + height("body > .offline"))
         // the home fills the window, so its parts add up to the window's height once its size has reached the page's layout
         const settled = innerWidth === width && innerHeight === windowHeight
-          && Math.abs(height("body > header") + height("body > main") + height("body > footer") - windowHeight) < 1
+          && Math.abs(frame + height("body > main") - windowHeight) < 1
           && getComputedStyle(document.documentElement).getPropertyValue("--frame-h") === `${frame}px`
           && Math.round(height(".track")) === Math.ceil(height(".slide:not([inert])"))
           // reduced motion still eases each style change over a frame, so the note grows to its height then

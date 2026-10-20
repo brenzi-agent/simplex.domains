@@ -215,6 +215,20 @@ test("a failed retarget shows one message below the result, however often it is 
   await shot(page, "N8a2-retarget-failed")
 })
 
+test("a retarget refused for a name taken meanwhile says the name is no longer available", async ({ page, request }) => {
+  const label = uniqueLabel("rtt")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await control(request, "take", { label })
+  await control(request, `settle/${invoiceId}`)
+  await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  await page.route("**/api/registration/*/name", (route) => route.fulfill({ status: 409, json: { error: "name_taken" } }))
+  await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("rtt2"))
+  await page.getByLabel("Name", { exact: true }).press("Enter")
+  await page.getByRole("button", { name: "Register with your payment" }).click()
+  await expect(page.getByText("This name is no longer available. Search another one.")).toBeVisible()
+})
+
 test("a partly paid invoice offers no cancel", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("part"), { method: "btc" })
   await expect(page.getByText("Cancel this invoice")).toBeVisible()

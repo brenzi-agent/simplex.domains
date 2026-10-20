@@ -341,7 +341,7 @@ function registerNote(s: SearchState, unpayable: boolean, signal: AbortSignal): 
   if (hold) return holdNotice(hold, signal)
   if (!refusal) return null
   if (refusal.why === "other") return ownOrderNote(store.invoiceUrl(refusal.invoiceId))
-  const words = refusal.why === "taken" ? "This name was taken just now. Search another one." : "Nothing changed. Try again in a moment."
+  const words = refusal.why === "taken" ? "This name is no longer available. Search another one." : "Nothing changed. Try again in a moment."
   return alertBox("danger", "alert", "That did not go through", words)
 }
 
