@@ -122,8 +122,7 @@ function settled(waiting: WaitingOrder, signal: AbortSignal): false {
 const OPEN_ORDER_LOOKBACK = 5
 const unpaid = (i: api.InvoiceView | null): i is api.InvoiceView => i?.status === "open" && i.registration.phase === "unpaid"
 
-// An unpaid invoice this browser made is pointed at, without blocking a new order, and followed until it is paid or
-// closes. Only the newest few orders are asked about, so a long Your names list does not cost a request each.
+// An unpaid invoice this browser made is pointed at, not blocking a new order, and followed until paid or closed; only the newest few are asked.
 async function showOpenOrder(signal: AbortSignal): Promise<void> {
   const recent = store.orders().filter((o) => o.invoiceId && !o.cancelled && !o.replacedBy).slice(0, OPEN_ORDER_LOOKBACK)
   const invoices = await Promise.all(recent.map((o) => api.readInvoice(o.invoiceId!).catch(() => null)))

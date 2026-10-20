@@ -39,8 +39,7 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault()
   if (!e.repeat) (e.target as HTMLElement).click()
 })
-// A link from /?order=… to /#/… changes the query, so the browser would load a new document and drop what this page
-// holds in memory (all of it when storage is blocked); this page's own links switch views in place instead.
+// A link from /?order=… to /#/… would load a new document, dropping what this page holds in memory, so its views switch in place.
 document.addEventListener("click", (e) => {
   const a = (e.target as Element | null)?.closest("a")
   const href = a?.getAttribute("href")

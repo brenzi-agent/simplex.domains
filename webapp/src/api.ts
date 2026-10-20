@@ -117,8 +117,7 @@ const TOO_MANY_REQUESTS = 429
 const GATEWAY_FAILURES = [502, 503, 504]
 // a rate limit that names no wait is waited out for this long
 export const LIMITED_WAIT_S = 30
-// The service's times (reveal windows, invoice expiry, signed timestamps) are read against its clock, which each answer's
-// Date header gives to the second; a device off by less than this is taken as right.
+// The service's times are read against its clock, which each answer's Date header gives to the second; a device off by less than this is taken as right.
 const CLOCK_SLACK_MS = 2000
 let clockOffsetMs = 0
 // counts changes of the offset, so a request signed before one can be signed again

@@ -117,8 +117,7 @@ function put(kind: Kind, id: string, value: unknown): boolean {
   return false
 }
 
-// A removal reaches storage even after this page moved to memory: removing frees space, so it works on a full storage,
-// and a record left there would come back on reload.
+// A removal reaches storage even after this page moved to memory: removing frees space, and a record left would come back on reload.
 function remove(kind: Kind, id: string): void {
   const key = `${PREFIX}${kind}:${id}`
   memory?.delete(key)
@@ -190,8 +189,7 @@ export function dropPending(ownerCode: string): void {
   remove("pending", ownerCode)
 }
 
-// a card payment submitted for an invoice, kept even for an order this browser has no record of, so a reload or
-// another tab does not offer the card form again while Stripe confirms
+// a card payment submitted for an invoice, kept even without the order's record, so no reload or tab offers the card form while Stripe confirms
 export const markCardSubmitted = (invoiceId: string, at: string) => void put("card", invoiceId, at)
 export const cardSubmittedAt = (invoiceId: string) => get<string>("card", invoiceId)
 export const clearCardSubmitted = (invoiceId: string) => remove("card", invoiceId)

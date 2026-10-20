@@ -400,8 +400,7 @@ function investBlock(): HTMLElement {
 
 const term = (what: string, length: string) => el("div", { class: "term" }, el("span", {}, what), el("span", {}, length))
 
-// The landing's invest popup (index.html:347-363) as a modal dialog, which brings Escape and keeps the page behind it
-// out of reach. It sits outside main, as a modal dialog moved by a redraw would stop being modal.
+// The landing's invest popup (index.html:347-363) as a modal dialog, outside main, as a modal dialog a redraw moves stops being modal.
 function investPopup(): HTMLDialogElement {
   if (investDialog) return investDialog
   const dialog = el("dialog", { class: "modal", "aria-labelledby": INVEST_TITLE_ID })
