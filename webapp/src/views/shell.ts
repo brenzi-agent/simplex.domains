@@ -151,9 +151,18 @@ export function kept<T extends HTMLElement>(key: string, make: () => T): T {
 export const keptLive = (key: string, cls: string | undefined, ...kids: Kid[]) => refill(kept(key, () => liveRegion(cls)), ...kids)
 
 const LOADING = "loading"
-// what a redraw draws again is marked shown, so only what it adds comes in (styles.css)
+// What a redraw draws again is marked shown, so only what it adds comes in (styles.css). A node is known by its tag, its
+// classes and how many before it share them, not by its words, which a countdown changes each second.
 const ARRIVING = ".answer > *, .notice, .entity, .other-order, .field-error, .verdict:not(:empty)"
 const SHOWN = "shown"
+function arrivals(screen: Element): [Element, string][] {
+  const seen = new Map<string, number>()
+  return [...screen.querySelectorAll(ARRIVING)].map((node) => {
+    const kind = [node.tagName, ...[...node.classList].filter((c) => c !== SHOWN)].join(".")
+    seen.set(kind, (seen.get(kind) ?? 0) + 1)
+    return [node, `${kind}#${seen.get(kind)}`]
+  })
+}
 let fontsAwaited = false
 // the key of a control a redraw turned off, whose focus dropped to the page: a later redraw that offers it gives it back
 let lostKey: string | null = null
@@ -169,11 +178,11 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, 
   // the heading the last draw focused is replaced with its screen, so the redrawn screen's heading takes focus
   const toHeading = !redrawn || (active !== null && active === shownScreen?.querySelector("h1"))
   // read before the build, which moves the kept nodes out of the screen on show
-  const drawn = redrawn && shownScreen ? new Set([...shownScreen.querySelectorAll(ARRIVING)].map((node) => node.textContent)) : null
+  const drawn = redrawn && shownScreen ? new Set(arrivals(shownScreen).map(([, key]) => key)) : null
   screenStop?.abort()
   screenStop = new AbortController()
   const next = build(screenStop.signal)
-  for (const node of next.querySelectorAll(ARRIVING)) if (!drawn || drawn.has(node.textContent)) node.classList.add(SHOWN)
+  for (const [node, key] of arrivals(next)) if (!drawn || drawn.has(key)) node.classList.add(SHOWN)
   const slid = step !== null && placeOnTrack(main, step, next)
   if (step === null) leaveTrack(main, next)
   if (!redrawn && !slid && !first) next.classList.add("enter")

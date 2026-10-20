@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  control, onStep, payButton, recordedFrames, recordFrames, registrationOf, savedToReview, search, startOrder, test, toCodeStep, uniqueLabel,
+  control, onStep, payButton, recordedFrames, recordFrames, registrationOf, savedToReview, search, startOrder, test, toCodeStep, toReview, uniqueLabel,
 } from "./helpers.ts"
 
 const SIZES = [{ width: 1280, height: 800 }, { width: 390, height: 844 }]
@@ -130,4 +130,20 @@ test("a whole-screen swap shows one screen in every frame, never the old one bes
   const frames = await recordedFrames<number>(page)
   expect(frames.length, "frames recorded").toBeGreaterThan(swaps.length)
   expect([...new Set(frames)], "screens in the window, frame by frame").toEqual([1])
+})
+
+test("a redraw that only changes the words of what is shown, as a rate limit's wait ending, replays no arrival", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await search(page, uniqueLabel("rearrive"))
+  await toReview(page)
+  await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": "2" }, json: { error: "rate_limited" } }) : route.continue())
+  await payButton(page).click()
+  await expect(shownScreen(page).getByRole("heading", { name: "Too many attempts" })).toBeVisible()
+  await settled(page)
+  await recordFrames(page, RUNNING)
+  // the wait's end draws the screen again, its notice saying the same thing in other words
+  await expect(shownScreen(page).getByRole("button", { name: "Try again" })).toBeEnabled()
+  await expect(shownScreen(page).locator(".notice")).toHaveText(/Nothing was charged/)
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
+  expect((await recordedFrames<string[]>(page)).flat(), "animations run as the wait ends").not.toContain("arrive")
 })
