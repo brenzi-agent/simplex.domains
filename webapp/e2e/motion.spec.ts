@@ -176,3 +176,33 @@ test("a link's profile takes its placeholder's place as it is, rather than arriv
   expect(frames.length, "frames with the profile").toBeGreaterThan(0)
   expect([...new Set(frames)], "the profile's opacity, frame by frame").toEqual(["1"])
 })
+
+// each frame's theme tokens beside the colours of the controls drawn with them
+const CONTROL_COLOURS = () => {
+  const root = getComputedStyle(document.documentElement)
+  const button = getComputedStyle(document.querySelector(".slide:not([inert]) .btn")!)
+  const back = getComputedStyle(document.querySelector(".slide:not([inert]) .back")!)
+  return [
+    [root.getPropertyValue("--primary"), button.backgroundColor],
+    [root.getPropertyValue("--primary-ink"), button.color],
+    [root.getPropertyValue("--surface"), back.backgroundColor],
+  ]
+}
+
+test("a switch of theme moves the controls' colours with the page's, frame by frame, both ways", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await search(page, uniqueLabel("theme"))
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
+  await settled(page)
+  for (const theme of ["dark", "light"]) {
+    await recordFrames(page, CONTROL_COLOURS)
+    await page.locator(".theme-switch").click()
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
+    await settled(page)
+    const frames = await recordedFrames<string[][]>(page)
+    const apart = frames.flat().filter(([token, drawn]) => token !== drawn)
+    expect(frames.length, `frames recorded switching to ${theme}`).toBeGreaterThan(2)
+    expect(apart, `controls apart from their tokens switching to ${theme}`).toEqual([])
+  }
+})

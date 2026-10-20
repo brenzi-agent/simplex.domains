@@ -594,8 +594,8 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
    adds comes in. Nothing goes out but at once, so two screens never show together. */
 .rail > .slide:not([inert]) { animation: fade-in calc(var(--slide) * .625) var(--ease) backwards; }
 .enter { animation: rise 220ms var(--ease) backwards; }
-/* controls ease their colours as the pointer, a choice or a state changes them */
-:is(.btn, .field, .back, .method, .field-copy, .small-btn, .check, .check .box) { transition: background-color var(--fast), border-color var(--fast), box-shadow var(--fast), color var(--fast), filter var(--fast); }
+/* controls ease their colours as the pointer, a choice or a state changes them, and follow the theme's tokens as it switches */
+html:not(.theming) :is(.btn, .field, .back, .method, .field-copy, .small-btn, .check, .check .box) { transition: background-color var(--fast), border-color var(--fast), box-shadow var(--fast), color var(--fast), filter var(--fast); }
 .copied-note { transition: opacity var(--fast), translate var(--fast) var(--ease); }
 :where(.answer > *, .notice, .entity, .other-order, .field-error, .verdict:not(:empty), .offline-note:not(:has(> span:empty))) { animation: arrive 180ms var(--ease) backwards; }
 /* shell.ts marks what a redraw draws again as shown; a slide out of view runs nothing */

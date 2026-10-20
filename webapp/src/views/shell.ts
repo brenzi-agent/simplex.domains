@@ -1,5 +1,5 @@
 // The page's frame: theme switch and navigation between views; index.html draws the header and footer.
-import { alertBox, btn, el, icon, type Kid, liveRegion, refill, type Tone, waitOut } from "../dom.ts"
+import { alertBox, btn, el, icon, type Kid, liveRegion, reducedMotion, refill, type Tone, waitOut } from "../dom.ts"
 import type { IconName } from "../icons.ts"
 import type { Hold } from "../screens/hold.ts"
 import * as session from "../session.ts"
@@ -302,9 +302,14 @@ function paintBars(): void {
   for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) meta.content = ground
 }
 
+const THEMING = "theming"
+// a frame after the ground has faded, once the controls have drawn the tokens' last colours, so they do not ease to them
+const themed = () => requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove(THEMING)))
 function toggleTheme(): void {
   const dark = !isDark()
   store.setTheme(dark ? "dark" : "light")
+  // Chromium starts a control's own colour transition anew each frame the tokens move, so controls follow the tokens until the ground fades
+  document.documentElement.classList.toggle(THEMING, !reducedMotion())
   document.documentElement.classList.toggle("dark", dark)
   paintBars()
 }
@@ -334,6 +339,7 @@ function frame(): HTMLElement {
   if (document.body.dataset.framed) return main
   document.body.dataset.framed = "1"
   document.querySelector(".theme-switch")!.addEventListener("click", toggleTheme)
+  document.body.addEventListener("transitionend", (e) => { if (e.target === document.body && e.pseudoElement === "::after") themed() })
   paintBars()
   document.body.append(offline)
   measureFrame()
