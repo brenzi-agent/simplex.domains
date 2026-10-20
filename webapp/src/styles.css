@@ -36,7 +36,7 @@
   --fs-h1: clamp(28px, 2.8vw, 36px);
   --h1-line: 1.05;
   --fs-h2: clamp(20px, 2.3vw, 24px);
-  /* whole pixels, so a lead's lines, and the room a step keeps for a notice in its place, add up exactly */
+  /* whole pixels at both clamps, a phone's 16 and a laptop's 18, and a fraction between them, 1072 to 1214 px wide */
   --fs-lead: clamp(16px, 1.4vw + 1px, 18px);
   --fs-body: 18px;
   --fs-small: clamp(14px, 1.5vw, 16px);
