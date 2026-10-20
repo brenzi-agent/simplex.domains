@@ -230,7 +230,7 @@ const titleOf = (next: HTMLElement) => {
 }
 
 const screenHead = (title: Kid, back: string | undefined) =>
-  el("div", { class: "screen-head" }, back ? el("a", { class: "back", href: back }, icon("back"), "Back") : null, el("h1", {}, title))
+  el("div", { class: "screen-head" }, back ? el("a", { class: "back", href: back, "aria-label": "Back", title: "Back" }, icon("back")) : null, el("h1", {}, title))
 
 export function screen(head: ScreenHead, ...body: Kid[]): HTMLElement {
   return el("section", { class: "screen" },

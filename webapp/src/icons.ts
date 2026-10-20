@@ -3,7 +3,7 @@ const SVG_NS = "http://www.w3.org/2000/svg"
 
 const LINE_ICONS = {
   arrow: "M5 12h14 M12 5l7 7-7 7",
-  back: "M15 18l-6-6 6-6",
+  back: "M19 12H5 M12 19l-7-7 7-7",
   link: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71 M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
   check: "M20 6 9 17l-5-5",
   // the landing popup's close cross (simplex.domains index.html:350)
