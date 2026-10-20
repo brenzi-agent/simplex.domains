@@ -241,7 +241,6 @@ h1:has(.grad) { text-wrap: pretty; }
 :is(.answer, .summary-card) .name.long { font-size: 20px; }
 /* a heading with a long name in it is drawn smaller as a whole */
 .screen-head:has(h1 .long) { --fs-h1: clamp(20px, 2.2vw, 28px); }
-h1 .long { font-size: inherit; }
 .chip .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
 
 /* the landing's first screen (landing:144-168), its countdown replaced by the search */
@@ -506,7 +505,9 @@ main h1:focus { outline: none; }
 .answer .yours { display: flex; gap: 18px; font-weight: 700; font-size: 14.5px; }
 /* a name in a sentence moves to the next line whole; only a name longer than the line breaks, before its TLD first */
 .inline-name { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
-.long { overflow-wrap: anywhere; font-size: .85em; }
+.long { overflow-wrap: anywhere; }
+/* a long name in a sentence runs on from the words before it, at their size */
+span.long:not(.grad) { word-break: break-all; }
 .monero-base { fill: #4C4C4C; }
 /* Monero's mark for dark grounds has a white base */
 html.dark .monero-base { fill: #fff; }

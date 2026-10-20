@@ -381,6 +381,22 @@ test(`Edit links and Restore sit centred as the steps do, and Edit links keeps s
   }
 })
 
+test(`a name of ${MAX_LABEL_LENGTH} wide letters in a sentence runs on from the words before it, at their size, at both sizes`, async ({ page }) => {
+  await search(page, wideLabel(MAX_LABEL_LENGTH))
+  await page.getByRole("button", { name: "Register" }).click()
+  const lead = onStep(page).locator(".lead")
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    const drawn = await lead.evaluate((node) => {
+      const name = node.querySelector(".long")!
+      const words = document.createRange()
+      words.selectNodeContents(node.firstChild!)
+      return { size: getComputedStyle(name).fontSize === getComputedStyle(node).fontSize, firstLine: Math.round(name.getClientRects()[0].top) === Math.round(words.getClientRects()[0].top) }
+    })
+    expect(drawn, `the name in the lead at ${size.width}x${size.height}`).toEqual({ size: true, firstLine: true })
+  }
+})
+
 // how a refusal under a field is drawn: its weight, its line, whether an icon leads it, and how far under the field it is
 async function refusalLook(refusal: Locator, field: Locator) {
   await expect(refusal).toBeVisible()

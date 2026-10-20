@@ -79,7 +79,7 @@ export function alertBox(tone: Tone, ic: IconName, title: string | null, text: K
   return el("div", { class: `notice ${tone}` }, icon(ic), el("div", {}, title ? el("b", {}, title) : null, text))
 }
 
-// a name this long is drawn smaller and runs on in its line, so it fits a phone; a shorter one moves to the next line whole
+// a name this long runs on in its line, so it fits a phone; a shorter one moves to the next line whole
 const LONG_NAME = 24
 const isLong = (label: string) => label.length > LONG_NAME
 const nameClass = (label: string) => isLong(label) ? "long" : "inline-name"
