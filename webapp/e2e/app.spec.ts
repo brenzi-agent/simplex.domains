@@ -2,7 +2,9 @@ import { expect, type APIRequestContext, type Locator, type Page } from "@playwr
 import { randomBytes } from "node:crypto"
 import { durationFor, registerIntentDigest, type Registration } from "../src/crypto/registration.ts"
 import { checksumAddress, fromHex, hex, signDigest, walletFromEntropy, type Wallet } from "../src/crypto/wallet.ts"
-import { CHECKOUT_KEY, control, MOCK, onStep, REGISTRATION_MS, registrationOf, search, searchName, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
+import {
+  CHECKOUT_KEY, control, MOCK, onStep, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, search, searchName, shot, startOrder, test, toCodeStep, uniqueLabel,
+} from "./helpers.ts"
 
 const APP_SIGNS = "Waiting for SimpleX to sign the registration with your app's wallet."
 
@@ -217,6 +219,8 @@ test("offline, the footer scrolls clear of the note, and its last link takes a c
   }
 })
 
+const LOOKUP_RTT_MS = 500
+
 test("Restore keeps its place while it looks for the code's orders, saying so on the button", async ({ page }) => {
   await search(page, uniqueLabel("restbusy"))
   await toCodeStep(page)
@@ -225,20 +229,19 @@ test("Restore keeps its place while it looks for the code's orders, saying so on
   await page.getByLabel("Name code").fill(ownerCode)
   const restore = page.getByRole("button", { name: "Restore" })
   const top = (await restore.boundingBox())!.y
+  // the lookup takes a moment, as one over a network does, so frames are drawn while it is busy
+  await page.route("**/api/registration/find", async (route) => {
+    await new Promise((answered) => setTimeout(answered, LOOKUP_RTT_MS))
+    await route.continue()
+  })
   // the button's top in each frame it says it is busy
-  await page.evaluate(() => {
-    const w = window as unknown as { __busy: number[] }
-    w.__busy = []
-    const look = () => {
-      const button = document.querySelector<HTMLElement>("main .btn.block")
-      if (button?.getAttribute("aria-busy") === "true") w.__busy.push(Math.round(button.getBoundingClientRect().top))
-      requestAnimationFrame(look)
-    }
-    requestAnimationFrame(look)
+  await recordFrames(page, () => {
+    const button = document.querySelector<HTMLElement>("main .btn.block")
+    return button?.getAttribute("aria-busy") === "true" ? Math.round(button.getBoundingClientRect().top) : null
   })
   await restore.click()
   await expect(page.getByText("No order was found for this code")).toBeVisible()
-  const busy = await page.evaluate(() => (window as unknown as { __busy: number[] }).__busy)
+  const busy = await recordedFrames<number>(page)
   expect(busy.length, "frames drawn while it looked").toBeGreaterThan(0)
   expect([...new Set(busy)], "the button's top while it looked").toEqual([Math.round(top)])
 })
@@ -256,28 +259,19 @@ test("on a phone, Forget's question glides into view rather than jumping there",
   await expect(page.locator(".list-row .chip", { hasText: "Checking" })).toHaveCount(0)
   const ask = page.getByText("Forget everything in this browser")
   await ask.scrollIntoViewIfNeeded()
-  // resolves once the first frame is sampled, so a jump at the click shows between two samples
-  await page.evaluate(() => new Promise<void>((started) => {
-    const w = window as unknown as { __scrolled: number[] }
-    w.__scrolled = []
-    const look = () => {
-      w.__scrolled.push(scrollY)
-      if (w.__scrolled.length === 1) started()
-      requestAnimationFrame(look)
-    }
-    requestAnimationFrame(look)
-  }))
+  // sampled from before the click, so a jump at the click shows between two samples
+  await recordFrames(page, () => scrollY)
   // a pointer's own click, as Playwright's scrolls the link into view first
   const box = (await ask.boundingBox())!
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
   await expect(page.getByRole("button", { name: "Keep them" })).toBeInViewport({ ratio: 1 })
   // until the page has stood still for a few frames
-  const still = () => page.evaluate(() => {
-    const at = (window as unknown as { __scrolled: number[] }).__scrolled
+  const still = async () => {
+    const at = await recordedFrames<number>(page)
     return at.length > 5 && new Set(at.slice(-5)).size === 1
-  })
+  }
   await expect.poll(still).toBe(true)
-  const scrolled = await page.evaluate(() => (window as unknown as { __scrolled: number[] }).__scrolled)
+  const scrolled = await recordedFrames<number>(page)
   const moves = scrolled.slice(1).map((y, i) => y - scrolled[i]).filter((d) => d !== 0)
   expect(moves.length, `the frames the page scrolled in: ${scrolled.join(",")}`).toBeGreaterThan(2)
 })

@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  channelLink, checkoutCode, CODE_HEADING, CODE_LABEL, contactLink, control, LINKS_HEADING, onStep, payButton, SAVED, savedToReview, search, test, uniqueLabel,
+  channelLink, checkoutCode, CODE_HEADING, CODE_LABEL, contactLink, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, SAVED, savedToReview, search, test,
+  toFullReview, uniqueLabel,
 } from "./helpers.ts"
 
 // the slide runs at full length, as for a reader who has not asked for less movement
@@ -72,6 +73,7 @@ async function expectNoEmptyFrame(page: Page, change: string, act: () => Promise
 }
 
 const heading = (page: Page, name: string | RegExp) => expect(onStep(page).getByRole("heading", { name })).toBeVisible()
+const headingTop = (page: Page) => page.evaluate(() => Math.round(document.querySelector(".slide:not([inert]) h1")!.getBoundingClientRect().top))
 
 test("the purchase track slides and other screens swap without a near-empty frame", async ({ page, request }) => {
   await search(page, uniqueLabel("frames"))
@@ -119,6 +121,27 @@ test("the purchase track slides and other screens swap without a near-empty fram
   })
 })
 
+// a profile's name of letters past Latin-1, which the page has drawn in no font face yet
+const NON_LATIN_NAME = "Łukasz Żak"
+
+test("a font face that a step's change loads leaves the step where it holds, after a refused link", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.route("**/api/link/preview", (route) => route.fulfill({ json: { type: "address", displayName: NON_LATIN_NAME, image: null } }))
+  await search(page, uniqueLabel("face"))
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await heading(page, LINKS_HEADING)
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
+  const loadedFaces = () => page.evaluate(() => [...document.fonts].filter((f) => f.status === "loaded").length)
+  const [before, faces] = [await headingTop(page), await loadedFaces()]
+  await onStep(page).getByRole("textbox", { name: "Channel" }).fill(contactLink("fc"))
+  await expect(onStep(page).locator(".field-error")).toBeVisible()
+  await onStep(page).getByRole("textbox", { name: "Contact address" }).fill(contactLink("fc"))
+  await expect(onStep(page).locator(".entity", { hasText: NON_LATIN_NAME })).toBeVisible()
+  await page.evaluate(() => document.fonts.ready.then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))))
+  expect(await loadedFaces(), "faces loaded for the profile's name").toBeGreaterThan(faces)
+  expect(await headingTop(page), "the heading's top once the face is in").toBe(before)
+})
+
 test.describe("a small phone", () => {
   test.use({ viewport: { width: 360, height: 740 }, hasTouch: true })
 
@@ -146,38 +169,17 @@ test.describe("a phone", () => {
   test.use({ viewport: { width: 390, height: 844 } })
 
   test("going offline on the fullest review lays out no frame taller than the window, and leaves nothing to scroll", async ({ page, context }) => {
-    await search(page, uniqueLabel("offframe"))
-    await onStep(page).getByRole("button", { name: "Register" }).click()
-    await onStep(page).getByRole("textbox", { name: "Contact address" }).fill(contactLink("of"))
-    await onStep(page).getByRole("textbox", { name: "Channel" }).fill(channelLink("of"))
-    for (const field of await onStep(page).locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
-    await onStep(page).getByRole("button", { name: "Continue" }).click()
-    await heading(page, CODE_HEADING)
-    await savedToReview(page)
-    await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
-    const box = (await onStep(page).getByRole("button", { name: CODE_LABEL }).boundingBox())!
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-    await expect(checkoutCode(page)).toBeFocused()
-    const top = () => page.evaluate(() => Math.round(document.querySelector(".slide:not([inert]) h1")!.getBoundingClientRect().top))
-    const before = await top()
+    await toFullReview(page, uniqueLabel("offframe"))
+    const before = await headingTop(page)
     // how far each frame's layout reaches past the window, from just before the network goes
-    await page.evaluate(() => new Promise<void>((started) => {
-      const w = window as unknown as { __over: number[] }
-      w.__over = []
-      const look = () => {
-        w.__over.push(document.scrollingElement!.scrollHeight - innerHeight)
-        if (w.__over.length === 1) started()
-        requestAnimationFrame(look)
-      }
-      requestAnimationFrame(look)
-    }))
+    await recordFrames(page, () => document.scrollingElement!.scrollHeight - innerHeight)
     await context.setOffline(true)
     try {
       await expect(page.locator(".offline-note")).toBeVisible()
       await page.evaluate(() => new Promise((done) => { let n = 0; const next = () => (++n > 10 ? done(null) : requestAnimationFrame(next)); requestAnimationFrame(next) }))
-      const over = await page.evaluate(() => (window as unknown as { __over: number[] }).__over)
+      const over = await recordedFrames<number>(page)
       expect(Math.max(...over), `each frame's overflow: ${over.join(",")}`).toBe(0)
-      expect(await top(), "the heading's top offline").toBe(before)
+      expect(await headingTop(page), "the heading's top offline").toBe(before)
     } finally {
       await context.setOffline(false)
     }

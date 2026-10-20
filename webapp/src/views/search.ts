@@ -70,7 +70,7 @@ export function searchPage(params: URLSearchParams): void {
   const fresh = !isRedraw() || shown === null || state.opening !== opening
   const returned = fresh && throughHistory()
   if (fresh) {
-    state = returned ? returnedTo(state, opening, name, store.orders().some((o) => o.label === name)) : initialSearch()
+    state = returned ? returnedTo(state, opening, name, store.orders()) : initialSearch()
     shown = null
     opens += 1
   }
@@ -167,15 +167,19 @@ async function checkRetarget(record: store.OrderRecord): Promise<void> {
   if (read && onPage(page)) dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced) })
 }
 
+// a search the wait paused is sent once it ends; one already on its way, as Back sends, is not sent again
 function holdEnded(): void {
+  const paused = state.paused
   dispatch({ type: "hold-ended" })
-  if (state.answer?.kind === "checking") submit()
+  if (paused && state.answer?.kind === "checking") submit()
 }
 
 type Found = Extract<Answer, { kind: "found" }>
 type Available = Extract<api.SearchAnswer, { status: "available" }>
 
 const unaffordable = (s: SearchState, answer: Available) => s.retarget !== null && answer.price > s.retarget.paid
+// an order this browser has for the name, which the search found or the service named in refusing a second one
+const ownOrderOf = ({ ownOrder, register: { refusal } }: SearchState) => ownOrder ?? (refusal?.why === "other" ? store.invoiceUrl(refusal.invoiceId) : null)
 
 function register(): void {
   const s = state
@@ -321,29 +325,26 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
   const retarget = s.retarget
   const unpayable = unaffordable(s, answer)
   const covers = retarget && (unpayable ? `This name costs more than the ${dollars(retarget.paid, true)} your order is worth.` : "Covered by your payment")
-  const button = setAction(btn(retarget ? "Register with your payment" : "Register", "", register, icon("arrow")), s.register.busy, unpayable || s.ownOrder !== null || s.hold !== null)
+  const own = ownOrderOf(s)
+  const button = setAction(btn(retarget ? "Register with your payment" : "Register", "", register, icon("arrow")), s.register.busy, unpayable || own !== null || s.hold !== null)
+  // an order of ours takes the term's line in the card, so the answer keeps its height as the order is found
+  const term = own ? ["You already have an order for this name. ", el("a", { class: "nowrap", href: own }, "Open that order")] : [`${letters(label.length)}${SEP}${termText(answer.years)}`]
   return [
     el("div", { class: "card" },
       nameTitle(label, "name", answer.tld),
-      el("p", { class: "note" }, `${letters(label.length)}${SEP}${termText(answer.years)}`),
+      el("p", { class: "note" }, ...term),
       covers ? el("p", { class: "note" }, covers) : null,
       el("div", { class: "deal" }, el("b", { class: "price" }, dollars(answer.price)), button)),
-    registerNote(s, unpayable, signal),
+    unpayable || own ? null : registerNote(s, signal),
   ]
 }
 
-function registerNote(s: SearchState, unpayable: boolean, signal: AbortSignal): HTMLElement | null {
-  const { ownOrder, hold, register: { refusal } } = s
-  if (unpayable) return null
-  if (ownOrder) return ownOrderNote(ownOrder)
+function registerNote({ hold, register: { refusal } }: SearchState, signal: AbortSignal): HTMLElement | null {
   if (hold) return holdNotice(hold, signal)
   if (!refusal) return null
-  if (refusal.why === "other") return ownOrderNote(store.invoiceUrl(refusal.invoiceId))
   const words = refusal.why === "taken" ? "This name is no longer available. Search another one." : "Nothing changed. Try again in a moment."
   return alertBox("danger", "alert", "That did not go through", words)
 }
-
-const ownOrderNote = (url: string) => alertBox("info", "info", "You already have an order for this name", el("a", { href: url }, "Open that order"))
 
 function takenAnswer(found: Found, answer: Extract<api.SearchAnswer, { status: "registered" }>): HTMLElement {
   const { label, mine } = found
@@ -365,9 +366,7 @@ function takenAnswer(found: Found, answer: Extract<api.SearchAnswer, { status: "
     yours)
 }
 
-function initials(name: string): string {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?"
-}
+const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?"
 
 function hue(text: string): number {
   let h = 0

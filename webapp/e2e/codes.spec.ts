@@ -212,7 +212,7 @@ test("a code judged while a paid order is on its way leaves that order as it was
   refuse()
   await expect(page.getByText("Paid with your code"), "the code the field shows as good pays once the order is back").toBeVisible()
   await expect(total(page)).toContainText("$0.00")
-  await expect(onStep(page).locator(".code-entry .verdict.ok")).toBeVisible()
+  await expect(onStep(page).locator(".code-entry .verdict.ok"), "the verdict stays beside the card, for a screen reader").toHaveCount(1)
   await expect(onStep(page).getByRole("button", { name: "Register", exact: true })).toBeEnabled()
   await page.unrouteAll({ behavior: "wait" })
 })

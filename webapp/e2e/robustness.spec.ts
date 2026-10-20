@@ -139,6 +139,19 @@ test("an unpaid invoice is pointed at from checkout without blocking a new order
   await shot(page, "N3e2-open-invoice")
 })
 
+test("the line on another order follows it, saying when it is confirming and going once it is paid", async ({ page, request }) => {
+  const { invoiceId } = await startOrder(page, uniqueLabel("follow"), { method: "btc" })
+  await search(page, uniqueLabel("after"))
+  await toReview(page)
+  const line = onStep(page).locator(".pay-with > .note")
+  await expect(line).toHaveText("Another order is waiting for its payment. Open that order")
+  await control(request, `confirming/${invoiceId}`)
+  await expect(line).toHaveText("Another order is confirming its payment. Open that order")
+  await control(request, `settle/${invoiceId}`)
+  await expect(line).toHaveCount(0)
+  await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeFocused()
+})
+
 test("Get a new invoice keeps an invoice the service would not cancel", async ({ page }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("keep"), { method: "card" })
   await page.route(/\/\?order=/, async (route) => {
@@ -395,7 +408,7 @@ test("search points at this browser's open order for a name instead of a second 
   const label = uniqueLabel("own")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await search(page, label)
-  await expect(page.getByText("You already have an order for this name")).toBeVisible()
+  await expect(page.getByText("You already have an order for this name.")).toBeVisible()
   await expect(page.getByRole("button", { name: "Register" })).toBeDisabled()
   await expect(page.getByRole("link", { name: "Open that order" })).toHaveAttribute("href", `/?order=${invoiceId}`)
   await shot(page, "N2f-own-order")
@@ -614,7 +627,7 @@ for (const other of ["Monero", "a code"]) {
       const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
       await openCode(copy)
       await checkoutCode(copy).fill(code)
-      await expect(onStep(copy).getByText(/^Covers names of/)).toBeVisible()
+      await expect(onStep(copy).getByText("Paid with your code")).toBeVisible()
       await onStep(copy).getByRole("button", { name: "Register" }).click()
     }
     await copy.waitForURL(/\?order=/)

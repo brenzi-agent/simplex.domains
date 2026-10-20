@@ -13,9 +13,7 @@ export const INVEST_AMOUNT = "$500"
 
 let rerender: () => void = () => undefined
 
-export function setRenderer(render: () => void): void {
-  rerender = render
-}
+export const setRenderer = (render: () => void) => { rerender = render }
 
 let route = 0
 const leaving: (() => void)[] = []
@@ -51,14 +49,10 @@ export const isRedraw = () => drawnRoute === route
 export const isRoute = (token: number) => token === route
 export const currentRoute = () => route
 
-export function whenLeaving(f: () => void): void {
-  leaving.push(f)
-}
+export const whenLeaving = (f: () => void) => { leaving.push(f) }
 
 // once the page is left for another, rather than drawn again, as its kept nodes are dropped
-export function whenDropped(f: () => void): void {
-  dropping.push(f)
-}
+export const whenDropped = (f: () => void) => { dropping.push(f) }
 
 const nextAt = () => Math.max(-1, ...Object.keys(session.scrolled()).map(Number)) + 1
 let historyAt = typeof history.state?.at === "number" ? history.state.at as number : nextAt()
@@ -159,6 +153,7 @@ export function kept<T extends HTMLElement>(key: string, make: () => T): T {
 export const keptLive = (key: string, cls: string | undefined, ...kids: Kid[]) => refill(kept(key, () => liveRegion(cls)), ...kids)
 
 const LOADING = "loading"
+let fontsAwaited = false
 // the key of a control a redraw turned off, whose focus dropped to the page: a later redraw that offers it gives it back
 let lostKey: string | null = null
 
@@ -178,6 +173,9 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, 
   if (step === null) leaveTrack(main, next)
   else placeOnTrack(main, step, next)
   if (!redrawn) holdSpacers(next)
+  // the first page opens anew once the fonts its layout asked for have loaded; a face a later change asks for moves nothing
+  if (!fontsAwaited && kind !== LOADING) void document.fonts.ready.then(reopen)
+  fontsAwaited ||= kind !== LOADING
   shownScreen = next
   main.inert = false
   shownKind = kind
@@ -281,9 +279,7 @@ export function drawLoading(title: string, place = (screen: HTMLElement) => scre
   draw(LOADING, () => place(el("section", { class: "screen" }, el("h1", {}, title))))
 }
 
-export function isDark(): boolean {
-  return document.documentElement.classList.contains("dark")
-}
+export const isDark = () => document.documentElement.classList.contains("dark")
 
 // The browser's own bars, as a phone's or an installed app's, in the page's background for the theme on screen, which
 // the reader may have chosen over the one their system prefers.
@@ -342,8 +338,10 @@ function measureFrame(): void {
   const resized = new ResizeObserver(fitFrame)
   for (const part of frameParts()) resized.observe(part)
   fitFrame()
-  // a window resized, or text laid out anew in the fonts just loaded, opens the screen in view anew; the offline note does not
-  const reopen = () => { fitFrame(); if (shownScreen) holdSpacers(shownScreen) }
-  addEventListener("resize", reopen)
-  document.fonts.addEventListener("loadingdone", reopen)
+  // a window resized opens the screen in view anew; a scrollbar coming or going, or the offline note, leaves the window as it was
+  const sized = () => `${innerWidth}x${innerHeight}`
+  let size = sized()
+  addEventListener("resize", () => { if (sized() !== size) { size = sized(); reopen() } })
 }
+
+const reopen = () => { fitFrame(); if (shownScreen) holdSpacers(shownScreen) }

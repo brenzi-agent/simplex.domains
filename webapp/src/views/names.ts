@@ -78,9 +78,7 @@ function showList(): void {
   readRows()
 }
 
-function answerList(route: number, event: ListEvent): void {
-  if (isRoute(route)) dispatchList(event)
-}
+const answerList = (route: number, event: ListEvent) => { if (isRoute(route)) dispatchList(event) }
 
 // each order and code is read once per opening; a record stored meanwhile, as a newer order found, is read as it comes
 function readRows(): void {
@@ -426,9 +424,7 @@ function dispatchEdit(event: EditEvent): void {
   draw(kind, (signal) => EDIT_BUILDERS[kind](edit, signal))
 }
 
-function answerEdit(route: number, event: EditEvent): void {
-  if (isRoute(route)) dispatchEdit(event)
-}
+const answerEdit = (route: number, event: EditEvent) => { if (isRoute(route)) dispatchEdit(event) }
 
 async function readEdit(route: number): Promise<void> {
   const stored = edit.record!

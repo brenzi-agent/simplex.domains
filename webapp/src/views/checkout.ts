@@ -92,22 +92,25 @@ function act(event: CheckoutEvent, apply: (event: CheckoutEvent) => void = dispa
 // a link typed is shown by its own field, so the page takes it without drawing
 const setLink = (kind: LinkKind, link: string) => void act({ type: "link-set", kind, link }, (event) => { state = reduce(state, event) })
 
-// The card order blocks a second one only while its invoice is open, so checkout follows it and opens up when it settles or closes.
-async function settleWaiting(waiting: WaitingOrder, signal: AbortSignal): Promise<void> {
-  let seen: api.InvoiceView | undefined
+// Follows an invoice, each answer coming once it moves on from the one seen, while `followed` returns true; an invoice the
+// service no longer knows is null.
+async function follow(invoiceId: string, signal: AbortSignal, followed: (seen: api.InvoiceView | null) => boolean | void, seen?: api.InvoiceView): Promise<void> {
   while (!signal.aborted) {
     try {
-      seen = await api.readInvoice(waiting.invoiceId, seen && { status: seen.status, phase: seen.registration.phase, paid: seen.cryptoAmountPaid ?? "", full: seen.paidInFull === true }, signal)
+      seen = await api.readInvoice(invoiceId, seen && { status: seen.status, phase: seen.registration.phase, paid: seen.cryptoAmountPaid ?? "", full: seen.paidInFull === true }, signal)
     } catch (e) {
       // the service forgets an unpaid invoice some time after it closes; other errors are waited out
-      if (e instanceof api.ApiError && e.code === "not_found") return settled(waiting, signal)
+      if (e instanceof api.ApiError && e.code === "not_found") return void followed(null)
       if (signal.aborted) return
       await new Promise((r) => setTimeout(r, e instanceof api.ApiError && e.retryAfter ? e.retryAfter * 1000 : RETRY_MS))
       continue
     }
-    if (seen.status !== "open") return settled(waiting, signal)
+    if (!followed(seen)) return
   }
 }
+
+// The card order blocks a second one only while its invoice is open, so checkout follows it and opens up when it settles or closes.
+const settleWaiting = (waiting: WaitingOrder, signal: AbortSignal) => follow(waiting.invoiceId, signal, (seen) => seen?.status === "open" || settled(waiting, signal))
 
 function settled(waiting: WaitingOrder, signal: AbortSignal): void {
   store.updateOrder(waiting.registrationId, { cardSubmittedAt: undefined })
@@ -118,15 +121,21 @@ function settled(waiting: WaitingOrder, signal: AbortSignal): void {
 }
 
 const OPEN_ORDER_LOOKBACK = 5
+const unpaid = (i: api.InvoiceView | null): i is api.InvoiceView => i?.status === "open" && i.registration.phase === "unpaid"
 
-// An unpaid invoice this browser made is pointed at, without blocking a new order. Only the newest few orders are asked
-// about, so a long Your names list does not cost a request each.
+// An unpaid invoice this browser made is pointed at, without blocking a new order, and followed until it is paid or
+// closes. Only the newest few orders are asked about, so a long Your names list does not cost a request each.
 async function showOpenOrder(signal: AbortSignal): Promise<void> {
   const recent = store.orders().filter((o) => o.invoiceId && !o.cancelled && !o.replacedBy).slice(0, OPEN_ORDER_LOOKBACK)
   const invoices = await Promise.all(recent.map((o) => api.readInvoice(o.invoiceId!).catch(() => null)))
-  const at = invoices.findIndex((i) => i?.status === "open" && i.registration.phase === "unpaid")
-  if (at < 0 || signal.aborted) return
-  dispatch({ type: "open-order-seen", order: { invoiceId: recent[at].invoiceId!, confirming: invoices[at]!.paidInFull === true } })
+  const open = invoices.find(unpaid)
+  if (!open || signal.aborted) return
+  const show = (seen: api.InvoiceView | null) => {
+    if (!signal.aborted) dispatch({ type: "open-order-seen", order: unpaid(seen) ? { invoiceId: open.invoiceId, confirming: seen.paidInFull === true } : null })
+    return unpaid(seen)
+  }
+  show(open)
+  void follow(open.invoiceId, signal, show, open)
 }
 
 // Change opens the links step with focus in the field chosen
@@ -182,14 +191,14 @@ function methodsBlock({ checkout: c, openOrder: order, sending }: CheckoutState)
     methodMark(m), el("b", {}, methodName(m)), off ? el("span", {}, "Temporarily unavailable") : null)
   })
   return el("section", { class: "pay-with" },
-    order ? el("p", { class: "note" }, `Another order ${order.confirming ? "is confirming its payment" : "is waiting for its payment"}. `,
-      el("a", { href: store.invoiceUrl(order.invoiceId) }, "Open that order")) : null,
+    order ? el("p", { class: "note other-order" }, `Another order ${order.confirming ? "is confirming its payment" : "is waiting for its payment"}. `,
+      el("a", { class: "nowrap", href: store.invoiceUrl(order.invoiceId) }, "Open that order")) : null,
     c.unavailable ? alertBox("warn", "alert", `${methodName(c.unavailable)} is temporarily unavailable`, "Try another method, or come back later.") : null,
     el("span", { class: "label", id: PAY_WITH_ID }, "Pay with"),
     el("div", { class: "methods", role: "radiogroup", "aria-labelledby": PAY_WITH_ID }, ...radios))
 }
 
-const coveredLine = (code: session.AppliedCode) => el("section", { class: "pay-with" },
+const coveredLine = (code: session.AppliedCode) => el("section", { class: "pay-with covered" },
   alertBox("ok", "check", "Paid with your code", `Registered for ${termText(code.years)}, with nothing to pay.`))
 
 const waitingNotice = (blocked: WaitingOrder) => el("section", { class: "pay-with" },
@@ -244,9 +253,7 @@ function continueButton(onclick: () => void, held = false, label: Kid = "Continu
 }
 
 // a link refused or being checked takes focus; until the code is saved, the review opens the name code step instead
-function linksDone(fields: HTMLElement[]): void {
-  if (!focusUnsettled(fields)) go(checkoutUrl("review"))
-}
+const linksDone = (fields: HTMLElement[]) => { if (!focusUnsettled(fields)) go(checkoutUrl("review")) }
 
 function buildLinks(s: CheckoutState): HTMLElement {
   const c = s.checkout

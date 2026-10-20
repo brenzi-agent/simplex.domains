@@ -34,7 +34,7 @@ export type CheckoutEvent =
   | { type: "code-removed" }
   | { type: "code-opened" }
   | { type: "waiting-settled" }
-  | { type: "open-order-seen"; order: OpenOrder }
+  | { type: "open-order-seen"; order: OpenOrder | null }
   | { type: "send-started" }
   | { type: "order-refused"; reason: "code"; error: string }
   | { type: "order-refused"; reason: "method" | "failed" | "taken" }

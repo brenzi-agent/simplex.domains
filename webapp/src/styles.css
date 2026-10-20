@@ -87,7 +87,8 @@ html.dark {
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
-.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* a code's verdict while the code pays says what the Paid with your code card says, so it is only heard */
+.sr-only, .review:has(.covered) .verdict { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 html { background: var(--page-color); }
 body { min-height: 100dvh; display: flex; flex-direction: column; font: 500 var(--fs-body)/1.5 var(--body); color: var(--ink);
   background: var(--page-image), var(--page-color); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; text-wrap: pretty; }
@@ -179,6 +180,8 @@ body > main { flex: 1 0 auto; }
 .screen.step > .vspace:not([style]) ~ .vspace:last-child { min-height: max(var(--note-room), var(--room, 0px)); }
 /* a code's verdict, or a line on another order waiting, which arrives after the review is drawn */
 .screen.step:has(.review) { --room: calc(1.5 * var(--fs-small) + 12px); }
+/* a link refused: its line under the field, after the field's gap and the line's margin */
+.screen.step:has(.link-fields) { --room: calc(2 * 8px + 1.5 * 14px); }
 /* a part paid: its notice, of two lines, in place of the lead */
 .screen.step:has(.waiting) { --room: calc(3 * var(--fs-small) + 30px - 1.5 * var(--fs-lead)); }
 /* an empty live region keeps its place in the column without adding a gap */
@@ -346,7 +349,13 @@ svg.qr { display: block; width: 132px; height: auto; }
 .field-copy:hover { background: var(--chip); }
 .waiting { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; }
 .waiting a { color: var(--danger-fg); }
-.stripe { padding: 18px; border-radius: 16px; border: 1px dashed var(--surface-line); }
+.stripe { border-radius: 16px; }
+/* Stripe's card form mounts after its step is drawn, so its box holds the form's height from the start: card only, with
+   Stripe.js dahlia, 221-230 px tall on the 640 px column and 306-320 px on a phone's, in Chromium and Firefox */
+.stripe:not(:has(> .label)) { min-height: 320px; }
+@media (min-width: 672px) { .stripe:not(:has(> .label)) { min-height: 230px; } }
+/* the development stand-in, framed as the form it stands in for */
+.stripe:has(> .label) { padding: 18px; border: 1px dashed var(--surface-line); }
 .stripe .label { display: flex; justify-content: space-between; margin-bottom: 4px; }
 .stripe .f { display: block; margin-top: 12px; }
 .stripe .f span { display: block; font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 6px; }
@@ -485,7 +494,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .screen.step { --screen-gap: 10px; }
   .review :is(.pay-with, .code-entry) { --block-gap: 8px; }
   .review .method { padding-block: 10px; }
-  .review :is(.field, .btn) { padding-block: 12px; }
+  .review :is(.field, .btn), .link-fields .field, .link-fields + .btn { padding-block: 12px; }
 }
 
 /* a phone */
@@ -506,6 +515,8 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .answer .name { font-size: 24px; }
   .summary-card .name.long { font-size: 16px; }
   .review :is(.pay-with, .code-entry) { --block-gap: 6px; }
+  /* a line on another order stands as far from Pay with as the blocks around it do */
+  .other-order { margin-bottom: 6px; }
   .review .btn { padding-block: 14px; }
   .method { flex-direction: column; padding: 8px 6px; gap: 2px; font-size: 16px; }
   .method span { flex-basis: auto; }
@@ -524,12 +535,6 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   /* a smaller QR leaves the amount beside it its one line */
   .qr-grid svg.qr, .qr-grid .card.qr svg.qr { width: 120px; }
   .screen.step .lead { font-size: 15px; line-height: 1.4; }
-}
-
-/* A reader who asked for less motion gets the states without the easing. Only the track moves, so only it is stilled: a
-   short transition on every element would hold each change a frame, which the screen's spacers are measured across. */
-@media (prefers-reduced-motion: reduce) {
-  .track, .rail { transition-duration: 0s; }
 }
 
 /* .track clips and takes the height of the slide in view; .rail is the row of slides and is what moves */

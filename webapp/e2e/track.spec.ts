@@ -1,8 +1,8 @@
 import { expect, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  channelLink, checkoutCode, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, REGISTRATION_MS, savedToReview, search, shot, startOrder, test, toReview,
-  uniqueLabel, waitRegistered,
+  channelLink, checkoutCode, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, recordedFrames, recordFrames, REGISTRATION_MS, savedToReview, search, shot,
+  startOrder, test, toFullReview, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // the rail's shift in slides: its translateX over the track's width
@@ -219,6 +219,8 @@ test("every purchase step fits a laptop's and a phone's window without scrolling
 
 // WebKit rounds the home's spacers to whole pixels anew as the content below them changes
 const WEBKIT_ROUNDING_PX = 1
+// the tops of the home's headline and search
+const homeTops = (page: Page) => page.evaluate(() => ["h1", ".search-row"].map((s) => Math.round(document.querySelector(`.home ${s}`)!.getBoundingClientRect().top)))
 
 test("the home keeps its headline and search still as each kind of answer comes, at a laptop's and a phone's size", async ({ page, browserName }) => {
   const rounding = browserName === "webkit" ? WEBKIT_ROUNDING_PX : 0
@@ -227,14 +229,13 @@ test("the home keeps its headline and search still as each kind of answer comes,
     await page.goto("/")
     // the frame's height is measured as the page is first laid out, and the fonts change the headline's
     await page.evaluate(() => document.fonts.ready.then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))))
-    const still = () => page.evaluate(() => ["h1", ".search-row"].map((s) => Math.round(document.querySelector(`.home ${s}`)!.getBoundingClientRect().top)))
-    const before = await still()
+    const before = await homeTops(page)
     // each search on the same page, whose fonts have loaded
     for (const [name, answer] of [["bakery", ".entity"], ["harbour", ".note"], ["support", ".line"], ["abc", ".line"], [uniqueLabel("still"), ".price"]]) {
       await page.getByLabel("Name", { exact: true }).fill(name)
       await page.getByLabel("Name", { exact: true }).press("Enter")
       await expect(page.locator(`.answer ${answer}`).first()).toBeVisible()
-      const moved = (await still()).map((at, i) => Math.abs(at - before[i]))
+      const moved = (await homeTops(page)).map((at, i) => Math.abs(at - before[i]))
       expect(Math.max(...moved), `${name} at ${size.width}x${size.height}: headline and search moved ${moved}`).toBeLessThanOrEqual(rounding)
       expect(await page.evaluate(() => document.scrollingElement!.scrollHeight), `${name} at ${size.width}x${size.height}`).toBe(size.height)
     }
@@ -249,22 +250,16 @@ test("the registering page keeps its heading still on a phone from the commit to
   await toReview(page)
   await openCode(page)
   await checkoutCode(page).fill(code)
-  await expect(onStep(page).getByText(/^Covers names of/)).toBeVisible()
+  await expect(onStep(page).getByText("Paid with your code")).toBeVisible()
   // each frame's heading top and the words under the clock, while the heading is the registering page's
-  await page.evaluate(() => {
-    const w = window as unknown as { __frames: [number, string][] }
-    w.__frames = []
-    const look = () => {
-      const heading = document.querySelector(".slide:not([inert]) h1, body > main > .screen h1")
-      const note = document.querySelector(".countdown p")?.firstChild?.textContent ?? ""
-      if (heading?.textContent!.startsWith("Registering")) w.__frames.push([Math.round(heading.getBoundingClientRect().top), note])
-      requestAnimationFrame(look)
-    }
-    requestAnimationFrame(look)
+  await recordFrames(page, () => {
+    const heading = document.querySelector(".slide:not([inert]) h1, body > main > .screen h1")
+    const note = document.querySelector(".countdown p")?.firstChild?.textContent ?? ""
+    return heading?.textContent!.startsWith("Registering") ? [Math.round(heading.getBoundingClientRect().top), note] : null
   })
   await onStep(page).getByRole("button", { name: "Register" }).click()
   await waitRegistered(page, label)
-  const frames = await page.evaluate(() => (window as unknown as { __frames: [number, string][] }).__frames)
+  const frames = await recordedFrames<[number, string]>(page)
   expect(new Set(frames.map(([, note]) => note)).size, "the page went through more than one stage").toBeGreaterThan(1)
   expect([...new Set(frames.map(([top]) => top))], "the heading's top in each frame").toHaveLength(1)
 })
@@ -305,20 +300,6 @@ for (const length of [15, 25, MAX_LABEL_LENGTH]) {
   })
 }
 
-// Search, Register, both links, the name code saved, to Check your order with its code field open: the review at its fullest.
-async function toFullReview(page: Page, prefix: string): Promise<void> {
-  await search(page, uniqueLabel(prefix))
-  const step = onStep(page)
-  await step.getByRole("button", { name: "Register" }).click()
-  await step.getByLabel("Address").fill(contactLink("R1"))
-  await step.getByLabel("Channel").fill(channelLink("R2"))
-  for (const field of await step.locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
-  await step.getByRole("button", { name: "Continue" }).click()
-  await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
-  await savedToReview(page)
-  await openCode(page)
-}
-
 test("a part paid takes the lead's place with its notice, the payment keeping its heading still and fitting both windows", async ({ page, request }) => {
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
@@ -338,7 +319,7 @@ test("a part paid takes the lead's place with its notice, the payment keeping it
 test("the review keeps its heading still as a code's verdict comes and goes, with both links, at both sizes", async ({ page }) => {
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
-    await toFullReview(page, "verdict")
+    await toFullReview(page, uniqueLabel("verdict"))
     const before = await headingAt(page)
     await checkoutCode(page).fill("Q")
     await expect(onStep(page).locator(".verdict.bad")).toBeVisible()
@@ -374,7 +355,7 @@ test("going offline and back moves neither the home's heading nor the review's, 
     await page.goto("/")
     await page.evaluate(() => document.fonts.ready)
     await offlineAndBack(`the home at ${size.width}`)
-    await toFullReview(page, "offline")
+    await toFullReview(page, uniqueLabel("offline"))
     await offlineAndBack(`the review at ${size.width}`)
   }
   await context.setOffline(true)
@@ -386,24 +367,82 @@ test("going offline and back moves neither the home's heading nor the review's, 
 test("a line on another order waiting comes into the room the review keeps, the review fitting both windows", async ({ page }) => {
   await startOrder(page, uniqueLabel("waiting"), { method: "btc" })
   // the review heading's top in each frame of every page from here on
-  await page.addInitScript(() => {
-    const w = window as unknown as { __tops: number[] }
-    w.__tops = []
-    const look = () => {
-      const heading = document.querySelector(".slide:not([inert]) h1")
-      if (heading?.textContent === "Check your order") w.__tops.push(Math.round(heading.getBoundingClientRect().top))
-      requestAnimationFrame(look)
-    }
-    requestAnimationFrame(look)
-  })
+  await recordFrames(page, () => {
+    const heading = document.querySelector(".slide:not([inert]) h1")
+    return heading?.textContent === "Check your order" ? Math.round(heading.getBoundingClientRect().top) : null
+  }, true)
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
-    await toFullReview(page, "other")
+    await toFullReview(page, uniqueLabel("other"))
     await expect(onStep(page).getByText("Another order is waiting for its payment.")).toBeVisible()
     await headingAt(page)
-    const tops = await page.evaluate(() => [...new Set((window as unknown as { __tops: number[] }).__tops)])
+    const tops = [...new Set(await recordedFrames<number>(page))]
     expect(tops, `the review heading's tops at ${size.width}x${size.height}`).toHaveLength(1)
     expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
+    // its link stays whole on one line, a phone putting the line's words above it
+    const link = onStep(page).getByRole("link", { name: "Open that order" })
+    expect(await link.evaluate((a) => a.getClientRects().length), `the link's lines at ${size.width}x${size.height}`).toBe(1)
   }
-  await shot(page, "names-g4-review-other-order")
+  await shot(page, "names-g5-review-other-order")
 })
+
+// An order of ours found for the name, a refused link and a code that pays are each their page's biggest change: the
+// page keeps its heading through it and fits both windows.
+for (const length of [10, MAX_LABEL_LENGTH]) {
+  test(`an order of ours for a name of ${length} wide letters keeps the home still and fitting both windows`, async ({ page, browserName }) => {
+    const rounding = browserName === "webkit" ? WEBKIT_ROUNDING_PX : 0
+    const label = wideLabel(length)
+    await startOrder(page, label, { method: "btc" })
+    for (const size of FIT_SIZES) {
+      await page.setViewportSize(size)
+      await page.goto("/")
+      await page.evaluate(() => document.fonts.ready.then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))))
+      const before = await homeTops(page)
+      await page.getByLabel("Name", { exact: true }).fill(label)
+      await page.getByLabel("Name", { exact: true }).press("Enter")
+      await expect(page.locator(".answer").getByRole("link", { name: "Open that order" })).toBeVisible()
+      await expect(page.locator(".answer").getByText("You already have an order for this name")).toBeVisible()
+      const moved = (await homeTops(page)).map((at, i) => Math.abs(at - before[i]))
+      expect(Math.max(...moved), `headline and search moved ${moved} at ${size.width}x${size.height}`).toBeLessThanOrEqual(rounding)
+      expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
+    }
+    await shot(page, `names-g5-home-own-order-${length}`)
+  })
+}
+
+for (const length of [25, MAX_LABEL_LENGTH]) {
+  test(`a refused link keeps the links step still and fitting both windows, for a name of ${length} wide letters`, async ({ page }) => {
+    for (const size of FIT_SIZES) {
+      await page.setViewportSize(size)
+      await search(page, wideLabel(length))
+      const step = onStep(page)
+      await step.getByRole("button", { name: "Register" }).click()
+      await step.getByRole("textbox", { name: "Contact address" }).fill(contactLink("V3"))
+      await expect(step.locator(".link-field .entity:not(.skeleton)")).toBeVisible()
+      const before = await headingAt(page)
+      await step.getByRole("textbox", { name: "Channel" }).fill(contactLink("V3"))
+      await expect(step.locator(".field-error")).toHaveText("This is a contact address link: paste it in the Contact address field.")
+      expect(await headingAt(page), `the heading at ${size.width}x${size.height}`).toEqual(before)
+      expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
+    }
+    await shot(page, `names-g5-links-refused-${length}`)
+  })
+
+  test(`a code that pays keeps the review still and fitting both windows, its verdict only heard, for a name of ${length} wide letters`, async ({ page, request }) => {
+    const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+    for (const size of FIT_SIZES) {
+      await page.setViewportSize(size)
+      await toFullReview(page, wideLabel(length))
+      const before = await headingAt(page)
+      await checkoutCode(page).fill(code)
+      await expect(onStep(page).getByText("Paid with your code")).toBeVisible()
+      expect(await headingAt(page), `the heading at ${size.width}x${size.height}`).toEqual(before)
+      expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
+    }
+    // the card says what the verdict says, so the verdict is left for a screen reader to announce
+    const verdict = onStep(page).locator(".verdict.ok")
+    await expect(verdict).toHaveText(/^Covers names of 6 or more letters/)
+    expect(await verdict.evaluate((v) => v.getBoundingClientRect().height), "the verdict's height").toBeLessThanOrEqual(1)
+    await shot(page, `names-g5-review-code-paid-${length}`)
+  })
+}

@@ -1,6 +1,7 @@
 import { expect } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
-import { checksumAddress } from "../src/crypto/wallet.ts"
+import { labelHash } from "../src/crypto/registration.ts"
+import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import { control, mockRegistration, REGISTRATION_MS, registrationOf, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 test("a name taken first moves the paid order to another name, owned by the same code", async ({ page, request }) => {
@@ -43,6 +44,44 @@ test("a name taken first moves the paid order to another name, owned by the same
   await waitRegistered(page, next)
   const answer = await searchName(request, next)
   expect(answer.owner).toBe(checksumAddress(walletOf(ownerCode)!.address))
+})
+
+// a wait on moving the payment that ends while the search gone back to is still out, and that search's answer
+const MOVE_WAIT_S = 3
+const SEARCH_RTT_MS = 5_000
+
+test("a wait on moving the payment that ends while Back checks the name again sends no second search", async ({ page, request }) => {
+  const label = uniqueLabel("tw")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await control(request, "take", { label })
+  await control(request, `settle/${invoiceId}`)
+  await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  const next = uniqueLabel("tw2")
+  // an order this browser made for the name before, which has Back check the name again
+  await page.evaluate(({ label, hash }) => localStorage.setItem("simplex-names:order:reg-before", JSON.stringify({
+    registrationId: "reg-before", invoiceId: null, label, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+    contact: "", channel: "", method: "code", paid: 0, years: 2, secret: "0x01", tld: "simplex", createdAt: new Date().toISOString(),
+    request: { labelHash: hash, length: label.length, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: "0x01", sealed: "sealed" },
+  })), { label: next, hash: hex(labelHash(next)) })
+  await page.getByLabel("Name", { exact: true }).fill(next)
+  await page.getByLabel("Name", { exact: true }).press("Enter")
+  await expect(page.getByText("Covered by your payment")).toBeVisible()
+  await page.route("**/name", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": String(MOVE_WAIT_S) }, json: { error: "rate_limited" } }) : route.continue())
+  await page.getByRole("button", { name: "Register with your payment" }).click()
+  await expect(page.getByText("Too many attempts")).toBeVisible()
+  let searches = 0
+  await page.route("**/api/name/**", async (route) => {
+    searches++
+    await new Promise((answered) => setTimeout(answered, SEARCH_RTT_MS))
+    await route.continue()
+  })
+  await page.locator("body > footer").getByRole("link", { name: "Trademark owners" }).click()
+  await expect(page.getByRole("heading", { name: "Trademark owners" })).toBeVisible()
+  await page.goBack()
+  await expect(page.locator(".answer .line", { hasText: "Checking the name…" })).toBeVisible()
+  await expect(page.getByText("Covered by your payment")).toBeVisible({ timeout: 2 * SEARCH_RTT_MS })
+  expect(searches, "searches sent since Back").toBe(1)
 })
 
 test("a name taken first can become a code instead, kept under Your names", async ({ page, request }) => {

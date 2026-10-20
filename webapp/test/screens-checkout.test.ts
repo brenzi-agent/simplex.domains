@@ -163,6 +163,12 @@ describe("reduce", () => {
   it("open-order-seen points at an unpaid invoice", () => {
     expect(reduce(s, { type: "open-order-seen", order: OPEN_ORDER })).toEqual({ ...s, openOrder: OPEN_ORDER })
   })
+  it("open-order-seen follows that invoice: confirming, then paid or closed, when nothing is pointed at", () => {
+    const pointed = reduce(s, { type: "open-order-seen", order: OPEN_ORDER })
+    const confirming = reduce(pointed, { type: "open-order-seen", order: { ...OPEN_ORDER, confirming: true } })
+    expect(confirming.openOrder).toEqual({ ...OPEN_ORDER, confirming: true })
+    expect(reduce(confirming, { type: "open-order-seen", order: null })).toEqual(s)
+  })
   it("send-started marks the order on its way from this page", () => {
     expect(reduce(s, { type: "send-started" })).toEqual({ ...s, sending: true, busy: true })
   })

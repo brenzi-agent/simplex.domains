@@ -4,7 +4,8 @@ import { hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import { GRACE_S } from "../src/screens/names.ts"
 import {
-  control, LINKS_HEADING, onStep, payButton, REGISTRATION_MS, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
+  control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, REGISTRATION_MS, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel,
+  waitRegistered,
 } from "./helpers.ts"
 
 test.afterEach(async ({ request }) => {
@@ -304,16 +305,10 @@ test("as a search pause ends, the paused line gives way to a checking line rathe
   await page.goto("/")
   await expect(page.getByRole("button", { name: "Invest to claim your name" })).toBeVisible()
   // what each drawn frame shows below the search, from the press on
-  await page.evaluate(() => {
-    const w = window as unknown as { __below: string[] }
-    w.__below = []
-    const look = () => {
-      const invest = document.querySelector<HTMLElement>(".below .cta")
-      const shown = document.querySelector(".answer .card") ? "answer" : document.querySelector(".answer .line")?.textContent ?? ""
-      w.__below.push(invest && invest.getClientRects().length > 0 ? `invest${shown ? ` + ${shown}` : ""}` : shown)
-      requestAnimationFrame(look)
-    }
-    requestAnimationFrame(look)
+  await recordFrames(page, () => {
+    const invest = document.querySelector<HTMLElement>(".below .cta")
+    const shown = document.querySelector(".answer .card") ? "answer" : document.querySelector(".answer .line")?.textContent ?? ""
+    return invest && invest.getClientRects().length > 0 ? `invest${shown ? ` + ${shown}` : ""}` : shown
   })
   // each search takes a moment to answer, as one over a network does
   await page.route(/\/api\/name\//, async (route) => {
@@ -325,7 +320,7 @@ test("as a search pause ends, the paused line gives way to a checking line rathe
   await page.getByLabel("Name", { exact: true }).press("Enter")
   await expect(page.locator(".answer .line", { hasText: "Searching is paused" })).toBeVisible()
   await expect(page.locator(".answer .card")).toBeVisible({ timeout: 30_000 })
-  const frames = await page.evaluate(() => (window as unknown as { __below: string[] }).__below)
+  const frames = await recordedFrames<string>(page)
   const paused = frames.findIndex((f) => f.startsWith("Searching is paused"))
   const answered = frames.indexOf("answer")
   expect(paused, "a frame with the paused line").toBeGreaterThanOrEqual(0)

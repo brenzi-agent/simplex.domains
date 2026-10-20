@@ -138,6 +138,48 @@ export async function toReview(page: Page): Promise<void> {
   await savedToReview(page)
 }
 
+// Search, Register, both links, the name code saved, to Check your order with its code field open: the review at its fullest.
+// The field opens to a pointer's click, as Playwright's own click over WebDriver BiDi first scrolls its target to the window's centre.
+export async function toFullReview(page: Page, label: string): Promise<void> {
+  await search(page, label)
+  const step = onStep(page)
+  await step.getByRole("button", { name: "Register" }).click()
+  await step.getByRole("textbox", { name: "Contact address" }).fill(contactLink("R1"))
+  await step.getByRole("textbox", { name: "Channel" }).fill(channelLink("R2"))
+  for (const field of await step.locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
+  await step.getByRole("button", { name: "Continue" }).click()
+  await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
+  await savedToReview(page)
+  // the slide to the review ends before the link is aimed at
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
+  // a redraw, as a line on another order brings, can replace the link as it is aimed at
+  await expect(async () => {
+    const box = (await step.getByRole("button", { name: CODE_LABEL }).boundingBox())!
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    await expect(checkoutCode(page)).toBeFocused({ timeout: 1_000 })
+  }).toPass()
+}
+
+// Samples every frame from the next one, keeping what `sample` returns other than null; resolves once a frame is sampled.
+// With `eachPage`, every page loaded from now on is sampled from its start instead. `sample` runs in the page, by its source.
+export async function recordFrames(page: Page, sample: () => unknown, eachPage = false): Promise<void> {
+  const recorder = `new Promise((started) => {
+    const frames = window.__frames = []
+    const sample = ${sample}
+    const look = () => {
+      const seen = sample()
+      if (seen !== null) frames.push(seen)
+      started()
+      requestAnimationFrame(look)
+    }
+    requestAnimationFrame(look)
+  })`
+  if (eachPage) await page.addInitScript(recorder)
+  else await page.evaluate(recorder)
+}
+
+export const recordedFrames = <T>(page: Page) => page.evaluate(() => (window as unknown as { __frames: T[] }).__frames)
+
 // Search and checkout, up to the order's page; returns the invoice and the owner code the browser made for it.
 export async function startOrder(page: Page, label: string, opts: OrderOptions = {}): Promise<{ invoiceId: string; ownerCode: string }> {
   await search(page, label)
