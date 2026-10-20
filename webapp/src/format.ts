@@ -18,8 +18,8 @@ export function dateOf(seconds: number, short = false): string {
   return new Date(seconds * 1000).toLocaleDateString("en-GB", { day: "numeric", month: short ? "short" : "long", year: "numeric", timeZone: "UTC" }).replace(" ", "\u00a0")
 }
 
-// a dot between parts of a line moves to the next line with the part after it, never left at a line's end
-export const SEP = " \u00b7\u00a0"
+// a dot between parts of a line stays at the end of the part before it, never starting a line
+export const SEP = "\u00a0\u00b7 "
 
 // what a registration of these years runs to, counted from now: the paid years and the 30 bonus days
 export function untilFromNow(years: number): number {

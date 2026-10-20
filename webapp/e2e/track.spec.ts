@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test"
+import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
   channelLink, checkoutCode, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, previewsShown, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf,
@@ -378,6 +378,31 @@ test(`Edit links and Restore sit centred as the steps do, and Edit links keeps s
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
     expect(await overflow(page), `Restore refused at ${size.width}x${size.height}`).toBe(0)
+  }
+})
+
+// The payment's line of name, term and amount: how many lines it takes, and how many of its separator dots start a line,
+// drawn at the line's left edge.
+const separatorsOf = (line: Locator) => line.evaluate((node) => {
+  const left = node.getBoundingClientRect().left
+  const at = (text: Node, i: number) => { const range = document.createRange(); range.setStart(text, i); range.setEnd(text, i + 1); return range.getBoundingClientRect().left }
+  const dots: boolean[] = []
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    for (let i = text.textContent!.indexOf("\u00b7"); i >= 0; i = text.textContent!.indexOf("\u00b7", i + 1)) dots.push(at(text, i) - left < 1)
+  }
+  return { lines: Math.round(node.getBoundingClientRect().height / parseFloat(getComputedStyle(node).lineHeight)), dots: dots.length, starting: dots.filter(Boolean).length }
+})
+
+test("the payment's line keeps each separator dot at the end of a line, never starting one, for long names on a phone", async ({ page }) => {
+  await page.setViewportSize(FIT_SIZES[1])
+  for (const length of [25, MAX_LABEL_LENGTH]) {
+    await startOrder(page, wideLabel(length), { method: "btc" })
+    const line = onStep(page).locator(".lead + .note")
+    await expect(line).toBeVisible()
+    const { lines, dots, starting } = await separatorsOf(line)
+    expect({ wraps: lines > 1, dots }, `the line of a name of ${length} letters`).toEqual({ wraps: true, dots: 2 })
+    expect(starting, `dots starting a line, for a name of ${length} letters`).toBe(0)
   }
 })
 
