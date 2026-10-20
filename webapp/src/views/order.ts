@@ -167,7 +167,8 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
     let unread: number | null = null
     try {
       const closedEmpty = invoice !== null && api.closedEmpty(invoice)
-      let replacement = closedEmpty && !record ? await successorOf(view, invoice!) : undefined
+      const successor = closedEmpty && !record ? await nextOrder(view, invoice!) : undefined
+      let replacement = successor && store.orderUrl(successor)
       if (!replacement && !record && invoice) record = await adoptSibling(view, invoice)
       if (!replacement && closedEmpty) replacement = record?.replacedBy
       // another browser may have made a newer invoice that this one never opened
@@ -234,11 +235,6 @@ async function nextOrder(view: api.RegistrationView, invoice: api.InvoiceView): 
     if (other && Date.parse(other.expiresAt) >= Date.parse(invoice.expiresAt)) return o
   }
   return undefined
-}
-
-async function successorOf(view: api.RegistrationView, invoice: api.InvoiceView): Promise<string | undefined> {
-  const next = await nextOrder(view, invoice)
-  return next && store.orderUrl(next)
 }
 
 // A browser holding the code of another invoice of this order holds this one too: another browser may have made a newer

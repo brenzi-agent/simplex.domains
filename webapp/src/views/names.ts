@@ -8,7 +8,7 @@ import type { IconName } from "../icons.ts"
 import { qrSvg } from "../qr.ts"
 import {
   CODE_CHIPS, EDIT_RETRY_MS, editable, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
-  againLine, initialRestore, lapsed, LINK_NAMES, ranOut, type EditRead, moneyReached, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
+  againLine, initialRestore, lapsed, LINK_NAMES, ranOut, moneyReached, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
   reduceList, reduceRestore, REFUSALS, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
 import { checkoutUrl } from "../screens/routes.ts"
@@ -465,12 +465,10 @@ const editNotice = (title: Kid, ...content: Kid[]): HTMLElement => screen({ titl
 const notice = (ic: IconName, title: string, text: string): Builder<EditState> => (s) => editNotice(editTitle(s), alertBox("info", ic, title, text))
 
 // The chain takes an expired name's link edits from its holder until someone registers it again; this page sends none.
-function expiredText({ view, answer, now }: EditRead): string {
-  return `${ranOut(view.expiresAt)} Names are not renewed, so this page no longer edits its links. ${againLine(view.expiresAt, answer, now)}`
-}
-
 function buildExpired(s: EditState): HTMLElement {
-  return editNotice(editTitle(s), alertBox("info", "clock", "This name has expired", expiredText(s.read!)))
+  const { view, answer, now } = s.read!
+  return editNotice(editTitle(s), alertBox("info", "clock", "This name has expired",
+    `${ranOut(view.expiresAt)} Names are not renewed, so this page no longer edits its links. ${againLine(view.expiresAt, answer, now)}`))
 }
 
 function buildUnreadable(s: EditState, signal: AbortSignal): HTMLElement {

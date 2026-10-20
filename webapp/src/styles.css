@@ -14,6 +14,19 @@
 @font-face { font-family: "Manrope fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Liberation Sans Bold"); font-weight: 600 700; size-adjust: 100.8%; ascent-override: 105.8%; descent-override: 29.8%; line-gap-override: 0%; }
 @font-face { font-family: "GT-Walsheim fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Liberation Sans Bold"); size-adjust: 100.5%; ascent-override: 89.5%; descent-override: 24.4%; line-gap-override: 0%; }
 /* simplex.domains' tokens (landing index.html:30-83); status colours from the badges webapp (public/styles.css:33-45, 97-105) */
+/* The theme's colours are typed, so a switch of theme eases them rather than cutting from one to the other. */
+@property --ink { syntax: "<color>"; inherits: true; initial-value: #0D1B3A; }
+@property --ink-soft { syntax: "<color>"; inherits: true; initial-value: #0D1B3A; }
+@property --primary { syntax: "<color>"; inherits: true; initial-value: #0053D0; }
+@property --primary-ink { syntax: "<color>"; inherits: true; initial-value: #fff; }
+@property --accent { syntax: "<color>"; inherits: true; initial-value: #0197FF; }
+@property --surface { syntax: "<color>"; inherits: true; initial-value: #fff; }
+@property --surface-line { syntax: "<color>"; inherits: true; initial-value: #fff; }
+@property --chip { syntax: "<color>"; inherits: true; initial-value: #fff; }
+@property --chip-line { syntax: "<color>"; inherits: true; initial-value: #fff; }
+@property --hd-a { syntax: "<color>"; inherits: true; initial-value: #3FA7F4; }
+@property --hd-b { syntax: "<color>"; inherits: true; initial-value: #3296EC; }
+@property --hd-c { syntax: "<color>"; inherits: true; initial-value: #1872DD; }
 :root {
   color-scheme: light;
   --display: "GT-Walsheim", "GT-Walsheim fallback", Gilroy, Helvetica, sans-serif;
@@ -33,11 +46,21 @@
   --control-pad: 16px;
   --lead-pull: 4px;
 
+  --fast: 150ms;
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  transition-property: --ink, --ink-soft, --primary, --primary-ink, --accent, --surface, --surface-line, --chip, --chip-line, --hd-a, --hd-b, --hd-c;
+  transition-duration: 200ms;
+
   --page-color: #F3FAFF;
-  --page-image:
+  --page-light:
     radial-gradient(95% 62% at 85% 4%, oklch(0.90 0.07 255 / 0.45), transparent 62%),
     radial-gradient(135% 108% at 50% 122%, oklch(0.92 0.075 255) 0%, oklch(0.965 0.035 253) 46%, oklch(0.995 0.008 250) 100%);
-  --heading: linear-gradient(to bottom, #53C1FF -50%, #0053D0 160%);
+  --page-dark:
+    radial-gradient(92% 62% at 82% -2%, oklch(0.44 0.135 256 / 0.38), transparent 60%),
+    radial-gradient(140% 118% at 50% -12%, oklch(0.30 0.105 258) 0%, oklch(0.19 0.088 260) 46%, oklch(0.135 0.075 263) 100%);
+  /* the landing's linear-gradient(to bottom, #53C1FF -50%, #0053D0 160%) as stops the dark theme's three can ease to */
+  --hd-a: #3FA7F4; --hd-b: #3296EC; --hd-c: #1872DD;
+  --heading: linear-gradient(to bottom, var(--hd-a) 0%, var(--hd-b) 33%, var(--hd-c) 100%);
   --ink: #0D1B3A;
   --ink-soft: rgba(13, 27, 58, .651);
   --primary: #0053D0;
@@ -62,10 +85,7 @@
 html.dark {
   color-scheme: dark;
   --page-color: #000832;
-  --page-image:
-    radial-gradient(92% 62% at 82% -2%, oklch(0.44 0.135 256 / 0.38), transparent 60%),
-    radial-gradient(140% 118% at 50% -12%, oklch(0.30 0.105 258) 0%, oklch(0.19 0.088 260) 46%, oklch(0.135 0.075 263) 100%);
-  --heading: linear-gradient(to bottom, #70F0F9 0%, #70F0F9 33%, #50D8F1 100%);
+  --hd-a: #70F0F9; --hd-b: #70F0F9; --hd-c: #50D8F1;
   --ink: #EAF2FF;
   --ink-soft: rgba(234, 242, 255, .735);
   --primary: #70F0F9;
@@ -93,8 +113,12 @@ html.dark {
 /* a code's verdict while the code pays says what the Paid with your code card says, so it is only heard */
 .sr-only, .review:has(.covered) .verdict { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 html { background: var(--page-color); }
-body { min-height: 100dvh; display: flex; flex-direction: column; font: 500 var(--fs-body)/1.5 var(--body); color: var(--ink);
-  background: var(--page-image), var(--page-color); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; text-wrap: pretty; }
+body { position: relative; isolation: isolate; min-height: 100dvh; display: flex; flex-direction: column; font: 500 var(--fs-body)/1.5 var(--body); color: var(--ink);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; text-wrap: pretty; }
+/* the two themes' grounds, one over the other, so a switch of theme fades between them */
+body::before, body::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: var(--page-light); }
+body::after { background: var(--page-dark); opacity: 0; transition: opacity 200ms; }
+html.dark body::after { opacity: 1; }
 a { color: var(--primary); text-decoration: none; font-weight: 600; }
 a:hover { text-decoration: underline; text-underline-offset: 3px; }
 button { font: inherit; color: inherit; }
@@ -137,16 +161,21 @@ body > main { flex: 1 0 auto; }
 .footer-links .sep { color: var(--line-strong); font-weight: 400; }
 
 /* flat pill buttons (landing:133-141), a field's height */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: var(--control-pad) 32px;
+.btn { --spin: var(--primary-ink); position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: var(--control-pad) 32px;
   border-radius: 999px; border: 1px solid transparent; background: var(--primary); color: var(--primary-ink); font: 600 18px/22px var(--body);
   letter-spacing: .01em; white-space: nowrap; cursor: pointer; }
 .btn:not([disabled]):hover { text-decoration: none; }
 .btn:not([disabled], [aria-busy="true"]):active { filter: brightness(.94); }
 .btn.block { display: flex; width: 100%; }
-.btn.quiet { background: none; color: var(--primary); border-color: var(--line-strong); }
+.btn.quiet { --spin: var(--primary); background: none; color: var(--primary); border-color: var(--line-strong); }
 .btn.danger { background: var(--danger-fg); color: var(--page-color); }
 .btn[disabled] { background: var(--disabled); color: var(--on-disabled); border-color: transparent; cursor: default; }
-.btn[aria-busy="true"] { cursor: progress; }
+/* a button at work keeps its size and colour, a spinner in place of its words */
+.btn[aria-busy="true"] { background: var(--primary); color: transparent; cursor: progress; }
+.btn.quiet[aria-busy="true"] { background: none; border-color: var(--line-strong); }
+.btn[aria-busy="true"]::after { content: ""; position: absolute; inset: 0; margin: auto; width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid var(--spin); border-right-color: transparent; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(1turn); } }
 
 .card { background: var(--surface); border: 1px solid var(--surface-line); border-radius: 20px; padding: 24px; }
 /* pill fields, as the landing's email field (landing:231-233), ringed while in use */
@@ -556,7 +585,24 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 }
 
 /* .track clips and takes the height of the slide in view; .rail is the row of slides and is what moves */
-.track { overflow: clip; transition: height var(--slide, 320ms) cubic-bezier(.22, .61, .36, 1); }
-.rail { display: flex; align-items: flex-start; width: 100%; transition: transform var(--slide, 320ms) cubic-bezier(.22, .61, .36, 1); }
+.track { overflow: clip; transition: height var(--slide, 320ms) var(--ease); }
+.rail { display: flex; align-items: flex-start; width: 100%; transition: transform var(--slide, 320ms) var(--ease); }
 .slide { flex: 0 0 100%; min-width: 0; }
 
+/* Motion: a step sliding in fades in as it comes; a screen swapped in, or a step jumped to, rises into place; what a step
+   adds comes in. Nothing goes out but at once, so two screens never show together. */
+.rail > .slide:not([inert]) { animation: fade-in calc(var(--slide) * .625) var(--ease) backwards; }
+.enter { animation: rise 220ms var(--ease) backwards; }
+/* controls ease their colours as the pointer, a choice or a state changes them */
+:is(.btn, .field, .back, .method, .field-copy, .small-btn, .check, .check .box) { transition: background-color var(--fast), border-color var(--fast), box-shadow var(--fast), color var(--fast), filter var(--fast); }
+.copied-note { transition: opacity var(--fast), translate var(--fast) var(--ease); }
+:where(.answer > *, .notice, .entity, .other-order, .field-error, .verdict:not(:empty), .offline-note:not(:has(> span:empty))) { animation: arrive 180ms var(--ease) backwards; }
+/* shell.ts marks what a redraw draws again as shown; a slide out of view runs nothing */
+.shown, .shown::before, .shown::after, .slide[inert] *, .slide[inert] *::after { animation: none !important; }
+@keyframes fade-in { from { opacity: 0; } }
+/* what went before is gone at once, so what replaces it starts in sight, never leaving a frame empty */
+@keyframes rise { from { opacity: .4; transform: translateY(8px); } }
+@keyframes arrive { from { opacity: .25; transform: translateY(5px); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, :root { animation: none !important; transition: none !important; }
+}

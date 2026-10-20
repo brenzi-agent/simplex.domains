@@ -22,7 +22,6 @@ let redrawing = false
 // the route the screen on show was drawn on; a redraw of the same page carries it to the redrawn route
 let drawnRoute = -1
 let shownKind: string | null = null
-// the screen in view: the track keeps the purchase steps beside it, out of reach
 let shownScreen: HTMLElement | null = null
 let screenStop: AbortController | null = null
 // nodes a reader types into, kept for the route so a redraw moves them rather than rebuilding them
@@ -89,7 +88,6 @@ export function historyMoved(e: PopStateEvent): boolean {
     const url = landing
     landing = null
     historyAt = e.state.at as number
-    // the entry landed on keeps the place it was left at
     scrollTarget = session.scrolled()[historyAt] ?? 0
     go(url)
     return false
@@ -153,6 +151,9 @@ export function kept<T extends HTMLElement>(key: string, make: () => T): T {
 export const keptLive = (key: string, cls: string | undefined, ...kids: Kid[]) => refill(kept(key, () => liveRegion(cls)), ...kids)
 
 const LOADING = "loading"
+// what a redraw draws again is marked shown, so only what it adds comes in (styles.css)
+const ARRIVING = ".answer > *, .notice, .entity, .other-order, .field-error, .verdict:not(:empty)"
+const SHOWN = "shown"
 let fontsAwaited = false
 // the key of a control a redraw turned off, whose focus dropped to the page: a later redraw that offers it gives it back
 let lostKey: string | null = null
@@ -167,11 +168,15 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement, 
   const redrawn = kind === shownKind && drawnRoute === route
   // the heading the last draw focused is replaced with its screen, so the redrawn screen's heading takes focus
   const toHeading = !redrawn || (active !== null && active === shownScreen?.querySelector("h1"))
+  // read before the build, which moves the kept nodes out of the screen on show
+  const drawn = redrawn && shownScreen ? new Set([...shownScreen.querySelectorAll(ARRIVING)].map((node) => node.textContent)) : null
   screenStop?.abort()
   screenStop = new AbortController()
   const next = build(screenStop.signal)
+  for (const node of next.querySelectorAll(ARRIVING)) if (!drawn || drawn.has(node.textContent)) node.classList.add(SHOWN)
+  const slid = step !== null && placeOnTrack(main, step, next)
   if (step === null) leaveTrack(main, next)
-  else placeOnTrack(main, step, next)
+  if (!redrawn && !slid && !first) next.classList.add("enter")
   if (!redrawn) holdSpacers(next)
   // the first page opens anew once the fonts its layout asked for have loaded; a face a later change asks for moves nothing
   if (!fontsAwaited && kind !== LOADING) void document.fonts.ready.then(reopen)
@@ -317,7 +322,6 @@ function showConnection(): void {
 for (const event of ["online", "offline", "focus"]) addEventListener(event, showConnection)
 document.addEventListener("visibilitychange", showConnection)
 
-// index.html draws the header and footer; the script wires the theme switch once
 function frame(): HTMLElement {
   const main = document.querySelector<HTMLElement>("body > main")!
   if (document.body.dataset.framed) return main

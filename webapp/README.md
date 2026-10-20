@@ -15,7 +15,7 @@ The page talks only to the names service under `/api`. In development that servi
 - `dev/`: the local chain deployment, the mock service and `start.sh`.
 - `test/`: unit tests (vitest). `e2e/`: browser tests (Playwright) against the dev backend.
 
-The purchase steps (search, Links, name code, Check your order, payment) are five slides on the track's rail, which slides one step at a time (320 ms, at once for a reader who asks for reduced motion) and moves at once over a jump of two steps or more. An order opened from the app skips Links and the name code. Every other screen, such as Your names, an order's outcome, restore or edit links, replaces the whole page between the header and footer.
+The purchase steps (search, Links, name code, Check your order, payment) are five slides on the track's rail, which slides one step at a time (320 ms, the step coming in fading in as it slides) and moves at once over a jump of two steps or more. An order opened from the app skips Links and the name code. Every other screen, such as Your names, an order's outcome, restore or edit links, replaces the whole page between the header and footer, and rises into place (220 ms), as a step jumped to does; the old screen goes at once, so two never show together. What a step adds, such as a search's answer, a notice or a link's profile, fades in (180 ms); a change of theme eases its colours (200 ms). A reader who asks for reduced motion gets none of it.
 
 ## Run everything with Docker
 
@@ -104,7 +104,7 @@ FIREFOX_158=<Firefox 158 executable> SLOTS=3 npx playwright test --project=firef
 
 `npx playwright test` runs the `chromium`, `firefox` and `webkit` projects in one pool; `--project=chromium` (or `firefox`, `webkit`) runs one browser. Where memory is short, run the three one after another.
 
-The tests run with reduced motion, so the track moves at once, except one test in `e2e/track.spec.ts`, which checks the slide's duration, and `e2e/frames.spec.ts`, which samples each frame of the track's slide and of whole-screen swaps and fails on a near-empty one. `e2e/frames.spec.ts` runs in Chromium and, with `FIREFOX_158`, in Firefox 158: the `firefox158` project runs only this spec and exists only when `FIREFOX_158` names a Firefox 158 or later executable, launched through Playwright's `moz-firefox` channel with its own libraries. While `FIREFOX_158` is set, a plain `npx playwright test` runs `firefox158` too. The `firefox` and `webkit` projects skip it.
+The tests run with reduced motion, so the track moves at once, except one test in `e2e/track.spec.ts`, which checks the slide's duration, `e2e/frames.spec.ts`, which samples each frame of the track's slide and of whole-screen swaps and fails on a near-empty one, and two tests in `e2e/motion.spec.ts`, which check that the motion runs only for a reader who has not asked for less and that a whole-screen swap never shows two screens at once. `e2e/frames.spec.ts` runs in Chromium and, with `FIREFOX_158`, in Firefox 158: the `firefox158` project runs only this spec and exists only when `FIREFOX_158` names a Firefox 158 or later executable, launched through Playwright's `moz-firefox` channel with its own libraries. While `FIREFOX_158` is set, a plain `npx playwright test` runs `firefox158` too. The `firefox` and `webkit` projects skip it.
 
 With `SHOTS=1` the tests write every screen they reach to `screenshots/` (or `SCREENSHOTS_DIR`), on a desktop and a phone, light and dark; Firefox's and WebKit's go to `screenshots/firefox/` and `screenshots/webkit/`, WebKit's in light only.
 

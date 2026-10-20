@@ -33,14 +33,14 @@ function moveTrack(smooth: boolean): void {
   fitHeight(ms)
 }
 
-export function placeOnTrack(main: HTMLElement, step: TrackStep, screen: HTMLElement): void {
+export function placeOnTrack(main: HTMLElement, step: TrackStep, screen: HTMLElement): boolean {
   const mounted = main.firstChild === track
   const at = STEPS.indexOf(step)
   const adjacent = Math.abs(at - index) === 1
   if (!mounted) main.replaceChildren(track)
   slides[at].replaceChildren(screen)
   // a redraw of the step in view moves nothing, so a slide still on its way is not cut short
-  if (mounted && at === index) return
+  if (mounted && at === index) return false
   // a step entered while the reader is below the track's top starts at its top
   const top = track.getBoundingClientRect().top
   if (mounted && top < 0) scrollBy({ top, behavior: "instant" })
@@ -49,6 +49,7 @@ export function placeOnTrack(main: HTMLElement, step: TrackStep, screen: HTMLEle
   slides.forEach((s, i) => { s.inert = i !== index })
   moveTrack(mounted && adjacent)
   resized.observe(slides[index])
+  return mounted && adjacent
 }
 
 export function leaveTrack(main: HTMLElement, screen: HTMLElement): void {

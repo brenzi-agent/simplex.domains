@@ -115,7 +115,7 @@ export function setAction(button: HTMLButtonElement, busy: boolean, held: boolea
   return button
 }
 
-const COPIED_MS = 2000
+const COPIED_MS = 1500
 const COPIED_FADE_MS = 200
 const copiedTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>[]>()
 export function codeDisplay(code: string, testId?: string): HTMLElement {

@@ -166,7 +166,7 @@ export function reduceRestore(s: RestoreState, e: RestoreEvent): RestoreState {
 
 export const EDIT_RETRY_MS = 5000
 export type EditKind = "edit" | "edit-unreadable" | "edit-no-code" | "edit-expired" | "edit-in-app" | "edit-elsewhere" | "edit-not-registered"
-export interface EditRead { view: RegistrationView; answer: SearchAnswer; now: number }
+interface EditRead { view: RegistrationView; answer: SearchAnswer; now: number }
 type EditResult = "sending" | "nothing" | "saved" | "unanswered" | "moved" | "refused"
 
 export interface EditForm {
