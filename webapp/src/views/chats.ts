@@ -14,15 +14,18 @@ const LEFT = "left"
 let shownDialog: HTMLDialogElement | null = null
 onPageLeft(() => shownDialog?.close(LEFT))
 
-export const chatPicture = (p: api.Profile) => el("span", { class: "chat-pic" }, p.image ? el("img", { src: p.image, alt: "" }) : chatIcon(p.kind))
+// a profile the service did not read shows the kind's default picture, and no name
+export const chatPicture = (p: api.Profile) => el("span", { class: "chat-pic" }, p.profile === "ok" && p.image ? el("img", { src: p.image, alt: "" }) : chatIcon(p.kind))
+const chatName = (p: api.Profile) => p.displayName || KIND_NAMES[p.kind]
 
 // a link's profile on one line, with what kind of chat it is where nothing else says so
 export const profileLine = (p: api.Profile, withKind = false) => el("span", { class: "entity" }, chatPicture(p),
-  el("b", { title: p.displayName }, p.displayName), withKind ? el("small", {}, KIND_NAMES[p.kind]) : null)
+  p.displayName ? el("b", { title: p.displayName }, p.displayName) : null, withKind || !p.displayName ? el("small", {}, KIND_NAMES[p.kind]) : null)
 
 // `name` is the name with its TLD, which the popup shows as the app's alert does; `key` brings focus back to the button
 export function chatButton(e: api.Entity, name: string, key: string): HTMLButtonElement {
-  return el("button", { class: "chat", type: "button", title: `${e.displayName} · ${KIND_NAMES[e.kind]}`, "aria-label": `${e.displayName}, ${KIND_NAMES[e.kind].toLowerCase()}`,
+  const titled = e.displayName ? `${e.displayName} · ${KIND_NAMES[e.kind]}` : KIND_NAMES[e.kind]
+  return el("button", { class: "chat", type: "button", title: titled, "aria-label": e.displayName ? `${e.displayName}, ${KIND_NAMES[e.kind].toLowerCase()}` : KIND_NAMES[e.kind],
     "aria-haspopup": "dialog", "data-focus": key, onclick: () => openChat(e, name, key) }, chatPicture(e))
 }
 
@@ -33,11 +36,11 @@ function openChat(e: api.Entity, name: string, key: string): void {
   const dialog = el("dialog", { class: "modal", "aria-labelledby": POPUP_TITLE_ID })
   const close = () => dialog.close()
   const open = SAFE_LINK.test(e.deepLink) ? el("a", { class: "btn", href: e.deepLink }, e.kind === "channel" ? "Open channel in SimpleX" : "Open in SimpleX") : null
-  const qr = SAFE_LINK.test(e.link) ? qrSvg(e.link, `QR code of the link to ${e.displayName}`) : null
+  const qr = SAFE_LINK.test(e.link) ? qrSvg(e.link, `QR code of the link to ${chatName(e)}`) : null
   dialog.append(el("div", { class: "modal-backdrop", onclick: close }),
     el("div", { class: "pop" },
       chatPicture(e),
-      el("h2", { id: POPUP_TITLE_ID }, e.displayName),
+      el("h2", { id: POPUP_TITLE_ID }, chatName(e)),
       el("span", { class: "soft" }, `${e.kind === "channel" ? "#" : "@"}${name}`),
       e.fullName ? el("span", {}, e.fullName) : null,
       e.subscribers === null ? null : el("span", { class: "soft" }, subscribers(e.subscribers)),

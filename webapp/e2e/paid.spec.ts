@@ -6,7 +6,7 @@ import { dateOf } from "../src/format.ts"
 import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
-  channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, LINKS_HEADING, MOCK, mockRegistration, onStep, payButton, REGISTRATION_MS,
+  channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, LINKS_HEADING, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS,
   registrationOf, restoreOrder, SAVED, savedToReview, search, searchName, shot, shownCode, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
@@ -439,6 +439,18 @@ test("Check your order draws a link whose profile cannot be read as its kind's d
   await expect(chats.nth(1)).toHaveAccessibleName(`${channelLink("R2")}, channel`)
   await chats.nth(1).click()
   await expect(page.getByRole("dialog")).toContainText(channelLink("R2"))
+})
+
+test("a link whose host the service does not fetch is taken with the kind's default picture and no name", async ({ page }) => {
+  await search(page, uniqueLabel("unfetched"))
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await onStep(page).getByRole("textbox", { name: "Link", exact: true }).fill(contactLink("Off"))
+  await previewsShown(page)
+  const entity = onStep(page).locator(".link-field .entity")
+  await expect(entity).toHaveText("Contact address")
+  await expect(entity.locator("img")).toHaveCount(0)
+  await expect(entity.locator("svg")).toHaveCount(1)
+  await expect(onStep(page).getByRole("button", { name: "Continue" })).toBeEnabled()
 })
 
 test("Check your order asked for before the name code is saved opens the name code step instead", async ({ page }) => {

@@ -256,10 +256,12 @@ const KNOWN_PROFILES: Record<string, Pick<Profile, "displayName" | "fullName" | 
   "https://smp9.simplex.im/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm": { displayName: "Bakery news", fullName: "Daily bakes and opening hours", subscribers: 1204 },
 }
 
-// A contact link's fragment says what profile the tests want behind it: a business, a bot, or a profile with a picture.
+// A contact link's fragment says what profile the tests want behind it: a business, a bot, a profile with a picture, or
+// none, as for a host the service does not fetch.
 const BUSINESS_TAG = "Biz"
 const BOT_TAG = "Bot"
 const PICTURE_TAG = "Pic"
+const UNFETCHED_TAG = "Off"
 // a profile picture as the app sends one, a small image in a data URI
 const PICTURE = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#C76A3B"/><circle cx="32" cy="26" r="12" fill="#F6E3C8"/><path d="M12 60c2-14 10-20 20-20s18 6 20 20z" fill="#F6E3C8"/></svg>').toString("base64")}`
 
@@ -268,11 +270,13 @@ function linkProfile(link: string): Profile | null {
   if (kind === null) return null
   const fragment = link.split("#")[1].slice(0, 6)
   const known = KNOWN_PROFILES[link]
+  const type = kind === "contact" ? "address" : "channel"
+  if (fragment.startsWith(UNFETCHED_TAG)) return { type, kind, displayName: "", fullName: "", image: null, subscribers: null, profile: "unavailable" }
   const chat: ChatKind = kind === "channel" ? "channel" : fragment.startsWith(BUSINESS_TAG) ? "business" : fragment.startsWith(BOT_TAG) ? "bot" : "contact"
   // a channel's count, the same for the same link
   const subscribers = kind === "channel" ? [...fragment].reduce((n, c) => n * 7 + c.charCodeAt(0), 0) % 5000 : null
   return {
-    type: kind === "contact" ? "address" : "channel", kind: chat,
+    type, kind: chat, profile: "ok",
     displayName: known?.displayName ?? (kind === "contact" ? `Contact ${fragment}` : `Channel ${fragment}`),
     fullName: known?.fullName ?? "", image: fragment.startsWith(PICTURE_TAG) ? PICTURE : null, subscribers: known ? known.subscribers : subscribers,
   }

@@ -69,7 +69,7 @@ describe("service errors", () => {
     }
   })
 
-  const PROFILE = { type: "channel", kind: "channel", displayName: "Alice", fullName: "Alice's news", image: null, subscribers: 12 }
+  const PROFILE = { type: "channel", kind: "channel", displayName: "Alice", fullName: "Alice's news", image: null, subscribers: 12, profile: "ok" }
 
   it("passes a search answer the page can draw", async () => {
     const available = { status: "available", price: 10000, currency: "usd", years: 2, termStart: 1798761600, resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex" }
@@ -83,10 +83,16 @@ describe("service errors", () => {
   it("takes a linked chat without its kind, full name or subscriber count, with a kind the app has not, or a kind its record cannot hold, as no answer", async () => {
     const link = { link: "https://simplex.chat/c#x", deepLink: "simplex:/c#x" }
     const changes = [{ kind: undefined }, { kind: "group" }, { fullName: undefined }, { subscribers: undefined }, { subscribers: -1 }, { subscribers: "many" },
-      { type: "address" }, { kind: "contact" }]
+      { type: "address" }, { kind: "contact" }, { profile: undefined }, { profile: "lost" }]
     for (const change of changes) {
       answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [{ ...PROFILE, ...link, ...change }] }))
       expect((await errorOf()).code, JSON.stringify(change)).toBe("network")
+    }
+    // a link whose data the service did not read is still a chat, drawn without its profile
+    for (const profile of ["unread", "unavailable"]) {
+      const entity = { ...PROFILE, ...link, displayName: "", fullName: "", subscribers: null, profile }
+      answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [entity] }))
+      expect(await searchName("ab".repeat(32), 8), profile).toMatchObject({ entities: [entity] })
     }
     for (const kind of ["contact", "business", "bot"]) {
       const entity = { ...PROFILE, ...link, type: "address", kind, subscribers: null }

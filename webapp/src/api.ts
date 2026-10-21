@@ -46,6 +46,8 @@ export type SearchAnswer =
   | { status: "reserved" }
 
 export type ChatKind = "contact" | "channel" | "business" | "bot"
+// whether the service read the link's data: not now (unread), or never, for a host it does not fetch (unavailable)
+const PROFILE_STATES = ["ok", "unread", "unavailable"] as const
 // the profile a link opens, as the app's connection alert shows it; only a channel counts subscribers
 export interface Profile {
   type: "address" | "channel"
@@ -54,6 +56,7 @@ export interface Profile {
   fullName: string
   image: string | null
   subscribers: number | null
+  profile: typeof PROFILE_STATES[number]
 }
 export interface Entity extends Profile {
   link: string
@@ -219,7 +222,7 @@ const CHAT_KINDS: ChatKind[] = ["contact", "channel", "business", "bot"]
 // a channel's record holds a channel; an address's, any other kind of chat
 const isPreview = (e: unknown) => isObject(e) && (e.type === "address" || e.type === "channel") && CHAT_KINDS.includes(e.kind as ChatKind)
   && (e.type === "channel") === (e.kind === "channel") && isText(e.displayName)
-  && isText(e.fullName) && isImage(e.image) && nullable(e.subscribers, isAmount)
+  && isText(e.fullName) && isImage(e.image) && nullable(e.subscribers, isAmount) && PROFILE_STATES.includes(e.profile as Profile["profile"])
 const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unknown>).link) && isText((e as Record<string, unknown>).deepLink)
 const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.sponsor) && typeof a.chainId === "number" && isText(a.tld)
 const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registering", "registered", "taken", "failed", "code_issued"]

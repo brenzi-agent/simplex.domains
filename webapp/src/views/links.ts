@@ -47,7 +47,7 @@ export function linkChat(link: string, kind: LinkKind, name: string, key: string
   const known = previews.get(link)
   if (known) return button(known)
   const place = el("span", { class: "chat skeleton", "aria-hidden": "true" })
-  const unread: api.Profile = { type: kind === "contact" ? "address" : "channel", kind, displayName: link, fullName: "", image: null, subscribers: null }
+  const unread: api.Profile = { type: kind === "contact" ? "address" : "channel", kind, displayName: link, fullName: "", image: null, subscribers: null, profile: "unread" }
   void api.previewLink(link).then((p) => {
     previews.set(link, p)
     place.replaceWith(inPlace(button(p)))
