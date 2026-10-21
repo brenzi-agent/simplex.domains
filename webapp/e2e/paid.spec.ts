@@ -6,7 +6,7 @@ import { dateOf } from "../src/format.ts"
 import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
-  channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, LINKS_HEADING, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS,
+  blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, LINKS_HEADING, MOCK, mockRegistration, onStep, oracleQuote, payButton, previewsShown, REGISTRATION_MS,
   registrationOf, restoreOrder, SAVED, savedToReview, search, searchName, shot, shownCode, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
@@ -314,6 +314,10 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await waitRegistered(page, label)
   const main = page.locator("body > main")
   await expect(main.locator(".lead")).toHaveText(`Registered until ${dateOf((await searchName(request, label)).expiresAt as number)}.`)
+  // on chain: the price charged is the oracle's quote for the paid years, and the name expires the sent duration after the register's block
+  const paidInvoice = await (await request.get(`${MOCK}/api/invoice/${invoiceId}`)).json() as { amount: number; registration: { years: number; duration: number; registerTx: string } }
+  expect(paidInvoice.amount).toBe(await oracleQuote(label, paidInvoice.registration.years))
+  expect(await chainExpiry(label)).toBe(await blockTimeOf(paidInvoice.registration.registerTx) + paidInvoice.registration.duration)
   // how to use the name in the app, with its code, and no buttons to go elsewhere
   await expect(main.locator(".card.use").getByRole("heading", { name: "Use in the app" })).toBeVisible()
   await expect(await shownCode(page)).toHaveText(ownerCode)
