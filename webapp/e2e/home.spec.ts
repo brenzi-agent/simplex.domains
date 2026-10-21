@@ -7,7 +7,7 @@ const LAPTOP = { width: 1280, height: 800 }
 // a name with one chat of each kind the app knows, the contact with a picture of its own
 const PICTURE = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxIDEiPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiNjNzZhM2IiLz48L3N2Zz4="
 const chat = (kind: string, displayName: string, extra: Record<string, unknown> = {}) => ({
-  type: kind === "channel" ? "channel" : "address", kind, displayName, fullName: "", image: null, subscribers: kind === "channel" ? 1 : null,
+  type: kind === "channel" ? "channel" : "address", kind, displayName, fullName: "", image: null, subscribers: kind === "channel" ? 1 : null, profile: "ok",
   link: `https://smp8.simplex.im/${kind === "channel" ? "c" : "a"}#${kind}`, deepLink: `simplex:/${kind === "channel" ? "c" : "a"}#${kind}`, ...extra,
 })
 const EVERY_KIND = [chat("contact", "Ann", { image: PICTURE }), chat("channel", "News"), chat("business", "Shop"), chat("bot", "Helper")]
