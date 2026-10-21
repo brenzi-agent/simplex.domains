@@ -33,6 +33,7 @@ const coversLine = (code: session.AppliedCode) => `Prepaid code: it pays for a n
 const unused = (code: session.AppliedCode): CodeVerdict => ({ kind: "prepaid", code, line: coversLine(code) })
 
 const MISTYPED: CodeVerdict = { kind: "refused", title: "This code is not valid", line: "Check it for a mistyped character." }
+const UNFINISHED: CodeVerdict = { kind: "refused", title: "This is not a SimpleX names code", line: "Check it and try again." }
 const OWNER_LINE = "Name code. Adding it shows its name in Your names, where you can edit its links."
 
 // A typo or a name code is answered on the page; a prepaid code asks the service, which spends nothing.
@@ -57,7 +58,8 @@ async function judgeCode(text: string, signal: AbortSignal): Promise<CodeVerdict
 const JUDGE_PAUSE_MS = 400
 
 // Each edit says nothing until its own verdict; a character no code has is refused at once, and a code long enough is
-// judged once typing pauses. Nothing is judged once the signal ends.
+// judged once typing pauses. One too short is refused once the reader is done: on Enter, or as focus leaves the field
+// for the page, not for another window. Nothing is judged once the signal ends.
 function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => void, signal: AbortSignal): void {
   let seq = 0
   let pause: ReturnType<typeof setTimeout> | undefined
@@ -80,6 +82,14 @@ function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => voi
     if ((e as InputEvent).inputType === "insertFromPaste") void judge(mine)
     else pause = setTimeout(() => void judge(mine), JUDGE_PAUSE_MS)
   })
+  const done = () => {
+    if (signal.aborted || codeProgress(input.value) !== "partial") return
+    forget()
+    show(UNFINISHED)
+  }
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") done() })
+  // Chromium blurs the field as a redraw moves it, and the redraw gives focus back before the check
+  input.addEventListener("blur", () => queueMicrotask(() => { if (document.activeElement !== input && document.hasFocus()) done() }))
 }
 
 const said = (v: CodeVerdict) => v.kind === "refused" ? `${v.title}. ${v.line}` : v.line
