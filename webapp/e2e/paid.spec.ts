@@ -286,7 +286,10 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await expect(step.getByRole("button", { name: /^Change/ })).toHaveCount(0)
   await expect(step.getByRole("radio")).toHaveText(["Card", "Bitcoin", "Monero"])
   await expect(step.getByRole("checkbox")).toHaveCount(0)
-  await expect(step.getByRole("link", { name: "Register in the dApp" })).toHaveAttribute("href", "https://app.simplex.domains")
+  // the ETH line is the other way on, under Pay
+  const dapp = step.locator(".actions-row .alt").getByRole("link", { name: "Register in the dApp" })
+  await expect(dapp).toHaveAttribute("href", "https://app.simplex.domains")
+  expect((await dapp.boundingBox())!.y).toBeGreaterThan((await payButton(page).boundingBox())!.y)
 
   // Back walks the steps in reverse, the box still ticked and the links kept
   await step.getByRole("link", { name: "Back" }).click()

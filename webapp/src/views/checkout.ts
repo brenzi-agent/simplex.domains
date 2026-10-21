@@ -246,12 +246,13 @@ function buildCode(s: CheckoutState): HTMLElement {
 function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   const c = s.checkout
   const blocked = blockedBy(s)
-  return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null) },
+  // the other way to pay sits under Pay, where a step's text link does
+  const eth = c.code || blocked ? null : el("span", {}, "Paying with ETH? ", el("a", { href: DAPP_URL, target: "_blank", rel: "noopener" }, "Register in the dApp"))
+  return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null), alt: eth },
     el("div", { class: "review" }, orderCard(c),
       c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or check another code.`) : null,
       c.code ? el("div", { class: "notes" }, el("p", {}, "Your code pays for this name. Nothing more to pay.")) : blocked ? waitingNotice(blocked) : methodsBlock(s),
-      c.code || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours, to finish the registration.`),
-        el("p", {}, "Paying with ETH? ", el("a", { href: DAPP_URL, target: "_blank", rel: "noopener" }, "Register in the dApp")))),
+      c.code || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours, to finish the registration.`))),
     payNote(s, blocked !== null, signal))
 }
 
