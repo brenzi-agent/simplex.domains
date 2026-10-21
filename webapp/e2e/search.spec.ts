@@ -2,7 +2,6 @@ import { expect } from "@playwright/test"
 import { labelHash } from "../src/crypto/registration.ts"
 import { hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
-import { GRACE_S } from "../src/screens/names.ts"
 import {
   codeField, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, REGISTRATION_MS, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel,
   waitRegistered,
@@ -298,6 +297,8 @@ test("a search pause reads the same after leaving the page and coming back", asy
 
 // an expiry ten days ago, well inside the chain's grace period
 const LAPSED_S = 10 * 86_400
+// a grace period other than the registrar's 90 days, so the line is seen to count the one the answer gives
+const GRACE_S = 30 * 86_400
 const OWNER = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 
 test("search shows an expired name of yours with when it ran out and when it can be registered again", async ({ page }) => {
@@ -307,11 +308,11 @@ test("search shows an expired name of yours with when it ran out and when it can
   await page.goto("/#/trademarks")
   await page.evaluate(({ label, hash, owner }) => localStorage.setItem("simplex-names:order:reg-lapsed", JSON.stringify({
     registrationId: "reg-lapsed", invoiceId: null, label, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner, contact: "", channel: "", method: "code", paid: 0,
-    years: 2, secret: "0x01", tld: "simplex", createdAt: new Date().toISOString(),
+    years: 2, tld: "simplex", createdAt: new Date().toISOString(),
     request: { labelHash: hash, length: label.length, owner, commitment: "0x01", sealed: "sealed" },
   })), { label, hash, owner: OWNER })
   await page.route("**/api/name/**", (route) => route.fulfill({ json: {
-    status: "registered", entities: [], owner: OWNER, records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt, tld: "simplex",
+    status: "registered", entities: [], owner: OWNER, records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt, gracePeriod: GRACE_S, tld: "simplex",
   } }))
   await page.goto(`/#/?name=${label}`)
   await expect(page.locator(".answer .row")).toContainText("Expired")

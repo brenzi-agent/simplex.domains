@@ -3,7 +3,7 @@ import type { InvoiceView, RegistrationView, SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
   changesOf, CODE_CHIPS, editable, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
-  GRACE_S, initialList, initialRestore, lapsed, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
+  initialList, initialRestore, lapsed, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
   againLine, ranOut, registrableAgain, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../src/screens/names.ts"
 import type { CodeRecord, OrderRecord, PendingCode } from "../src/store.ts"
@@ -40,8 +40,10 @@ function record(change: Partial<OrderRecord> = {}): OrderRecord {
 const code = (c: string): CodeRecord => ({ code: c, minLength: 6, years: 2, addedAt: "2026-10-17T11:00:00Z" })
 const pending = (ownerCode: string): PendingCode => ({ ownerCode, label: "bob", tld: "simplex", createdAt: "2026-10-17T11:30:00Z" })
 
+// the registrar's GRACE_PERIOD, as the search answer gives it
+const GRACE_S = 90 * 86_400
 const registered = (records: { contact: string; channel: string } | null = { contact: CONTACT, channel: "" }, change: Partial<Extract<SearchAnswer, { status: "registered" }>> = {}): SearchAnswer =>
-  ({ status: "registered", entities: [], records, owner: OWNER, recordsNonce: 3, expiresAt: NOW / 1000 + 2 * YEAR_S, tld: "simplex", ...change })
+  ({ status: "registered", entities: [], records, owner: OWNER, recordsNonce: 3, expiresAt: NOW / 1000 + 2 * YEAR_S, gracePeriod: GRACE_S, tld: "simplex", ...change })
 const available: SearchAnswer = { status: "available", price: 1500, currency: "usd", years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, ...CHAIN }
 const registeredView = (change: Partial<RegistrationView> = {}) => registration({ phase: "registered", label: "alice", registerTx: "0xe9", expiresAt: NOW / 1000 + 2 * YEAR_S, ...change })
 
@@ -70,6 +72,11 @@ describe("list helpers", () => {
     const expiresAt = NOW / 1000 - GRACE_S
     expect(registrableAgain(expiresAt, registered(undefined, { owner: APP }), NOW)).toEqual({ when: "taken" })
     expect(registrableAgain(null, registered(undefined, { owner: APP }), NOW)).toEqual({ when: "taken" })
+  })
+  it("registrableAgain: counts the grace period the answer gives, and none from an answer without one", () => {
+    const expiresAt = NOW / 1000 - 1
+    expect(registrableAgain(expiresAt, registered(undefined, { gracePeriod: 3600 }), NOW)).toEqual({ when: "from", at: expiresAt + 3600 })
+    expect(registrableAgain(expiresAt, registered(undefined, { gracePeriod: undefined }), NOW)).toEqual({ when: "taken" })
   })
   it("ranOut and againLine say when a name ran out and when it can be registered again, as the edit page and search show it", () => {
     const expiresAt = Date.parse("2028-11-16T12:00:00Z") / 1000

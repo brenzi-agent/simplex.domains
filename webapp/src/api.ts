@@ -42,7 +42,7 @@ export interface Links {
 
 export type SearchAnswer =
   | ({ status: "available"; price: number; currency: string; years: number; termStart: number } & ChainInfo)
-  | { status: "registered"; entities: Entity[]; records?: Links | null; owner?: string; resolver?: string; recordsNonce?: number | null; expiresAt?: number; chainId?: number; tld: string }
+  | { status: "registered"; entities: Entity[]; records?: Links | null; owner?: string; resolver?: string; recordsNonce?: number | null; expiresAt?: number; gracePeriod?: number; chainId?: number; tld: string }
   | { status: "reserved" }
 
 export type ChatKind = "contact" | "channel" | "business" | "bot"
@@ -239,7 +239,7 @@ export const searchName = (labelHash: string, length: number) => checked<SearchA
   || (a.status === "available" && isAmount(a.price) && isCount(a.years) && isAmount(a.termStart) && isText(a.currency) && isChain(a))
   || (a.status === "registered" && isText(a.tld) && Array.isArray(a.entities) && a.entities.every(isEntity) && optional(a.owner, isText)
     && optional(a.resolver, isText) && optional(a.records, (r) => nullable(r, isRecords)) && optional(a.recordsNonce, (n) => nullable(n, isAmount))
-    && optional(a.expiresAt, isAmount) && optional(a.chainId, isAmount)))
+    && optional(a.expiresAt, isAmount) && optional(a.gracePeriod, isAmount) && optional(a.chainId, isAmount)))
 export const previewLink = (link: string) => checked<Profile>(call("POST", "/api/link/preview", { link }), isPreview)
 const CODE_STATES = ["unused", "used", "reserved", "expired", "unpaid", "revoked"] as const
 export type CodeState = typeof CODE_STATES[number]

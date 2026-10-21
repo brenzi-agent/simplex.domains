@@ -216,7 +216,7 @@ async function hold(key: string, unchanged: () => boolean): Promise<void> {
 type Lookup =
   | { type: "available" }
   | { type: "reserved" }
-  | { type: "registered"; owner: Address; resolver: Address; expires: number }
+  | { type: "registered"; owner: Address; resolver: Address; expires: number; grace: number }
 
 async function lookup(labelHash: Hex): Promise<Lookup> {
   if (control.chainDown) throw new HttpError(503, "provider_unavailable")
@@ -232,7 +232,7 @@ async function lookup(labelHash: Hex): Promise<Lookup> {
     if (expires > 0n && expires + grace >= BigInt(now)) {
       const node = nodeOf(labelHash)
       const [owner, nameResolver] = await Promise.all([read<Address>(registry, "owner", [node]), read<Address>(registry, "resolver", [node])])
-      return { type: "registered", owner: getAddress(owner), resolver: getAddress(nameResolver), expires: Number(expires) }
+      return { type: "registered", owner: getAddress(owner), resolver: getAddress(nameResolver), expires: Number(expires), grace: Number(grace) }
     }
     return reason === 0 ? { type: "available" } : { type: "reserved" }
   } catch {
@@ -301,7 +301,7 @@ export async function search(hash: string, lengthText: string | null): Promise<R
   // Records are read only from the store's own resolver: calling whatever contract a name points at would let anyone
   // make the service run arbitrary code. A name pointed elsewhere is shown with its owner and no links.
   if (found.resolver !== getAddress(deployment.resolver)) {
-    return { status: "registered", entities: [], records: null, owner: found.owner, resolver: found.resolver, recordsNonce: null, expiresAt: found.expires, ...chain }
+    return { status: "registered", entities: [], records: null, owner: found.owner, resolver: found.resolver, recordsNonce: null, expiresAt: found.expires, gracePeriod: found.grace, ...chain }
   }
   const node = nodeOf(hash)
   let contact: string, channel: string, nonce: bigint
@@ -316,7 +316,7 @@ export async function search(hash: string, lengthText: string | null): Promise<R
     throw new HttpError(503, "provider_unavailable")
   }
   const entities = [...splitLinks(contact), ...splitLinks(channel)].map(entity).filter((e) => e !== null)
-  return { status: "registered", entities, records: { contact, channel }, owner: found.owner, resolver: found.resolver, recordsNonce: Number(nonce), expiresAt: found.expires, ...chain }
+  return { status: "registered", entities, records: { contact, channel }, owner: found.owner, resolver: found.resolver, recordsNonce: Number(nonce), expiresAt: found.expires, gracePeriod: found.grace, ...chain }
 }
 
 function nodeOf(labelHash: Hex): Hex {

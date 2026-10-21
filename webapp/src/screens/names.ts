@@ -209,12 +209,12 @@ export const LINK_NAMES: Record<keyof Links, string> = { contact: "address", cha
 
 export const changesOf = (f: EditForm): Partial<Links> => Object.fromEntries(LINK_KINDS.filter((k) => f.values[k] !== f.current[k]).map((k) => [k, f.values[k]]))
 
-// the contract's GRACE_PERIOD: an expired name stays its holder's this long before anyone can register it again
-export const GRACE_S = 90 * 86_400
 type Again = { when: "now" } | { when: "from"; at: number } | { when: "taken" }
+// an expired name stays its holder's for the registrar's grace period, which the search answer gives, before anyone can register it again
 export function registrableAgain(expiresAt: number | null, answer: SearchAnswer, now: number): Again {
   if (answer.status === "available") return { when: "now" }
-  if (expiresAt !== null && now / 1000 < expiresAt + GRACE_S) return { when: "from", at: expiresAt + GRACE_S }
+  const grace = answer.status === "registered" ? answer.gracePeriod : undefined
+  if (expiresAt !== null && grace !== undefined && now / 1000 < expiresAt + grace) return { when: "from", at: expiresAt + grace }
   return { when: "taken" }
 }
 
