@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test"
-import { CHECKOUT_KEY, codeField, lineStarts, onStep, recordedFrames, recordFrames, registrationOf, search, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
+import { codeField, lineStarts, onStep, recordedFrames, recordFrames, registrationOf, search, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
 
 // Firefox reports a preload not used about ten seconds after its page loads
 const PRELOAD_REPORT_MS = 12_000
@@ -89,16 +89,14 @@ test("offline, the footer scrolls clear of the note, and its last link takes a c
 
 const LOOKUP_RTT_MS = 500
 
-test("Add to Your names keeps its place while it looks for the code's orders, saying so on the button", async ({ page }) => {
-  await search(page, uniqueLabel("restbusy"))
-  await toCodeStep(page)
-  const ownerCode = await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).ownerCode as string, CHECKOUT_KEY)
+test("Add to Your names keeps its place while it reads the code's orders, saying so on the button", async ({ page }) => {
+  const { ownerCode } = await startOrder(page, uniqueLabel("restbusy"), { method: "btc" })
   await page.goto("/#/code")
   await codeField(page).fill(ownerCode)
   const add = page.getByRole("button", { name: "Add to Your names" })
   const top = (await add.boundingBox())!.y
-  // the lookup takes a moment, as one over a network does, so frames are drawn while it is busy
-  await page.route("**/api/registration/find", async (route) => {
+  // the order's read takes a moment, as one over a network does, so frames are drawn while it is busy
+  await page.route("**/api/invoice/*", async (route) => {
     await new Promise((answered) => setTimeout(answered, LOOKUP_RTT_MS))
     await route.continue()
   })
@@ -108,7 +106,7 @@ test("Add to Your names keeps its place while it looks for the code's orders, sa
     return button?.getAttribute("aria-busy") === "true" ? [Math.round(button.getBoundingClientRect().top), button.textContent] : null
   })
   await add.click()
-  await expect(page.getByText("No order was found for this code")).toBeVisible()
+  await expect(onStep(page).getByRole("heading", { name: "Your names" })).toBeVisible()
   const busy = await recordedFrames<[number, string]>(page)
   expect(busy.length, "frames drawn while it looked").toBeGreaterThan(0)
   expect([...new Set(busy.map(([at]) => at))], "the button's top while it looked").toEqual([Math.round(top)])

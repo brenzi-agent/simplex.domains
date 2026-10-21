@@ -3,18 +3,20 @@ import * as api from "../api.ts"
 import { codeProgress, parseNameCode } from "../crypto/code.ts"
 import { seconds } from "../format.ts"
 import { el, icon, liveRegion, refill } from "../dom.ts"
+import * as flow from "../flow.ts"
 import type * as session from "../session.ts"
+import * as store from "../store.ts"
 import { kept, whenDropped } from "./shell.ts"
 
 export type CodeVerdict =
   | { kind: "prepaid"; code: session.AppliedCode; line: string }
-  | { kind: "owner"; code: string; line: string }
-  | { kind: "refused"; title: string; line: string }
+  | { kind: "owner"; code: string; line: string; orders: api.FoundOrder[] }
+  | { kind: "refused"; title: string; line: string; link?: string }
 
 const STATE_LINES: Record<Exclude<api.CodeState, "unused">, [string, string]> = {
   reserved: ["This code is being used for a name now", "Each code registers one name; this one is held by an unfinished registration."],
   used: ["This code was already used", "Each code registers one name."],
-  revoked: ["This code is not valid", "SimpleX withdrew it, so it cannot be used."],
+  revoked: ["This code is not valid: SimpleX withdrew it", ""],
   expired: ["This code has expired", "It can no longer register a name."],
   unpaid: ["This code is not paid for yet", "It works once its payment is confirmed."],
 }
@@ -34,23 +36,44 @@ const unused = (code: session.AppliedCode): CodeVerdict => ({ kind: "prepaid", c
 
 const MISTYPED: CodeVerdict = { kind: "refused", title: "This code is not valid", line: "Check it for a mistyped character." }
 const UNFINISHED: CodeVerdict = { kind: "refused", title: "This is not a SimpleX names code", line: "Check it and try again." }
-const OWNER_LINE = "Name code. Adding it shows its name in Your names, where you can edit its links."
 
-// A typo or a name code is answered on the page; a prepaid code asks the service, which spends nothing.
+const names = (labels: string[]) => labels.map((label) => `${label}.simplex`).join(" and ")
+const ownerLine = (labels: string[]) => `Name code of ${names(labels)}. Adding it shows ${labels.length > 1 ? "the names" : "the name"} in Your names, where you can edit ${labels.length > 1 ? "their" : "its"} links.`
+
+// A refusal that asking again can change: a rate limit, or a service that did not answer.
+function notChecked(e: unknown): CodeVerdict {
+  if (e instanceof api.ApiError && e.code === "rate_limited") return { kind: "refused", title: "Too many checks just now", line: `Your code may be fine. Try again in ${seconds(e.retryAfter ?? api.LIMITED_WAIT_S)}.` }
+  return { kind: "refused", title: "The code could not be checked", line: "Try again in a moment." }
+}
+
+// A name code names its names by its orders, which only the code opens.
+async function judgeNameCode(text: string): Promise<CodeVerdict> {
+  try {
+    const { code, names: labels, orders } = await flow.namesOf(text)
+    if (labels.length === 0) return { kind: "refused", title: "This code does not open the order", line: "The order found for it was made with another code." }
+    return { kind: "owner", code, line: ownerLine(labels), orders }
+  } catch (e) {
+    if (e instanceof api.ApiError && e.code === "not_found") return { kind: "refused", title: "No order was found for this code", line: "The service has no order registered to its wallet." }
+    return notChecked(e)
+  }
+}
+
+// A typo is answered on the page; a prepaid code asks the service, which spends nothing, and a name code finds its orders.
 async function judgeCode(text: string, signal: AbortSignal): Promise<CodeVerdict> {
   const parsed = parseNameCode(text)
   if (parsed === null) return MISTYPED
-  if (parsed.kind === "owner") return { kind: "owner", code: text, line: OWNER_LINE }
+  if (parsed.kind === "owner") return judgeNameCode(text)
   try {
     const answer = await api.checkCode(parsed.display, signal)
     if (answer.state === "unused") return unused({ display: parsed.display, minLength: answer.minLength, years: answer.years })
     const [title, line] = STATE_LINES[answer.state]
-    return { kind: "refused", title, line }
+    // the service names no order for a code in use; this browser's own order that holds it is linked
+    const holder = answer.state === "reserved" ? store.orders().find((o) => o.prepaidCode === parsed.display) : undefined
+    return { kind: "refused", title, line, link: holder && store.orderUrl(holder) }
   } catch (e) {
     // well formed but unknown to the service: not a typo, which the check digit would have caught
-    if (e instanceof api.ApiError && e.code === "code_invalid") return { kind: "refused", title: "This code is not valid", line: "SimpleX did not issue it, or withdrew it." }
-    if (e instanceof api.ApiError && e.code === "rate_limited") return { kind: "refused", title: "Too many checks just now", line: `Your code may be fine. Try again in ${seconds(e.retryAfter ?? api.LIMITED_WAIT_S)}.` }
-    return { kind: "refused", title: "The code could not be checked", line: "Try again in a moment." }
+    if (e instanceof api.ApiError && e.code === "code_invalid") return { kind: "refused", title: "This code is not valid: SimpleX did not issue it", line: "" }
+    return notChecked(e)
   }
 }
 
@@ -92,7 +115,7 @@ function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => voi
   input.addEventListener("blur", () => queueMicrotask(() => { if (document.activeElement !== input && document.hasFocus()) done() }))
 }
 
-const said = (v: CodeVerdict) => v.kind === "refused" ? `${v.title}. ${v.line}` : v.line
+const said = (v: CodeVerdict) => v.kind !== "refused" ? v.line : v.line ? `${v.title}. ${v.line}` : `${v.title}.`
 // what was typed in a field, by its key, shown and judged again when its page is opened again
 const typed = new Map<string, string>()
 
@@ -108,7 +131,7 @@ export function codeField(key: string, label: string, heard: (v: CodeVerdict | n
       const tone = v === null ? "" : v.kind === "refused" ? " bad" : " ok"
       box.className = `field code-input${tone}`
       line.className = `verdict${tone}`
-      refill(line, tone === " bad" && icon("alert"), v && said(v))
+      refill(line, tone === " bad" && icon("alert"), v && said(v), v?.kind === "refused" && v.link ? [" ", el("a", { href: v.link }, "Open that order")] : null)
       heard(v)
     }
     const life = new AbortController()

@@ -358,7 +358,7 @@ function useCode(code: AppliedCode): void {
   go(HOME)
 }
 
-async function addNameCode(text: string): Promise<void> {
+async function addNameCode(verdict: Extract<CodeVerdict, { kind: "owner" }>): Promise<void> {
   // focus on Add, which a refusal keeps off, goes back to the code
   const pressed = document.activeElement instanceof HTMLElement && document.activeElement.dataset.focus === ADDING
   const refuse = (why: Extract<RestoreEvent, { type: "refused" }>["why"]) => {
@@ -367,8 +367,8 @@ async function addNameCode(text: string): Promise<void> {
   }
   dispatchRestore({ type: "find-started" })
   try {
-    const { record } = await flow.restore(text)
-    if (isRoute(checkRoute)) go(checkFromOrder ? store.orderUrl(record) : NAMES)
+    const [newest] = await flow.addOrders(verdict.code, verdict.orders)
+    if (isRoute(checkRoute)) go(checkFromOrder ? store.orderUrl(newest) : NAMES)
   } catch (e) {
     if (!isRoute(checkRoute)) return
     if (e instanceof api.ApiError && e.code === "not_found") return refuse("none")
@@ -383,7 +383,7 @@ const addOff = ({ busy, hold, refusal }: RestoreState) => busy || hold !== null 
 
 function checkAction({ verdict, restore }: typeof check): HTMLElement {
   if (verdict?.kind === "owner") {
-    const add = setAction(btn(restore.busy ? "Finding the code's orders…" : "Add to Your names", "", () => void addNameCode(verdict.code)), restore.busy, addOff(restore))
+    const add = setAction(btn(restore.busy ? "Finding the code's orders…" : "Add to Your names", "", () => void addNameCode(verdict)), restore.busy, addOff(restore))
     add.dataset.focus = ADDING
     return add
   }

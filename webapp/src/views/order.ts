@@ -909,7 +909,7 @@ function keepRefusal(gen: number, error: store.CodeRefusal): void {
 
 // Another order may have spent the code since this one failed, which a retry would only find out. A code revoked or
 // expired may still be held by this registration, whose retry the service then takes, so only a spent one is refused.
-// A code the service no longer knows (code_invalid) was revoked, not spent; null when the service did not answer.
+// A code the service does not know (code_invalid), or revoked, was not spent; null when the service did not answer.
 const codeSpent = (code: string) => api.checkCode(code).then(({ state }) => state === "used",
   (e) => e instanceof api.ApiError && e.code === "code_invalid" ? false : null)
 

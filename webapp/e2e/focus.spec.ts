@@ -78,14 +78,13 @@ test("Enter in Check your code's field does what its button does: a prepaid code
   await expect(page.locator("body > header .code-chip")).toBeVisible()
 })
 
-test("a name code the service finds no order for puts focus back in the code's field", async ({ page }) => {
+test("a name code the service finds no order for says so as its verdict, offers no Add, and keeps focus in the code's field", async ({ page }) => {
   await openCodeStep(page, uniqueLabel("noorder"))
   const ownerCode = await page.evaluate(() => Object.keys(localStorage).find((k) => k.startsWith("simplex-names:pending:"))!.split(":").pop()!)
   await page.goto("/#/code")
   await codeField(page).fill(ownerCode)
-  await page.getByRole("button", { name: "Add to Your names" }).focus()
-  await page.keyboard.press("Enter")
-  await expect(page.getByText("No order was found for this code")).toBeVisible()
+  await expect(page.locator(".code-entry .verdict.bad")).toHaveText("No order was found for this code. The service has no order registered to its wallet.")
+  await expect(page.getByRole("button", { name: "Add to Your names" })).toHaveCount(0)
   await expect(codeField(page)).toBeFocused()
 })
 
@@ -130,6 +129,6 @@ test("a well-formed code the service does not know is not called a typo", async 
   await page.route("**/api/code/check", (route) => route.fulfill({ status: 400, json: { error: "code_invalid" } }))
   await page.goto("/#/code")
   await codeField(page).fill(code)
-  await expect(page.locator(".verdict.bad")).toContainText("SimpleX did not issue it, or withdrew it.")
+  await expect(page.locator(".verdict.bad")).toHaveText("This code is not valid: SimpleX did not issue it.")
   await expect(page.getByRole("button", { name: "Find a name" })).toBeDisabled()
 })

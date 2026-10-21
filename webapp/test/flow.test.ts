@@ -1,4 +1,5 @@
 import { recoverAddress, recoverMessageAddress, type Hex } from "viem"
+import type { Phase } from "../src/api.ts"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { codeHash, formatOwnerCode, parseNameCode } from "../src/crypto/code.ts"
 import { commitmentSecret, labelHash, makeCommitment, namehash, registerIntentDigest, setTextDigest, YEAR_S } from "../src/crypto/registration.ts"
@@ -182,6 +183,37 @@ describe("paidWith", () => {
     const { flow } = await modules()
     expect(flow.paidWith({ invoiceId: "inv", amount: 20000, cryptoCurrency: "xmr" } as never)).toEqual({ method: "xmr", paid: 20000 })
     expect(flow.paidWith({ invoiceId: "inv", amount: 10000 } as never)).toEqual({ method: "card", paid: 10000 })
+  })
+})
+
+describe("namesOf and addOrders", () => {
+  const found = (registrationId: string, phase: Phase, request: { labelHash: string; sealed: string }) =>
+    ({ registrationId, invoiceId: null, phase, createdAt: "2026-10-14T10:00:00Z", labelHash: request.labelHash, sealed: request.sealed })
+
+  it("names each name the code opens once, leaving out an order whose sealed name is another's or does not open", async () => {
+    const { flow } = await modules()
+    const mine = (await flow.orderRequest(draft())).request
+    const again = (await flow.orderRequest(draft())).request
+    const other = (await flow.orderRequest(draft("another"))).request
+    answers["POST /api/registration/find"] = { registrations: [
+      found("reg4", "unpaid", again), found("reg3", "committed", other), found("reg2", "failed", { labelHash: mine.labelHash, sealed: other.sealed }),
+      found("reg1", "queued", { labelHash: mine.labelHash, sealed: "not-sealed" }), found("reg0", "taken", mine),
+    ] }
+    const { code, names, orders } = await flow.namesOf(OWNER_CODE.toLowerCase())
+    expect(code).toBe(OWNER_CODE)
+    expect(names).toEqual(["dynamis", "another"])
+    expect(orders.map((o) => o.registrationId)).toEqual(["reg4", "reg3", "reg0"])
+  })
+
+  it("keeps one order of each name, the one paid into a registration, newest name first", async () => {
+    const { flow, store } = await modules()
+    const mine = (await flow.orderRequest(draft())).request
+    const other = (await flow.orderRequest(draft("another"))).request
+    answers["GET /api/registration/reg3"] = view(other, { id: "reg3" })
+    answers["GET /api/registration/reg1"] = view(mine, { id: "reg1", phase: "queued" })
+    const records = await flow.addOrders(OWNER_CODE, [found("reg3", "committed", other), found("reg2", "unpaid", mine), found("reg1", "queued", mine)])
+    expect(records.map((r) => [r.registrationId, r.label])).toEqual([["reg3", "another"], ["reg1", "dynamis"]])
+    expect(store.orders().map((o) => o.registrationId).sort()).toEqual(["reg1", "reg3"])
   })
 })
 

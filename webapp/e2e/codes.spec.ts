@@ -178,9 +178,10 @@ test("Check your code tells a prepaid code, a name code and anything else apart,
   await expect(verdict).toHaveText(/^This code is not valid/)
   await expect(find).toBeDisabled()
   await shot(page, "K6-code-invalid")
+  // a name code is judged by the orders find lists for it, none for this one
   await codeField(page).fill("SN-8M7X0-8Z533-AG8DP-RBN5T-BPQ6D-YH09G")
-  await expect(verdict).toHaveText("Name code. Adding it shows its name in Your names, where you can edit its links.")
-  await expect(onStep(page).getByRole("button", { name: "Add to Your names" })).toBeEnabled()
+  await expect(verdict).toHaveText("No order was found for this code. The service has no order registered to its wallet.")
+  await expect(find).toBeDisabled()
   await codeField(page).fill(code)
   await expect(verdict).toHaveText("Prepaid code: it pays for a name of 8 or more letters, for 2 years.")
   await expect(onStep(page).getByText("Search for a name; its price shows as $0.")).toBeVisible()
@@ -346,6 +347,23 @@ test("a failed code order is drawn before its code is checked, and says the code
   await page.unrouteAll({ behavior: "wait" })
 })
 
+test("a code held by this browser's failed order says it is in use and links to the order; a revoked code says SimpleX withdrew it", async ({ page, request }) => {
+  const { code, registrationId } = await registerWithCode(page, request, "cinuse")
+  await control(request, `fail/${registrationId}`)
+  await expect(page.getByRole("heading", { name: "Not registered" })).toBeVisible({ timeout: 60_000 })
+  await page.goto("/#/code")
+  await codeField(page).fill(code)
+  const verdict = page.locator(".code-entry .verdict")
+  await expect(verdict).toHaveText("This code is being used for a name now. Each code registers one name; this one is held by an unfinished registration. Open that order")
+  await verdict.getByRole("link", { name: "Open that order" }).click()
+  await expect(page.getByRole("heading", { name: "Not registered" })).toBeVisible()
+  expect(new URL(page.url()).searchParams.get("registration")).toBe(registrationId)
+  const { code: revoked } = await control(request, "code", { minLength: 6, state: "revoked" }) as { code: string }
+  await page.goto("/#/code")
+  await codeField(page).fill(revoked)
+  await expect(verdict).toHaveText("This code is not valid: SimpleX withdrew it.")
+})
+
 test("a failed code order whose code is revoked or past its date while still held by it offers Try again, which registers it", async ({ page, request }) => {
   const { code, registrationId } = await registerWithCode(page, request, "cheld")
   await control(request, `fail/${registrationId}`)
@@ -438,11 +456,13 @@ test("Your names reads a revoked code as not valid, and has a codes section only
   await expect(onStep(page).getByRole("heading", { name: "Codes" })).toBeVisible()
 })
 
-test("a name code that fails on the network to find its order gives focus back to its button", async ({ page }) => {
-  const { ownerCode } = await startOrder(page, uniqueLabel("rfocus"), { method: "btc" })
+test("a name code whose order fails on the network to be read gives focus back to its button", async ({ page }) => {
+  const label = uniqueLabel("rfocus")
+  const { ownerCode } = await startOrder(page, label, { method: "btc" })
   await page.goto("/#/code")
   await codeField(page).fill(ownerCode)
-  await page.route("**/api/registration/find", (route) => route.abort())
+  await expect(page.locator(".code-entry .verdict")).toHaveText(`Name code of ${label}.simplex. Adding it shows the name in Your names, where you can edit its links.`)
+  await page.route("**/api/invoice/*", (route) => route.abort())
   const add = page.getByRole("button", { name: "Add to Your names" })
   await add.focus()
   await page.keyboard.press("Enter")
@@ -464,7 +484,8 @@ async function codeFieldAt(browser: Browser, browserName: string, width: number)
   const page = await context.newPage()
   await page.goto("/#/code")
   await codeField(page).fill(NAME_CODE)
-  await expect(page.locator(".verdict.ok")).toContainText("Name code")
+  // a name code is judged by its orders, which this one has none of
+  await expect(page.locator(".verdict.bad")).toContainText("No order was found")
   // Firefox reads a size set in container units as if the field had no container until its first layout, so the field is read after a frame
   const field = await codeField(page).evaluate(async (n: HTMLInputElement) => {
     await new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn)))
@@ -503,7 +524,7 @@ test("Check your code opened again shows a prepaid code typed there, never a nam
   }
   await header.getByRole("link", { name: "Check your code" }).click()
   await codeField(page).fill(ownerCode)
-  await expect(page.locator(".verdict.ok")).toBeVisible()
+  await expect(page.locator(".verdict.bad")).toContainText("No order was found")
   await reopen()
   await expect(codeField(page), "the name code typed is not shown again").toHaveValue("")
   await codeField(page).fill(code)

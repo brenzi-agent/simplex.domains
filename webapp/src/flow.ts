@@ -166,6 +166,27 @@ async function findOrders(wallet: Wallet): Promise<Found[]> {
   }
 }
 
+// What a name code opens, newest first: the orders find lists whose sealed name opens with the code and hashes to the
+// order's label hash, and their names. An order of another code that find lists is left out.
+export async function namesOf(text: string): Promise<{ code: string; names: string[]; orders: Found[] }> {
+  const parsed = parseNameCode(text)
+  if (parsed?.kind !== "owner") throw new Error("not an owner code")
+  const wallet = walletFromEntropy(parsed.entropy)
+  const opened = await Promise.all((await findOrders(wallet)).map(async (found) => ({ found, order: await unseal(wallet.seed, found.sealed) })))
+  const open = opened.filter(({ found, order }) => order !== null && hex(labelHash(order.label)) === found.labelHash)
+  return { code: formatOwnerCode(parsed.entropy), names: [...new Set(open.map(({ order }) => order!.label))], orders: open.map(({ found }) => found) }
+}
+
+// Each name's order kept in this browser, as chooseOrder picks it among the name's orders, the newest name's first.
+export async function addOrders(code: string, orders: Found[]): Promise<store.OrderRecord[]> {
+  const wallet = walletOf(code)!
+  const byName = new Map<string, Found[]>()
+  for (const found of orders) byName.set(found.labelHash, [...byName.get(found.labelHash) ?? [], found])
+  const records: store.OrderRecord[] = []
+  for (const named of byName.values()) records.push((await reopen(wallet, code, chooseOrder(named))).record)
+  return records
+}
+
 // one paid into a registration is the order; otherwise the newest
 const chooseOrder = (found: Found[]) => found.find((r) => r.phase !== "unpaid") ?? found[0]
 
