@@ -480,7 +480,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .forget { scroll-margin-bottom: 24px; }
 .forget .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .mt-14 { margin-top: 14px; }
-.center { display: flex; justify-content: center; }
+.center { display: flex; justify-content: center; text-align: center; }
 .left { text-align: left; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .actions .btn { min-width: 0; }
