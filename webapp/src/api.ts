@@ -45,10 +45,17 @@ export type SearchAnswer =
   | { status: "registered"; entities: Entity[]; records?: Links | null; owner?: string; resolver?: string; recordsNonce?: number | null; expiresAt?: number; chainId?: number; tld: string }
   | { status: "reserved" }
 
-interface Entity {
+export type ChatKind = "contact" | "channel" | "business" | "bot"
+// the profile a link opens, as the app's connection alert shows it; only a channel counts subscribers
+export interface Profile {
   type: "address" | "channel"
+  kind: ChatKind
   displayName: string
+  fullName: string
   image: string | null
+  subscribers: number | null
+}
+interface Entity extends Profile {
   link: string
   deepLink: string
 }
@@ -195,7 +202,9 @@ const optional = (v: unknown, test: (v: unknown) => boolean) => v === undefined 
 const nullable = (v: unknown, test: (v: unknown) => boolean) => v === null || test(v)
 // an image the page shows itself, never a link a click could follow
 const isImage = (v: unknown) => v === null || (typeof v === "string" && /^(data:image\/|https:\/\/)/.test(v))
-const isPreview = (e: unknown) => isObject(e) && (e.type === "address" || e.type === "channel") && isText(e.displayName) && isImage(e.image)
+const CHAT_KINDS: ChatKind[] = ["contact", "channel", "business", "bot"]
+const isPreview = (e: unknown) => isObject(e) && (e.type === "address" || e.type === "channel") && CHAT_KINDS.includes(e.kind as ChatKind) && isText(e.displayName)
+  && isText(e.fullName) && isImage(e.image) && nullable(e.subscribers, isAmount)
 const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unknown>).link) && isText((e as Record<string, unknown>).deepLink)
 const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.sponsor) && typeof a.chainId === "number" && isText(a.tld)
 const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registering", "registered", "taken", "failed", "code_issued"]
@@ -216,8 +225,7 @@ export const searchName = (labelHash: string, length: number) => checked<SearchA
   || (a.status === "registered" && isText(a.tld) && Array.isArray(a.entities) && a.entities.every(isEntity) && optional(a.owner, isText)
     && optional(a.resolver, isText) && optional(a.records, (r) => nullable(r, isRecords)) && optional(a.recordsNonce, (n) => nullable(n, isAmount))
     && optional(a.expiresAt, isAmount) && optional(a.chainId, isAmount)))
-export const previewLink = (link: string) =>
-  checked<{ type: "address" | "channel"; displayName: string; image: string | null }>(call("POST", "/api/link/preview", { link }), isPreview)
+export const previewLink = (link: string) => checked<Profile>(call("POST", "/api/link/preview", { link }), isPreview)
 const CODE_STATES = ["unused", "used", "reserved", "expired", "unpaid", "revoked"] as const
 export type CodeState = typeof CODE_STATES[number]
 interface CodeAnswer { minLength: number; years: number; state: CodeState }

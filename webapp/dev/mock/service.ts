@@ -215,17 +215,34 @@ const splitLinks = (text: string) => text.split(LINK_SEPARATOR).map((l) => l.tri
 
 // --- link cards
 
-const KNOWN_PROFILES: Record<string, string> = {
-  "https://smp8.simplex.im/a#Y8m3qT0vLw2Ab7cD9eF1gH3jK5mN7pQ9rS": "Alice's Bakery",
-  "https://smp9.simplex.im/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm": "Bakery news",
+type ChatKind = "contact" | "channel" | "business" | "bot"
+type Profile = { type: "address" | "channel"; kind: ChatKind; displayName: string; fullName: string; image: string | null; subscribers: number | null }
+
+const KNOWN_PROFILES: Record<string, Pick<Profile, "displayName" | "fullName" | "subscribers">> = {
+  "https://smp8.simplex.im/a#Y8m3qT0vLw2Ab7cD9eF1gH3jK5mN7pQ9rS": { displayName: "Alice's Bakery", fullName: "Sourdough and pastries, Lisbon", subscribers: null },
+  "https://smp9.simplex.im/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm": { displayName: "Bakery news", fullName: "Daily bakes and opening hours", subscribers: 1204 },
 }
 
-function linkProfile(link: string): { type: "address" | "channel"; displayName: string; image: null } | null {
+// A contact link's fragment says what profile the tests want behind it: a business, a bot, or a profile with a picture.
+const BUSINESS_TAG = "Biz"
+const BOT_TAG = "Bot"
+const PICTURE_TAG = "Pic"
+// a profile picture as the app sends one, a small image in a data URI
+const PICTURE = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#C76A3B"/><circle cx="32" cy="26" r="12" fill="#F6E3C8"/><path d="M12 60c2-14 10-20 20-20s18 6 20 20z" fill="#F6E3C8"/></svg>').toString("base64")}`
+
+function linkProfile(link: string): Profile | null {
   const kind = linkKind(link)
   if (kind === null) return null
   const fragment = link.split("#")[1].slice(0, 6)
-  const displayName = KNOWN_PROFILES[link] ?? (kind === "contact" ? `Contact ${fragment}` : `Channel ${fragment}`)
-  return { type: kind === "contact" ? "address" : "channel", displayName, image: null }
+  const known = KNOWN_PROFILES[link]
+  const chat: ChatKind = kind === "channel" ? "channel" : fragment.startsWith(BUSINESS_TAG) ? "business" : fragment.startsWith(BOT_TAG) ? "bot" : "contact"
+  // a channel's count, the same for the same link
+  const subscribers = kind === "channel" ? [...fragment].reduce((n, c) => n * 7 + c.charCodeAt(0), 0) % 5000 : null
+  return {
+    type: kind === "contact" ? "address" : "channel", kind: chat,
+    displayName: known?.displayName ?? (kind === "contact" ? `Contact ${fragment}` : `Channel ${fragment}`),
+    fullName: known?.fullName ?? "", image: fragment.startsWith(PICTURE_TAG) ? PICTURE : null, subscribers: known ? known.subscribers : subscribers,
+  }
 }
 
 function entity(link: string) {
