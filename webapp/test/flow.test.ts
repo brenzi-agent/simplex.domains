@@ -66,9 +66,8 @@ function view(request: { labelHash: string; commitment: string; sealed: string |
 describe("orderRequest", () => {
   it("commits to the label, the code's wallet, its derived secret and the links, and seals the name for the code", async () => {
     const { flow } = await modules()
-    const { request, owner, secret } = await flow.orderRequest(draft())
+    const { request, owner } = await flow.orderRequest(draft())
     expect(owner).toBe(OWNER)
-    expect(secret).toBeNull()
     expect(request.labelHash).toBe(hex(labelHash("dynamis")))
     expect(request.length).toBe(7)
     const expected = makeCommitment({
@@ -76,22 +75,7 @@ describe("orderRequest", () => {
       resolver: fromHex(CHAIN.resolver), contactLinks: [LINKS.contact], channelLinks: [],
     })
     expect(request.commitment).toBe(hex(expected))
-    expect(await unseal(WALLET.seed, request.sealed!)).toEqual({ label: "dynamis", ...LINKS })
-  })
-
-  it("opened from the app, commits to the app's wallet and the page's secret, and seals nothing", async () => {
-    const { flow } = await modules()
-    const appOwner = "0x00000000000000000000000000000000000000aa"
-    const appSecret = `0x${"22".repeat(32)}`
-    const { request, owner, secret } = await flow.orderRequest({ ...draft(), ownerCode: null, appOwner, appSecret })
-    expect(owner).toBe(appOwner)
-    expect(secret).toBe(appSecret)
-    expect(request.sealed).toBeNull()
-    const expected = makeCommitment({
-      label: "dynamis", tld: "simplex", owner: fromHex(appOwner), duration: durationFor(2), secret: fromHex(appSecret),
-      resolver: fromHex(CHAIN.resolver), contactLinks: [LINKS.contact], channelLinks: [],
-    })
-    expect(request.commitment).toBe(hex(expected))
+    expect(await unseal(WALLET.seed, request.sealed)).toEqual({ label: "dynamis", ...LINKS })
   })
 })
 
@@ -247,8 +231,8 @@ describe("saveLinks after a refusal", () => {
 describe("store", () => {
   it("keeps orders newest first, updates by registration, and forgets everything", async () => {
     const { store } = await modules()
-    const base = { invoiceId: null, label: "a", ownerCode: null, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, secret: null, tld: "simplex",
-      request: { labelHash: "0x", length: 6, owner: OWNER, commitment: "0x", sealed: null } }
+    const base = { invoiceId: null, label: "a", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, tld: "simplex",
+      request: { labelHash: "0x", length: 6, owner: OWNER, commitment: "0x", sealed: "sealed" } }
     expect(store.saveOrder({ ...base, registrationId: "old", createdAt: "2026-01-01T00:00:00Z" })).toBe(true)
     store.saveOrder({ ...base, registrationId: "new", createdAt: "2026-02-01T00:00:00Z" })
     store.updateOrder("old", { cancelled: true })
@@ -274,8 +258,8 @@ describe("store", () => {
     vi.resetModules()
     const tabB = await import("../src/store.ts")
     expect(tabA.orders()).toEqual([])
-    const base = { invoiceId: null, label: "b", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, secret: null, tld: "simplex",
-      request: { labelHash: "0x", length: 6, owner: OWNER, commitment: "0x", sealed: null } }
+    const base = { invoiceId: null, label: "b", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, tld: "simplex",
+      request: { labelHash: "0x", length: 6, owner: OWNER, commitment: "0x", sealed: "sealed" } }
     tabB.saveOrder({ ...base, registrationId: "fromB", createdAt: "2026-01-01T00:00:00Z" })
     tabA.addCode({ code: "SN6-X", minLength: 6, years: 2, addedAt: "2026-01-01T00:00:00Z" })
     expect(tabB.orders().map((o) => o.registrationId)).toEqual(["fromB"])
@@ -288,8 +272,8 @@ describe("store", () => {
 
   it("keeps serving what a full storage holds, moves new writes to memory, and forgets both", async () => {
     const { store } = await modules()
-    const base = { invoiceId: null, label: "a", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, secret: null, tld: "simplex",
-      request: { labelHash: "0x", length: 6, owner: OWNER, commitment: "0x", sealed: null } }
+    const base = { invoiceId: null, label: "a", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, tld: "simplex",
+      request: { labelHash: "0x", length: 6, owner: OWNER, commitment: "0x", sealed: "sealed" } }
     store.saveOrder({ ...base, registrationId: "kept", createdAt: "2026-01-01T00:00:00Z" })
     const storage = (globalThis as unknown as { window: { localStorage: Storage } }).window.localStorage
     const setItem = storage.setItem

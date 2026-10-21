@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
-  CARD_SLOW_MS, type ClosedCase, closedCase, failedLead, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState,
+  CARD_SLOW_MS, type ClosedCase, closedCase, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
   reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
@@ -35,7 +35,7 @@ const card = (change: Partial<InvoiceView> = {}, reg: Partial<RegistrationView> 
 function record(change: Partial<OrderRecord> = {}): OrderRecord {
   return {
     registrationId: "reg-1", invoiceId: "inv-1", label: "alice", ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: OWNER, contact: "", channel: "",
-    method: "btc", paid: 1500, years: 2, secret: "0x01", request: { labelHash: "0x4f1b", length: 5, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box" },
+    method: "btc", paid: 1500, years: 2, request: { labelHash: "0x4f1b", length: 5, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box" },
     tld: "simplex", createdAt: "2026-10-17T11:59:00Z", ...change,
   }
 }
@@ -96,7 +96,6 @@ describe("screenOf", () => {
     ["a failed registration", STATES.failed, "failed"],
     ["a commit in a browser without the name code", STATES["not-on-device"], "not-on-device"],
     ["a commit in the browser with the name code", STATES.registering, "registering"],
-    ["a commit of an order opened from the app", read(null, registration({ phase: "committing", sealed: null }), { record: null }), "registering"],
     ["a registration being sent, seen without the name code", read(null, registration({ phase: "registering" }), { record: null }), "registering"],
     ["a revealed name, seen without the name code", read(null, registration({ phase: "committed", label: "alice" }), { record: null }), "registering"],
   ]
@@ -353,7 +352,6 @@ describe("reveal helpers", () => {
     expect(revealDue(waiting)).toBe(true)
     expect(revealDue({ ...waiting, now: NOW - 5000 })).toBe(false)
     expect(revealDue({ ...waiting, record: null })).toBe(false)
-    expect(revealDue({ ...waiting, record: record({ ownerCode: null }) })).toBe(false)
     expect(revealDue(read(null, registration({ ...committed, label: "alice" })))).toBe(false)
     expect(revealDue(read(null, registration({ ...committed, phase: "registering" })))).toBe(false)
   })
@@ -401,15 +399,6 @@ describe("wakeAt", () => {
     expect(revealDue(waiting)).toBe(false)
     expect(revealDue(woken)).toBe(true)
     expect(wakeAt(woken)).toBeNull()
-  })
-})
-
-describe("openedFromApp", () => {
-  it("tells an app's order by its record's missing code, or without a record by nothing sealed", () => {
-    expect(openedFromApp(registration(), record({ ownerCode: null }))).toBe(true)
-    expect(openedFromApp(registration(), record())).toBe(false)
-    expect(openedFromApp(registration({ sealed: null }), null)).toBe(true)
-    expect(openedFromApp(registration(), null)).toBe(false)
   })
 })
 

@@ -30,7 +30,7 @@ const years = (c: session.Checkout) => c.code?.years ?? PRICED_YEARS
 const blockedBy = ({ checkout, waiting }: CheckoutState) => checkout.code ? null : waiting
 // cents only where a price has them
 const price = (cents: number) => dollars(cents, cents % 100 !== 0)
-const payLabel = (c: session.Checkout) => c.code ? "Register with your code" : c.appOwner ? "Continue" : `Pay ${price(c.price)} with ${methodName(c.method)}`
+const payLabel = (c: session.Checkout) => c.code ? "Register with your code" : `Pay ${price(c.price)} with ${methodName(c.method)}`
 
 function waitingCardOrder(): WaitingOrder | null {
   const order = store.orders().find((o) => o.method === "card" && o.cardSubmittedAt && o.invoiceId)
@@ -145,7 +145,7 @@ function orderCard(c: session.Checkout): HTMLElement {
   const now = Date.now() / 1000
   const free = freeDays(now)
   const name = `${c.label}.${c.chain.tld}`
-  const chats = c.appOwner ? [] : api.LINK_KINDS.filter((kind) => c[kind]).map((kind) => linkChat(c[kind], name, `chat-${kind}`))
+  const chats = api.LINK_KINDS.filter((kind) => c[kind]).map((kind) => linkChat(c[kind], name, `chat-${kind}`))
   return el("section", { class: "card order" },
     el("div", { class: "row" }, nameTitle(c.label, "name", c.chain.tld), chats.length ? el("span", { class: "chats" }, chats) : null),
     el("div", { class: "table" },
@@ -225,7 +225,7 @@ function buildLinks(s: CheckoutState): HTMLElement {
   const linked = hasLinks(c)
   const skip = linked ? null : link("Skip for now", () => go(checkoutUrl("review")))
   skip?.setAttribute("data-focus", "skip")
-  return screen({ title: "What should your name open?", back: searchLink(c.label, null),
+  return screen({ title: "What should your name open?", back: searchLink(c.label),
     lead: ["Paste your SimpleX contact address or channel link. ", el("span", { class: "nowrap" }, "You can change it later.")],
     alt: skip, action: continueButton(() => linksDone(links.fields()), !linked) },
     el("span", { class: "label" }, "Link"), links.node)
@@ -245,11 +245,9 @@ function buildCode(s: CheckoutState): HTMLElement {
 
 function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   const c = s.checkout
-  const fromApp = c.appOwner !== null
   const blocked = blockedBy(s)
-  return screen({ title: "Check your order", back: fromApp ? searchLink(c.label, c.appOwner) : checkoutUrl("code"), action: payButton(s, blocked !== null) },
+  return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null) },
     el("div", { class: "review" }, orderCard(c),
-      fromApp && !store.canPersist() ? alertBox("warn", "alert", "This browser will not keep this order", "Keep this page open until the name is registered; a reload loses it.") : null,
       c.codeError ? alertBox("danger", "alert", null, `${c.codeError} Pay for the name here, or check another code.`) : null,
       c.code ? el("div", { class: "notes" }, el("p", {}, "Your code pays for this name. Nothing more to pay.")) : blocked ? waitingNotice(blocked) : methodsBlock(s),
       c.code || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours, to finish the registration.`),
@@ -260,17 +258,17 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
 function buildPriceChanged({ checkout: c }: CheckoutState): HTMLElement {
   return outcome({ tone: "warn", icon: "alert", title: "The price changed",
     text: [nameText(c.label, c.chain.tld), ` costs ${dollars(c.price, true)} now; it changed while you were deciding. Nothing was charged.`],
-    action: btn("Search again", "", () => go(searchLink(c.label, c.appOwner))) })
+    action: btn("Search again", "", () => go(searchLink(c.label))) })
 }
 
 function buildTooMany({ checkout: c, hold }: CheckoutState, signal: AbortSignal): HTMLElement {
   holdEnds(signal)(hold !== null)
-  return limitScreen(hold, refresh, searchLink(c.label, c.appOwner), signal)
+  return limitScreen(hold, refresh, searchLink(c.label), signal)
 }
 
 function buildTaken({ checkout: c }: CheckoutState): HTMLElement {
   return outcome({ tone: "info", icon: "info", title: "This name is no longer available", text: [nameText(c.label, c.chain.tld), " became unavailable after you searched for it. Nothing was charged."],
-    action: btn("Search another name", "", () => go(searchLink("", c.appOwner))) })
+    action: btn("Search another name", "", () => go(searchLink(""))) })
 }
 
 function buildFailed(s: CheckoutState): HTMLElement {
@@ -278,7 +276,7 @@ function buildFailed(s: CheckoutState): HTMLElement {
   // the same order is sent again from here; Back leaves it for the search
   const retry = setAction(btn("Try again", "", () => void submitOrder()), s.busy, false)
   return outcome({ tone: "danger", icon: "alert", title: "That did not go through", text: "Nothing was charged. If this happens again, get in touch.",
-    action: retry, alt: link("Back", () => go(searchLink(c.label, c.appOwner))) })
+    action: retry, alt: link("Back", () => go(searchLink(c.label))) })
 }
 
 const BUILDERS: Record<CheckoutKind, Builder<CheckoutState>> = {
@@ -310,23 +308,17 @@ async function sendOrder(): Promise<void> {
   // a page left open while its order went through, in this tab or by Back and Forward, has nothing left to send
   if (!c) return go("/#/names")
   dispatch({ type: "send-started" })
-  const fromApp = c.appOwner !== null
-  const appSecret = fromApp ? c.appSecret ?? `0x${[...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("")}` : null
-  if (fromApp && !c.appSecret) session.setCheckout({ ...c, appSecret })
-  const draft: flow.Draft = {
-    label: c.label, links: { contact: c.contact, channel: c.channel }, chain: c.chain, years: years(c), ownerCode: c.ownerCode,
-    ...(fromApp ? { appOwner: c.appOwner!, appSecret: appSecret! } : {}),
-  }
+  const draft: flow.Draft = { label: c.label, links: { contact: c.contact, channel: c.channel }, chain: c.chain, years: years(c), ownerCode: c.ownerCode! }
   // The order is kept whatever the buyer did meanwhile. Its checkout ends, and the order opens, only while this checkout
   // is still the tab's: the buyer may have started another name, by Back and Forward too.
   const mine = currentRoute()
-  const search = searchLink(c.label, c.appOwner)
+  const search = searchLink(c.label)
   const done = (url: string) => {
     const current = session.checkout()
     const ours = current?.label === c.label && current.ownerCode === c.ownerCode
     if (ours) session.setCheckout(null)
     if (!isRoute(mine) && !(ours && location.hash.startsWith("#/checkout"))) return
-    // Back from the order returns once to its search, still opened from the app, past the checkout that has ended
+    // Back from the order returns once to its search, past the checkout that has ended
     if (location.hash.startsWith("#/checkout")) goFrom(c.searchAt, search, url)
     else go(url)
   }

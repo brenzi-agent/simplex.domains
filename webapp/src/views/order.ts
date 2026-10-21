@@ -7,7 +7,7 @@ import { clock, dateOf, dollars, methodName, SEP, shortAddress, termText } from 
 import { PRICED_YEARS } from "../names.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
-  type ClosedCase, closedCase, coinOf, failedLead, initialState, type Note, openedFromApp, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
+  type ClosedCase, closedCase, coinOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, wakeAt,
 } from "../screens/order.ts"
 import * as store from "../store.ts"
@@ -174,7 +174,7 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
       if (!replacement && !record && invoice) record = await adoptSibling(view, invoice)
       if (!replacement && closedEmpty) replacement = record?.replacedBy
       // another browser may have made a newer invoice that this one never opened
-      if (!replacement && closedEmpty && record?.ownerCode) {
+      if (!replacement && closedEmpty && record) {
         const newer = await flow.newerOrder(record)
         replacement = newer ? store.orderUrl(newer) : undefined
       }
@@ -223,9 +223,8 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
 }
 
 // Another order of the same buyer: one of this commitment, or of the code's wallet once it moved to another name.
-// An order opened from the app shares its wallet with the app's other orders, so only its commitment counts.
 const siblingOf = (view: api.RegistrationView) => (o: store.OrderRecord) => o.registrationId !== view.id &&
-  (o.request.commitment === view.commitment || (o.ownerCode !== null && o.owner.toLowerCase() === view.owner.toLowerCase()))
+  (o.request.commitment === view.commitment || o.owner.toLowerCase() === view.owner.toLowerCase())
 
 // The same order with a later invoice. Only an invoice that closes later can have replaced this one; expiry times are
 // whole seconds, so a tie counts.
@@ -292,7 +291,7 @@ function keepCodes(s: OrderState): void {
   const { view, record, invoice, cardSubmittedAt: submitted } = s
   if (!view || !record) return
   const kind = screenOf(s)
-  if (kind === "code-issued" && record.ownerCode && !record.takenCode) {
+  if (kind === "code-issued" && !record.takenCode) {
     const code = flow.takenCodeOf(record, view.id)
     store.updateOrder(record.registrationId, { takenCode: code })
     store.addCode({ code, minLength: codeTier(record.label.length), years: PRICED_YEARS, addedAt: new Date().toISOString() })
@@ -330,7 +329,7 @@ function buildUnknownLink(): HTMLElement {
 
 function buildPaidByInvoice({ view, record }: OrderState): HTMLElement {
   return outcome({ tone: "info", icon: "link", title: "This order is paid by invoice", text: "Its page is the payment link it was made with.",
-    action: record?.invoiceId ? btn("Open its payment", "", () => go(store.orderUrl(record))) : btn("Search a name", "quiet", () => go(searchFrom(view!, record))),
+    action: record?.invoiceId ? btn("Open its payment", "", () => go(store.orderUrl(record))) : btn("Search a name", "quiet", () => go(searchLink(""))),
     reference: view!.id })
 }
 
@@ -482,13 +481,8 @@ function cardStandIn(form: HTMLElement): void {
     f("Card number", "4242 4242 4242 4242"), el("div", { class: "cols" }, f("Expiry", "12 / 30"), f("CVC", "123"), f("Country", "Portugal")))
 }
 
-// a new search from an order opened from the app stays the app's, so a name found there registers to its wallet
-const searchFrom = (view: api.RegistrationView, record: store.OrderRecord | null) => searchLink("", openedFromApp(view, record) ? view.owner : null)
-
-// what a browser without the order's record can do: take in the name code, or, for an app's order, nothing here
-function withoutRecord(view: api.RegistrationView, cls: string, text = "Enter your name code"): HTMLButtonElement {
-  return view.sealed === null ? btn("Search a name", cls, () => go(searchFrom(view, null))) : btn(text, cls, () => go(CHECK_CODE))
-}
+// what a browser without the order's record can do: take in the name code
+const withoutRecord = (cls: string, text = "Enter your name code") => btn(text, cls, () => go(CHECK_CODE))
 
 const CLOSED_TITLE = "Invoice closed"
 const partlyPaid = (invoice: api.InvoiceView) => Number(invoice.cryptoAmountPaid ?? "0") > 0
@@ -520,12 +514,12 @@ function closedWords(closed: ClosedCase, inv: api.InvoiceView): [Tone, Kid] {
 
 // a new invoice reuses this order's commitment, which only the browser holding its name code can rebuild
 function closedAction(s: OrderState, closed: ClosedCase): HTMLButtonElement {
-  const { view, record } = s
+  const { record } = s
   if (record?.replacedBy) return btn("Open the new invoice", "quiet", () => go(record.replacedBy!))
   // a cancel the service still shows open takes no more payment, so nothing here pays it
-  if (closed === "paid-late" || closed === "still-open") return btn("Search a name", "quiet", () => go(searchFrom(view!, record)))
-  if (!record) return withoutRecord(view!, "quiet")
-  if (closed === "cancelled") return btn("Order the name again", "", () => go(searchLink(record.label, record.ownerCode === null ? record.owner : null)))
+  if (closed === "paid-late" || closed === "still-open") return btn("Search a name", "quiet", () => go(searchLink("")))
+  if (!record) return withoutRecord("quiet")
+  if (closed === "cancelled") return btn("Order the name again", "", () => go(searchLink(record.label)))
   return newInvoiceButton(s, closed === "received" && !record.cancelled ? "quiet" : "", reorder)
 }
 
@@ -548,7 +542,7 @@ function buildCardUnconfirmed(s: OrderState, signal: AbortSignal): HTMLElement {
 
 // Once the service has seen a card payment, entering the card again could charge twice.
 function cardAction(s: OrderState, formFailed: boolean): HTMLButtonElement | null {
-  if (formFailed) return s.record ? newInvoiceButton(s, "", () => void reorderAfterCancel()) : withoutRecord(s.view!, "")
+  if (formFailed) return s.record ? newInvoiceButton(s, "", () => void reorderAfterCancel()) : withoutRecord("")
   return s.invoice!.amountPaid ? null : btn("Enter the card again", "", enterCardAgain)
 }
 
@@ -644,10 +638,9 @@ function reorder(): void {
 }
 
 function buildPriceChanged({ record, invoice, price }: OrderState): HTMLElement {
-  const { label, ownerCode, owner } = record!
-  const appOwner = ownerCode === null ? owner : null
+  const { label } = record!
   return outcome({ tone: "warn", icon: "alert", title: "The price changed", text: [nameText(label, invoice!.registration.tld), ` costs ${dollars(price!, true)} now. Nothing was charged.`],
-    action: btn("Search again", "", () => go(searchLink(label, appOwner))), reference: invoice!.invoiceId })
+    action: btn("Search again", "", () => go(searchLink(label))), reference: invoice!.invoiceId })
 }
 
 async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | undefined, gen: number): Promise<void> {
@@ -672,13 +665,12 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
       holdFrom(e)
       return
     }
-    const appOwner = record.ownerCode === null ? record.owner : null
-    if (e instanceof api.ApiError && e.code === "name_taken") return go(searchLink(record.label, appOwner))
+    if (e instanceof api.ApiError && e.code === "name_taken") return go(searchLink(record.label))
     if (e instanceof api.ApiError && typeof e.body.invoiceId === "string") return go(store.invoiceUrl(e.body.invoiceId))
     if (e instanceof api.ApiError && e.code === "catalog_changed" && typeof e.body.price === "number") return dispatch({ type: "price-changed", price: e.body.price })
     if (e instanceof api.ApiError && e.code === "provider_unavailable") {
       return dispatch({ type: "reorder-failed", note: { tone: "warn", icon: "alert", title: `${methodName(invoice.cryptoCurrency ?? "card")} is unavailable right now`,
-        text: "Nothing was charged. Try again later, or ", link: { text: "order the name again", href: searchLink(record.label, appOwner), after: " to pay another way." } } })
+        text: "Nothing was charged. Try again later, or ", link: { text: "order the name again", href: searchLink(record.label), after: " to pay another way." } } })
     }
     if (holdOn(e, "Nothing was charged. ", gen)) return
     dispatch({ type: "reorder-failed", note: { tone: "warn", icon: "alert", title: "That did not go through", text: "Nothing was charged. Try again in a moment." } })
@@ -704,15 +696,13 @@ function headingOf({ view, record }: OrderState): Kid {
   return label ? ["Registering ", gradName(label, view!.tld)] : "Registering the name"
 }
 
-const leadOf = ({ view, record }: OrderState) => openedFromApp(view!, record) ? "Keep this page open while SimpleX finishes it."
-  : record ? "Keep this page open until the name is yours." : "The browser with its name code signed it."
+const leadOf = ({ record }: OrderState) => record ? "Keep this page open until the name is yours." : "The browser with its name code signed it."
 
 const WAIT_NOTE = "Every new name waits a little, so nobody who sees your order can take the name first."
 const COMMIT_NOTE = "Placing your order. The wait starts once it is in."
 const REGISTERING_NOTE = "Registering the name. It is yours in a moment."
 
 function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
-  const { record } = s
   const view = s.view!
   const states = stagesOf(view)
   const refused = refusalsOf(s) >= REVEAL_ATTEMPTS
@@ -735,8 +725,7 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
     if (!clockNode.querySelector("svg")) clockNode.replaceChildren(icon("clock"))
     if (view.phase !== "committed") return say(note, view.phase === "registering" ? REGISTERING_NOTE : COMMIT_NOTE)
     waitsSeen.delete(view.id)
-    if (openedFromApp(view, record) && view.label === null) say(note, "Waiting for SimpleX to sign the registration with your app's wallet.")
-    else if (view.label === null && refused) say(note, "The registration is not signed yet.")
+    if (view.label === null && refused) say(note, "The registration is not signed yet.")
     else say(note, REGISTERING_NOTE)
   }
   onTheSecond(() => waitLeft(view), tick, signal)
@@ -779,17 +768,14 @@ function buildNotOnDevice({ view, invoice }: OrderState): HTMLElement {
     action: btn("Enter your name code", "", () => go(CHECK_CODE)), reference: invoice?.invoiceId ?? view!.id })
 }
 
-// a name of this browser's code needs nothing more from here; one of the app's goes back to it, and one of another browser's restores its code
-function registeredAction(view: api.RegistrationView, record: store.OrderRecord | null): HTMLButtonElement | null {
-  if (!record) return withoutRecord(view, "", "Restore with your name code")
-  return record.ownerCode ? null : btn("Back to SimpleX", "", () => { location.href = "simplex:/" })
-}
+// a name of this browser's code needs nothing more from here; one of another browser's restores its code
+const registeredAction = (record: store.OrderRecord | null) => record ? null : withoutRecord("", "Restore with your name code")
 
 function buildRegistered(s: OrderState): HTMLElement {
   const view = s.view!
   const label = labelOf(view, s.record)
   const code = s.record?.ownerCode ?? null
-  return screen({ title: [label ? gradName(label, view.tld) : "The name", " is\u00a0yours"], lead: registeredLead(view, s.record), action: registeredAction(view, s.record) },
+  return screen({ title: [label ? gradName(label, view.tld) : "The name", " is\u00a0yours"], lead: registeredLead(view, s.record), action: registeredAction(s.record) },
     code ? el("div", { class: "card use" }, el("h2", {}, "Use in the app"),
       el("p", {}, "In SimpleX, open Your SimpleX address, tap Set SimpleX name and enter ", nameText(label ?? "", view.tld, "."), " For a channel, set it in the channel's profile."),
       el("p", { class: "note" }, "Keep your name code: it owns the name and edits its links."),
@@ -798,10 +784,7 @@ function buildRegistered(s: OrderState): HTMLElement {
 
 function registeredLead(view: api.RegistrationView, record: store.OrderRecord | null): string {
   const until = view.expiresAt ? dateOf(view.expiresAt) : ""
-  if (record?.ownerCode) return `Registered until ${until}.`
-  if (record) return `Registered for ${termText(view.years)}, until ${until}, to your app's wallet, ${shortAddress(view.owner)}.`
-  return view.sealed === null ? `Registered until ${until} to the wallet of the app it was ordered from, ${shortAddress(view.owner)}.`
-    : `Registered until ${until} to ${shortAddress(view.owner)}. Its name code is not in this browser.`
+  return record ? `Registered until ${until}.` : `Registered until ${until} to ${shortAddress(view.owner)}. Its name code is not in this browser.`
 }
 
 function buildTakenWithCode({ view: taken, record }: OrderState): HTMLElement {
@@ -822,15 +805,12 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
   const label = labelOf(view, record)
   // the order's worth caps another name; after a move to a cheaper name it is lower than what was paid
   const worth = dollars(view.price, true)
-  const canAct = Boolean(record?.ownerCode)
-  const fromApp = openedFromApp(view, record)
+  const canAct = record !== null
   const other = setAction(btn("Choose another name", "", () => go(`/#/?retarget=${view.id}`)), false, !canAct)
   const code = setAction(btn("Take a code", "quiet", () => void takeCode()), canAct && s.busy === "code", !canAct || s.hold !== null)
   code.dataset.focus = "take-code"
   holdEnds(signal)(s.hold !== null)
-  const cannot = canAct ? null : fromApp
-    ? alertBox("info", "phone", "This order was opened from SimpleX", "Choose another name or take a code in the app.")
-    : alertBox("info", "key", "The name code is not in this browser", "Restore it in Your names to choose another name or take a code.")
+  const cannot = canAct ? null : alertBox("info", "key", "The name code is not in this browser", "Restore it in Your names to choose another name or take a code.")
   return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."],
     alt: code, action: other },
     el("p", { class: "note" }, ...orderLine(s)),
@@ -860,11 +840,7 @@ async function takeCode(): Promise<void> {
 
 function buildCodeIssued({ view: issued, record }: OrderState): HTMLElement {
   const view = issued!
-  if (openedFromApp(view, record)) {
-    return outcome({ tone: "info", icon: "key", title: "This order became a code", text: "The app the order was opened from shows the code.",
-      action: btn("Search a name", "", () => go(searchFrom(view, record))), reference: view.id })
-  }
-  if (!record?.ownerCode) {
+  if (!record) {
     return outcome({ tone: "info", icon: "key", title: "This order became a code",
       text: "The code is made from the order's name code, so it shows in the browser that has it. Restore the name code here to see it.",
       action: btn("Enter your name code", "", () => go(CHECK_CODE)), reference: view.id })
@@ -879,12 +855,12 @@ function buildCodeIssued({ view: issued, record }: OrderState): HTMLElement {
 }
 
 function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
-  const { view: failed, record, invoice } = s
+  const { view: failed, invoice } = s
   const view = failed!
   // a code refused for good leaves nothing to try again, so the page offers another search as the other endings do
   const retry = setAction(btn("Try again", "", () => void retryRegistration()), s.busy === "retry", s.hold !== null)
   retry.dataset.focus = "retry"
-  const action = s.codeRefused ? btn("Search a name", "quiet", () => go(searchFrom(view, record))) : retry
+  const action = s.codeRefused ? btn("Search a name", "quiet", () => go(searchLink(""))) : retry
   holdEnds(signal)(s.hold !== null)
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
   return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s), action },

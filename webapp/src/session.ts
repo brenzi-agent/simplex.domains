@@ -19,9 +19,6 @@ export interface Checkout {
   ownerCode: string | null
   // the buyer ticked that they keep a copy of the name code, which the review waits for
   saved: boolean
-  // opened from the app: the app wallet's address, and the secret this page keeps for it
-  appOwner: string | null
-  appSecret: string | null
   // the history entry of the search the checkout started from
   searchAt: number
   // the step last opened, where Your names continues the checkout
@@ -93,7 +90,7 @@ export function updateCheckout(label: string, change: Partial<Checkout>): boolea
 }
 // The checkout whose order is on its way keeps Pay off and its links, method and code locked, so no press or Back sends or changes another.
 const sending = new Set<string>()
-const keyOf = (c: Checkout) => `${c.label} ${c.ownerCode ?? c.appOwner}`
+const keyOf = (c: Checkout) => `${c.label} ${c.ownerCode}`
 export const isSending = (c: Checkout) => sending.has(keyOf(c))
 export const startSending = (c: Checkout) => sending.add(keyOf(c))
 export const stopSending = (c: Checkout) => sending.delete(keyOf(c))

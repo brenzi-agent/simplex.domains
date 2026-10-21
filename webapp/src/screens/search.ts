@@ -3,8 +3,8 @@ import { foldLabel, type LabelProblem, labelProblem } from "../names.ts"
 import type { OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
 
-export type Opening = "fromApp" | "retarget" | "plain" | "bad-app-link"
-export type SearchKind = `search:${Exclude<Opening, "bad-app-link">}` | "status:bad-app-link"
+export type Opening = "retarget" | "plain"
+export type SearchKind = `search:${Opening}`
 
 export type Answer =
   | { kind: "rule"; label: string; problem: LabelProblem }
@@ -24,7 +24,6 @@ export interface SearchState {
   searching: { label: string } | null
   answer: Answer | null
   bad: boolean
-  fromApp: string | null
   retarget: OrderRecord | null
   moved: Moved | null
   hold: Hold | null
@@ -34,7 +33,7 @@ export interface SearchState {
 }
 
 export type SearchEvent =
-  | { type: "opened"; opening: Opening; name: string; fromApp: string | null; retarget: OrderRecord | null; hold: Hold | null }
+  | { type: "opened"; opening: Opening; name: string; retarget: OrderRecord | null; hold: Hold | null }
   | { type: "typed"; text: string }
   | { type: "searched"; label: string; hold: Hold | null }
   | { type: "answered"; seq: number; label: string; answer: SearchAnswer; mine: boolean; now: number }
@@ -51,7 +50,7 @@ const IDLE = { busy: false, refusal: null }
 export const REGISTER_LEAD = "Nothing changed. "
 
 export const initialSearch = (): SearchState => ({
-  opening: "plain", name: "", typed: "", searched: null, seq: 0, searching: null, answer: null, bad: false, fromApp: null,
+  opening: "plain", name: "", typed: "", searched: null, seq: 0, searching: null, answer: null, bad: false,
   retarget: null, moved: null, hold: null, paused: false, ownOrder: null, register: IDLE,
 })
 
@@ -69,7 +68,7 @@ export const searchDue = (s: SearchState): boolean => !s.paused && s.name !== ""
 
 function opened(s: SearchState, e: Extract<SearchEvent, { type: "opened" }>): SearchState {
   const typed = e.name === s.name ? s.typed : e.name
-  const next = { ...s, opening: e.opening, name: e.name, typed, fromApp: e.fromApp, register: { ...s.register, refusal: null } }
+  const next = { ...s, opening: e.opening, name: e.name, typed, register: { ...s.register, refusal: null } }
   next.retarget = s.moved ? null : e.retarget
   const dropped = unsearched(next) ? { answer: null, searching: null, bad: false, seq: s.seq + 1 } : {}
   if (s.hold || e.hold === null) return { ...next, ...dropped }
@@ -111,5 +110,5 @@ export function reduce(s: SearchState, e: SearchEvent): SearchState {
 }
 
 export function screenOf(s: SearchState): SearchKind {
-  return s.opening === "bad-app-link" ? "status:bad-app-link" : `search:${s.opening}`
+  return `search:${s.opening}`
 }

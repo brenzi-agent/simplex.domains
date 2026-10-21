@@ -7,18 +7,15 @@ export interface OrderRecord {
   registrationId: string
   invoiceId: string | null
   label: string
-  // the owner code; null for an order opened from the app, whose wallet is the app's
-  ownerCode: string | null
+  ownerCode: string
   owner: string
   contact: string
   channel: string
   method: Method | "code"
   paid: number
   years: number
-  // an order opened from the app has no code to derive its secret from
-  secret: string | null
   // the request, kept to ask for a new invoice for the same commitment
-  request: { labelHash: string; length: number; owner: string; commitment: string; sealed: string | null }
+  request: { labelHash: string; length: number; owner: string; commitment: string; sealed: string }
   // when this browser submitted a card payment, kept until the invoice leaves open
   cardSubmittedAt?: string
   cancelled?: boolean
@@ -164,10 +161,8 @@ export function saveOrder(order: OrderRecord): boolean {
   const saved = put("order", order.registrationId, order)
   // The pending code is the stored copy of the owner code until the order holding it is stored too; an order kept
   // only in memory replaces it in memory alone.
-  if (order.ownerCode) {
-    if (saved) remove("pending", order.ownerCode)
-    else memory?.delete(`${PREFIX}pending:${order.ownerCode}`)
-  }
+  if (saved) remove("pending", order.ownerCode)
+  else memory?.delete(`${PREFIX}pending:${order.ownerCode}`)
   return saved
 }
 

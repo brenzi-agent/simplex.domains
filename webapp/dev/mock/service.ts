@@ -63,7 +63,7 @@ interface Registration {
   length: number
   owner: Address
   commitment: Hex
-  sealed: string | null
+  sealed: string
   years: number
   paid: number
   method: Method | "code"
@@ -322,16 +322,16 @@ interface OrderBody {
   length: number
   owner: Address
   commitment: Hex
-  sealed: string | null
+  sealed: string
 }
 
-function orderBody(body: Record<string, unknown>, { sealedRequired }: { sealedRequired: boolean }): OrderBody {
+function orderBody(body: Record<string, unknown>): OrderBody {
   const { labelHash, length, owner, commitment, sealed } = body
   if (!isHash(labelHash) || !isHash(commitment)) throw badRequest()
   if (typeof owner !== "string" || !isAddress(owner, { strict: true }) || getAddress(owner) !== owner) throw badRequest()
-  if (sealed === null ? sealedRequired : typeof sealed !== "string" || sealed.length > SEALED_MAX) throw badRequest()
+  if (typeof sealed !== "string" || sealed.length > SEALED_MAX) throw badRequest()
   if (typeof length !== "number" || !Number.isInteger(length) || length < MIN_LABEL_LENGTH || length > MAX_LABEL_LENGTH) throw new HttpError(400, "invalid_name")
-  return { labelHash, length, owner, commitment, sealed: sealed as string | null }
+  return { labelHash, length, owner, commitment, sealed }
 }
 
 async function nameFree(labelHash: Hex): Promise<void> {
@@ -364,7 +364,7 @@ function sameCommitment(commitment: Hex): { open: Invoice | null; past: Registra
 
 export async function createInvoice(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (body.kind !== "name") throw badRequest()
-  const order = orderBody(body, { sealedRequired: false })
+  const order = orderBody(body)
   const method = body.method
   if (method !== "card" && method !== "btc" && method !== "xmr") throw badRequest()
   const injected = control.invoiceError
@@ -474,7 +474,7 @@ const CODE_ERRORS: Partial<Record<PrepaidCode["state"], string>> = { used: "code
 export async function registerWithCode(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { hash, row } = prepaidOf(body.code)
   if (!row) throw new HttpError(400, "code_invalid")
-  const order = orderBody(body, { sealedRequired: true })
+  const order = orderBody(body)
   const repeat = [...registrations.values()].find((r) => r.prepaidCode === hash && r.owner === order.owner && r.commitment === order.commitment)
   if (repeat) return { registrationId: repeat.id }
   const { open, past } = sameCommitment(order.commitment)
@@ -761,8 +761,8 @@ const sha256Hex = (text: string) => "0x" + createHash("sha256").update(text, "as
 export async function retarget(registrationId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const reg = registrations.get(registrationId)
   if (!reg) throw new HttpError(404, "not_found")
-  const order = orderBody({ ...body, owner: reg.owner }, { sealedRequired: true })
-  await checkSigned(reg.owner, `simplex.domains name ${reg.id} ${order.labelHash} ${order.length} ${order.commitment} ${sha256Hex(order.sealed!)} ${body.timestamp}`, body.timestamp, body.signature)
+  const order = orderBody({ ...body, owner: reg.owner })
+  await checkSigned(reg.owner, `simplex.domains name ${reg.id} ${order.labelHash} ${order.length} ${order.commitment} ${sha256Hex(order.sealed)} ${body.timestamp}`, body.timestamp, body.signature)
   if (reg.phase !== "taken" || reg.method === "code") throw badRequest()
   // the order's own checks: a commitment that already has an order is paid for once
   const { open, past } = sameCommitment(order.commitment)

@@ -14,7 +14,7 @@ const OPEN_ORDER = { invoiceId: "inv-9", confirming: false }
 function checkout(change: Partial<Checkout> = {}): Checkout {
   return {
     label: "alice1", price: 1500, chain: CHAIN, contact: "", channel: "", method: "btc", code: null, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF",
-    saved: true, appOwner: null, appSecret: null, searchAt: 0, step: "review", ...change,
+    saved: true, searchAt: 0, step: "review", ...change,
   }
 }
 
@@ -182,7 +182,6 @@ describe("reduce", () => {
 })
 
 describe("stepFor", () => {
-  const APP_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
   it("opens each step asked for once the name code is saved", () => {
     for (const step of ["links", "code", "review"] as const) expect(stepFor(checkout(), step)).toBe(step)
   })
@@ -194,10 +193,6 @@ describe("stepFor", () => {
   it("leaves the links and the code step open before the code is saved", () => {
     expect(stepFor(checkout({ saved: false }), "links")).toBe("links")
     expect(stepFor(checkout({ ownerCode: null, saved: false }), "code")).toBe("code")
-  })
-  it("opens only the review for an order from the app, which brings its wallet", () => {
-    const fromApp = checkout({ ownerCode: null, saved: false, appOwner: APP_WALLET })
-    for (const step of ["links", "code", "review"] as const) expect(stepFor(fromApp, step)).toBe("review")
   })
 })
 

@@ -32,7 +32,7 @@ const invoice = (change: Partial<InvoiceView> = {}, reg: Partial<RegistrationVie
 function record(change: Partial<OrderRecord> = {}): OrderRecord {
   return {
     registrationId: "reg-1", invoiceId: "inv-1", label: "alice", ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: OWNER, contact: "", channel: "",
-    method: "btc", paid: 1500, years: 2, secret: "0x01", request: { labelHash: "0x4f1b", length: 5, owner: OWNER, commitment: "0x9c11", sealed: "sealed-box" },
+    method: "btc", paid: 1500, years: 2, request: { labelHash: "0x4f1b", length: 5, owner: OWNER, commitment: "0x9c11", sealed: "sealed-box" },
     tld: "simplex", createdAt: "2026-10-17T11:59:00Z", ...change,
   }
 }
@@ -89,7 +89,6 @@ describe("list helpers", () => {
   it("phaseChip words each phase of an order as its page does", () => {
     const cases: [string, RegistrationView, InvoiceView | null, OrderRecord, [string, string]][] = [
       ["a commit waiting for this browser", registration({ phase: "committed", revealAfter: NOW / 1000 - 1 }), null, record(), ["Open to finish", "warn"]],
-      ["a commit waiting for the app", registration({ phase: "committed", revealAfter: NOW / 1000 - 1 }), null, record({ ownerCode: null }), ["Registering", "brand"]],
       ["an expired invoice", registration(), invoice({ status: "expired" }), record(), ["Invoice expired", "bad"]],
       ["an expired invoice money reached", registration(), invoice({ status: "expired", cryptoAmountPaid: "0.0001" }), record(), ["Invoice expired", "warn"]],
       ["a cancelled invoice that closed", registration(), invoice({ status: "expired" }), record({ cancelled: true }), ["Invoice cancelled", "bad"]],
@@ -310,7 +309,7 @@ describe("edit", () => {
   const editing = answered(opened, registered())
 
   const STATES: Record<EditKind, EditState> = {
-    "edit-no-code": initialEdit("reg-1", record({ ownerCode: null })),
+    "edit-no-code": initialEdit("reg-1", null),
     "edit-unreadable": reduceEdit(opened, { type: "read-failed" }),
     "edit-expired": answered(opened, available),
     "edit-in-app": answered(opened, registered(undefined, { owner: APP })),

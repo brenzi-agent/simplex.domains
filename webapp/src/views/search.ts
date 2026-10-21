@@ -1,10 +1,10 @@
 // The home: the landing's headline, the search box and every answer it can show, and the invest popup.
 import * as api from "../api.ts"
 import { labelHash } from "../crypto/registration.ts"
-import { checksumAddress, fromHex, hex } from "../crypto/wallet.ts"
+import { hex } from "../crypto/wallet.ts"
 import { alertBox, btn, el, icon, type Kid, link, nameText, nameTitle, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dollars, letters, shortAddress } from "../format.ts"
+import { dollars, letters } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import { foldLabel, MAX_LABEL_LENGTH } from "../names.ts"
 import type { Hold } from "../screens/hold.ts"
@@ -15,7 +15,7 @@ import {
 } from "../screens/search.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
-import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, go, historyPlace, isRedraw, isRoute, kept, keptLive, outcome, searchLink, throughHistory } from "./shell.ts"
+import { type Builder, CONTACT_EMAIL, currentRoute, draw, go, historyPlace, isRedraw, isRoute, kept, keptLive, throughHistory } from "./shell.ts"
 import { chatButton } from "./chats.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
 
@@ -35,24 +35,11 @@ let field: HTMLInputElement | null = null
 
 const onPage = (page: number) => page === opens && isRoute(pageRoute)
 
-// An app's wallet in mixed case carries its checksum; one that fails it was damaged on the way.
-function appWallet(owner: string | null): string | null {
-  if (!owner || !/^0x[0-9a-fA-F]{40}$/.test(owner)) return null
-  const hex = owner.slice(2)
-  const checksummed = checksumAddress(fromHex(owner))
-  const unchecked = hex === hex.toLowerCase() || hex === hex.toUpperCase()
-  return unchecked || checksummed === owner ? checksummed : null
-}
-
 export function searchPage(params: URLSearchParams): void {
   const name = foldLabel(params.get("name") ?? "")
-  const owner = params.get("owner")
-  const fromApp = appWallet(owner)
   const retargetId = params.get("retarget")
-  // an order opened from the app has no code here to sign another name with; the app chooses it
-  const retargeted = retargetId ? store.orderByRegistration(retargetId) : undefined
-  const retarget = retargeted?.ownerCode ? retargeted : null
-  const opening: Opening = owner !== null && !fromApp ? "bad-app-link" : fromApp ? "fromApp" : retarget ? "retarget" : "plain"
+  const retarget = retargetId ? store.orderByRegistration(retargetId) ?? null : null
+  const opening: Opening = retarget ? "retarget" : "plain"
   const fresh = !isRedraw() || shown === null || state.opening !== opening
   const returned = fresh && throughHistory()
   if (fresh) {
@@ -61,8 +48,7 @@ export function searchPage(params: URLSearchParams): void {
     opens += 1
   }
   pageRoute = currentRoute()
-  dispatch({ type: "opened", opening, name, fromApp, retarget, hold: tabHold() })
-  if (opening === "bad-app-link") return
+  dispatch({ type: "opened", opening, name, retarget, hold: tabHold() })
   if (state.retarget) void checkRetarget(state.retarget)
   if (searchDue(state)) submit()
   else if (returned && state.answer) void runSearch(state.name, state.seq)
@@ -173,13 +159,13 @@ function register(): void {
   if (s.retarget) return void retarget(s.retarget, label, chain)
   const code = codeFor(s, label)
   const started = session.checkout()
-  if (started && started.label === label && started.appOwner === s.fromApp && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started)) {
+  if (started && started.label === label && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started)) {
     session.updateCheckout(label, { chain, searchAt: historyPlace(), code, codeError: undefined })
     return go(checkoutUrl("links"))
   }
   session.setCheckout({
     label, price: answer.price, chain, contact: "", channel: "", method: "btc", code, ownerCode: null, saved: false,
-    appOwner: s.fromApp, appSecret: null, searchAt: historyPlace(), step: "links",
+    searchAt: historyPlace(), step: "links",
   })
   go(checkoutUrl("links"))
 }
@@ -204,15 +190,7 @@ async function retarget(record: store.OrderRecord, label: string, chain: session
 
 const BUILDERS: Record<SearchKind, Builder<SearchState>> = {
   "search:plain": buildSearch,
-  "search:fromApp": buildSearch,
   "search:retarget": buildSearch,
-  "status:bad-app-link": buildBadAppLink,
-}
-
-function buildBadAppLink(s: SearchState): HTMLElement {
-  return asStep(outcome({ tone: "warn", icon: "alert", title: "This link from SimpleX does not work",
-    text: "The wallet it names is not a valid address. Open the link again from the app, or search here for a name owned by a wallet made in this browser.",
-    action: el("a", { class: "btn quiet", href: searchLink(s.name, null) }, "Search here") }))
 }
 
 function searchBox(): HTMLElement {
@@ -262,7 +240,6 @@ function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
 }
 
 function openingLine(s: SearchState): HTMLElement | null {
-  if (s.fromApp) return alertBox("info", "phone", "Opened from SimpleX.", `The name is registered to your app's wallet, ${shortAddress(s.fromApp)}.`)
   if (s.moved?.to === "code") return alertBox("info", "key", "Your payment already became a code.", el("a", { href: s.moved.url }, "Open it"))
   if (s.moved) return alertBox("info", "info", "Your payment already went to another name.", el("a", { href: s.moved.url }, "Open ", nameText(s.moved.label, s.moved.tld)))
   if (!s.retarget) return null
@@ -298,8 +275,8 @@ function pauseLine(hold: Hold, signal: AbortSignal): HTMLElement {
   return node
 }
 
-// the tab's active code pays for a name it covers; a name opened from the app, or a paid order's move, pays its own way
-const usesCode = (s: SearchState) => s.fromApp === null && s.retarget === null
+// the tab's active code pays for a name it covers; a paid order's move pays its own way
+const usesCode = (s: SearchState) => s.retarget === null
 const codeFor = (s: SearchState, label: string) => {
   const code = session.activeCode()
   return code && usesCode(s) && label.length >= code.minLength ? code : null

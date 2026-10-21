@@ -119,9 +119,7 @@ export function go(url: string): void {
   rerender()
 }
 
-// a search for the name, still opened from the app when it was: a name found there registers to the app's wallet
-export const searchLink = (label: string, appOwner: string | null) =>
-  `/#/?${new URLSearchParams({ name: label, ...(appOwner ? { owner: appOwner } : {}) })}`
+export const searchLink = (label: string) => `/#/?${new URLSearchParams({ name: label })}`
 
 // for a page that sends the buyer elsewhere: replacing the entry keeps Back and Forward usable
 export function redirect(url: string): void {

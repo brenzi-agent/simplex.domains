@@ -107,7 +107,7 @@ describe("service errors", () => {
 
   const REGISTRATION = {
     id: "r1", phase: "unpaid", labelHash: `0x${"ab".repeat(32)}`, label: null, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`,
-    sealed: null, years: 2, price: 10000, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null,
+    sealed: "sealed", years: 2, price: 10000, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null,
     resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex",
   }
   const INVOICE = { invoiceId: "inv1", status: "open", amount: 10000, currency: "usd", expiresAt: "2026-10-16T12:00:00Z", kind: "name", registration: REGISTRATION, cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bc1q" }

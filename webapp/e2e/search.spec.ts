@@ -231,14 +231,6 @@ test("restore waits out a rate limit on finding a code's orders", async ({ page,
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
 })
 
-test("a link from the app with a damaged wallet says it does not work", async ({ page }) => {
-  await page.goto("/#/?name=bakery&owner=0x123")
-  await expect(page.getByRole("heading", { name: "This link from SimpleX does not work" })).toBeVisible()
-  await page.getByRole("link", { name: "Search here" }).click()
-  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("bakery")
-  await expect(page.getByText("Opened from SimpleX.")).toHaveCount(0)
-})
-
 test("a search link's name is shown folded to lower case", async ({ page }) => {
   await page.goto("/#/?name=Harbour.SIMPLEX")
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue("harbour")

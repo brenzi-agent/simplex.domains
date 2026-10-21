@@ -143,7 +143,7 @@ async function readOrder(id: string, route: number): Promise<void> {
 }
 
 async function replaceWithNewer(o: store.OrderRecord, route: number): Promise<boolean> {
-  const next = !o.replacedBy && o.ownerCode ? await flow.newerOrder(o).catch(() => null) : null
+  const next = !o.replacedBy ? await flow.newerOrder(o).catch(() => null) : null
   if (!next || !isRoute(route)) return false
   dispatchList(storedEvent())
   return true
@@ -245,7 +245,7 @@ function subLine(o: store.OrderRecord, { view, invoice, answer }: RowSeen, now: 
     return arrived ? [`${arrived}; support sorts it out`, ...reference(invoice.invoiceId)] : `Nothing was charged${SEP}${dateOf(Date.parse(o.createdAt) / 1000, true)}`
   }
   if (view.phase === "taken" && o.method === "code") return "Paid with a code, released for another name"
-  if (waitsToSign(view, now)) return `${o.ownerCode ? "Open the order so this browser can sign it" : "Waiting for SimpleX to sign it"}${SEP}${continued(paid)}`
+  if (waitsToSign(view, now)) return `Open the order so this browser can sign it${SEP}${continued(paid)}`
   return PROGRESS[view.phase] ? `${PROGRESS[view.phase]}${SEP}${continued(paid)}` : paid
 }
 

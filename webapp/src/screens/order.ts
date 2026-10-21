@@ -140,8 +140,6 @@ export const failedLead = ({ invoice, codeRefused, codeKept, record }: OrderStat
   : codeRefused ? "Your code can no longer pay for it, so trying again cannot register it."
   : record?.prepaidCode && codeKept ? "Your code is kept. Trying again spends nothing more." : "Trying again spends nothing more."
 
-export const openedFromApp = (view: RegistrationView, record: OrderRecord | null) => record ? record.ownerCode === null : view.sealed === null
-
 export const coinOf = (invoice: InvoiceView) => invoice.cryptoCurrency === "btc" || invoice.cryptoCurrency === "xmr" ? invoice.cryptoCurrency : null
 
 export function screenOf(s: OrderState): OrderKind {
@@ -156,7 +154,7 @@ export function screenOf(s: OrderState): OrderKind {
   if (view.phase === "taken") return "taken"
   if (view.phase === "code_issued") return "code-issued"
   if (view.phase === "failed") return "failed"
-  if (view.phase !== "registering" && view.label === null && !openedFromApp(view, record) && !record?.ownerCode) return "not-on-device"
+  if (view.phase !== "registering" && view.label === null && !record) return "not-on-device"
   return "registering"
 }
 
@@ -184,7 +182,7 @@ export function refusalsOf({ view, reveal }: OrderState): number {
 
 export function revealDue(s: OrderState): boolean {
   const { view, record, reveal } = s
-  if (view?.phase !== "committed" || view.label !== null || !record?.ownerCode) return false
+  if (view?.phase !== "committed" || view.label !== null || !record) return false
   if ((view.revealAfter ?? 0) * 1000 > s.now) return false
   return !(reveal?.key === revealKey(view) && reveal.sending) && refusalsOf(s) < REVEAL_ATTEMPTS
 }

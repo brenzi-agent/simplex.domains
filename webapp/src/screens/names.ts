@@ -118,7 +118,7 @@ const PHASE_CHIPS: Record<Phase, [string, string]> = {
 }
 
 export function phaseChip(view: RegistrationView, invoice: InvoiceView | null, o: OrderRecord, now: number): [string, string] {
-  if (waitsToSign(view, now) && o.ownerCode !== null) return ["Open to finish", "warn"]
+  if (waitsToSign(view, now)) return ["Open to finish", "warn"]
   if (view.phase !== "unpaid") return PHASE_CHIPS[view.phase]
   if (invoice?.status === "expired") return o.cancelled && !holdsPayment(invoice) ? ["Invoice cancelled", "bad"] : ["Invoice expired", holdsPayment(invoice) ? "warn" : "bad"]
   if (o.cancelled && invoice?.status === "open" && !invoice.paidInFull) return ["Invoice cancelled", "warn"]
@@ -237,7 +237,7 @@ export function notSaved({ changes, sent }: EditForm): string {
 const owns = (answer: SearchAnswer, owner: string) => answer.status === "registered" && answer.owner !== undefined && answer.owner.toLowerCase() === owner.toLowerCase()
 
 export function screenOfEdit(s: EditState): EditKind {
-  if (!s.record?.ownerCode) return "edit-no-code"
+  if (!s.record) return "edit-no-code"
   if (!s.read) return "edit-unreadable"
   const { view, answer, now } = s.read
   if (lapsed({ view, answer }, now)) return "edit-expired"

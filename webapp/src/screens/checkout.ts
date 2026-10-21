@@ -74,9 +74,8 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
   }
 }
 
-// an order from the app brings its wallet, so only its review opens; any other reaches its review once its code is saved
+// the review opens once the name code is saved
 export function stepFor(c: Checkout, asked: CheckoutStep): CheckoutStep {
-  if (c.appOwner) return "review"
   return asked === "review" && !(c.ownerCode && c.saved) ? "code" : asked
 }
 

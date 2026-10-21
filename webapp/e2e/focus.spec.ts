@@ -1,9 +1,5 @@
 import { expect, type Page } from "@playwright/test"
-import { codeField, control, onStep, search, startOrder, test, toCodeStep, toReview, uniqueLabel } from "./helpers.ts"
-
-// EIP-55's own example, and the same wallet with one letter's case changed
-const APP_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
-const DAMAGED_WALLET = "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
+import { codeField, control, onStep, payButton, search, startOrder, test, toCodeStep, toReview, uniqueLabel } from "./helpers.ts"
 
 // the name code step makes a name code as it opens, which Your names lists as pending
 async function openCodeStep(page: Page, label: string): Promise<void> {
@@ -71,16 +67,6 @@ test("a checkout drawn again for the tab's open order keeps focus on its heading
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeFocused()
 })
 
-test("an app link whose wallet fails its checksum does not work", async ({ page }) => {
-  const label = uniqueLabel("cksum")
-  await page.goto(`/#/?name=${label}&owner=${APP_WALLET}`)
-  await expect(page.getByText("Opened from SimpleX.")).toBeVisible()
-  await page.goto(`/#/?name=${label}&owner=${APP_WALLET.toLowerCase()}`)
-  await expect(page.getByText("Opened from SimpleX.")).toBeVisible()
-  await page.goto(`/#/?name=${label}&owner=${DAMAGED_WALLET}`)
-  await expect(page.getByRole("heading", { name: "This link from SimpleX does not work" })).toBeVisible()
-})
-
 test("Enter in Check your code's field does what its button does: a prepaid code finds a name, a name code is added", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   await page.goto("/#/code")
@@ -126,16 +112,16 @@ test("Forget everything asks first with focus on Keep them, and keeping them giv
   await expect(page.locator(".list-row")).not.toHaveCount(0)
 })
 
-test("an app's order refused for its method draws the checkout again in place, with focus kept on Continue", async ({ page }) => {
-  await page.goto(`/#/?name=${uniqueLabel("appunav")}&owner=${APP_WALLET}`)
-  await page.getByRole("button", { name: "Register" }).click()
+test("an order refused for its method draws the checkout again in place, with focus kept on Pay", async ({ page }) => {
+  await search(page, uniqueLabel("unav"))
+  await toReview(page)
   await page.getByRole("radio", { name: "Card" }).click()
   await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 503, json: { error: "provider_unavailable" } }) : route.continue())
   const entries = await page.evaluate(() => history.length)
-  await page.getByRole("button", { name: "Continue" }).focus()
+  await payButton(page).focus()
   await page.keyboard.press("Enter")
   await expect(page.getByText("Card is temporarily unavailable")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Continue" })).toBeFocused()
+  await expect(payButton(page)).toBeFocused()
   expect(await page.evaluate(() => history.length)).toBe(entries)
 })
 

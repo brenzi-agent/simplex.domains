@@ -67,7 +67,7 @@ export interface RegistrationView extends ChainInfo {
   label: string | null
   owner: string
   commitment: string
-  sealed: string | null
+  sealed: string
   years: number
   // what the order is worth, in cents: what was paid, or the price of the name it moved to; it caps another move
   price: number
@@ -110,7 +110,7 @@ export interface OrderRequest {
   length: number
   owner: string
   commitment: string
-  sealed: string | null
+  sealed: string
 }
 
 // A request is given up after this long, so a hung one never blocks the page for good. Long polls hold as long as
@@ -209,7 +209,7 @@ const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unk
 const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.sponsor) && typeof a.chainId === "number" && isText(a.tld)
 const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registering", "registered", "taken", "failed", "code_issued"]
 const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
-  && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && nullable(v.sealed, isText) && isCount(v.years) && isAmount(v.price)
+  && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isAmount(v.price)
   && nullable(v.commitTx, isText) && nullable(v.registerTx, isText) && nullable(v.revealAfter, isAmount) && nullable(v.revealBefore, isAmount)
   && nullable(v.intentNonce, isAmount) && nullable(v.expiresAt, isAmount) && nullable(v.error, isText)
 const isInvoice = (v: unknown) => isObject(v) && isText(v.invoiceId) && ["open", "paid", "expired"].includes(v.status as string) && isAmount(v.amount)

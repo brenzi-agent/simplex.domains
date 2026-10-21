@@ -15,13 +15,13 @@ const TAKEN: SearchAnswer = { status: "registered", entities: [], owner: OWNER, 
 function record(change: Partial<OrderRecord> = {}): OrderRecord {
   return {
     registrationId: "reg-1", invoiceId: "inv-1", label: "alice1", ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: OWNER, contact: "", channel: "",
-    method: "btc", paid: 1500, years: 2, secret: "0x01", request: { labelHash: "0x4f1b", length: 6, owner: OWNER, commitment: "0x9c11", sealed: "sealed-box" },
+    method: "btc", paid: 1500, years: 2, request: { labelHash: "0x4f1b", length: 6, owner: OWNER, commitment: "0x9c11", sealed: "sealed-box" },
     tld: "simplex", createdAt: "2026-10-17T11:59:00Z", ...change,
   }
 }
 
 const openedEvent = (change: Partial<Extract<SearchEvent, { type: "opened" }>> = {}): Extract<SearchEvent, { type: "opened" }> =>
-  ({ type: "opened", opening: "plain", name: "", fromApp: null, retarget: null, hold: null, ...change })
+  ({ type: "opened", opening: "plain", name: "", retarget: null, hold: null, ...change })
 const open = (change: Partial<Extract<SearchEvent, { type: "opened" }>> = {}) => reduce(initialSearch(), openedEvent(change))
 const run = (s: SearchState, ...events: SearchEvent[]) => events.reduce(reduce, s)
 const wait = (until: number): Hold => ({ until, lead: NO_LEAD })
@@ -34,7 +34,7 @@ function shown(label = "alice1", answer: SearchAnswer = AVAILABLE, change: Parti
 }
 
 describe("screenOf", () => {
-  const cases: [Opening, SearchKind][] = [["plain", "search:plain"], ["fromApp", "search:fromApp"], ["retarget", "search:retarget"], ["bad-app-link", "status:bad-app-link"]]
+  const cases: [Opening, SearchKind][] = [["plain", "search:plain"], ["retarget", "search:retarget"]]
   it.each(cases)("a page opened %s shows %s", (opening, kind) => {
     expect(screenOf(open({ opening }))).toBe(kind)
   })
@@ -67,9 +67,8 @@ describe("reduce: opened", () => {
     const s = open({ name: "alice1" })
     expect(s).toMatchObject({ opening: "plain", name: "alice1", typed: "alice1", searched: null, answer: null, hold: null, paused: false })
   })
-  it("keeps the order a retarget search moves, and the app's wallet", () => {
+  it("keeps the order a retarget search moves", () => {
     expect(open({ opening: "retarget", retarget: record() }).retarget).toEqual(record())
-    expect(open({ opening: "fromApp", fromApp: OWNER }).fromApp).toBe(OWNER)
   })
   it("drawn again, a name searched keeps its answer and the field its name", () => {
     const s = shown()
@@ -278,7 +277,7 @@ describe("returnedTo", () => {
   it("starts anew for another name, another way of opening, or a page that showed no answer", () => {
     const s = shown()
     expect(returnedTo(s, "plain", "bobby1", [])).toEqual(initialSearch())
-    expect(returnedTo(s, "fromApp", "alice1", [])).toEqual(initialSearch())
+    expect(returnedTo(s, "retarget", "alice1", [])).toEqual(initialSearch())
     expect(returnedTo(open({ name: "alice1" }), "plain", "alice1", [])).toEqual(initialSearch())
     const ruled = reduce(open({ name: "abc" }), searchedEvent("abc"))
     expect(returnedTo(ruled, "plain", "abc", [])).toEqual(initialSearch())
