@@ -172,15 +172,18 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
       refuse("This link could not be opened.")
     }
   }
+  // one scan at a time, ended with the field's page
   async function scanned(): Promise<void> {
     let text: string | null
+    scan.disabled = true
     try {
-      text = await scanQr()
-    } catch (e) {
-      if (!(e instanceof DOMException)) throw e
+      text = await scanQr(life.signal)
+    } catch {
       if (!shown()) return
       input.setAttribute("aria-describedby", errorId)
       return show(null, el("p", { class: "field-error", id: errorId }, icon("alert"), NO_CAMERA))
+    } finally {
+      scan.disabled = false
     }
     if (!shown()) return
     if (text !== null) {

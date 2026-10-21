@@ -1,7 +1,6 @@
 // The camera reading a link's QR code, as the app's own scan does: the platform's detector where it has one, else jsQR.
 import { el } from "../dom.ts"
 import { readQr } from "../scan.ts"
-import { onPageLeft } from "./shell.ts"
 
 interface Detector { detect(source: HTMLVideoElement): Promise<{ rawValue: string }[]> }
 interface DetectorClass { new (options: { formats: string[] }): Detector; getSupportedFormats(): Promise<string[]> }
@@ -43,14 +42,24 @@ function pixelReader(): Reader {
   }
 }
 
-let shown: HTMLDialogElement | null = null
-onPageLeft(() => shown?.close())
+const stopTracks = (stream: MediaStream) => { for (const track of stream.getTracks()) track.stop() }
 
-// Shows the rear camera over the page until it reads a QR code, resolving with its text, or with null once closed.
-// A camera refused, missing or busy rejects with the browser's DOMException.
-export async function scanQr(): Promise<string | null> {
+// Shows the rear camera over the page until it reads a QR code, resolving with its text, or with null once closed or once
+// `signal` ends, as the page that asked is left, the permission prompt open or not. A camera refused, missing or busy
+// rejects with the browser's DOMException, and so does a reader that cannot start, the camera stopped.
+export async function scanQr(signal: AbortSignal): Promise<string | null> {
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
-  const read = await nativeReader() ?? pixelReader()
+  if (signal.aborted) {
+    stopTracks(stream)
+    return null
+  }
+  let read: Reader
+  try {
+    read = await nativeReader() ?? pixelReader()
+  } catch {
+    stopTracks(stream)
+    throw new DOMException("the QR reader did not start", "NotSupportedError")
+  }
   const video = el("video", { playsinline: true, "aria-hidden": "true" })
   video.muted = true
   video.srcObject = stream
@@ -69,13 +78,14 @@ export async function scanQr(): Promise<string | null> {
       if (done) return
       done = true
       clearTimeout(timer)
-      for (const track of stream.getTracks()) track.stop()
-      shown = null
+      stopTracks(stream)
+      signal.removeEventListener("abort", close)
       if (dialog.open) dialog.close()
       dialog.remove()
       resolve(text)
     }
     dialog.addEventListener("close", () => finish(null))
+    signal.addEventListener("abort", close, { once: true })
     const look = async () => {
       const text = await read(video).catch(() => null)
       if (done) return
@@ -84,7 +94,6 @@ export async function scanQr(): Promise<string | null> {
     }
     document.body.append(dialog)
     dialog.showModal()
-    shown = dialog
     // a play cut short by Cancel rejects, with nothing left to show
     void video.play().catch(() => undefined)
     void look()
