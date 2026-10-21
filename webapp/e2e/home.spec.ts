@@ -8,7 +8,7 @@ const LAPTOP = { width: 1280, height: 800 }
 const PICTURE = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxIDEiPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiNjNzZhM2IiLz48L3N2Zz4="
 const chat = (kind: string, displayName: string, extra: Record<string, unknown> = {}) => ({
   type: kind === "channel" ? "channel" : "address", kind, displayName, fullName: "", image: null, subscribers: kind === "channel" ? 1 : null, profile: "ok",
-  link: `https://smp8.simplex.im/${kind === "channel" ? "c" : "a"}#${kind}`, deepLink: `simplex:/${kind === "channel" ? "c" : "a"}#${kind}`, ...extra,
+  link: `https://smp8.simplex.im/${kind === "channel" ? "c" : "a"}#${kind}`, deepLink: `simplex:/${kind === "channel" ? "c" : "a"}#${kind}?h=smp8.simplex.im`, ...extra,
 })
 const EVERY_KIND = [chat("contact", "Ann", { image: PICTURE }), chat("channel", "News"), chat("business", "Shop"), chat("bot", "Helper")]
 
@@ -51,7 +51,8 @@ test("a chat's picture opens its profile as the app's connection alert, which Es
   await expect(dialog.locator("svg.qr")).toBeVisible()
   const open = dialog.getByRole("link", { name: "Open channel in SimpleX" })
   await expect(open).toBeFocused()
-  await expect(open).toHaveAttribute("href", /^simplex:\/c#/)
+  // the chat core's form, which keeps the server, so the app can open it
+  await expect(open).toHaveAttribute("href", "simplex:/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm?h=smp9.simplex.im")
   await shot(page, "N2g-chat-popup")
   if (browserName === "chromium") {
     await context.grantPermissions(["clipboard-read", "clipboard-write"])

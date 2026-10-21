@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, termEnd } from "../src/format.ts"
+import { deepLinkOf } from "../dev/mock/links.ts"
 import { foldLabel, labelProblem, linkKind, linkProblem, LINK_MAX_BYTES, linkTooLong } from "../src/names.ts"
 
 describe("label rules", () => {
@@ -58,6 +59,23 @@ describe("link rules", () => {
     expect(linkTooLong(long)).toBe(true)
     expect(linkTooLong(`${contact}?x=${"\u00e9".repeat(LINK_MAX_BYTES / 2)}`), "two bytes a letter").toBe(true)
     expect(linkTooLong(contact)).toBe(false)
+  })
+})
+
+describe("the mock's deep link", () => {
+  const key = "Y8m3qT0vLw2Ab7cD9eF1gH3jK5mN7pQ9rS"
+  const onion = "o5vmywmrnaxalvz6wi3zicyftgio6psuvyniis6gco6bp6ekl4cqj4id.onion"
+
+  it("keeps the server as the chat core writes it, so the app can open the link", () => {
+    expect(deepLinkOf(`https://smp8.simplex.im/a#${key}`)).toBe(`simplex:/a#${key}?h=smp8.simplex.im`)
+    expect(deepLinkOf(`https://smp9.simplex.im/c#${key}`)).toBe(`simplex:/c#${key}?h=smp9.simplex.im`)
+  })
+
+  it("puts the link's host before its other hosts, then its port and key hash, and passes a page-accepted link", () => {
+    const deep = deepLinkOf(`https://smp4.simplex.im/a#${key}?c=1234-w&h=${onion}&p=5223`)
+    expect(deep).toBe(`simplex:/a#${key}?h=smp4.simplex.im%2C${onion}&p=5223&c=1234-w`)
+    expect(linkKind(deep)).toBe("contact")
+    expect(deepLinkOf(deep), "a simplex:/ link is in that form already").toBe(deep)
   })
 })
 

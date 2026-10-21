@@ -14,6 +14,7 @@ import {
 } from "./chain.ts"
 import { TERM_START_S, untilChainTime } from "../chain-time.ts"
 import { addressFor } from "./addresses.ts"
+import { deepLinkOf } from "./links.ts"
 
 const YEARS = 2
 // SimplexPriceOracle's attoUSD to the cent
@@ -277,7 +278,7 @@ function linkProfile(link: string): Profile | null {
 
 function entity(link: string) {
   const profile = linkProfile(link)
-  return profile && { ...profile, link, deepLink: link.replace(/^https:\/\/[^/]+\//, "simplex:/") }
+  return profile && { ...profile, link, deepLink: deepLinkOf(link) }
 }
 
 // --- search
