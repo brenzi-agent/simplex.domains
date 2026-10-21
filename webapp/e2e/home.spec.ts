@@ -69,6 +69,13 @@ test("a chat's picture opens its profile as the app's connection alert, which Es
   await expect(page.getByRole("dialog", { name: "Bakery news" }).locator("svg.qr")).toBeHidden()
   await page.getByRole("dialog", { name: "Bakery news" }).getByRole("button", { name: "Close" }).click()
   await expect(page.getByRole("dialog")).toHaveCount(0)
+
+  // a popup open as its page is left goes with it
+  await news.click()
+  await expect(page.getByRole("dialog", { name: "Bakery news" })).toBeVisible()
+  await page.evaluate(() => { location.hash = "#/names" })
+  await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
+  await expect(page.getByRole("dialog")).toHaveCount(0)
 })
 
 test("a phone's header is the symbol and a menu button, whose menu over the page leads everywhere the header and footer do", async ({ page }) => {

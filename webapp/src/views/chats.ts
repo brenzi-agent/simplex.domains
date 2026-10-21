@@ -3,7 +3,7 @@ import type * as api from "../api.ts"
 import { copyButton, el } from "../dom.ts"
 import { chatIcon } from "../icons.ts"
 import { qrSvg } from "../qr.ts"
-import { focusOn, whenDropped } from "./shell.ts"
+import { focusOn, onPageLeft } from "./shell.ts"
 
 const KIND_NAMES: Record<api.ChatKind, string> = { contact: "Contact address", channel: "Channel", business: "Business address", bot: "Bot" }
 // links from the service come from records on chain, which anyone can write: only SimpleX and https links are followed
@@ -11,6 +11,8 @@ const SAFE_LINK = /^(simplex:\/|https:\/\/)/
 const POPUP_TITLE_ID = "chat-title"
 // the popup's return value when the page it was opened on is left, which takes focus elsewhere
 const LEFT = "left"
+let shownDialog: HTMLDialogElement | null = null
+onPageLeft(() => shownDialog?.close(LEFT))
 
 export const chatPicture = (p: api.Profile) => el("span", { class: "chat-pic" }, p.image ? el("img", { src: p.image, alt: "" }) : chatIcon(p.kind))
 
@@ -43,10 +45,11 @@ function openChat(e: api.Entity, name: string, key: string): void {
       el("div", { class: "pop-acts" }, open, copyButton(e.link, "btn quiet", "Copy link", "Copy link")),
       el("button", { class: "text-link", type: "button", onclick: close }, "Close")))
   dialog.addEventListener("close", () => {
+    shownDialog = null
     dialog.remove()
     if (dialog.returnValue !== LEFT) focusOn(key)
   })
-  whenDropped(() => dialog.close(LEFT))
+  shownDialog = dialog
   document.body.append(dialog)
   dialog.showModal()
   open?.focus()
