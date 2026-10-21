@@ -1,5 +1,5 @@
-import { expect, type Locator } from "@playwright/test"
-import { CHECKOUT_KEY, codeField, onStep, recordedFrames, recordFrames, registrationOf, search, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
+import { expect } from "@playwright/test"
+import { CHECKOUT_KEY, codeField, lineStarts, onStep, recordedFrames, recordFrames, registrationOf, search, shot, startOrder, test, toCodeStep, uniqueLabel } from "./helpers.ts"
 
 // Firefox reports a preload not used about ten seconds after its page loads
 const PRELOAD_REPORT_MS = 12_000
@@ -26,24 +26,6 @@ test("no page leaves a font preload unused in Firefox, whether a tab's first pag
   } finally {
     await fresh.close()
   }
-})
-
-// The first character of each line a text is drawn in.
-const lineStarts = (text: Locator) => text.evaluate((root) => {
-  const starts: string[] = []
-  let top = -Infinity
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    for (let i = 0; i < node.textContent!.length; i++) {
-      const range = document.createRange()
-      range.setStart(node, i)
-      range.setEnd(node, i + 1)
-      const at = range.getBoundingClientRect().top
-      if (at > top + 1) starts.push(node.textContent![i])
-      top = Math.max(top, at)
-    }
-  }
-  return starts
 })
 
 test("a name code too long for its line breaks after a hyphen, so no line starts with one", async ({ page }) => {

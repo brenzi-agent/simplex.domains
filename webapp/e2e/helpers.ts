@@ -295,3 +295,21 @@ export async function fakeRegisteredName(page: Page, label: string, links: { con
   })
   return order
 }
+
+// The first character of each line a text is drawn in.
+export const lineStarts = (text: Locator) => text.evaluate((root) => {
+  const starts: string[] = []
+  let top = -Infinity
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    for (let i = 0; i < node.textContent!.length; i++) {
+      const range = document.createRange()
+      range.setStart(node, i)
+      range.setEnd(node, i + 1)
+      const at = range.getBoundingClientRect().top
+      if (at > top + 1) starts.push(node.textContent![i])
+      top = Math.max(top, at)
+    }
+  }
+  return starts
+})

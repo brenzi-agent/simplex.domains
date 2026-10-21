@@ -2,7 +2,7 @@ import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
   CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown,
-  recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, savedToReview, search, shot, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel,
+  lineStarts, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, savedToReview, search, shot, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel,
   useCode, waitRegistered,
 } from "./helpers.ts"
 
@@ -239,6 +239,15 @@ async function backInView(page: Page, name: string): Promise<void> {
 
 // the tops of the home's headline and search
 const homeTops = (page: Page) => page.evaluate(() => ["h1", ".search-field"].map((s) => Math.round(document.querySelector(`.home ${s}`)!.getBoundingClientRect().top)))
+
+test("a step's lead breaks where the mockup does: the links step's last sentence whole on its own line on a laptop", async ({ page, browserName }) => {
+  test.skip(browserName === "webkit", "WebKit's text-wrap: pretty evens a paragraph's lines rather than only its last")
+  await search(page, uniqueLabel("lead"))
+  await page.getByRole("button", { name: "Register" }).click()
+  await expect(lineStarts(onStep(page).locator(".lead"))).resolves.toEqual(["P", "Y"])
+  await page.goto("/#/code")
+  await expect(lineStarts(onStep(page).locator(".lead"))).resolves.toEqual(["A", "t"])
+})
 
 // the headline's distance under the header, a laptop's and a phone's, as the mockup draws it
 const HEADLINE_GAPS = [32, 48]
