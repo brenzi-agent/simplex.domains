@@ -287,7 +287,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await expect(step.getByRole("radio")).toHaveText(["Card", "Bitcoin", "Monero"])
   await expect(step.getByRole("checkbox")).toHaveCount(0)
   // the ETH line is the other way on, under Pay
-  const dapp = step.locator(".actions-row .alt").getByRole("link", { name: "Open dApp to pay with ETH" })
+  const dapp = step.locator(".actions-row .alt").getByRole("link", { name: "Pay with ETH" })
   await expect(dapp).toHaveAttribute("href", "https://app.simplex.domains")
   expect((await dapp.boundingBox())!.y).toBeGreaterThan((await payButton(page).boundingBox())!.y)
 
