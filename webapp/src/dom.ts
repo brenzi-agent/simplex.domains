@@ -75,6 +75,9 @@ export function chip(text: string, cls = "", dot = false): HTMLSpanElement {
 
 export type Tone = "ok" | "warn" | "danger" | "info"
 
+// a line of its own, lighter than a notice: its icon, then its words
+export const line = (tone: string, ic: IconName, ...text: Kid[]) => el("p", { class: `line ${tone}` }, icon(ic), el("span", {}, ...text))
+
 export function alertBox(tone: Tone, ic: IconName, title: string | null, text: Kid): HTMLDivElement {
   return el("div", { class: `notice ${tone}` }, icon(ic), el("div", {}, title ? el("b", {}, title) : null, text))
 }

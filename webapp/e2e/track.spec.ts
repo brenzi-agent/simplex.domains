@@ -1,10 +1,9 @@
 import { expect, type Locator, type Page } from "@playwright/test"
-import { labelHash } from "../src/crypto/registration.ts"
-import { hex } from "../src/crypto/wallet.ts"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  channelLink, CODE_HEADING, codeField, contactLink, control, fillLinks, LINKS_HEADING, onStep, payButton, previewsShown, recordedFrames, recordFrames, REGISTRATION_MS,
-  registrationOf, savedToReview, search, shot, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, useCode, waitRegistered,
+  CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown,
+  recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, savedToReview, search, shot, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel,
+  useCode, waitRegistered,
 } from "./helpers.ts"
 
 test("the purchase steps swap the whole page, one screen at a time rising in, and Back walks them in reverse", async ({ page }) => {
@@ -131,6 +130,97 @@ test("every purchase step fits a laptop's and a phone's window, its heading and 
   await fitsWindow(page, "5b-pay-card")
 })
 
+const FIT_INVOICE = "inv-fitall"
+// an invoice of a kept order, as the service answers it, for a page to draw
+const invoiceOf = (o: KeptOrder, status: string, reg: Record<string, unknown>, change: Record<string, unknown> = {}) => ({
+  invoiceId: FIT_INVOICE, status, amount: 10000, currency: "usd", expiresAt: new Date(Date.now() + 3_600_000).toISOString(), kind: "name", registration: registrationView(o, reg),
+  cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bcrt1qjhmc6927ct4w4vnas0g70pg3sdhgfdhcl8pd7s", ...change,
+})
+// the money that reached an invoice short of its amount
+const PART = { cryptoAmountPaid: "0.0005", cryptoAmountDue: "0.00106", paidInFull: false }
+
+test(`every outcome and refusal of an order fits both windows for a name of ${MAX_LABEL_LENGTH} wide letters, its heading and main button where every step's are`, async ({ page, browser, request }) => {
+  const label = wideLabel(MAX_LABEL_LENGTH)
+  const frames: Record<string, Frame[]> = {}
+  const order = await keepOrder(page, "reg-fitall", FIT_INVOICE, label)
+  let invoice = invoiceOf(order, "open", {}, PART)
+  await page.route(`**/api/invoice/${FIT_INVOICE}*`, (route) => route.fulfill({ json: invoice }))
+  await page.route("**/api/registration/reg-fitall*", (route) => route.fulfill({ json: invoice.registration }))
+  const shown = async (name: string, next: typeof invoice, heading: string | RegExp) => {
+    invoice = next
+    await page.goto("/#/trademarks")
+    await page.goto(`/?order=${FIT_INVOICE}`)
+    await expect(onStep(page).getByRole("heading", { name: heading })).toBeVisible()
+    await fitsWindow(page, name, frames)
+  }
+  await shown("o1-partial-bitcoin", invoice, "Pay with Bitcoin")
+  await shown("o2-closed-part-paid", invoiceOf(order, "expired", {}, PART), "Invoice closed")
+  await shown("o3-paid-not-registered", invoiceOf(order, "paid", { phase: "failed", commitTx: "0x02", error: "The registration transaction reverted on chain" }), "Paid, not registered")
+  await page.route("**/api/registration/reg-fitall/retry", (route) => route.fulfill({ status: 500, json: { error: "internal" } }))
+  await onStep(page).getByRole("button", { name: "Try again" }).click()
+  await expect(onStep(page).getByText("That did not go through")).toBeVisible()
+  await fitsWindow(page, "o3b-not-registered-retry-refused", frames)
+  await shown("o4-code-issued", invoiceOf(order, "paid", { phase: "code_issued", commitTx: "0x02" }), "Here is a code instead")
+  // a taken order seen in a browser without its code, which says where to add the code
+  const elsewhere = await browser.newContext()
+  const stranger = await elsewhere.newPage()
+  await stranger.route(`**/api/invoice/${FIT_INVOICE}*`, (route) => route.fulfill({ json: invoiceOf(order, "paid", { phase: "taken", commitTx: "0x02" }) }))
+  await stranger.goto(`/?order=${FIT_INVOICE}`)
+  await expect(onStep(stranger).getByText("The name code is not in this browser")).toBeVisible()
+  await fitsWindow(stranger, "o5-taken-without-code", frames)
+  await elsewhere.close()
+
+  // Check your order turning down a code and a method, then the price changed and too many attempts
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  await useCode(page, code)
+  await search(page, label)
+  await toReview(page)
+  await page.route("**/api/name/register", (route) => route.fulfill({ status: 400, json: { error: "code_used" } }))
+  await onStep(page).getByRole("button", { name: "Register with your code" }).click()
+  await expect(onStep(page).getByText("This code was already used.")).toBeVisible()
+  await page.getByRole("radio", { name: "Card" }).click()
+  await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 503, json: { error: "provider_unavailable" } }) : route.continue())
+  await payButton(page).click()
+  await expect(onStep(page).getByText("Card is temporarily unavailable")).toBeVisible()
+  await fitsWindow(page, "o6-review-code-and-method-refused", frames)
+  await page.unroute("**/api/invoice")
+  await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 409, json: { error: "catalog_changed", price: 12345 } }) : route.continue())
+  await payButton(page).click()
+  await expect(onStep(page).getByRole("heading", { name: "The price changed" })).toBeVisible()
+  await fitsWindow(page, "o7-price-changed", frames)
+  // the review opened again takes the new price
+  await page.reload()
+  await page.unroute("**/api/invoice")
+  await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": "60" }, json: { error: "rate_limited" } }) : route.continue())
+  await payButton(page).click()
+  await expect(onStep(page).getByRole("heading", { name: "Too many attempts" })).toBeVisible()
+  await fitsWindow(page, "o8-too-many", frames)
+  oneFrame(frames)
+})
+
+test(`Edit links fits both windows with its answer, for a name of ${MAX_LABEL_LENGTH} wide letters`, async ({ page }) => {
+  const label = wideLabel(MAX_LABEL_LENGTH)
+  const links = { contact: contactLink("E1"), channel: channelLink("E2") }
+  // the chain moves on to a newer save as this one is refused
+  let saved = 0
+  const { registrationId } = await fakeRegisteredName(page, label, links, () => saved ? { links: { ...links, contact: contactLink("E3") }, nonce: 1 } : { links, nonce: 0 })
+  await page.route("**/api/name/records", (route) => {
+    saved += 1
+    return route.fulfill({ status: 400, json: { error: "bad_request" } })
+  })
+  await page.goto(`/#/edit/${registrationId}`)
+  await previewsShown(page)
+  const frames: Record<string, Frame[]> = {}
+  await fitsWindow(page, "e1-edit-links", frames)
+  await onStep(page).getByRole("textbox", { name: "Link", exact: true }).fill(contactLink("E4"))
+  await previewsShown(page)
+  await onStep(page).getByRole("button", { name: "Save links" }).click()
+  await expect(onStep(page).getByText("An earlier save got there first")).toBeVisible()
+  await previewsShown(page)
+  await fitsWindow(page, "e2-edit-links-moved", frames)
+  oneFrame(frames)
+})
+
 // widths a laptop's or a tablet's window has, from where the column first leaves margins beside it
 const BACK_WIDTHS = [900, 1024, 1280]
 
@@ -177,16 +267,14 @@ test("the home keeps its headline and search still as each kind of answer comes,
   }
 })
 
-const OWNER = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
-const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
 const linked = (kind: "contact" | "channel") => ({ type: kind === "contact" ? "address" : "channel", kind, displayName: kind, fullName: "", image: null,
   subscribers: kind === "channel" ? 12 : null, link: kind === "contact" ? contactLink("H1") : channelLink("H2"), deepLink: "simplex:/a#x" })
-// the search's answers for a name: available, taken with two chats, and this browser's with two chats
-const HOME_ANSWERS = {
+// the search's answers for a name: available, taken with two chats, and this browser's, of `owner`, with two chats
+const homeAnswers = (owner: string) => ({
   available: { status: "available", price: 10000, currency: "usd", years: 2, ...CHAIN },
   taken: { status: "registered", entities: [linked("contact"), linked("channel")], owner: `0x${"00".repeat(19)}01`, tld: "simplex" },
-  yours: { status: "registered", entities: [linked("contact"), linked("channel")], owner: OWNER, tld: "simplex" },
-}
+  yours: { status: "registered", entities: [linked("contact"), linked("channel")], owner, tld: "simplex" },
+})
 
 // how far anything in the answer's row reaches past the row, the row's height and the lines its name takes
 const rowFit = (page: Page) => page.evaluate(() => {
@@ -201,13 +289,9 @@ const SHORT_NAME = "udumhd"
 
 test("each home answer holds its name inside its row, and a name of six letters on one line, at a laptop's and a phone's size", async ({ page }) => {
   for (const label of [SHORT_NAME, wideLabel(6), wideLabel(MAX_LABEL_LENGTH)]) {
-    await page.goto("/#/trademarks")
-    await page.evaluate(({ label, hash, owner }) => localStorage.setItem("simplex-names:order:reg-rowfit", JSON.stringify({
-      registrationId: "reg-rowfit", invoiceId: null, label, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner, contact: "", channel: "", method: "code", paid: 0,
-      years: 2, tld: "simplex", createdAt: new Date().toISOString(), request: { labelHash: hash, length: label.length, owner, commitment: "0x01", sealed: "sealed" },
-    })), { label, hash: hex(labelHash(label)), owner: OWNER })
+    const { owner } = await keepOrder(page, "reg-rowfit", null, label)
     await page.route("**/api/registration/reg-rowfit*", (route) => route.fulfill({ status: 404, json: { error: "not_found" } }))
-    for (const [state, answer] of Object.entries(HOME_ANSWERS)) {
+    for (const [state, answer] of Object.entries(homeAnswers(owner))) {
       await page.unroute("**/api/name/**")
       await page.route("**/api/name/**", (route) => route.fulfill({ json: answer }))
       for (const size of FIT_SIZES) {

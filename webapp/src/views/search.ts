@@ -2,10 +2,9 @@
 import * as api from "../api.ts"
 import { labelHash } from "../crypto/registration.ts"
 import { hex } from "../crypto/wallet.ts"
-import { alertBox, btn, el, icon, type Kid, link, nameText, nameTitle, setAction, waitOut } from "../dom.ts"
+import { alertBox, btn, el, icon, type Kid, line, link, nameText, nameTitle, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dollars, letters } from "../format.ts"
-import type { IconName } from "../icons.ts"
 import { foldLabel, MAX_LABEL_LENGTH } from "../names.ts"
 import type { Hold } from "../screens/hold.ts"
 import { againLine, ranOut } from "../screens/names.ts"
@@ -246,8 +245,6 @@ function openingLine(s: SearchState): HTMLElement | null {
   const worth = dollars(s.retarget.paid)
   return alertBox("info", "wallet", `Your payment is kept: ${worth}.`, `Choose another name of up to ${worth}; nothing more is charged.`)
 }
-
-const line = (tone: string, ic: IconName, ...text: Kid[]) => el("p", { class: `line ${tone}` }, icon(ic), el("span", {}, ...text))
 
 function answerOf(s: SearchState, retry: () => void, signal: AbortSignal): Kid {
   if (s.paused && s.hold) return pauseLine(s.hold, signal)

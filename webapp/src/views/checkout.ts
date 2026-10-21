@@ -1,6 +1,6 @@
 // The checkout's steps: the links the name opens, its name code, and Check your order with how it pays, and Pay.
 import * as api from "../api.ts"
-import { alertBox, btn, codeDisplay, el, link, nameText, nameTitle, setAction } from "../dom.ts"
+import { alertBox, btn, codeDisplay, el, line, link, nameText, nameTitle, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, freeDays, methodName, TERM_START_S, termEnd } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
@@ -184,7 +184,7 @@ function methodsBlock({ checkout: c, openOrder: order, sending }: CheckoutState)
   return el("section", { class: "pay-with" },
     order ? el("p", { class: "note other-order" }, `Another order ${order.confirming ? "is confirming its payment" : "is waiting for its payment"}. `,
       el("a", { class: "nowrap", href: store.invoiceUrl(order.invoiceId) }, "Open that order")) : null,
-    c.unavailable ? alertBox("warn", "alert", `${methodName(c.unavailable)} is temporarily unavailable`, "Try another method, or come back later.") : null,
+    c.unavailable ? line("warn", "alert", `${methodName(c.unavailable)} is temporarily unavailable. Try another method, or come back later.`) : null,
     el("div", { class: "methods", role: "radiogroup", "aria-label": "Pay with" }, ...radios))
 }
 
@@ -246,11 +246,11 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   const blocked = blockedBy(s)
   return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null) },
     el("div", { class: "review" }, orderCard(c),
-      c.codeError ? alertBox("danger", "alert", null, `${c.codeError} Pay for the name here, or check another code.`) : null,
+      c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or check another code.`) : null,
       c.code ? el("div", { class: "notes" }, el("p", {}, "Your code pays for this name. Nothing more to pay.")) : blocked ? waitingNotice(blocked) : methodsBlock(s),
       c.code || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours, to finish the registration.`),
-        el("p", {}, "Paying with ETH? ", el("a", { href: DAPP_URL, target: "_blank", rel: "noopener" }, "Register in the dApp"))),
-      payNote(s, blocked !== null, signal)))
+        el("p", {}, "Paying with ETH? ", el("a", { href: DAPP_URL, target: "_blank", rel: "noopener" }, "Register in the dApp")))),
+    payNote(s, blocked !== null, signal))
 }
 
 function buildPriceChanged({ checkout: c }: CheckoutState): HTMLElement {

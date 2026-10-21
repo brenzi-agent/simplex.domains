@@ -336,10 +336,13 @@ function buildPaidByInvoice({ view, record }: OrderState): HTMLElement {
 const labelOf = (view: api.RegistrationView, record: store.OrderRecord | null) => view.label ?? record?.label ?? null
 const UNKNOWN_NAME = "The name shows once it is registered"
 
+// what the order is for and what it cost, after its name where the screen has not said it already
+const termLine = ({ view, invoice }: OrderState): Kid[] => [el("span", { class: "nowrap" }, termText(view!.years)), SEP, invoice ? dollars(invoice.amount) : "With a code"]
+
 // the order in one line, the lead of each screen that pays or registers it
-function orderLine({ view, record, invoice }: OrderState): Kid[] {
-  const label = labelOf(view!, record)
-  return [label ? nameText(label, view!.tld) : UNKNOWN_NAME, SEP, el("span", { class: "nowrap" }, termText(view!.years)), SEP, invoice ? dollars(invoice.amount) : "With a code"]
+function orderLine(s: OrderState): Kid[] {
+  const label = labelOf(s.view!, s.record)
+  return [label ? nameText(label, s.view!.tld) : UNKNOWN_NAME, SEP, ...termLine(s)]
 }
 
 const TICKER: Record<"btc" | "xmr", string> = { btc: "BTC", xmr: "XMR" }
@@ -813,7 +816,7 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
   const cannot = canAct ? null : alertBox("info", "key", "The name code is not in this browser", "Add it in Check your code to choose another name or take a code.")
   return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."],
     alt: code, action: other },
-    el("p", { class: "note" }, ...orderLine(s)),
+    el("p", { class: "note" }, ...termLine(s)),
     stages(["done", "done", "failed"]),
     el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it, or take a code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for ${PRICED_YEARS} years.`),
     cannot,
@@ -850,7 +853,7 @@ function buildCodeIssued({ view: issued, record }: OrderState): HTMLElement {
     text: [`For names of ${codeTier(record.label.length)} or more letters, for ${PRICED_YEARS} years: what `, nameText(record.label, view.tld), " was paid for."],
     action: btn("Search another name", "quiet", () => go("/#/")),
     extra: [codeDisplay(code),
-      el("div", { class: "center mt-16" }, el("div", { class: "qr" }, qrSvg(code, "code"))),
+      el("div", { class: "code-qr" }, qrSvg(code, "code")),
       el("div", { class: "left" }, alertBox("info", "info", "Keep a copy of this code", "The service keeps only its hash; this browser keeps the code, under Your names."))] })
 }
 

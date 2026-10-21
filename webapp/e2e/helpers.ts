@@ -1,5 +1,8 @@
 import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Locator, type Page } from "@playwright/test"
 import { mkdirSync } from "node:fs"
+import { labelHash } from "../src/crypto/registration.ts"
+import { checksumAddress, hex } from "../src/crypto/wallet.ts"
+import { newOwnerCode, walletOf } from "../src/flow.ts"
 import { mockUrl, pageUrl } from "./slots.ts"
 
 const SCREENSHOTS = process.env.SCREENSHOTS_DIR ?? "screenshots"
@@ -254,4 +257,41 @@ export const test = base.extend<{ cspViolations: void }>({
 
 export async function waitRegistered(page: Page, label: string): Promise<void> {
   await expect(page.getByRole("heading", { name: `${label}.simplex is yours` })).toBeVisible({ timeout: REGISTRATION_MS })
+}
+
+export const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
+const YEAR_S = 365 * 86_400
+
+export interface KeptOrder { registrationId: string; invoiceId: string | null; label: string; ownerCode: string; owner: string; request: { labelHash: string; commitment: string } }
+
+// An order of `label` this browser keeps under a name code of its own, as a checkout stores one, with no service behind it.
+export async function keepOrder(page: Page, registrationId: string, invoiceId: string | null, label: string, links = { contact: "", channel: "" }): Promise<KeptOrder> {
+  const ownerCode = newOwnerCode()
+  const owner = checksumAddress(walletOf(ownerCode)!.address)
+  const request = { labelHash: hex(labelHash(label)), length: label.length, owner, commitment: `0x${"01".repeat(32)}`, sealed: "sealed" }
+  const record = { registrationId, invoiceId, label, ownerCode, owner, ...links, method: invoiceId ? "btc" : "code", paid: 10000, years: 2, tld: "simplex",
+    createdAt: new Date().toISOString(), request }
+  await page.goto("/#/trademarks")
+  await page.evaluate((r) => localStorage.setItem(`simplex-names:order:${r.registrationId}`, JSON.stringify(r)), record)
+  return record
+}
+
+// The service's view of a kept order's registration, as its API answers it.
+export const registrationView = (o: KeptOrder, change: Record<string, unknown> = {}) => ({
+  ...CHAIN, id: o.registrationId, phase: "unpaid", labelHash: o.request.labelHash, label: o.label, owner: o.owner, commitment: o.request.commitment, sealed: "sealed",
+  years: 2, price: 10000, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, ...change,
+})
+
+// A registered name of this browser's code, as the service answers it, holding `links` until `records` answers otherwise.
+export async function fakeRegisteredName(page: Page, label: string, links: { contact: string; channel: string },
+  records: () => { links: { contact: string; channel: string }; nonce: number } = () => ({ links, nonce: 0 })): Promise<KeptOrder> {
+  const order = await keepOrder(page, `reg-${label.slice(0, 12)}`, null, label, links)
+  const expiresAt = Math.floor(Date.now() / 1000) + YEAR_S
+  await page.route(`**/api/registration/${order.registrationId}*`, (route) => route.fulfill({ json: registrationView(order, { phase: "registered", commitTx: "0x02", registerTx: "0x03", expiresAt }) }))
+  await page.route("**/api/name/**", (route) => {
+    const now = records()
+    return route.fulfill({ json: { status: "registered", entities: [], owner: order.owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId, records: now.links, recordsNonce: now.nonce,
+      expiresAt, tld: "simplex" } })
+  })
+  return order
 }
