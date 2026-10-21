@@ -210,12 +210,12 @@ body > main { display: flex; flex-direction: column; min-width: 0; }
 /* pill fields, as the mockup's search field, ringed while in use */
 .field { display: flex; align-items: center; gap: 10px; height: var(--field-h); padding: 0 20px; border: 1px solid var(--line-strong); border-radius: 999px;
   background: var(--surface); cursor: text; }
-.field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+/* an input draws no ring of its own, so its pill shows the focus ring */
+.field:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .field > svg.i { color: var(--faint); }
 .field input { flex: 1; min-width: 0; height: 24px; border: 0; background: none; outline: none; font: 600 var(--fs-body) var(--body); color: var(--ink); }
 .field input::placeholder { color: var(--faint); font-weight: 500; }
 .field.bad { border-color: var(--danger-fg); }
-.field.bad:focus-within { box-shadow: 0 0 0 1px var(--danger-fg); }
 .field.ok { border-color: var(--ok-fg); }
 .notice { display: flex; gap: 12px; padding: 12px 16px; border-radius: 16px; border: 1px solid; font-size: var(--fs-small); text-align: left; }
 .notice.ok { color: var(--ok-fg); background: var(--ok-bg); border-color: var(--ok-line); }
@@ -506,7 +506,11 @@ main h1:focus { outline: none; }
 html.dark .monero-base { fill: #fff; }
 
 @media (hover: hover) {
-  .brand:hover { text-decoration: none; }
+  .brand:hover { text-decoration: none; opacity: .8; }
+  .theme-switch:not(.theme-line):hover { opacity: .7; }
+  .theme-line:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .menu-button:hover { background: var(--chip); }
+  .field:not(.bad, .ok):hover { border-color: var(--primary); }
   .btn:not([disabled], [aria-busy="true"]):hover { filter: brightness(1.08); }
   .btn.quiet:not([disabled], [aria-busy="true"]):hover { background: var(--chip); filter: none; }
   .method[aria-checked="false"]:not([aria-disabled]):hover { border-color: var(--line-strong); background: color-mix(in srgb, var(--surface), var(--primary) 4%); }
@@ -588,7 +592,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
    but at once, so two screens never show together. */
 .enter { animation: rise 220ms var(--ease) backwards; }
 /* controls ease their colours as the pointer, a choice or a state changes them, and follow the theme's tokens as it switches */
-html:not(.theming) :is(.btn, .field, .back, .chat, .unlink, .method, .field-copy, .check, .check .box) { transition: background-color var(--fast), border-color var(--fast), box-shadow var(--fast), color var(--fast), filter var(--fast); }
+html:not(.theming) :is(.btn, .field, .back, .chat, .unlink, .method, .field-copy, .check, .check .box, .brand, .theme-switch, .menu-button) { transition: background-color var(--fast), border-color var(--fast), box-shadow var(--fast), color var(--fast), filter var(--fast), opacity var(--fast); }
 .copied-note { transition: opacity var(--fast), translate var(--fast) var(--ease); }
 :where(.answer > *, .notice, .entity, .other-order, .field-error, .verdict:not(:empty), .offline-note:not(:has(> span:empty))) { animation: arrive 180ms var(--ease) backwards; }
 /* shell.ts marks what a redraw draws again as shown */
