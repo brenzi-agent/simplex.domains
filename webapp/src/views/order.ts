@@ -618,8 +618,8 @@ async function cancelInvoice(): Promise<void> {
     answer(gen, { type: "cancel-answered", note: stillOpen ? { tone: "danger", icon: "alert", title: null, text: cancelStillOpen(after) } : null })
     if (!stillOpen) reread(gen)
   } catch (e) {
-    // an invoice that closed meanwhile is shown as it is now
-    if (e instanceof api.ApiError && e.code === "not_open") {
+    // an invoice that closed meanwhile, or an order another request changed first, is shown as it is now
+    if (e instanceof api.ApiError && (e.code === "not_open" || e.code === "registration_changed")) {
       answer(gen, { type: "cancel-answered", note: null })
       return reread(gen)
     }

@@ -76,7 +76,7 @@ interface Registration {
   // the hash of the prepaid code that pays for it; a code issued for a taken order is known only by its hash
   prepaidCode: string | null
   phase: Phase
-  // counts every change to what the view shows; long polls hold on it
+  // counts every change to what the view shows; long polls hold on it, and every write is conditional on it
   version: number
   label: string | null
   secret: Hex | null
@@ -130,9 +130,9 @@ const taking = new Map<string, Promise<void>>()
 // and the next cancel answers with the invoice still open, as the real service may when the provider took the cancel late;
 // find has a rate limit of its own
 // until unsentUntil, no transaction goes out, as a chain that fails before the send; until unreadUntil, the view's own chain
-// reads fail
-const control: { chainDown: boolean; limitedUntil: number; invoiceError: string | null; cancelStillOpen: boolean; findLimitedUntil: number; unsentUntil: number; unreadUntil: number } =
-  { chainDown: false, limitedUntil: 0, invoiceError: null, cancelStillOpen: false, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0 }
+// reads fail; each write to a registration waits writeDelayMs before its check, so a test can race two
+const control: { chainDown: boolean; limitedUntil: number; invoiceError: string | null; cancelStillOpen: boolean; findLimitedUntil: number; unsentUntil: number; unreadUntil: number; writeDelayMs: number } =
+  { chainDown: false, limitedUntil: 0, invoiceError: null, cancelStillOpen: false, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0, writeDelayMs: 0 }
 
 const sendTx: typeof send = (...args) => Date.now() < control.unsentUntil ? Promise.reject(new NotSent()) : send(...args)
 const INVOICE_ERRORS: Record<string, number> = { provider_unavailable: 503, rate_limited: 429, catalog_changed: 409, internal: 500 }
@@ -184,6 +184,12 @@ function changed(reg: Registration): void {
 }
 
 const wake = (reg: Registration) => publish(reg.id, reg.invoiceId)
+
+// A write to a registration is a compare-and-set on the version its request read: one that lost a race changes nothing.
+async function unchangedSince(reg: Registration, version: number): Promise<void> {
+  if (control.writeDelayMs) await sleep(control.writeDelayMs)
+  if (reg.version !== version) throw new HttpError(409, "registration_changed", { registration: await registrationView(reg) })
+}
 
 async function hold(key: string, unchanged: () => boolean): Promise<void> {
   if (!unchanged()) return
@@ -776,6 +782,7 @@ export async function reveal(registrationId: string, body: Record<string, unknow
     throw badRequest()
   }
   if (reg.phase !== "committed") throw badRequest()
+  const version = reg.version
   const { label, secret, nonce, deadline } = body
   if (typeof label !== "string" || labelProblem(label) !== null) throw badRequest()
   if (keccak256(toHex(label)) !== reg.labelHash || label.length !== reg.length) throw badRequest()
@@ -799,6 +806,7 @@ export async function reveal(registrationId: string, body: Record<string, unknow
   })
   if (signer !== reg.owner) throw badRequest()
   if (BigInt(nonce) !== (await read<bigint>(sponsor, "nonces", [reg.owner]).catch(unavailable))) throw badRequest()
+  await unchangedSince(reg, version)
   reg.label = label
   reg.secret = secret
   reg.records = records
@@ -824,11 +832,13 @@ export async function retarget(registrationId: string, body: Record<string, unkn
   const order = orderBody({ ...body, owner: reg.owner })
   await checkSigned(reg.owner, `simplex.domains name ${reg.id} ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${sha256Hex(order.sealed)} ${body.timestamp}`, body.timestamp, body.signature)
   if (reg.phase !== "taken" || reg.method === "code") throw badRequest()
+  const version = reg.version
   existingOrder(order, null, reg)
   checkDuration(order.duration, reg.years)
   await nameFree(order.labelHash)
   const price = await chainPrice(order.length, reg.years)
   if (price > reg.paid) throw badRequest()
+  await unchangedSince(reg, version)
   // the order now has the new name's price, which caps any later retarget
   Object.assign(reg, { labelHash: order.labelHash, length: order.length, duration: order.duration, commitment: order.commitment, sealed: order.sealed, paid: price, phase: "queued", commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, error: null })
   clearReveal(reg)
@@ -847,6 +857,7 @@ export async function takenCode(registrationId: string, body: Record<string, unk
   if (reg.issuedCodeHash === hash) return {}
   if (reg.phase !== "taken" || reg.method === "code") throw badRequest()
   if (codes.has(hash)) throw new HttpError(409, "code_conflict")
+  await unchangedSince(reg, reg.version)
   // the service never sees the code, only its hash; the page shows the code it derived
   codes.set(hash, { minLength: Math.min(reg.length, 8), years: YEARS, state: "unused", registrationId: null })
   reg.issuedCodeHash = hash
@@ -860,11 +871,14 @@ export async function retry(registrationId: string): Promise<Record<string, unkn
   if (!reg) throw new HttpError(404, "not_found")
   lapse(reg)
   if (reg.phase !== "failed") throw badRequest()
+  const version = reg.version
   if ((await ownerOf(reg.labelHash).catch(unavailable)) === reg.owner) {
-      await registered(reg).catch(unavailable)
+    await unchangedSince(reg, version)
+    await registered(reg).catch(unavailable)
     return registrationView(reg)
   }
   const nonce = reg.intent ? await read<bigint>(sponsor, "nonces", [reg.owner]).catch(unavailable) : null
+  await unchangedSince(reg, version)
   if (reg.prepaidCode) {
     const row = codes.get(reg.prepaidCode)
     const error = row && row.state !== "unused" && row.registrationId !== reg.id ? CODE_ERRORS[row.state] : undefined
@@ -1020,6 +1034,7 @@ export function controlSearch(body: Record<string, unknown>): Record<string, unk
   if (typeof body.findLimitSeconds === "number") control.findLimitedUntil = Date.now() + body.findLimitSeconds * 1000
   if (typeof body.unsentSeconds === "number") control.unsentUntil = Date.now() + body.unsentSeconds * 1000
   if (typeof body.unreadSeconds === "number") control.unreadUntil = Date.now() + body.unreadSeconds * 1000
+  if (typeof body.writeDelayMs === "number") control.writeDelayMs = body.writeDelayMs
   return { ok: true }
 }
 
