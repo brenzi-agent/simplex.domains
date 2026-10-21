@@ -24,9 +24,9 @@ const MAX_LABEL_LENGTH = 63n
 // Chainlink's 8 decimals; 1e8 makes 1 attoUSD cost 1 wei, as in the PR's fixture
 const FEED_DECIMALS = 8
 const FEED_PRICE = 100_000_000n
-// the fixture's prices: $10 a year, ten times more for each letter below six
-const PRICE_BASE = 1000n
-const PRICE_EXCEPTIONS = [1n, 2n, 3n, 4n, 5n].map((n) => ({ labelLength: n, priceCentsPerYear: PRICE_BASE * 10n ** (6n - n) }))
+// the launch prices in cents a year (owner, 2026-10-21): $100, $200 and $400 for 2 years at 8 or more, 7 and 6 letters
+const PRICE_BASE = 5000n
+const PRICE_EXCEPTIONS = [{ labelLength: 7n, priceCentsPerYear: 10000n }, { labelLength: 6n, priceCentsPerYear: 20000n }]
 // the seeded names are registered as a paid order is, with the bonus days
 const SEED_YEARS = 2
 // the registrar's credit in USD with 18 decimals, more than any number of test runs spends

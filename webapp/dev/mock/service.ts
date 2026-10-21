@@ -15,8 +15,9 @@ import {
 import { untilChainTime } from "../chain-time.ts"
 
 const YEARS = 2
-// the page's price for a name, in cents, by length: 8 and more is one tier
-const PRICES: Record<number, number> = { 6: 40000, 7: 20000, 8: 10000 }
+// SimplexPriceOracle.SECONDS_PER_YEAR and its attoUSD to the cent
+const YEAR_S = 365 * 86400
+const ATTO_PER_CENT = 10n ** 16n
 // rates for the crypto amounts, in dollars
 const RATES = { btc: 64000, xmr: 160 }
 // Each invoice its own address, as BTCPay gives one: shaped as a Bitcoin bech32 or a Monero address, payable by nobody.
@@ -148,7 +149,13 @@ const nowSeconds = () => Math.floor(Date.now() / 1000)
 const iso = (seconds: number) => new Date(seconds * 1000).toISOString().replace(/\.\d+Z$/, "Z")
 const isHash = (v: unknown): v is Hex => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v)
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-export const priceOf = (length: number) => PRICES[Math.min(length, 8)]
+
+// The oracle prices by length only, so a label of as many letters "a" quotes every label of that length, and the label
+// itself never reaches the node. A failed read throws.
+async function priceOf(length: number, years: number): Promise<number> {
+  const quote = await read<{ base: bigint }>(controller, "rentPriceUSD", ["a".repeat(length), BigInt(years * YEAR_S)])
+  return Number(quote.base / ATTO_PER_CENT)
+}
 
 // --- long poll
 
@@ -260,7 +267,8 @@ export async function search(hash: string, lengthText: string | null): Promise<R
   if (found.type === "reserved") return { status: "reserved" }
   if (found.type === "available") {
     if (registering(hash)) return { status: "registered", entities: [], tld: deployment.tld }
-    return { status: "available", price: priceOf(length), currency: "usd", years: YEARS, resolver: deployment.resolver, sponsor: deployment.sponsor, ...chain }
+    const price = await priceOf(length, YEARS).catch(unavailable)
+    return { status: "available", price, currency: "usd", years: YEARS, resolver: deployment.resolver, sponsor: deployment.sponsor, ...chain }
   }
   // Records are read only from the store's own resolver: calling whatever contract a name points at would let anyone
   // make the service run arbitrary code. A name pointed elsewhere is shown with its owner and no links.
@@ -332,6 +340,9 @@ function orderBody(body: Record<string, unknown>): OrderBody {
   return { labelHash, length, owner, commitment, sealed }
 }
 
+// an order's own chain reads fail with their own tag, which the page tells from a payment method being unavailable
+const chainPrice = (length: number, years: number) => priceOf(length, years).catch((): never => { throw new HttpError(503, "name_check_unavailable") })
+
 async function nameFree(labelHash: Hex): Promise<void> {
   let found: Lookup
   try {
@@ -368,7 +379,7 @@ export async function createInvoice(body: Record<string, unknown>): Promise<Reco
   const injected = control.invoiceError
   if (injected) {
     control.invoiceError = null
-    const extra = injected === "catalog_changed" ? { price: priceOf(order.length) + RAISED_PRICE_CENTS } : {}
+    const extra = injected === "catalog_changed" ? { price: await chainPrice(order.length, YEARS) + RAISED_PRICE_CENTS } : {}
     throw new HttpError(INVOICE_ERRORS[injected], injected, extra, injected === "rate_limited" ? RETRY_AFTER_SECONDS : null)
   }
   const { open, past } = sameCommitment(order.commitment)
@@ -382,7 +393,7 @@ export async function createInvoice(body: Record<string, unknown>): Promise<Reco
     return { invoiceId: null, kind: "name", registration: await registrationView(past) }
   }
   await nameFree(order.labelHash)
-  const price = priceOf(order.length)
+  const price = await chainPrice(order.length, YEARS)
   if (body.price !== price) throw new HttpError(409, "catalog_changed", { price })
   const reg = newRegistration(order, { years: YEARS, paid: price, method, prepaidCode: null, phase: "unpaid" })
   const inv: Invoice = {
@@ -767,9 +778,10 @@ export async function retarget(registrationId: string, body: Record<string, unkn
   if (open) throw badRequest({ invoiceId: open.id })
   if (past) throw badRequest()
   await nameFree(order.labelHash)
-  if (priceOf(order.length) > reg.paid) throw badRequest()
+  const price = await chainPrice(order.length, reg.years)
+  if (price > reg.paid) throw badRequest()
   // the order now has the new name's price, which caps any later retarget
-  Object.assign(reg, { labelHash: order.labelHash, length: order.length, commitment: order.commitment, sealed: order.sealed, paid: priceOf(order.length), phase: "queued", commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, error: null })
+  Object.assign(reg, { labelHash: order.labelHash, length: order.length, commitment: order.commitment, sealed: order.sealed, paid: price, phase: "queued", commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, error: null })
   clearReveal(reg)
   changed(reg)
   const view = await registrationView(reg)
