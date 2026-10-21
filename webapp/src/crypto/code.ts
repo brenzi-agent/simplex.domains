@@ -3,6 +3,7 @@ import { bytesToNumberBE, numberToBytesBE } from "@noble/curves/utils"
 import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha2"
 import { utf8ToBytes } from "@noble/hashes/utils"
+import { MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../names.ts"
 
 // Crockford base32: the digits and the upper-case letters except I, L, O and U
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -72,7 +73,9 @@ function parseOwner(body: string): NameCode | null {
 }
 
 function parsePrepaid(lengthText: string, body: string): NameCode | null {
-  if (!/^[0-9]+$/.test(lengthText)) return null
+  const minLength = Number(lengthText)
+  // a leading zero adds nothing to the check, so it would give the same code a second text and hash (Code.hs parsePrepaidBody)
+  if (!/^[1-9][0-9]*$/.test(lengthText) || minLength < MIN_LABEL_LENGTH || minLength > MAX_LABEL_LENGTH) return null
   const values: number[] = []
   for (const c of body) {
     const v = charValue(c)
@@ -82,7 +85,7 @@ function parsePrepaid(lengthText: string, body: string): NameCode | null {
   const params = [...lengthText].map((c) => ALPHABET.indexOf(c))
   if (values[PREPAID_PAYLOAD] !== checkValue([...params, ...values.slice(0, PREPAID_PAYLOAD)])) return null
   const canonicalBody = values.map((v) => ALPHABET[v]).join("")
-  return { kind: "prepaid", minLength: Number(lengthText), canonical: PREFIX + lengthText + canonicalBody, display: group(PREFIX + lengthText, canonicalBody) }
+  return { kind: "prepaid", minLength, canonical: PREFIX + lengthText + canonicalBody, display: group(PREFIX + lengthText, canonicalBody) }
 }
 
 // A taken order's code for names of `minLength` letters or more: its payload from the owner code's seed and the

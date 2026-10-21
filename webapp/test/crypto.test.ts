@@ -61,6 +61,17 @@ describe("prepaid code", () => {
     expect(parseNameCode("SN7-4K2P7-TQ9M1-ZX3RB-8HJ5X")).toBeNull()
   })
 
+  it("refuses a length outside 6 to 63 or written with a leading zero, as the service's parser does", () => {
+    // the zero adds nothing to the check, so this text passes it and only the length rule refuses it
+    expect(parseNameCode("SN07-BJTBP-29596-R3HJ8-25YM7")).toBeNull()
+    const seed = walletFromEntropy(ENTROPY).seed
+    const lengths = [5, 6, 9, 10, 63, 64].map((n) => {
+      const parsed = parseNameCode(takenOrderCode(seed, "t2Jk8RmQ4vXw9NcP3yLb6g", n).display)
+      return parsed?.kind === "prepaid" ? parsed.minLength : null
+    })
+    expect(lengths).toEqual([null, 6, 9, 10, 63, null])
+  })
+
   it("hashes the canonical form as the badge codes do: unpadded base64url SHA-256", () => {
     const expected = createHash("sha256").update("SN7BJTBP29596R3HJ825YM7").digest("base64url")
     expect(codeHash("SN7BJTBP29596R3HJ825YM7")).toBe(expected)
