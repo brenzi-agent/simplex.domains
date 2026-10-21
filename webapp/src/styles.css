@@ -259,8 +259,9 @@ h1:has(.grad) { text-wrap: pretty; }
 .name span { color: var(--faint); white-space: nowrap; }
 .name.long { font-size: 18px; }
 
-/* the home, as the direction 1 mockup: the headline, the search, and below it the room its answers take, kept from the start */
-.home { --room: 120px; flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 16px; text-align: center; }
+/* the home, as the direction 1 mockup: the headline under the header, the search, and below it the room its answers take,
+   kept from the start; an answer taller than the room grows it downwards, so nothing above it moves */
+.home { --room: 120px; flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; padding: 32px 16px; text-align: center; }
 .home h1 { --fs-h1: 56px; line-height: 1.05; letter-spacing: -.015em; }
 .home .sub { margin-top: 12px; font-size: 19px; color: var(--ink-soft); text-wrap: balance; }
 .home > .notice { width: 100%; max-width: var(--column); margin-top: 24px; }
@@ -531,7 +532,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .screen-head:has(h1 .long) { --fs-h1: 22px; }
   .screen-head .lead { line-height: 1.4; }
   .actions-row > .btn { width: 100%; min-width: 0; }
-  .home { --room: 168px; justify-content: flex-start; padding-top: 48px; }
+  .home { --room: 168px; padding-top: 48px; }
   /* two lines, as the mockup draws it, rather than one that only some fonts' widths fit */
   .home h1 { --fs-h1: 36px; max-width: 9em; }
   .home .sub { font-size: 16px; }

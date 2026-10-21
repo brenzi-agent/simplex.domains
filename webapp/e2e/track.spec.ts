@@ -150,12 +150,17 @@ async function backInView(page: Page, name: string): Promise<void> {
 // the tops of the home's headline and search
 const homeTops = (page: Page) => page.evaluate(() => ["h1", ".search-field"].map((s) => Math.round(document.querySelector(`.home ${s}`)!.getBoundingClientRect().top)))
 
+// the headline's distance under the header, a laptop's and a phone's, as the mockup draws it
+const HEADLINE_GAPS = [32, 48]
+
 test("the home keeps its headline and search still as each kind of answer comes, at a laptop's and a phone's size", async ({ page, request }) => {
-  for (const size of FIT_SIZES) {
+  for (const [i, size] of FIT_SIZES.entries()) {
     await page.setViewportSize(size)
     await page.goto("/")
     await page.evaluate(() => document.fonts.ready.then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))))
     const before = await homeTops(page)
+    const header = Math.round((await page.locator("body > header").boundingBox())!.height)
+    expect(before[0] - header, `the headline under the header at ${size.width}x${size.height}`).toBe(HEADLINE_GAPS[i])
     // each search on the same page, whose fonts have loaded: taken, taken without links, reserved, a rule, available, and no answer
     const answers: [string, string, () => Promise<unknown>][] = [["bakery", ".chat", async () => undefined], ["harbour", ".row", async () => undefined],
       ["support", ".line", async () => undefined], ["abc", ".line", async () => undefined], [uniqueLabel("still"), ".price", async () => undefined],
