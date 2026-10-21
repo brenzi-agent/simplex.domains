@@ -115,7 +115,8 @@ html.dark {
 * { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-html { background: var(--page-color); }
+/* the scrollbar's room is kept, so a page held still under a popup or the menu does not shift sideways as it goes */
+html { background: var(--page-color); scrollbar-gutter: stable; }
 /* the window holds the header, the page and the invest note; the footer is below the fold, as the badges store's */
 body { --footer-h: calc(78px + var(--note-room)); position: relative; isolation: isolate; min-height: calc(100dvh + var(--footer-h)); display: grid; grid-template-rows: auto 1fr auto var(--footer-h);
   font: 500 var(--fs-body)/1.5 var(--body); color: var(--ink);
@@ -293,7 +294,7 @@ h1:has(.grad) { text-wrap: pretty; }
   background: none; color: inherit; display: flex; align-items: center; justify-content: center; }
 .modal:not([open]) { display: none; }
 .modal::backdrop { background: none; }
-.modal-backdrop { position: absolute; inset: 0; background: var(--backdrop); backdrop-filter: blur(3px); }
+.modal-backdrop { position: absolute; inset: 0; background: var(--backdrop); }
 .pop { position: relative; z-index: 1; width: min(100%, 360px); max-height: calc(100dvh - 40px); overflow: auto; display: grid; justify-items: center; gap: 6px;
   padding: 26px 24px 18px; border: 1px solid var(--surface-line); border-radius: 22px; background: var(--surface); color: var(--ink); font-size: var(--fs-small);
   text-align: center; overflow-wrap: anywhere; }
