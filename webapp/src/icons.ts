@@ -17,6 +17,8 @@ const LINE_ICONS = {
   wallet: "M20 12V8H6a2 2 0 0 1 0-4h12v4 M4 6v12a2 2 0 0 0 2 2h14v-4 M18 12a2 2 0 0 0 0 4h4v-4h-4Z",
   search: "M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13Z M15.5 15.5l5 5",
   chevron: "M15 18l-6-6 6-6",
+  // a viewfinder's corners over a line, the app's scan button
+  scan: "M4 8V5a1 1 0 0 1 1-1h3 M16 4h3a1 1 0 0 1 1 1v3 M20 16v3a1 1 0 0 1-1 1h-3 M8 20H5a1 1 0 0 1-1-1v-3 M7 12h10",
 } as const
 
 export type IconName = keyof typeof LINE_ICONS

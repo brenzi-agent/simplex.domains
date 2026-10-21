@@ -4,13 +4,19 @@ import * as api from "../api.ts"
 import { el, icon, link, refill, waitOut } from "../dom.ts"
 import { type LinkKind, linkKind, linkProblem, linkTooLong } from "../names.ts"
 import { chatButton, profileLine } from "./chats.ts"
+import { hasCamera, scanQr } from "./scan.ts"
 import { inPlace, whenDropped } from "./shell.ts"
 
-const KIND_TEXT: Record<LinkKind, { name: string; noun: string; placeholder: string; add: string }> = {
-  contact: { name: "Contact address", noun: "contact address", placeholder: "Paste your contact address", add: "Add a contact address" },
-  channel: { name: "Channel", noun: "channel link", placeholder: "Paste your channel link", add: "Add a channel link" },
+// a phone's field, beside Paste and the scan button, has room for a short placeholder only
+const KIND_TEXT: Record<LinkKind, { name: string; noun: string; placeholder: string; short: string; add: string }> = {
+  contact: { name: "Contact address", noun: "contact address", placeholder: "Paste your contact address", short: "Your contact address", add: "Add a contact address" },
+  channel: { name: "Channel", noun: "channel link", placeholder: "Paste your channel link", short: "Your channel link", add: "Add a channel link" },
 }
-const ANY_LINK = { name: "Link", placeholder: "Paste a contact address or channel link" }
+const ANY_LINK = { name: "Link", placeholder: "Paste a contact address or channel link", short: "Contact or channel link" }
+const ANY_LINK_SCANNED = "Paste or scan a link"
+// styles.css's phone layout
+const PHONE = "(max-width: 520px)"
+const NO_CAMERA = "Allow the camera, or paste the link."
 const linkName = (kind: LinkKind) => KIND_TEXT[kind].name
 const otherKind = (kind: LinkKind): LinkKind => kind === "contact" ? "channel" : "contact"
 
@@ -57,7 +63,8 @@ interface Takes { kind: LinkKind | null; refused: () => LinkKind | null; fieldOf
 function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind | null) => void, valueKind = takes.kind): HTMLElement {
   const errorId = `link-error-${++linkFields}`
   const text = takes.kind ? KIND_TEXT[takes.kind] : ANY_LINK
-  const input = el("input", { type: "text", placeholder: text.placeholder, value, "aria-label": text.name, spellcheck: "false", autocomplete: "off",
+  const phone = matchMedia(PHONE).matches
+  const input = el("input", { type: "text", placeholder: phone ? text.short : text.placeholder, value, "aria-label": text.name, spellcheck: "false", autocomplete: "off",
     "data-focus": `link-${takes.kind ?? "any"}` })
   // the profile a link opens shows at the field's end, and what is wrong with a link under it
   const preview = el("span", { class: "preview" })
@@ -73,7 +80,13 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
       input.dispatchEvent(new Event("input"))
     }, () => undefined).finally(() => input.focus())
   } }, "Paste") : null
-  const box = el("label", { class: "field" }, icon("link"), input, preview, paste, unlink)
+  // a phone with a camera reads the link from its QR code, as the app shows it
+  const scan = el("button", { class: "scan", type: "button", "aria-label": "Scan QR code", hidden: true, onclick: () => void scanned() }, icon("scan"))
+  void hasCamera().then((camera) => {
+    scan.hidden = !camera
+    if (camera && phone && !takes.kind) input.placeholder = ANY_LINK_SCANNED
+  })
+  const box = el("label", { class: "field" }, icon("link"), input, preview, paste, scan, unlink)
   const card = el("div", {})
   const field = el("div", { class: "link-field" }, box, card)
   const show = (inField: Node | null, below: Node | null = null) => {
@@ -155,6 +168,23 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
       }
       refuse("This link could not be opened.")
     }
+  }
+  async function scanned(): Promise<void> {
+    let text: string | null
+    try {
+      text = await scanQr()
+    } catch (e) {
+      if (!(e instanceof DOMException)) throw e
+      if (!shown()) return
+      input.setAttribute("aria-describedby", errorId)
+      return show(null, el("p", { class: "field-error", id: errorId }, icon("alert"), NO_CAMERA))
+    }
+    if (!shown()) return
+    if (text !== null) {
+      input.value = text.trim()
+      input.dispatchEvent(new Event("input"))
+    }
+    input.focus()
   }
   input.addEventListener("input", () => void check())
   // the link is left at its start, where focus brings it back, as a browser shows a field from its last caret and scroll

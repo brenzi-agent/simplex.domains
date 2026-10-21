@@ -335,7 +335,12 @@ h1:has(.grad) { text-wrap: pretty; }
 .unlink { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--ink-soft); cursor: pointer; }
 .unlink svg.i { width: 12px; height: 12px; }
 .unlink:hover { background: var(--chip); }
-.field:has(input:placeholder-shown) .unlink, .field:has(input:not(:placeholder-shown)) .paste { display: none; }
+.field:has(input:placeholder-shown) .unlink, .field:has(input:not(:placeholder-shown)) :is(.paste, .scan) { display: none; }
+/* the scan button, a phone's: a laptop's camera faces its reader, not a QR code */
+.scan { display: none; place-items: center; flex: none; width: 36px; height: 36px; margin-left: -4px; border: 0; border-radius: 50%; background: none; color: var(--primary); cursor: pointer; }
+.scan svg.i { width: 22px; height: 22px; }
+.scan:hover { background: var(--chip); }
+.scan-pop video { width: 100%; aspect-ratio: 1; object-fit: cover; margin-top: 8px; border-radius: 14px; background: #000; }
 /* a link's profile on one line: its picture, its name, and what kind of chat it is */
 .entity { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .entity .chat-pic { width: 28px; height: 28px; }
@@ -570,6 +575,9 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   /* a QR is for another device; a phone opens its wallet from the main button, and copies a code */
   .qr-grid { grid-template-columns: minmax(0, 1fr); }
   .qr-grid > .card.qr, .code-qr { display: none; }
+  .scan { display: grid; }
+  /* the link field's room goes to its placeholder, beside Paste and the scan button */
+  .link-field .field > svg.i { display: none; }
   .actions-row > .wallet { display: inline-flex; }
 }
 
