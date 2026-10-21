@@ -253,7 +253,7 @@ function codeToggle(id: string, shown: boolean): HTMLElement {
 }
 
 const rowCode = (code: string) => el("div", { class: "row-code" },
-  el("p", { class: "note" }, "The name code owns the name. Scan or enter it in SimpleX to move the name to the app."),
+  el("p", { class: "note" }, "The name code owns the name and edits its links. Keep it safe."),
   codeDisplay(code), el("div", { class: "qr" }, qrSvg(code, "name code")))
 
 function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
@@ -539,7 +539,7 @@ const EDIT_BUILDERS: Record<EditKind, Builder<EditState>> = {
   "edit-no-code": (s) => editNotice(s, alertBox("info", "key", "The name code is not in this browser", "Add it in Check your code to edit this name's links.")),
   "edit-unreadable": buildUnreadable,
   "edit-expired": buildExpired,
-  "edit-in-app": notice("phone", "This name is managed in SimpleX", "It was moved to the app's wallet, so its links are edited in the app."),
+  "edit-in-app": notice("key", "This name has another owner", "Its owner changed, so this browser can no longer edit its links."),
   "edit-elsewhere": notice("link", "This name's links are kept elsewhere", "It points at another resolver, so its links are not edited here."),
   "edit-not-registered": notice("clock", "The name is not registered yet", "Its links can be edited once the registration is final."),
   edit: buildEditForm,
