@@ -50,7 +50,8 @@ export function linkChat(link: string, name: string, key: string): HTMLElement {
 interface Takes { kind: LinkKind | null; refused: () => LinkKind | null; fieldOf: (kind: LinkKind) => string }
 
 // data-state is "ok", "bad", "checking" or "empty"; save hears each good link with its kind and the field emptied, never one checked or refused.
-function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind | null) => void): HTMLElement {
+// `valueKind` is the record `value` came from, which a value kept as it is, such as several links, keeps.
+function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind | null) => void, valueKind = takes.kind): HTMLElement {
   const errorId = `link-error-${++linkFields}`
   const text = takes.kind ? KIND_TEXT[takes.kind] : ANY_LINK
   const input = el("input", { type: "text", placeholder: text.placeholder, value, "aria-label": text.name, spellcheck: "false", autocomplete: "off",
@@ -104,15 +105,16 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
       save("", null)
       return show(null)
     }
-    const kind = takes.kind ?? linkKind(link)
+    // the value the field opened with, or the chain's given since, is kept as it is, even several links or one whose preview fails
+    const kept = field.dataset.kept ?? value
+    const keptKind = (field.dataset.keptKind as LinkKind | undefined) ?? valueKind
+    const kind = takes.kind ?? (link === kept ? keptKind : null) ?? linkKind(link)
     const accept = () => {
       field.dataset.state = "ok"
       box.className = "field ok"
       save(link, kind)
     }
     const known = previews.get(link)
-    // the value the field opened with, or the chain's given since, is kept as it is, even several links or one whose preview fails
-    const kept = field.dataset.kept ?? value
     if (link === kept) {
       accept()
       return kept.includes(";") ? show(null, el("p", { class: "note" }, "Several links. SimpleX opens the first one.")) : show(linkPreview(link, true))
@@ -186,7 +188,7 @@ export function linkFieldsFor(links: api.Links, save: (kind: LinkKind, link: str
     if (kind) told(kind, value)
     held = kind ?? (second ? held : null)
     offerAdd()
-  })
+  }, first)
   const addSecond = (kind: LinkKind, value: string, focus: boolean) => {
     const field = linkField({ kind, refused: () => null, fieldOf }, value, (v) => told(kind, v))
     second = { kind, field }
@@ -212,6 +214,7 @@ export function linkFieldsFor(links: api.Links, save: (kind: LinkKind, link: str
       const input = field.querySelector("input")!
       if (input.value === value) return
       field.dataset.kept = value
+      field.dataset.keptKind = kind
       input.value = value
       input.dispatchEvent(new Event("input", { bubbles: true }))
     },

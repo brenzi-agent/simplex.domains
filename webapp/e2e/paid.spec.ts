@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, type Route } from "@playwright/test"
-import { walletOf } from "../src/flow.ts"
-import { checksumAddress } from "../src/crypto/wallet.ts"
+import { newOwnerCode, walletOf } from "../src/flow.ts"
+import { CONTACT_KEY, labelHash } from "../src/crypto/registration.ts"
+import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
@@ -392,6 +393,48 @@ test("Skip for now shows only while no link is given, and a link edited keeps it
   await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeFocused()
   await savedToReview(page)
   await expect(step.locator(".card.order .chat")).toHaveCount(0)
+})
+
+const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
+const YEAR_S = 365 * 86_400
+
+// A registered name of this browser's code, as the service answers it, whose contact record holds `contact`.
+async function registeredName(page: Page, contact: string): Promise<string> {
+  const label = uniqueLabel("several")
+  const ownerCode = newOwnerCode()
+  const owner = checksumAddress(walletOf(ownerCode)!.address)
+  const request = { labelHash: hex(labelHash(label)), length: label.length, owner, commitment: `0x${"01".repeat(32)}`, sealed: "sealed" }
+  const expiresAt = Math.floor(Date.now() / 1000) + YEAR_S
+  await page.goto("/#/trademarks")
+  await page.evaluate((record) => localStorage.setItem(`simplex-names:order:${record.registrationId}`, JSON.stringify(record)), {
+    registrationId: "reg-several", invoiceId: null, label, ownerCode, owner, contact, channel: "", method: "code", paid: 0, years: 2, tld: "simplex",
+    createdAt: new Date().toISOString(), request,
+  })
+  await page.route("**/api/registration/reg-several*", (route) => route.fulfill({ json: {
+    ...CHAIN, id: "reg-several", phase: "registered", labelHash: request.labelHash, label, owner, commitment: request.commitment, sealed: "sealed", years: 2,
+    price: 0, commitTx: "0x02", registerTx: "0x03", revealAfter: null, revealBefore: null, intentNonce: null, expiresAt, error: null,
+  } }))
+  await page.route("**/api/name/**", (route) => route.fulfill({ json: {
+    status: "registered", entities: [], owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId, records: { contact, channel: "" }, recordsNonce: 0, expiresAt, tld: "simplex",
+  } }))
+  return label
+}
+
+test("Edit links keeps several links on chain as the contact address they hold, and emptying the field removes them", async ({ page }) => {
+  await registeredName(page, `${contactLink("M1")};${contactLink("M2")}`)
+  const sent: Record<string, unknown>[] = []
+  await page.route("**/api/name/records", (route) => {
+    sent.push(route.request().postDataJSON())
+    return route.fulfill({ json: { tx: "0x04" } })
+  })
+  await page.goto("/#/edit/reg-several")
+  const step = onStep(page)
+  await expect(step.getByText("Several links. SimpleX opens the first one.")).toBeVisible()
+  await expect(step.getByRole("button", { name: "Add a channel link" }), "the field holds a contact address").toBeVisible()
+  await step.locator(".link-field").first().getByRole("button", { name: "Remove link" }).click()
+  await step.getByRole("button", { name: "Save links" }).click()
+  await expect(step.getByText("Links saved")).toBeVisible()
+  expect(sent.map(({ key, value }) => ({ key, value })), "the edits sent").toEqual([{ key: CONTACT_KEY, value: "" }])
 })
 
 test("Check your order asked for before the name code is saved opens the name code step instead", async ({ page }) => {
