@@ -16,6 +16,7 @@ import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { type Builder, CONTACT_EMAIL, currentRoute, draw, go, historyPlace, isRedraw, isRoute, kept, keptLive, throughHistory } from "./shell.ts"
 import { chatButton } from "./chats.ts"
+import { moveLimitNote, noteBox } from "./order.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
 
 // word joiners keep "a–z" and "0–9" whole: a line may otherwise break after their dash
@@ -124,8 +125,12 @@ async function readOrder(record: store.OrderRecord): Promise<{ view: api.Registr
   return { view, synced: { ...(await flow.syncRecord(record, view) ?? record), paid: view.price } }
 }
 
+// an order moves from a name taken first, from a failed registration, or from links the service refused
+const movable = (view: api.RegistrationView, record: store.OrderRecord) =>
+  view.phase === "taken" || view.phase === "failed" || (view.phase === "committed" && record.linksRefused === true)
+
 function movedOf(view: api.RegistrationView, record: store.OrderRecord): Moved | null {
-  if (view.phase === "taken") return null
+  if (movable(view, record)) return null
   const url = store.orderUrl(record)
   return view.phase === "code_issued" ? { to: "code", url } : { to: "name", url, label: record.label, tld: record.tld }
 }
@@ -174,20 +179,23 @@ async function retarget(record: store.OrderRecord, label: string, quote: Availab
   const page = opens
   dispatch({ type: "register-started" })
   try {
-    await flow.retargetOrder(record, label, { contact: record.contact, channel: record.channel }, quote)
+    // links the service refused at the reveal would be refused again
+    const links = record.linksRefused ? { contact: "", channel: "" } : { contact: record.contact, channel: record.channel }
+    await flow.retargetOrder(record, label, links, quote)
     if (onPage(page)) go(store.orderUrl(record))
   } catch (e) {
     const read = await readOrder(record)
     const limited = holdFrom(e)
     if (!onPage(page)) return
     if (read?.synced.label === label) return go(store.orderUrl(record))
-    if (read && read.view.phase !== "taken") return dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced) })
+    if (read && !movable(read.view, read.synced)) return dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced) })
     if (limited) return dispatch({ type: "register-held", until: holdEnd() })
+    const code = e instanceof api.ApiError ? e.code : null
+    if (code === "move_limit") return dispatch({ type: "register-refused", refusal: { why: "limit", reference: record.invoiceId ?? record.registrationId } })
     // the code's own order for the new name is the one the move met
-    const exists = e instanceof api.ApiError && e.code === "order_exists"
-    const other = exists ? await flow.ownOrderFor(record.ownerCode, hex(labelHash(label))).catch(() => null) : null
+    const other = code === "order_exists" ? await flow.ownOrderFor(record.ownerCode, hex(labelHash(label))).catch(() => null) : null
     if (!onPage(page)) return
-    dispatch({ type: "register-refused", refusal: other ? { why: "other", url: store.orderUrl(other) } : { why: e instanceof api.ApiError && e.code === "name_taken" ? "taken" : "failed" } })
+    dispatch({ type: "register-refused", refusal: other ? { why: "other", url: store.orderUrl(other) } : { why: code === "name_taken" ? "taken" : code === "price_too_high" ? "dearer" : "failed" } })
   }
 }
 
@@ -305,7 +313,9 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
 function registerNote({ hold, register: { refusal } }: SearchState, signal: AbortSignal): HTMLElement | null {
   if (hold) return holdNotice(hold, signal)
   if (!refusal) return null
-  const words = refusal.why === "taken" ? "This name is no longer available. Search another one." : "Nothing changed. Try again in a moment."
+  if (refusal.why === "limit") return noteBox(moveLimitNote(refusal.reference))
+  const words = refusal.why === "taken" ? "This name is no longer available. Search another one."
+    : refusal.why === "dearer" ? "This name now costs more than your order is worth. Search another one." : "Nothing changed. Try again in a moment."
   return alertBox("danger", "alert", "That did not go through", words)
 }
 

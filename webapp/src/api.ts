@@ -75,6 +75,8 @@ export interface RegistrationView extends ChainInfo {
   duration: number
   // what the order is worth, in cents: what was paid, or the price of the name it moved to; it caps another move
   price: number
+  // how often the order moved to another name or other links, which the service bounds
+  moves: number
   // the shortest names a code for this order pays for: the code a taken paid order would become, or the one it became
   codeLength: number | null
   commitTx: string | null
@@ -222,7 +224,7 @@ const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unk
 const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.sponsor) && typeof a.chainId === "number" && isText(a.tld)
 const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registering", "registered", "taken", "failed", "code_issued"]
 const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && Number.isInteger(v.version) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
-  && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isCount(v.duration) && isAmount(v.price) && nullable(v.codeLength, isCount)
+  && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isCount(v.duration) && isAmount(v.price) && Number.isInteger(v.moves) && nullable(v.codeLength, isCount)
   && nullable(v.commitTx, isText) && nullable(v.registerTx, isText) && nullable(v.revealAfter, isAmount) && nullable(v.revealBefore, isAmount)
   && nullable(v.intentNonce, isAmount) && Array.isArray(v.unread) && v.unread.every(isText) && nullable(v.expiresAt, isAmount) && nullable(v.error, isText)
 const isInvoice = (v: unknown) => isObject(v) && isText(v.invoiceId) && ["open", "paid", "expired"].includes(v.status as string) && isAmount(v.amount)

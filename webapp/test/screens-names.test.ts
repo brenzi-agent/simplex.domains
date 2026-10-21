@@ -19,7 +19,7 @@ const CHANNEL = "https://smp9.simplex.im/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2J"
 function registration(change: Partial<RegistrationView> = {}): RegistrationView {
   return {
     ...CHAIN, id: "reg-1", version: 1, phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: "0x9c11", sealed: "sealed-box", years: 2,
-    duration: 2 * YEAR_S, price: 1500, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, codeLength: null, intentNonce: null, unread: [], expiresAt: null, error: null, ...change,
+    duration: 2 * YEAR_S, price: 1500, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, codeLength: null, intentNonce: null, unread: [], expiresAt: null, error: null, ...change,
   }
 }
 

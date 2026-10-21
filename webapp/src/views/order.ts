@@ -289,6 +289,14 @@ function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
   const reference = state.reference
   dispatch({ type: "reveal-sent", key })
   flow.revealOrder(view, record).catch((e) => {
+    // links the service refuses are in the commitment, so signing again cannot fix them: the order has to move
+    if (e instanceof api.ApiError && e.code === "invalid_link") {
+      store.updateOrder(record.registrationId, { linksRefused: true })
+      // the record is changed first, so the reveal's end does not send it again
+      if (isRoute(pageRoute) && state.reference === reference) dispatch({ type: "record-changed", record: { ...record, linksRefused: true }, cardSubmittedAt: state.cardSubmittedAt })
+      dispatch({ type: "reveal-failed", key })
+      return
+    }
     const refused = e instanceof api.ApiError && e.code === "bad_request"
     setTimeout(() => {
       dispatch({ type: refused ? "reveal-refused" : "reveal-failed", key })
@@ -317,10 +325,11 @@ function releasedCode(view: api.RegistrationView, record: store.OrderRecord | nu
 }
 
 // holdsFor is the screen's signal where the screen holds an action for the tab's wait
+export const noteBox = (note: Note) => alertBox(note.tone, note.icon, note.title, note.link ? [note.text, el("a", { href: note.link.href }, note.link.text), note.link.after] : note.text)
+
 function noteOf({ hold, note }: OrderState, holdsFor: AbortSignal | null): HTMLElement | null {
   if (holdsFor && hold) return holdNotice(hold, holdsFor)
-  if (!note) return null
-  return alertBox(note.tone, note.icon, note.title, note.link ? [note.text, el("a", { href: note.link.href }, note.link.text), note.link.after] : note.text)
+  return note && noteBox(note)
 }
 
 const actionNote = (s: OrderState, holdsFor: AbortSignal | null) => keptLive(ORDER_NOTE, undefined, noteOf(s, holdsFor))
@@ -786,6 +795,42 @@ function onTheSecond(left: () => number, f: () => void, signal: AbortSignal): vo
   next()
 }
 
+// The order cannot register with the links it committed to; it moves to the same name without them, or to another name.
+function buildLinksRefused(s: OrderState, signal: AbortSignal): HTMLElement {
+  const view = s.view!
+  const move = setAction(btn("Register without links", "", () => void moveWithoutLinks()), s.busy === "move", s.hold !== null)
+  move.dataset.focus = "move"
+  holdEnds(signal)(s.hold !== null)
+  return screen({ title: headingOf(s), lead: orderLine(s), action: move, alt: link("Choose another name", () => go(`/#/?retarget=${view.id}`)) },
+    alertBox("warn", "alert", "The service refused this order's links",
+      "They are part of the order, so they cannot be changed in it. Register the name without them and add links in Your names once it is registered, or choose another name."),
+    actionNote(s, signal),
+    referenceLine(s.invoice?.invoiceId ?? view.id))
+}
+
+// what a move refused for good says: the service bounds how often an order moves, and support settles it from there
+export const moveLimitNote = (reference: string): Note => ({ tone: "warn", icon: "alert", title: "This order cannot move again",
+  text: "Write to SimpleX support with its reference, ", link: { text: CONTACT_EMAIL, href: `mailto:${CONTACT_EMAIL}`, after: `: ${reference}.` } })
+
+async function moveWithoutLinks(): Promise<void> {
+  const gen = opened
+  const record = state.record!
+  const reference = state.invoice?.invoiceId ?? state.view!.id
+  dispatch({ type: "move-started" })
+  try {
+    const quote = await flow.quoteOf(record.label)
+    if (!quote) return answer(gen, { type: "move-failed", note: warning("This name is no longer available. Choose another name.") })
+    await flow.retargetOrder(record, record.label, { contact: "", channel: "" }, quote)
+    reread(gen)
+  } catch (e) {
+    if (holdOn(e, "Nothing changed. ", gen)) return
+    const limit = e instanceof api.ApiError && e.code === "move_limit"
+    // an order another request moved first is shown as it is now
+    if (e instanceof api.ApiError && e.code === "registration_changed") return reread(gen)
+    answer(gen, { type: "move-failed", note: limit ? moveLimitNote(reference) : warning("That did not go through. Nothing changed. Try again in a moment.") })
+  }
+}
+
 function buildNotOnDevice({ view, invoice }: OrderState): HTMLElement {
   return outcome({ tone: "info", icon: "key", title: "The name code is not in this browser",
     text: ["This order registers a name to ", el("span", { class: "nowrap" }, shortAddress(view!.owner)), ". Its code was made in the browser it was bought in. Enter the code you saved to carry on here."],
@@ -938,6 +983,7 @@ const BUILDERS: Record<OrderKind, Builder<OrderState>> = {
   "pay-card": buildPayCard,
   confirming: buildConfirming,
   registering: buildRegistering,
+  "links-refused": buildLinksRefused,
   registered: buildRegistered,
   taken: buildTaken,
   "code-issued": buildCodeIssued,

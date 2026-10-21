@@ -2,7 +2,10 @@ import { expect } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { labelHash } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
-import { codeField, control, mockRegistration, onStep, REGISTRATION_MS, registrationOf, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import {
+  codeField, contactLink, control, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, savedToReview, search, searchName, shot,
+  startOrder, test, uniqueLabel, waitRegistered,
+} from "./helpers.ts"
 
 test("a name taken first moves the paid order to another name, owned by the same code", async ({ page, request }) => {
   const label = uniqueLabel("tk")
@@ -219,3 +222,36 @@ test("a late payment to a replaced invoice is kept by a restored browser after t
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 })
 
+
+test("an order whose links the service refuses at its reveal registers without them, and a move past the limit names support", async ({ page, request }) => {
+  const label = uniqueLabel("lr")
+  await search(page, label)
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await onStep(page).getByRole("textbox", { name: "Link", exact: true }).fill(contactLink("LR"))
+  await previewsShown(page)
+  await onStep(page).getByRole("button", { name: "Continue" }).click()
+  await savedToReview(page)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  const invoiceId = new URL(page.url()).searchParams.get("order")!
+  // the service's link check refuses the next reveal's links, which the order committed to
+  await control(request, "search", { refuseLinks: true })
+  try {
+    await control(request, `settle/${invoiceId}`)
+    await expect(page.getByText("The service refused this order's links")).toBeVisible({ timeout: REGISTRATION_MS })
+  } finally {
+    await control(request, "search", { refuseLinks: false })
+  }
+  const move = page.getByRole("button", { name: "Register without links" })
+  await page.route("**/api/registration/*/name", (route) => route.fulfill({ status: 409, json: { error: "move_limit" } }))
+  await move.click()
+  await expect(page.getByText("This order cannot move again")).toBeVisible()
+  await expect(page.locator(".notice", { hasText: "cannot move again" })).toContainText(`: ${invoiceId}.`)
+  await page.unrouteAll({ behavior: "wait" })
+  await move.click()
+  await waitRegistered(page, label)
+  const view = await (await request.get(`${MOCK}/api/invoice/${invoiceId}`)).json() as { registration: { moves: number } }
+  expect(view.registration.moves).toBe(1)
+  const answer = await searchName(request, label)
+  expect(answer.records).toEqual({ contact: "", channel: "" })
+})

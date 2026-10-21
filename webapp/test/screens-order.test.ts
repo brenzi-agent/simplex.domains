@@ -17,7 +17,7 @@ const WARN: Note = { tone: "warn", icon: "alert", title: null, text: "The invoic
 function registration(change: Partial<RegistrationView> = {}): RegistrationView {
   return {
     ...CHAIN, id: "reg-1", version: 1, phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box", years: 2, duration: 2 * 365 * 86400,
-    price: 1500, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, codeLength: null, intentNonce: null, unread: [], expiresAt: null, error: null, ...change,
+    price: 1500, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, codeLength: null, intentNonce: null, unread: [], expiresAt: null, error: null, ...change,
   }
 }
 
@@ -57,6 +57,7 @@ const STATES: Record<OrderKind, OrderState> = {
   "pay-card": read(card(), undefined, { record: record({ method: "card" }) }),
   confirming: read(crypto({ paidInFull: true, cryptoAmountPaid: "0.00025" })),
   registering: read(null, registration({ phase: "committing" })),
+  "links-refused": read(null, registration(committed), { record: record({ linksRefused: true }) }),
   registered: read(null, registration({ phase: "registered", label: "alice", registerTx: "0xe9", expiresAt: NOW / 1000 + 63072000 })),
   taken: read(crypto({ status: "paid", paidInFull: true }, { phase: "taken" })),
   "code-issued": read(crypto({ status: "paid", paidInFull: true }, { phase: "code_issued" })),
@@ -223,6 +224,7 @@ describe("reduce", () => {
       ["reorder-started", "reorder-failed", { ...STATES["status:closed"], note: WARN }, "reorder"],
       ["code-started", "code-failed", { ...STATES.taken, note: WARN }, "code"],
       ["retry-started", "retry-failed", failing, "retry"],
+      ["move-started", "move-failed", { ...STATES["links-refused"], note: WARN }, "move"],
     ]
     it.each(cases)("%s marks the action at work and clears the note; %s ends it with its note", (started, failed, s, busy) => {
       const working = reduce(s, { type: started } as OrderEvent)
@@ -274,7 +276,7 @@ describe("reduce", () => {
       const refused = { ...STATES.failed, codeRefused: true }
       expect(reduce(refused, answered(refused, STATES.registering)).codeRefused).toBe(false)
     })
-    it.each([["cancel-failed"], ["reorder-failed"], ["code-failed"], ["retry-failed"]])("%s of an action no longer at work changes nothing", (failed) => {
+    it.each([["cancel-failed"], ["reorder-failed"], ["code-failed"], ["retry-failed"], ["move-failed"]])("%s of an action no longer at work changes nothing", (failed) => {
       expect(reduce(paying, { type: failed, note: WARN } as OrderEvent)).toBe(paying)
     })
     it("cancel-answered ends the cancel, with the warning a browser without the record shows once", () => {
@@ -352,6 +354,8 @@ describe("reveal helpers", () => {
     expect(revealDue(waiting)).toBe(true)
     expect(revealDue({ ...waiting, now: NOW - 5000 })).toBe(false)
     expect(revealDue({ ...waiting, record: null })).toBe(false)
+    // links the service refused cannot be signed again
+    expect(revealDue({ ...waiting, record: record({ linksRefused: true }) })).toBe(false)
     expect(revealDue(read(null, registration({ ...committed, label: "alice" })))).toBe(false)
     expect(revealDue(read(null, registration({ ...committed, phase: "registering" })))).toBe(false)
     // the sponsor's nonce the service could not read leaves nothing to sign with

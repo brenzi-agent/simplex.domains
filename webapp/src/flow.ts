@@ -100,7 +100,7 @@ export async function retargetOrder(record: store.OrderRecord, label: string, li
   const { labelHash: lh, length, duration, commitment, sealed } = built.request
   const message = `simplex.domains name ${record.registrationId} ${lh} ${length} ${duration} ${commitment} ${await sha256Hex(sealed)} ${timestamp}`
   const view = await api.retarget(record.registrationId, { labelHash: lh, length, duration, commitment, sealed, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) })
-  store.saveOrder({ ...record, label, ...links, paid: view.price, request: built.request })
+  store.saveOrder({ ...record, label, ...links, paid: view.price, request: built.request, linksRefused: undefined })
   return view
 }
 

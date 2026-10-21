@@ -302,7 +302,7 @@ export async function keepOrder(page: Page, registrationId: string, invoiceId: s
 
 // The service's view of a kept order's registration, as its API answers it.
 export const registrationView = (o: KeptOrder, change: Record<string, unknown> = {}) => ({
-  ...CHAIN, id: o.registrationId, version: 1, unread: [], codeLength: null, phase: "unpaid", labelHash: o.request.labelHash, label: o.label, owner: o.owner, commitment: o.request.commitment, sealed: "sealed",
+  ...CHAIN, id: o.registrationId, version: 1, unread: [], moves: 0, codeLength: null, phase: "unpaid", labelHash: o.request.labelHash, label: o.label, owner: o.owner, commitment: o.request.commitment, sealed: "sealed",
   years: 2, duration: 2 * YEAR_S, price: 10000, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, ...change,
 })
 

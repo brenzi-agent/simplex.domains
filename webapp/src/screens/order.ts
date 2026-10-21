@@ -12,12 +12,12 @@ export const REVEAL_ATTEMPTS = 3
 const UNREAD_PACING_MS = [5_000, 15_000, 30_000]
 export const unreadDelay = (reads: number) => UNREAD_PACING_MS[Math.min(reads, UNREAD_PACING_MS.length - 1)]
 
-export type OrderKind = "pay-crypto" | "pay-card" | "confirming" | "registering" | "registered" | "taken" | "code-issued" | "failed" | "not-on-device"
+export type OrderKind = "pay-crypto" | "pay-card" | "confirming" | "registering" | "links-refused" | "registered" | "taken" | "code-issued" | "failed" | "not-on-device"
   | "status:closed" | "status:card-unconfirmed" | "status:paid-by-invoice" | "status:unreadable" | "status:unknown-link" | "status:price-changed"
 
 export type ClosedCase = "paid-late" | "still-open" | "cancelled" | "received" | "expired"
 
-type Action = "card" | "cancel" | "reorder" | "code" | "retry"
+type Action = "card" | "cancel" | "reorder" | "code" | "retry" | "move"
 
 export interface Note { tone: "warn" | "danger"; icon: IconName; title: string | null; text: string; link?: { text: string; href: string; after: string } }
 
@@ -65,6 +65,8 @@ export type OrderEvent =
   | { type: "price-changed"; price: number }
   | { type: "code-started" }
   | { type: "code-failed"; note: Note }
+  | { type: "move-started" }
+  | { type: "move-failed"; note: Note }
   | { type: "retry-started" }
   | { type: "retry-failed"; note: Note; codeRefused: boolean }
   | { type: "code-checked" }
@@ -103,6 +105,8 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "price-changed": return end(s, "reorder", { price: e.price })
     case "code-started": return start(s, "code")
     case "code-failed": return end(s, "code", { note: e.note })
+    case "move-started": return start(s, "move")
+    case "move-failed": return end(s, "move", { note: e.note })
     case "retry-started": return start(s, "retry")
     case "retry-failed": return end(s, "retry", { note: e.note, codeRefused: e.codeRefused })
     case "code-checked": return { ...s, codeKept: true }
@@ -159,6 +163,7 @@ export function screenOf(s: OrderState): OrderKind {
   if (view.phase === "code_issued") return "code-issued"
   if (view.phase === "failed") return "failed"
   if (view.phase !== "registering" && view.label === null && !record) return "not-on-device"
+  if (view.phase === "committed" && view.label === null && record?.linksRefused) return "links-refused"
   return "registering"
 }
 
@@ -186,7 +191,7 @@ export function refusalsOf({ view, reveal }: OrderState): number {
 
 export function revealDue(s: OrderState): boolean {
   const { view, record, reveal } = s
-  if (view?.phase !== "committed" || view.label !== null || view.intentNonce === null || !record) return false
+  if (view?.phase !== "committed" || view.label !== null || view.intentNonce === null || !record || record.linksRefused) return false
   if ((view.revealAfter ?? 0) * 1000 > s.now) return false
   return !(reveal?.key === revealKey(view) && reveal.sending) && refusalsOf(s) < REVEAL_ATTEMPTS
 }
