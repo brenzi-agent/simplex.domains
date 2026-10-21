@@ -104,7 +104,11 @@ export function codeField(key: string, label: string, heard: (v: CodeVerdict | n
     const life = new AbortController()
     whenDropped(() => life.abort())
     watchCode(input, show, life.signal)
-    input.addEventListener("input", () => typed.set(key, input.value))
+    // a name code is never kept to show again, as anyone who sees it can take the name
+    input.addEventListener("input", () => {
+      if (parseNameCode(input.value.trim())?.kind === "owner") typed.delete(key)
+      else typed.set(key, input.value)
+    })
     // judged once the page that asked for the field is drawn, as a verdict may change the page
     if (input.value) queueMicrotask(() => input.dispatchEvent(new Event("input")))
     return el("div", { class: "code-entry" }, box, line)

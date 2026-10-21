@@ -486,3 +486,26 @@ for (const width of [FITS_FROM_PX, 360, NARROWEST_PX]) {
     if (field.overflow > 0) expect(field.font, "the letter size of a code its field scrolls").toBe(LEGIBLE_PX)
   })
 }
+
+test("Check your code opened again shows a prepaid code typed there, never a name code", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  await search(page, uniqueLabel("keepnot"))
+  await toCodeStep(page)
+  const ownerCode = await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).ownerCode as string, CHECKOUT_KEY)
+  const header = page.locator("body > header")
+  const reopen = async () => {
+    await header.getByRole("link", { name: "Your names" }).click()
+    await expect(onStep(page).getByRole("heading", { name: "Your names" })).toBeVisible()
+    await header.getByRole("link", { name: "Check your code" }).click()
+    await expect(onStep(page).getByRole("heading", { name: "Check your code" })).toBeVisible()
+  }
+  await header.getByRole("link", { name: "Check your code" }).click()
+  await codeField(page).fill(ownerCode)
+  await expect(page.locator(".verdict.ok")).toBeVisible()
+  await reopen()
+  await expect(codeField(page), "the name code typed is not shown again").toHaveValue("")
+  await codeField(page).fill(code)
+  await expect(page.locator(".verdict.ok")).toBeVisible()
+  await reopen()
+  await expect(codeField(page), "the prepaid code typed is shown again").toHaveValue(code)
+})
