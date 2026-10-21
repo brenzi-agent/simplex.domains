@@ -139,63 +139,68 @@ const invoiceOf = (o: KeptOrder, status: string, reg: Record<string, unknown>, c
 // the money that reached an invoice short of its amount
 const PART = { cryptoAmountPaid: "0.0005", cryptoAmountDue: "0.00106", paidInFull: false }
 
-test(`every outcome and refusal of an order fits both windows for a name of ${MAX_LABEL_LENGTH} wide letters, its heading and main button where every step's are`, async ({ page, browser, request }) => {
-  const label = wideLabel(MAX_LABEL_LENGTH)
-  const frames: Record<string, Frame[]> = {}
-  const order = await keepOrder(page, "reg-fitall", FIT_INVOICE, label)
-  let invoice = invoiceOf(order, "open", {}, PART)
-  await page.route(`**/api/invoice/${FIT_INVOICE}*`, (route) => route.fulfill({ json: invoice }))
-  await page.route("**/api/registration/reg-fitall*", (route) => route.fulfill({ json: invoice.registration }))
-  const shown = async (name: string, next: typeof invoice, heading: string | RegExp) => {
-    invoice = next
-    await page.goto("/#/trademarks")
-    await page.goto(`/?order=${FIT_INVOICE}`)
-    await expect(onStep(page).getByRole("heading", { name: heading })).toBeVisible()
-    await fitsWindow(page, name, frames)
-  }
-  await shown("o1-partial-bitcoin", invoice, "Pay with Bitcoin")
-  await shown("o2-closed-part-paid", invoiceOf(order, "expired", {}, PART), "Invoice closed")
-  await shown("o3-paid-not-registered", invoiceOf(order, "paid", { phase: "failed", commitTx: "0x02", error: "The registration transaction reverted on chain" }), "Paid, not registered")
-  await page.route("**/api/registration/reg-fitall/retry", (route) => route.fulfill({ status: 500, json: { error: "internal" } }))
-  await onStep(page).getByRole("button", { name: "Try again" }).click()
-  await expect(onStep(page).getByText("That did not go through")).toBeVisible()
-  await fitsWindow(page, "o3b-not-registered-retry-refused", frames)
-  await shown("o4-code-issued", invoiceOf(order, "paid", { phase: "code_issued", commitTx: "0x02" }), "Here is a code instead")
-  // a taken order seen in a browser without its code, which says where to add the code
-  const elsewhere = await browser.newContext()
-  const stranger = await elsewhere.newPage()
-  await stranger.route(`**/api/invoice/${FIT_INVOICE}*`, (route) => route.fulfill({ json: invoiceOf(order, "paid", { phase: "taken", commitTx: "0x02" }) }))
-  await stranger.goto(`/?order=${FIT_INVOICE}`)
-  await expect(onStep(stranger).getByText("The name code is not in this browser")).toBeVisible()
-  await fitsWindow(stranger, "o5-taken-without-code", frames)
-  await elsewhere.close()
+// the service worker of a production build answers these pages before Playwright's routes in WebKit
+test.describe(() => {
+  test.use({ serviceWorkers: "block" })
 
-  // Check your order turning down a code and a method, then the price changed and too many attempts
-  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await useCode(page, code)
-  await search(page, label)
-  await toReview(page)
-  await page.route("**/api/name/register", (route) => route.fulfill({ status: 400, json: { error: "code_used" } }))
-  await onStep(page).getByRole("button", { name: "Register with your code" }).click()
-  await expect(onStep(page).getByText("This code was already used.")).toBeVisible()
-  await page.getByRole("radio", { name: "Card" }).click()
-  await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 503, json: { error: "provider_unavailable" } }) : route.continue())
-  await payButton(page).click()
-  await expect(onStep(page).getByText("Card is temporarily unavailable")).toBeVisible()
-  await fitsWindow(page, "o6-review-code-and-method-refused", frames)
-  await page.unroute("**/api/invoice")
-  await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 409, json: { error: "catalog_changed", price: 12345 } }) : route.continue())
-  await payButton(page).click()
-  await expect(onStep(page).getByRole("heading", { name: "The price changed" })).toBeVisible()
-  await fitsWindow(page, "o7-price-changed", frames)
-  // the review opened again takes the new price
-  await page.reload()
-  await page.unroute("**/api/invoice")
-  await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": "60" }, json: { error: "rate_limited" } }) : route.continue())
-  await payButton(page).click()
-  await expect(onStep(page).getByRole("heading", { name: "Too many attempts" })).toBeVisible()
-  await fitsWindow(page, "o8-too-many", frames)
-  oneFrame(frames)
+  test(`every outcome and refusal of an order fits both windows for a name of ${MAX_LABEL_LENGTH} wide letters, its heading and main button where every step's are`, async ({ page, browser, request }) => {
+    const label = wideLabel(MAX_LABEL_LENGTH)
+    const frames: Record<string, Frame[]> = {}
+    const order = await keepOrder(page, "reg-fitall", FIT_INVOICE, label)
+    let invoice = invoiceOf(order, "open", {}, PART)
+    await page.route(`**/api/invoice/${FIT_INVOICE}*`, (route) => route.fulfill({ json: invoice }))
+    await page.route("**/api/registration/reg-fitall*", (route) => route.fulfill({ json: invoice.registration }))
+    const shown = async (name: string, next: typeof invoice, heading: string | RegExp) => {
+      invoice = next
+      await page.goto("/#/trademarks")
+      await page.goto(`/?order=${FIT_INVOICE}`)
+      await expect(onStep(page).getByRole("heading", { name: heading })).toBeVisible()
+      await fitsWindow(page, name, frames)
+    }
+    await shown("o1-partial-bitcoin", invoice, "Pay with Bitcoin")
+    await shown("o2-closed-part-paid", invoiceOf(order, "expired", {}, PART), "Invoice closed")
+    await shown("o3-paid-not-registered", invoiceOf(order, "paid", { phase: "failed", commitTx: "0x02", error: "The registration transaction reverted on chain" }), "Paid, not registered")
+    await page.route("**/api/registration/reg-fitall/retry", (route) => route.fulfill({ status: 500, json: { error: "internal" } }))
+    await onStep(page).getByRole("button", { name: "Try again" }).click()
+    await expect(onStep(page).getByText("That did not go through")).toBeVisible()
+    await fitsWindow(page, "o3b-not-registered-retry-refused", frames)
+    await shown("o4-code-issued", invoiceOf(order, "paid", { phase: "code_issued", commitTx: "0x02" }), "Here is a code instead")
+    // a taken order seen in a browser without its code, which says where to add the code
+    const elsewhere = await browser.newContext()
+    const stranger = await elsewhere.newPage()
+    await stranger.route(`**/api/invoice/${FIT_INVOICE}*`, (route) => route.fulfill({ json: invoiceOf(order, "paid", { phase: "taken", commitTx: "0x02" }) }))
+    await stranger.goto(`/?order=${FIT_INVOICE}`)
+    await expect(onStep(stranger).getByText("The name code is not in this browser")).toBeVisible()
+    await fitsWindow(stranger, "o5-taken-without-code", frames)
+    await elsewhere.close()
+
+    // Check your order turning down a code and a method, then the price changed and too many attempts
+    const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+    await useCode(page, code)
+    await search(page, label)
+    await toReview(page)
+    await page.route("**/api/name/register", (route) => route.fulfill({ status: 400, json: { error: "code_used" } }))
+    await onStep(page).getByRole("button", { name: "Register with your code" }).click()
+    await expect(onStep(page).getByText("This code was already used.")).toBeVisible()
+    await page.getByRole("radio", { name: "Card" }).click()
+    await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 503, json: { error: "provider_unavailable" } }) : route.continue())
+    await payButton(page).click()
+    await expect(onStep(page).getByText("Card is temporarily unavailable")).toBeVisible()
+    await fitsWindow(page, "o6-review-code-and-method-refused", frames)
+    await page.unroute("**/api/invoice")
+    await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 409, json: { error: "catalog_changed", price: 12345 } }) : route.continue())
+    await payButton(page).click()
+    await expect(onStep(page).getByRole("heading", { name: "The price changed" })).toBeVisible()
+    await fitsWindow(page, "o7-price-changed", frames)
+    // the review opened again takes the new price
+    await page.reload()
+    await page.unroute("**/api/invoice")
+    await page.route("**/api/invoice", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": "60" }, json: { error: "rate_limited" } }) : route.continue())
+    await payButton(page).click()
+    await expect(onStep(page).getByRole("heading", { name: "Too many attempts" })).toBeVisible()
+    await fitsWindow(page, "o8-too-many", frames)
+    oneFrame(frames)
+  })
 })
 
 test(`Edit links fits both windows with its answer, for a name of ${MAX_LABEL_LENGTH} wide letters`, async ({ page }) => {
@@ -296,32 +301,37 @@ const rowFit = (page: Page) => page.evaluate(() => {
 // a name of six letters that fits one row beside two chats on a phone, as most do
 const SHORT_NAME = "udumhd"
 
-test("each home answer holds its name inside its row, and a name of six letters on one line, at a laptop's and a phone's size", async ({ page }) => {
-  for (const label of [SHORT_NAME, wideLabel(6), wideLabel(MAX_LABEL_LENGTH)]) {
-    const { owner } = await keepOrder(page, "reg-rowfit", null, label)
-    await page.route("**/api/registration/reg-rowfit*", (route) => route.fulfill({ status: 404, json: { error: "not_found" } }))
-    for (const [state, answer] of Object.entries(homeAnswers(owner))) {
-      await page.unroute("**/api/name/**")
-      await page.route("**/api/name/**", (route) => route.fulfill({ json: answer }))
-      for (const size of FIT_SIZES) {
-        await page.setViewportSize(size)
-        await page.goto("/#/trademarks")
-        await page.goto("/")
-        await page.evaluate(() => document.fonts.ready)
-        const empty = await homeTops(page)
-        await page.getByLabel("Name", { exact: true }).fill(label)
-        await page.getByLabel("Name", { exact: true }).press("Enter")
-        await expect(page.locator(".answer .row")).toContainText(state === "yours" ? "Your name" : state === "taken" ? "Taken" : "Register")
-        const at = `${state}, ${label.length} letters, ${size.width}x${size.height}`
-        expect(await homeTops(page), `${at}: headline and search`).toEqual(empty)
-        const fit = await rowFit(page)
-        expect(fit.spill, `${at}: past its row`).toBe(0)
-        if (label.length < 8) expect(fit.nameLines, `${at}: the name's lines`).toBe(1)
-        if (label === SHORT_NAME && state !== "available") expect(fit.height, `${at}: the row's height`).toBe(72)
-        expect(await overflow(page), at).toBe(0)
+// the service worker of a production build answers these pages before Playwright's routes in WebKit
+test.describe(() => {
+  test.use({ serviceWorkers: "block" })
+
+  test("each home answer holds its name inside its row, and a name of six letters on one line, at a laptop's and a phone's size", async ({ page }) => {
+    for (const label of [SHORT_NAME, wideLabel(6), wideLabel(MAX_LABEL_LENGTH)]) {
+      const { owner } = await keepOrder(page, "reg-rowfit", null, label)
+      await page.route("**/api/registration/reg-rowfit*", (route) => route.fulfill({ status: 404, json: { error: "not_found" } }))
+      for (const [state, answer] of Object.entries(homeAnswers(owner))) {
+        await page.unroute("**/api/name/**")
+        await page.route("**/api/name/**", (route) => route.fulfill({ json: answer }))
+        for (const size of FIT_SIZES) {
+          await page.setViewportSize(size)
+          await page.goto("/#/trademarks")
+          await page.goto("/")
+          await page.evaluate(() => document.fonts.ready)
+          const empty = await homeTops(page)
+          await page.getByLabel("Name", { exact: true }).fill(label)
+          await page.getByLabel("Name", { exact: true }).press("Enter")
+          await expect(page.locator(".answer .row")).toContainText(state === "yours" ? "Your name" : state === "taken" ? "Taken" : "Register")
+          const at = `${state}, ${label.length} letters, ${size.width}x${size.height}`
+          expect(await homeTops(page), `${at}: headline and search`).toEqual(empty)
+          const fit = await rowFit(page)
+          expect(fit.spill, `${at}: past its row`).toBe(0)
+          if (label.length < 8) expect(fit.nameLines, `${at}: the name's lines`).toBe(1)
+          if (label === SHORT_NAME && state !== "available") expect(fit.height, `${at}: the row's height`).toBe(72)
+          expect(await overflow(page), at).toBe(0)
+        }
       }
     }
-  }
+  })
 })
 
 test("the registering page keeps its heading still on a phone from the commit to the name being registered", async ({ page, request }) => {
