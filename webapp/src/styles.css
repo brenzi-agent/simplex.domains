@@ -418,12 +418,13 @@ svg.qr { display: block; width: 132px; height: auto; }
 .stripe .box { padding: 13px 14px; border-radius: 12px; border: 1px solid var(--surface-line); background: var(--surface); color: var(--ink-soft); font-weight: 600; }
 .stripe .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 
-/* the stages as bars, the active one filling as its wait goes by; --done is the wait's share gone by, which the page sets each second */
+/* the stages as bars, the active one filling as its wait goes by from a start that tells it from the pending ones; --done is
+   the wait's share gone by, which the page sets each second */
 .stages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; list-style: none; }
 .stage { display: grid; gap: 8px; }
 .stage::before { content: ""; height: 4px; border-radius: 2px; background: var(--surface-line); }
 .stage.done::before { background: var(--ok-fg); }
-.stage.active::before { background: linear-gradient(90deg, var(--primary) 0%, var(--primary) calc(var(--done, 0) * 100%), var(--surface-line) calc(var(--done, 0) * 100%)); }
+.stage.active::before { --fill: calc(max(var(--done, 0), .08) * 100%); background: linear-gradient(90deg, var(--primary) 0%, var(--primary) var(--fill), var(--surface-line) var(--fill)); }
 .stage.failed::before { background: var(--danger-fg); }
 .stage b { font-size: 15px; }
 .stage:not(.done, .active, .failed) b { color: var(--ink-soft); font-weight: 600; }
