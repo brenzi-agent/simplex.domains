@@ -258,10 +258,10 @@ export function screen(head: ScreenHead, ...body: Kid[]): HTMLElement {
 }
 
 // A purchase step, an outcome or a screen like them is a frame of one height: its heading block, its content, and its
-// actions' row, so Back, the heading and the main button stand at one place on every step, the row kept when it is empty.
+// actions' row, so Back, the heading and the main button stand at one place on every step; without actions its content
+// takes the row's room.
 export function asStep(screen: HTMLElement): HTMLElement {
   screen.classList.add("step")
-  if (!screen.querySelector(":scope > .actions-row")) screen.append(el("div", { class: "actions-row" }))
   return screen
 }
 

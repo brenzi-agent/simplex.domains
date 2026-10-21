@@ -178,9 +178,9 @@ body > main { display: flex; flex-direction: column; min-width: 0; }
 }
 
 /* the invest note under the page, and the footer's links after a rule (badges styles.css .invest, footer) */
-.invest { padding: 16px 16px 20px; text-align: center; }
+.invest { padding: 22px 16px 32px; text-align: center; }
 .invest .half { display: inline-block; }
-.invest-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 4px; white-space: nowrap; }
+.invest-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; white-space: nowrap; }
 /* the wordmark, a touch taller than the text and lifted so its baseline sits with the text's */
 .invest-link .wefunder { height: 22px; width: auto; display: block; transform: translateY(-2px); }
 .footer { width: min(100% - 32px, var(--column) + 40px); margin-inline: auto; padding-bottom: var(--note-room); border-top: 1px solid var(--surface-line); text-align: center; }
@@ -229,14 +229,15 @@ body > main { display: flex; flex-direction: column; min-width: 0; }
 /* Every screen is one centred column: its heading block, Back beside the heading as the badges store draws it, then its
    content and its actions' row. A step is a frame of one height, so Back, the heading and the main button stand at one
    place on every step; the content runs down from under the heading, so nothing above a change moves as it comes. */
-.screen { --back-w: 72px; width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: 36px 16px 48px; display: grid;
+.screen { --back-w: 72px; --screen-top: 29px; width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: var(--screen-top) 16px 48px; display: grid;
   grid-template-columns: minmax(0, 1fr); align-content: start; row-gap: 22px; }
-.screen.step { --step-h: 572px; height: calc(var(--step-h) + 36px); padding-bottom: 0; grid-template-rows: auto minmax(0, 1fr) 78px; }
+.screen.step { --step-h: 564px; height: calc(var(--step-h) + var(--screen-top)); padding-bottom: 0; grid-template-rows: auto minmax(0, 1fr) 78px; }
+/* a step with no action gives the action row's room to its content */
+.screen.step:not(:has(> .actions-row)) { grid-template-rows: auto minmax(0, 1fr); }
 .screen-head { display: grid; grid-template-columns: var(--back-w) minmax(0, 1fr) var(--back-w); row-gap: 10px; }
 .screen-head h1 { grid-area: 1 / 2; text-align: center; }
-/* a heading without Back takes the whole column */
-.screen-head h1:first-child { grid-column: 1 / -1; }
-.back { grid-area: 1 / 1; align-self: start; justify-self: start; display: inline-flex; align-items: center; gap: 2px; min-height: 40px; margin: 2px 0 0 -6px;
+/* Back's word 12 px under the heading's top, its tap area 40 px tall */
+.back { grid-area: 1 / 1; align-self: start; justify-self: start; display: inline-flex; align-items: center; gap: 2px; min-height: 40px; margin: 4px 0 0 -6px;
   color: var(--primary); }
 .back svg.i { width: 22px; height: 22px; }
 .back:hover { text-decoration: none; color: var(--accent); }
@@ -262,8 +263,9 @@ h1:has(.grad) { text-wrap: pretty; }
 
 /* the home, as the direction 1 mockup: the headline under the header, the search, and below it the room its answers take,
    kept from the start; an answer taller than the room grows it downwards, so nothing above it moves */
-.home { --room: 120px; flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; padding: 32px 16px; text-align: center; }
-.home h1 { --fs-h1: 56px; line-height: 1.05; letter-spacing: -.015em; }
+.home { --room: 156px; flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; padding: 32px 16px; text-align: center; }
+/* the descenders' room under the headline takes no room from the page */
+.home h1 { --fs-h1: 56px; line-height: 1.05; letter-spacing: -.015em; margin-bottom: -.04em; }
 .home .sub { margin-top: 12px; font-size: 19px; color: var(--ink-soft); text-wrap: balance; }
 .home > .notice { width: 100%; max-width: var(--column); margin-top: 24px; }
 .search { width: 100%; max-width: var(--column); display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 36px; text-align: left; }
@@ -531,18 +533,18 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
    its text link under it, the row the same height whether or not a step has the link */
 @media (max-width: 520px) {
   :root { --fs-h1: 30px; --fs-lead: 15px; }
-  .screen { padding-top: 20px; row-gap: 16px; }
-  .screen.step { --step-h: 646px; height: calc(var(--step-h) + 20px); }
+  .screen { --screen-top: 20px; row-gap: 16px; }
+  .screen.step { --step-h: 616px; }
   .screen-head { grid-template-columns: minmax(0, 1fr); grid-template-rows: 24px auto; row-gap: 8px; }
   .back { margin-top: -8px; }
   .screen-head h1 { grid-area: 2 / 1; }
   .screen-head .lead { grid-row: 3; }
   .screen-head:has(h1 .long) { --fs-h1: 22px; }
   .screen-head .lead { line-height: 1.4; }
+  .invest { padding-bottom: 20px; }
   .actions-row > .btn { width: 100%; min-width: 0; }
-  .home { --room: 168px; padding-top: 48px; }
-  /* two lines, as the mockup draws it, rather than one that only some fonts' widths fit */
-  .home h1 { --fs-h1: 36px; max-width: 9em; }
+  .home { --room: 178px; padding-top: 48px; }
+  .home h1 { --fs-h1: 34px; }
   .home .sub { font-size: 16px; }
   .search { margin-top: 28px; }
   /* a name that does not fit beside the rest of its row takes a line of its own, the rest under it */

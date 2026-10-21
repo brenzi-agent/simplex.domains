@@ -45,7 +45,9 @@ async function headingAt(page: Page): Promise<{ x: number; y: number }> {
 // how far the page reaches past the window, less the footer the badges store keeps below the fold
 const overflow = (page: Page) => page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight - Math.round(document.querySelector("body > footer")!.getBoundingClientRect().height))
 
-interface Frame { heading: number; actions: number }
+interface Frame { heading: number; actions: number | null; back: number | null }
+// where the audited mockup draws a step's heading, its main button and Back's word, at each window size
+const MOCKUP_FRAMES: Frame[] = [{ heading: 125, actions: 611, back: 137 }, { heading: 106, actions: 612, back: 74 }]
 
 // The screen in view fits the window at each size, its content above its actions' row; a step's heading and actions'
 // row stand where every step's do, which the caller compares. Captured for review when shots are asked for.
@@ -54,7 +56,9 @@ async function fitsWindow(page: Page, name: string, frames?: Record<string, Fram
     await page.setViewportSize(size)
     const measured = () => page.evaluate(() => {
       const shown = document.querySelector("body > main > section")!
-      const actions = shown.querySelector(":scope > .actions-row")?.getBoundingClientRect()
+      // a step with no action gives its content the action row's room, down to the step's foot
+      const row = shown.querySelector(":scope > .actions-row")
+      const actions = row ? row.getBoundingClientRect() : shown.classList.contains("step") ? { top: shown.getBoundingClientRect().bottom } : undefined
       const content = [...shown.querySelectorAll(":scope > .screen-body > *")].map((k) => k.getBoundingClientRect()).filter((b) => b.height > 0)
       const footer = Math.round(document.querySelector("body > footer")!.getBoundingClientRect().height)
       return {
@@ -64,10 +68,15 @@ async function fitsWindow(page: Page, name: string, frames?: Record<string, Fram
     })
     await expect.poll(measured, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ overflow: 0, overlap: 0 })
     if (frames) {
-      const at = await page.evaluate(() => ({
-        heading: Math.round(document.querySelector("body > main h1")!.getBoundingClientRect().top),
-        actions: Math.round(document.querySelector("body > main > section > .actions-row")!.getBoundingClientRect().top),
-      }))
+      const at = await page.evaluate(() => {
+        const back = document.querySelector("body > main .back span")
+        const actions = document.querySelector("body > main > section > .actions-row")
+        return {
+          heading: Math.round(document.querySelector("body > main h1")!.getBoundingClientRect().top),
+          actions: actions ? Math.round(actions.getBoundingClientRect().top) : null,
+          back: back ? Math.round(back.getBoundingClientRect().top) : null,
+        }
+      })
       ;(frames[name] ??= [])[i] = at
     }
   }
@@ -75,11 +84,13 @@ async function fitsWindow(page: Page, name: string, frames?: Record<string, Fram
   await shot(page, `names-u1-${name}`)
 }
 
-// every step's heading and actions' row at one place, for each window size
+// every step's heading, actions' row and Back, where it has one, at the mockup's place for each window size
 function oneFrame(frames: Record<string, Frame[]>): void {
   for (const [i, size] of FIT_SIZES.entries()) {
     const at = Object.fromEntries(Object.entries(frames).map(([name, f]) => [name, f[i]]))
-    expect(new Set(Object.values(at).map((f) => JSON.stringify(f))).size, `the steps' heading and actions at ${size.width}x${size.height}: ${JSON.stringify(at)}`).toBe(1)
+    const mockup = MOCKUP_FRAMES[i]
+    const off = Object.entries(at).filter(([, f]) => f.heading !== mockup.heading || (f.actions !== null && f.actions !== mockup.actions) || (f.back !== null && f.back !== mockup.back))
+    expect(off, `the steps' heading, actions and Back at ${size.width}x${size.height}, the mockup's ${JSON.stringify(mockup)}`).toEqual([])
   }
 }
 
