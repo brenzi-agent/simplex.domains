@@ -128,7 +128,7 @@ describe("service errors", () => {
   it("takes a link preview whose image is no image the page can show as no answer", async () => {
     answerWith(200, JSON.stringify({ ...PROFILE, image: "data:image/png;base64,iVBORw0KGgo=" }))
     expect(await previewLink("x")).toMatchObject({ displayName: "Alice" })
-    for (const image of ["javascript:alert(1)", "http://example.com/a.png", 5]) {
+    for (const image of ["javascript:alert(1)", "http://example.com/a.png", "https://example.com/a.png", 5]) {
       answerWith(200, JSON.stringify({ ...PROFILE, image }))
       const e = await previewLink("x").then(() => null, (e: unknown) => e)
       expect((e as ApiError).code, String(image)).toBe("network")

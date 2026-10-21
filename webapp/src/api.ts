@@ -200,8 +200,8 @@ const isCount = (v: unknown) => Number.isInteger(v) && (v as number) >= 1
 const isDecimal = (v: unknown) => typeof v === "string" && /^\d+(\.\d+)?$/.test(v)
 const optional = (v: unknown, test: (v: unknown) => boolean) => v === undefined || test(v)
 const nullable = (v: unknown, test: (v: unknown) => boolean) => v === null || test(v)
-// an image the page shows itself, never a link a click could follow
-const isImage = (v: unknown) => v === null || (typeof v === "string" && /^(data:image\/|https:\/\/)/.test(v))
+// an image the page holds itself, as the service sends it: the page's CSP loads images from nowhere else
+const isImage = (v: unknown) => v === null || (typeof v === "string" && v.startsWith("data:image/"))
 const CHAT_KINDS: ChatKind[] = ["contact", "channel", "business", "bot"]
 const isPreview = (e: unknown) => isObject(e) && (e.type === "address" || e.type === "channel") && CHAT_KINDS.includes(e.kind as ChatKind) && isText(e.displayName)
   && isText(e.fullName) && isImage(e.image) && nullable(e.subscribers, isAmount)
