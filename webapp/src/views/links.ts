@@ -6,9 +6,9 @@ import { type LinkKind, linkKind, linkProblem, linkTooLong } from "../names.ts"
 import { chatButton, profileLine } from "./chats.ts"
 import { inPlace, whenDropped } from "./shell.ts"
 
-const KIND_TEXT: Record<LinkKind, { name: string; placeholder: string; add: string }> = {
-  contact: { name: "Contact address", placeholder: "Paste your contact address", add: "Add a contact address" },
-  channel: { name: "Channel", placeholder: "Paste your channel link", add: "Add a channel link" },
+const KIND_TEXT: Record<LinkKind, { name: string; noun: string; placeholder: string; add: string }> = {
+  contact: { name: "Contact address", noun: "contact address", placeholder: "Paste your contact address", add: "Add a contact address" },
+  channel: { name: "Channel", noun: "channel link", placeholder: "Paste your channel link", add: "Add a channel link" },
 }
 const ANY_LINK = { name: "Link", placeholder: "Paste a contact address or channel link" }
 const linkName = (kind: LinkKind) => KIND_TEXT[kind].name
@@ -48,8 +48,9 @@ export function linkChat(link: string, kind: LinkKind, name: string, key: string
   return place
 }
 
-// What a field takes: a link of its kind, or of either kind, less a kind another field holds; `fieldOf` names the field for a kind.
-interface Takes { kind: LinkKind | null; refused: () => LinkKind | null; fieldOf: (kind: LinkKind) => string }
+// What a field takes: a link of its kind, or of either kind, less a kind another field holds; `fieldOf` names the field for a kind,
+// and `filled` tells whether the other field already holds a link of a kind.
+interface Takes { kind: LinkKind | null; refused: () => LinkKind | null; fieldOf: (kind: LinkKind) => string; filled: (kind: LinkKind) => boolean }
 
 // data-state is "ok", "bad", "checking" or "empty"; save hears each good link with its kind and the field emptied, never one checked or refused.
 // `valueKind` is the record `value` came from, which a value kept as it is, such as several links, keeps.
@@ -126,6 +127,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
     if (problem || held) {
       const other = held ?? linkKind(link)
       return refuse(problem === "long" ? "This link is too long."
+        : other && takes.filled(other) ? `This is a ${KIND_TEXT[other].noun}. Paste a ${KIND_TEXT[otherKind(other)].noun} here.`
         : other ? `This is a ${linkName(other).toLowerCase()} link: paste it in the ${takes.fieldOf(other)} field.`
         : takes.kind ? `Paste a SimpleX ${linkName(takes.kind).toLowerCase()} short link.` : "Paste a SimpleX contact address or channel short link.")
     }
@@ -185,14 +187,15 @@ export function linkFieldsFor(links: api.Links, save: (kind: LinkKind, link: str
     add.hidden = held === null || second !== null
     if (held) add.textContent = KIND_TEXT[otherKind(held)].add
   }
-  const firstField = linkField({ kind: null, refused: () => second?.kind ?? null, fieldOf }, links[first], (value, kind) => {
+  const accepted = (field: HTMLElement | undefined) => field?.dataset.state === "ok"
+  const firstField = linkField({ kind: null, refused: () => second?.kind ?? null, fieldOf, filled: (kind) => second?.kind === kind && accepted(second.field) }, links[first], (value, kind) => {
     if (held && held !== kind) told(held, "")
     if (kind) told(kind, value)
     held = kind ?? (second ? held : null)
     offerAdd()
   }, first)
   const addSecond = (kind: LinkKind, value: string, focus: boolean) => {
-    const field = linkField({ kind, refused: () => null, fieldOf }, value, (v) => told(kind, v))
+    const field = linkField({ kind, refused: () => null, fieldOf, filled: (other) => held === other && accepted(firstField) }, value, (v) => told(kind, v))
     second = { kind, field }
     add.before(field)
     offerAdd()

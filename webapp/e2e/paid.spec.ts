@@ -458,7 +458,7 @@ test("Continue on the links step waits for a link being checked, and takes focus
   await expect(step.locator(".link-field").first()).toHaveAttribute("data-state", "ok")
   await step.getByRole("button", { name: "Add a channel link" }).click()
   await step.getByRole("textbox", { name: "Channel" }).fill(contactLink("W1"))
-  await expect(step.getByText("This is a contact address link: paste it in the Link field.")).toBeVisible()
+  await expect(step.getByText("This is a contact address. Paste a channel link here.")).toBeVisible()
   await step.getByRole("button", { name: "Continue" }).click()
   await expect(step.getByRole("textbox", { name: "Channel" })).toBeFocused()
   await expect(step.getByRole("heading", { name: LINKS_HEADING })).toBeVisible()

@@ -628,7 +628,7 @@ for (const length of [25, MAX_LABEL_LENGTH]) {
       await step.getByRole("button", { name: "Add a channel link" }).click()
       const before = await headingAt(page)
       await step.getByRole("textbox", { name: "Channel" }).fill(contactLink("V3"))
-      await expect(step.locator(".field-error")).toHaveText("This is a contact address link: paste it in the Link field.")
+      await expect(step.locator(".field-error")).toHaveText("This is a contact address. Paste a channel link here.")
       expect(await headingAt(page), `the heading at ${size.width}x${size.height}`).toEqual(before)
       expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
       await fitsWindow(page, `links-refused-${length}`)
