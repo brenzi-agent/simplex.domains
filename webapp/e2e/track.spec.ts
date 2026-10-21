@@ -1,4 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test"
+import { labelHash } from "../src/crypto/registration.ts"
+import { hex } from "../src/crypto/wallet.ts"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
   channelLink, CODE_HEADING, codeField, contactLink, control, fillLinks, LINKS_HEADING, onStep, payButton, previewsShown, recordedFrames, recordFrames, REGISTRATION_MS,
@@ -167,6 +169,60 @@ test("the home keeps its headline and search still as each kind of answer comes,
       expect(await overflow(page), `${name} at ${size.width}x${size.height}`).toBe(0)
     }
     await control(request, "search", { chainDown: false })
+  }
+})
+
+const OWNER = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
+const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
+const linked = (kind: "contact" | "channel") => ({ type: kind === "contact" ? "address" : "channel", kind, displayName: kind, fullName: "", image: null,
+  subscribers: kind === "channel" ? 12 : null, link: kind === "contact" ? contactLink("H1") : channelLink("H2"), deepLink: "simplex:/a#x" })
+// the search's answers for a name: available, taken with two chats, and this browser's with two chats
+const HOME_ANSWERS = {
+  available: { status: "available", price: 10000, currency: "usd", years: 2, ...CHAIN },
+  taken: { status: "registered", entities: [linked("contact"), linked("channel")], owner: `0x${"00".repeat(19)}01`, tld: "simplex" },
+  yours: { status: "registered", entities: [linked("contact"), linked("channel")], owner: OWNER, tld: "simplex" },
+}
+
+// how far anything in the answer's row reaches past the row, the row's height and the lines its name takes
+const rowFit = (page: Page) => page.evaluate(() => {
+  const row = document.querySelector(".answer .row")!.getBoundingClientRect()
+  const inside = [...document.querySelectorAll(".answer .row *")].map((n) => n.getBoundingClientRect()).filter((b) => b.height > 0)
+  const name = document.querySelector(".answer .row .name")!
+  return { spill: Math.round(Math.max(0, ...inside.map((b) => Math.max(b.bottom - row.bottom, row.top - b.top, b.right - row.right, row.left - b.left)))),
+    height: Math.round(row.height), nameLines: Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight)) }
+})
+// a name of six letters that fits one row beside two chats on a phone, as most do
+const SHORT_NAME = "udumhd"
+
+test("each home answer holds its name inside its row, and a name of six letters on one line, at a laptop's and a phone's size", async ({ page }) => {
+  for (const label of [SHORT_NAME, wideLabel(6), wideLabel(MAX_LABEL_LENGTH)]) {
+    await page.goto("/#/trademarks")
+    await page.evaluate(({ label, hash, owner }) => localStorage.setItem("simplex-names:order:reg-rowfit", JSON.stringify({
+      registrationId: "reg-rowfit", invoiceId: null, label, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner, contact: "", channel: "", method: "code", paid: 0,
+      years: 2, tld: "simplex", createdAt: new Date().toISOString(), request: { labelHash: hash, length: label.length, owner, commitment: "0x01", sealed: "sealed" },
+    })), { label, hash: hex(labelHash(label)), owner: OWNER })
+    await page.route("**/api/registration/reg-rowfit*", (route) => route.fulfill({ status: 404, json: { error: "not_found" } }))
+    for (const [state, answer] of Object.entries(HOME_ANSWERS)) {
+      await page.unroute("**/api/name/**")
+      await page.route("**/api/name/**", (route) => route.fulfill({ json: answer }))
+      for (const size of FIT_SIZES) {
+        await page.setViewportSize(size)
+        await page.goto("/#/trademarks")
+        await page.goto("/")
+        await page.evaluate(() => document.fonts.ready)
+        const empty = await homeTops(page)
+        await page.getByLabel("Name", { exact: true }).fill(label)
+        await page.getByLabel("Name", { exact: true }).press("Enter")
+        await expect(page.locator(".answer .row")).toContainText(state === "yours" ? "Your name" : state === "taken" ? "Taken" : "Register")
+        const at = `${state}, ${label.length} letters, ${size.width}x${size.height}`
+        expect(await homeTops(page), `${at}: headline and search`).toEqual(empty)
+        const fit = await rowFit(page)
+        expect(fit.spill, `${at}: past its row`).toBe(0)
+        if (label.length < 8) expect(fit.nameLines, `${at}: the name's lines`).toBe(1)
+        if (label === SHORT_NAME && state !== "available") expect(fit.height, `${at}: the row's height`).toBe(72)
+        expect(await overflow(page), at).toBe(0)
+      }
+    }
   }
 })
 

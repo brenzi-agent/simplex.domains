@@ -267,7 +267,7 @@ h1:has(.grad) { text-wrap: pretty; }
 .search { width: 100%; max-width: var(--column); display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 36px; text-align: left; }
 .search-field { padding: 0 5px 0 20px; }
 .search-field .tld { color: var(--faint); font-weight: 600; }
-.answer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; height: var(--room); }
+.answer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; min-height: var(--room); }
 /* one row as the app lists a chat: the name, the chats it opens, and whose it is or its price */
 .row { display: flex; align-items: center; gap: 16px; min-height: 72px; padding: 12px 18px 12px 22px; }
 .row .name { flex: 1; min-width: 0; }
@@ -531,13 +531,17 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .screen-head:has(h1 .long) { --fs-h1: 22px; }
   .screen-head .lead { line-height: 1.4; }
   .actions-row > .btn { width: 100%; min-width: 0; }
-  .home { --room: 146px; justify-content: flex-start; padding-top: 48px; }
+  .home { --room: 168px; justify-content: flex-start; padding-top: 48px; }
   /* two lines, as the mockup draws it, rather than one that only some fonts' widths fit */
   .home h1 { --fs-h1: 36px; max-width: 9em; }
   .home .sub { font-size: 16px; }
   .search { margin-top: 28px; }
-  .row .name { font-size: 19px; }
-  .row.buy { flex-wrap: wrap; row-gap: 10px; padding: 14px 14px 14px 18px; }
+  /* a name that does not fit beside the rest of its row takes a line of its own, the rest under it */
+  .row { flex-wrap: wrap; gap: 10px; padding: 14px 14px 14px 18px; }
+  .row .name { flex: 1 1 auto; }
+  .row .name:not(.long) { font-size: 19px; }
+  .row > :last-child { margin-left: auto; }
+  .chats { gap: 0; }
   .row.buy .name { flex-basis: 100%; }
   .row.buy .deal { margin-right: auto; }
   .card { padding: 16px 18px; }
