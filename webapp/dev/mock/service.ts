@@ -5,6 +5,7 @@ import {
   encodeFunctionData, getAddress, hashTypedData, isAddress, keccak256, namehash, recoverAddress, recoverMessageAddress, recoverTypedDataAddress, toHex,
   zeroHash, type Address, type Hex,
 } from "viem"
+import type { ChatKind, Profile } from "../../src/api.ts"
 import { codeHash, parseNameCode } from "../../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, durationFor } from "../../src/crypto/registration.ts"
 import { labelProblem, linkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
@@ -214,9 +215,6 @@ const LINK_SEPARATOR = ";"
 const splitLinks = (text: string) => text.split(LINK_SEPARATOR).map((l) => l.trim()).filter(Boolean)
 
 // --- link cards
-
-type ChatKind = "contact" | "channel" | "business" | "bot"
-type Profile = { type: "address" | "channel"; kind: ChatKind; displayName: string; fullName: string; image: string | null; subscribers: number | null }
 
 const KNOWN_PROFILES: Record<string, Pick<Profile, "displayName" | "fullName" | "subscribers">> = {
   "https://smp8.simplex.im/a#Y8m3qT0vLw2Ab7cD9eF1gH3jK5mN7pQ9rS": { displayName: "Alice's Bakery", fullName: "Sourdough and pastries, Lisbon", subscribers: null },
@@ -834,7 +832,7 @@ export async function find(body: Record<string, unknown>): Promise<Record<string
   return { registrations: found.map((r) => ({ registrationId: r.id, invoiceId: r.invoiceId, phase: r.phase, createdAt: r.createdAt })) }
 }
 
-export function previewLink(body: Record<string, unknown>): Record<string, unknown> {
+export function previewLink(body: Record<string, unknown>): Profile {
   const profile = typeof body.link === "string" ? linkProfile(body.link) : null
   if (!profile || new TextEncoder().encode(body.link as string).length > 4096) throw new HttpError(400, "invalid_link")
   return profile
