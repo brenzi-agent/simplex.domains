@@ -5,6 +5,8 @@ import { type Hold, NO_LEAD } from "./hold.ts"
 
 // a card payment Stripe has not confirmed after this long gets the "not confirmed" page
 export const CARD_SLOW_MS = 10 * 60 * 1000
+// the contract's maxCommitmentAge (dev/deploy.ts): a paid order not revealed within it lapses and has to commit again
+export const REVEAL_HOURS = 24
 // refusals of the signed registration after which the page stops signing and says so
 export const REVEAL_ATTEMPTS = 3
 // A view whose chain reads failed is read again after these pauses, the last repeated while they fail: a held poll would

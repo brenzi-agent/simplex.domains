@@ -7,7 +7,7 @@ import { clock, dateOf, dollars, methodName, SEP, shortAddress } from "../format
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
   type ClosedCase, closedCase, coinOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
-  retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
+  retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../screens/order.ts"
 import { CODE_FROM_ORDER_URL } from "../screens/routes.ts"
 import * as store from "../store.ts"
@@ -727,7 +727,8 @@ function headingOf({ view, record }: OrderState): Kid {
   return label ? ["Registering ", gradName(label, view!.tld)] : "Registering the name"
 }
 
-const leadOf = ({ record }: OrderState) => record ? "Keep this page open until the name is yours." : "The browser with its name code signed it."
+const leadOf = ({ record }: OrderState) => record ? ["Keep this page open until the name is yours, ", el("span", { class: "nowrap" }, `or come back within ${REVEAL_HOURS} hours.`)]
+  : "The browser with its name code signed it."
 
 const WAIT_NOTE = "Every new name waits a little, so nobody who sees your order can take the name first."
 const COMMIT_NOTE = "Placing your order. The wait starts once it is in."

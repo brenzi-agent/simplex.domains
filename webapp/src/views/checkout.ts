@@ -5,6 +5,7 @@ import * as flow from "../flow.ts"
 import { dateOf, dollars, freeDays, methodName, termEnd } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
 import type { LinkKind } from "../names.ts"
+import { REVEAL_HOURS } from "../screens/order.ts"
 import { changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, initialState, reduce, screenOf, stepFor, type WaitingOrder } from "../screens/checkout.ts"
 import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
@@ -22,8 +23,6 @@ const CHECKOUT_NOTE = "checkout-note"
 const SAVED_LABEL = "I have saved my name code"
 // the dApp that registers a name paid for in ETH
 const DAPP_URL = "https://app.simplex.domains"
-// the contract's maxCommitmentAge (dev/deploy.ts): a paid order not revealed within it has to commit again
-const REVEAL_HOURS = 24
 // the service takes a signed order's timestamp within this many seconds; an older one is signed anew
 const SIGNED_WINDOW_S = 600
 
