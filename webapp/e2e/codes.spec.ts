@@ -428,12 +428,17 @@ test("a rate-limited code check says how long to wait", async ({ page, request }
   await expect(page.locator(".verdict.bad")).toContainText("Try again in 40 seconds")
 })
 
-test("Your names reads a revoked code as not valid", async ({ page, request }) => {
+test("Your names reads a revoked code as not valid, and has a codes section only once it has codes", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6, state: "revoked" }) as { code: string }
+  await page.goto("/#/names")
+  await expect(onStep(page).getByRole("heading", { name: "Your names" })).toBeVisible()
+  await expect(onStep(page).getByRole("heading", { name: "Codes" })).toHaveCount(0)
+  await expect(onStep(page).getByRole("link", { name: "Add a code" })).toBeVisible()
   await page.goto("/")
   await page.evaluate((c) => localStorage.setItem(`simplex-names:code:${c}`, JSON.stringify({ code: c, minLength: 6, years: 2, addedAt: new Date().toISOString() })), code)
   await page.goto("/#/names")
   await expect(page.locator(".list-row", { hasText: code }).locator(".chip")).toHaveText("Not valid")
+  await expect(onStep(page).getByRole("heading", { name: "Codes" })).toBeVisible()
 })
 
 test("a name code that fails on the network to find its order gives focus back to its button", async ({ page }) => {

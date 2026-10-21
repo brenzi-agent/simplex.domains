@@ -209,8 +209,7 @@ function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...listedOrders(s).map((o) => orderRow(o, s))]
   return screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME },
     el("div", { class: "card list" }, names.length ? names : el("p", { class: "note" }, "No names in this browser yet.")),
-    el("h2", { class: "label" }, "Codes"),
-    el("div", { class: "card list" }, s.codes.length ? s.codes.map((c) => codeRow(c, s)) : el("p", { class: "note" }, "Prepaid codes that pay for a name.")),
+    s.codes.length ? [el("h2", { class: "label" }, "Codes"), el("div", { class: "card list" }, s.codes.map((c) => codeRow(c, s)))] : null,
     el("div", { class: "end-links" }, el("a", { href: CODE_URL }, "Add a code"), s.asking || !hasRecords(s) ? null : forgetLink()),
     forgetQuestion(s))
 }
