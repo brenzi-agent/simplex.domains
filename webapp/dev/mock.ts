@@ -9,6 +9,7 @@ const PORT = Number(process.env.MOCK_PORT ?? "8099")
 // all interfaces only where the network around is private, as compose's
 const HOST = process.env.MOCK_HOST ?? "127.0.0.1"
 const MAX_BODY = 16384
+const KEEP_ALIVE_MS = 75_000
 
 // a seenVersion that is not a whole number is no version, so the poll answers at once
 const versionOf = (q: URLSearchParams) => /^\d+$/.test(q.get("seenVersion") ?? "") ? Number(q.get("seenVersion")) : null
@@ -76,6 +77,8 @@ const server = createServer(async (req, res) => {
   }
 })
 
+// Node closes an idle kept-alive socket after 5 s, which a client may reuse at that moment and see reset; clients close theirs first.
+server.keepAliveTimeout = KEEP_ALIVE_MS
 server.listen(PORT, HOST, () => {
   console.log(`mock names service on http://${HOST}:${PORT}`)
   const seeded = { unused: issueCode(6, 5, "unused"), used: issueCode(6, 2, "used"), longer: issueCode(8, 2, "unused") }
