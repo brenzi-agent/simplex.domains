@@ -80,6 +80,10 @@ export const setCheckout = (c: Checkout | null) => write(CHECKOUT, c)
 // the prepaid code this tab pays with, chosen in Check your code or Your names, until it is taken off
 export const activeCode = () => read<AppliedCode>(ACTIVE_CODE)
 export const setActiveCode = (code: AppliedCode | null) => write(ACTIVE_CODE, code)
+// a code an order took, or the service refused, stops paying only if it is still the one the tab pays with
+export function dropActiveCode(display: string): void {
+  if (activeCode()?.display === display) setActiveCode(null)
+}
 
 // a page changes only its own name's checkout; once the order took it, a stale page writes nothing
 export function updateCheckout(label: string, change: Partial<Checkout>): boolean {

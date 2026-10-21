@@ -25,11 +25,12 @@ function showCode(): void {
   if (code) chip().querySelector(".what")!.textContent = `Code: ${code.minLength}+ letters, ${code.years} years`
 }
 
-// a code taken off leaves the checkout too, unless its order is on its way
+// a code taken off leaves the checkout it pays for too, unless its order is on its way
 function removeCode(): void {
+  const code = session.activeCode()
   session.setActiveCode(null)
   const c = session.checkout()
-  if (c?.code && !session.isSending(c)) session.updateCheckout(c.label, { code: null })
+  if (c?.code && c.code.display === code?.display && !session.isSending(c)) session.updateCheckout(c.label, { code: null })
   refresh()
 }
 

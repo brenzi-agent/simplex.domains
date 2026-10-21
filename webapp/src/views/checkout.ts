@@ -328,7 +328,7 @@ async function sendOrder(): Promise<void> {
     if (c.code) {
       const res = await api.registerWithCode(built.request, c.code.display)
       // the code is the order's now, so it pays for nothing more in this tab
-      session.setActiveCode(null)
+      session.dropActiveCode(c.code.display)
       if (res.invoiceId) return await openInvoice(draft, built, res.invoiceId, "code", done)
       store.saveOrder({ ...flow.recordFor(draft, built, "code", 0, { registrationId: res.registrationId, invoiceId: null }), prepaidCode: c.code.display })
       return done(store.orderUrl({ invoiceId: null, registrationId: res.registrationId }))
@@ -372,7 +372,7 @@ function orderError(e: unknown, c: session.Checkout): void {
   }
   if (code in CODE_ERRORS) {
     // a code the service will not take pays for nothing more in this tab
-    session.setActiveCode(null)
+    if (c.code) session.dropActiveCode(c.code.display)
     return void act({ type: "order-refused", reason: "code", error: CODE_ERRORS[code] })
   }
   if (code === "provider_unavailable") return void act({ type: "order-refused", reason: "method" })
