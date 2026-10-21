@@ -514,6 +514,9 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   const { invoiceId } = await startOrder(page, label, { method: "card" })
   await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
   await shot(page, "N10-card")
+  // a whole amount has no cents, as the search and the order showed it
+  await expect(onStep(page).locator(".screen-head .lead")).toContainText(/\u00b7 \$\d+$/)
+  await expect(onStep(page).getByRole("button", { name: /^Pay \$\d+$/ })).toBeVisible()
   await onStep(page).getByRole("button", { name: /^Pay \$/ }).click()
   await expect(page.getByText("Waiting for Stripe to confirm")).toBeVisible()
   await shot(page, "N10b-card-confirming")

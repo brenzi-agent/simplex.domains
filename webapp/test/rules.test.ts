@@ -62,9 +62,11 @@ describe("prices", () => {
 })
 
 describe("formatting", () => {
-  it("writes cents as dollars", () => {
+  it("writes cents as dollars, with cents only where an amount has them", () => {
     expect(dollars(40000)).toBe("$400")
-    expect(dollars(10050, true)).toBe("$100.50")
+    expect(dollars(10050)).toBe("$100.50")
+    expect(dollars(10005)).toBe("$100.05")
+    expect(dollars(123456700)).toBe("$1,234,567")
   })
 
   it("shortens an address and writes a UTC date", () => {

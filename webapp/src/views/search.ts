@@ -243,7 +243,7 @@ function openingLine(s: SearchState): HTMLElement | null {
   if (s.moved?.to === "code") return alertBox("info", "key", "Your payment already became a code.", el("a", { href: s.moved.url }, "Open it"))
   if (s.moved) return alertBox("info", "info", "Your payment already went to another name.", el("a", { href: s.moved.url }, "Open ", nameText(s.moved.label, s.moved.tld)))
   if (!s.retarget) return null
-  const worth = dollars(s.retarget.paid, true)
+  const worth = dollars(s.retarget.paid)
   return alertBox("info", "wallet", `Your payment is kept: ${worth}.`, `Choose another name of up to ${worth}; nothing more is charged.`)
 }
 
@@ -285,7 +285,7 @@ const codeFor = (s: SearchState, label: string) => {
 function availableAnswer(s: SearchState, label: string, answer: Available, signal: AbortSignal): Kid[] {
   const retarget = s.retarget
   const unpayable = unaffordable(s, answer)
-  const covers = retarget && (unpayable ? `This name costs more than the ${dollars(retarget.paid, true)} your order is worth.` : "Covered by your payment")
+  const covers = retarget && (unpayable ? `This name costs more than the ${dollars(retarget.paid)} your order is worth.` : "Covered by your payment")
   const own = ownOrderOf(s)
   const code = codeFor(s, label)
   const short = usesCode(s) ? session.activeCode() : null

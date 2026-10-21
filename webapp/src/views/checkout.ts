@@ -28,9 +28,7 @@ const REVEAL_HOURS = 24
 const years = (c: session.Checkout) => c.code?.years ?? PRICED_YEARS
 // a card order waiting for Stripe holds a second paid order; a code pays nothing, so it holds none
 const blockedBy = ({ checkout, waiting }: CheckoutState) => checkout.code ? null : waiting
-// cents only where a price has them
-const price = (cents: number) => dollars(cents, cents % 100 !== 0)
-const payLabel = (c: session.Checkout) => c.code ? "Register with your code" : `Pay ${price(c.price)} with ${methodName(c.method)}`
+const payLabel = (c: session.Checkout) => c.code ? "Register with your code" : `Pay ${dollars(c.price)} with ${methodName(c.method)}`
 
 function waitingCardOrder(): WaitingOrder | null {
   const order = store.orders().find((o) => o.method === "card" && o.cardSubmittedAt && o.invoiceId)
@@ -152,8 +150,8 @@ function orderCard(c: session.Checkout): HTMLElement {
       row("Term", `${y} years`),
       free > 0 ? row(`Free until ${dateOf(TERM_START_S)}`, free === 1 ? "1 day" : `${free} days`) : null,
       row("Registered until", dateOf(termEnd(y, now))),
-      c.code ? row("Your code", `\u2212${price(c.price)}`, "ok") : null,
-      row("Total", c.code ? "$0" : price(c.price), "total")))
+      c.code ? row("Your code", `\u2212${dollars(c.price)}`, "ok") : null,
+      row("Total", c.code ? "$0" : dollars(c.price), "total")))
 }
 
 // an order on its way is sent as it is: its method and code stay as they are until it is answered
@@ -257,7 +255,7 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
 
 function buildPriceChanged({ checkout: c }: CheckoutState): HTMLElement {
   return outcome({ tone: "warn", icon: "alert", title: "The price changed",
-    text: [nameText(c.label, c.chain.tld), ` costs ${dollars(c.price, true)} now; it changed while you were deciding. Nothing was charged.`],
+    text: [nameText(c.label, c.chain.tld), ` costs ${dollars(c.price)} now; it changed while you were deciding. Nothing was charged.`],
     action: btn("Search again", "", () => go(searchLink(c.label))) })
 }
 

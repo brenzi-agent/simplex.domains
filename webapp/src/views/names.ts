@@ -229,11 +229,11 @@ const continued = (text: string | null) => text ? text.charAt(0).toLowerCase() +
 // the reference support asks for, in a face where l and I differ
 const reference = (id: string) => [`${SEP}reference `, el("span", { class: "mono" }, id)]
 
-const recordedPaid = (o: store.OrderRecord) => o.method === "code" ? "Paid with a code" : `${dollars(o.paid, true)} ${methodName(o.method)}`
+const recordedPaid = (o: store.OrderRecord) => o.method === "code" ? "Paid with a code" : `${dollars(o.paid)} ${methodName(o.method)}`
 
 function subLine(o: store.OrderRecord, { view, invoice, answer }: RowSeen, now: number): string | (Node | string)[] {
   // what was paid, from the invoice; the record's amount is the order's worth, lower after a move to a cheaper name
-  const paid = invoice ? `${dollars(invoice.amount, true)} ${methodName(invoice.cryptoCurrency ?? "card")}` : recordedPaid(o)
+  const paid = invoice ? `${dollars(invoice.amount)} ${methodName(invoice.cryptoCurrency ?? "card")}` : recordedPaid(o)
   if (lapsed({ view, answer }, now)) return `Expired ${view.expiresAt ? dateOf(view.expiresAt, true) : ""}`.trim()
   if (view.phase === "registered") return [view.expiresAt ? `Until ${dateOf(view.expiresAt, true)}` : null, continued(paid)].filter(Boolean).join(SEP)
   if (invoice?.status === "paid" && view.phase === "unpaid") return ["Paid after the invoice closed; support refunds it", ...reference(invoice.invoiceId)]

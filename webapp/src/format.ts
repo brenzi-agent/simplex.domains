@@ -1,7 +1,9 @@
 // How amounts, dates and addresses read on the page.
 
-export function dollars(cents: number, withCents = false): string {
-  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: withCents ? 2 : 0, maximumFractionDigits: withCents ? 2 : 0 })}`
+// cents only where an amount has them, as "$100" and "$100.50"
+export function dollars(cents: number): string {
+  const digits = cents % 100 === 0 ? 0 : 2
+  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 }
 
 // word joiners keep a shortened address on one line

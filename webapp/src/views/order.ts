@@ -339,7 +339,7 @@ const UNKNOWN_NAME = "The name shows once it is registered"
 // the order in one line, the lead of each screen that pays or registers it
 function orderLine({ view, record, invoice }: OrderState): Kid[] {
   const label = labelOf(view!, record)
-  return [label ? nameText(label, view!.tld) : UNKNOWN_NAME, SEP, el("span", { class: "nowrap" }, termText(view!.years)), SEP, invoice ? dollars(invoice.amount, true) : "With a code"]
+  return [label ? nameText(label, view!.tld) : UNKNOWN_NAME, SEP, el("span", { class: "nowrap" }, termText(view!.years)), SEP, invoice ? dollars(invoice.amount) : "With a code"]
 }
 
 const TICKER: Record<"btc" | "xmr", string> = { btc: "BTC", xmr: "XMR" }
@@ -466,7 +466,7 @@ function buildPayCard(s: OrderState): HTMLElement {
   const invoice = s.invoice!
   const form = kept("stripe-form", () => el("div", { class: "stripe" }))
   if (cardIn !== form) mountInto(form, invoice)
-  payButton = setAction(btn(`Pay ${dollars(invoice.amount, true)}`, "", () => void payByCard()), s.busy === "card", card === null)
+  payButton = setAction(btn(`Pay ${dollars(invoice.amount)}`, "", () => void payByCard()), s.busy === "card", card === null)
   payButton.dataset.focus = "pay"
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
   const forgetful = store.canPersist() ? null : alertBox("warn", "alert", "This browser cannot remember a card payment",
@@ -638,7 +638,7 @@ function reorder(): void {
 
 function buildPriceChanged({ record, invoice, price }: OrderState): HTMLElement {
   const { label } = record!
-  return outcome({ tone: "warn", icon: "alert", title: "The price changed", text: [nameText(label, invoice!.registration.tld), ` costs ${dollars(price!, true)} now. Nothing was charged.`],
+  return outcome({ tone: "warn", icon: "alert", title: "The price changed", text: [nameText(label, invoice!.registration.tld), ` costs ${dollars(price!)} now. Nothing was charged.`],
     action: btn("Search again", "", () => go(searchLink(label))), reference: invoice!.invoiceId })
 }
 
@@ -803,7 +803,7 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
   const view = taken!
   const label = labelOf(view, record)
   // the order's worth caps another name; after a move to a cheaper name it is lower than what was paid
-  const worth = dollars(view.price, true)
+  const worth = dollars(view.price)
   const canAct = record !== null
   const other = setAction(btn("Choose another name", "", () => go(`/#/?retarget=${view.id}`)), false, !canAct)
   const code = setAction(btn("Take a code", "quiet", () => void takeCode()), canAct && s.busy === "code", !canAct || s.hold !== null)

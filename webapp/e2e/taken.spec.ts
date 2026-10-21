@@ -10,7 +10,7 @@ test("a name taken first moves the paid order to another name, owned by the same
   await control(request, "take", { label })
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
-  await expect(page.getByText(/^Choose another name of up to \$100\.00, .* or take a code for names of \d+ or more letters, for 2 years\.$/)).toBeVisible()
+  await expect(page.getByText(/^Choose another name of up to \$100, .* or take a code for names of \d+ or more letters, for 2 years\.$/)).toBeVisible()
   // the two ways forward are stacked, the move to another name first
   const [other, code] = [page.getByRole("button", { name: "Choose another name" }), page.getByRole("button", { name: "Take a code" })]
   // the main button centred, the other way under it
@@ -27,7 +27,7 @@ test("a name taken first moves the paid order to another name, owned by the same
   await elsewhere.close()
 
   await page.getByRole("button", { name: "Choose another name" }).click()
-  await expect(page.getByText(/Your payment is kept: \$100\.00/)).toBeVisible()
+  await expect(page.getByText(/Your payment is kept: \$100\./)).toBeVisible()
   await expect(page.getByRole("button", { name: "Invest to claim your name" })).toHaveCount(0)
   const next = uniqueLabel("tk2")
   await page.getByLabel("Name", { exact: true }).fill(next)
