@@ -1,4 +1,5 @@
 // The header's parts that change: the phone's menu, which its button opens over the page, and the tab's active code.
+import { el } from "../dom.ts"
 import * as session from "../session.ts"
 import { onDrawn, onPageLeft, refresh } from "./shell.ts"
 
@@ -22,7 +23,7 @@ function showCode(): void {
   const code = session.activeCode()
   chip().hidden = code === null
   document.querySelector<HTMLElement>(".check-link")!.hidden = code !== null
-  if (code) chip().querySelector(".what")!.textContent = `Code: ${code.minLength}+ letters, ${code.years} years`
+  if (code) chip().querySelector(".what")!.replaceChildren(el("span", { class: "code-word" }, "Code: "), `${code.minLength}+ letters, ${code.years} years`)
 }
 
 // a code taken off leaves the checkout it pays for too, unless its order is on its way
