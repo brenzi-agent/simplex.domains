@@ -145,7 +145,7 @@ function orderCard(c: session.Checkout): HTMLElement {
   const now = Date.now() / 1000
   const free = freeDays(now)
   const name = `${c.label}.${c.chain.tld}`
-  const chats = api.LINK_KINDS.filter((kind) => c[kind]).map((kind) => linkChat(c[kind], name, `chat-${kind}`))
+  const chats = api.LINK_KINDS.filter((kind) => c[kind]).map((kind) => linkChat(c[kind], kind, name, `chat-${kind}`))
   return el("section", { class: "card order" },
     el("div", { class: "row" }, nameTitle(c.label, "name", c.chain.tld), chats.length ? el("span", { class: "chats" }, chats) : null),
     el("div", { class: "table" },

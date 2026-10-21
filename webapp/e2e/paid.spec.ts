@@ -7,7 +7,7 @@ import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
   channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fillLinks, LINKS_HEADING, MOCK, mockRegistration, onStep, payButton, REGISTRATION_MS,
-  registrationOf, restoreOrder, SAVED, savedToReview, search, searchName, shot, shownCode, startOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
+  registrationOf, restoreOrder, SAVED, savedToReview, search, searchName, shot, shownCode, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
@@ -436,6 +436,18 @@ test("Edit links keeps several links on chain as the contact address they hold, 
   await step.getByRole("button", { name: "Save links" }).click()
   await expect(step.getByText("Links saved")).toBeVisible()
   expect(sent.map(({ key, value }) => ({ key, value })), "the edits sent").toEqual([{ key: CONTACT_KEY, value: "" }])
+})
+
+test("Check your order draws a link whose profile cannot be read as its kind's default picture, named by the link", async ({ page }) => {
+  await toFullReview(page, uniqueLabel("unread"))
+  await page.route("**/api/link/preview", (route) => route.fulfill({ status: 503, json: { error: "unavailable" } }))
+  await page.reload()
+  const chats = onStep(page).locator(".card.order .chat")
+  await expect(chats).toHaveCount(2)
+  await expect(chats.nth(0)).toHaveAccessibleName(`${contactLink("R1")}, contact address`)
+  await expect(chats.nth(1)).toHaveAccessibleName(`${channelLink("R2")}, channel`)
+  await chats.nth(1).click()
+  await expect(page.getByRole("dialog")).toContainText(channelLink("R2"))
 })
 
 test("Check your order asked for before the name code is saved opens the name code step instead", async ({ page }) => {

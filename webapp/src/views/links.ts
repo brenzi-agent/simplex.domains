@@ -33,16 +33,18 @@ function linkPreview(link: string, withKind = false): HTMLElement {
   return place
 }
 
-// The chat a link opens, as the search's answer draws it, opening its popup; its place is held while its profile is asked for.
-export function linkChat(link: string, name: string, key: string): HTMLElement {
+// The chat a link of `kind` opens, as the search's answer draws it, opening its popup; its place is held while its profile
+// is asked for, and a profile that cannot be read is drawn as the kind's default picture, named by the link.
+export function linkChat(link: string, kind: LinkKind, name: string, key: string): HTMLElement {
   const button = (p: api.Profile) => chatButton({ ...p, link, deepLink: link }, name, key)
   const known = previews.get(link)
   if (known) return button(known)
   const place = el("span", { class: "chat skeleton", "aria-hidden": "true" })
+  const unread: api.Profile = { type: kind === "contact" ? "address" : "channel", kind, displayName: link, fullName: "", image: null, subscribers: null }
   void api.previewLink(link).then((p) => {
     previews.set(link, p)
     place.replaceWith(inPlace(button(p)))
-  }, () => place.remove())
+  }, () => place.replaceWith(inPlace(button(unread))))
   return place
 }
 
