@@ -130,6 +130,11 @@ export function send(contract: Contract, functionName: string, args: unknown[], 
   return next
 }
 
+// whether a sent transaction succeeded, once it is mined; throws while it is not, after the send's own wait
+export async function mined(hash: Hex): Promise<boolean> {
+  return (await sender.waitForTransactionReceipt({ hash, timeout: SEND_TIMEOUT_MS })).status === "success"
+}
+
 export async function ownerOf(labelHash: Hex): Promise<Address | null> {
   try {
     return getAddress(await read<Address>(baseRegistrar, "ownerOf", [BigInt(labelHash)]))

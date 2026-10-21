@@ -10,7 +10,7 @@ import { codeHash, parseNameCode } from "../../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, durationFor, YEAR_S } from "../../src/crypto/registration.ts"
 import { labelProblem, linkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
 import {
-  baseRegistrar, chainNow, controller, deployment, holder, NotSent, ownerOf, priceOracleAt, read, registry, resolver, Reverted, send, sponsor,
+  baseRegistrar, chainNow, controller, deployment, holder, mined, NotSent, ownerOf, priceOracleAt, read, registry, resolver, Reverted, send, sponsor,
 } from "./chain.ts"
 import { TERM_START_S, untilChainTime } from "../chain-time.ts"
 
@@ -973,6 +973,25 @@ export function previewLink(body: Record<string, unknown>): Profile {
 
 // --- the records relay
 
+// Each sent edit, by its signed body: a repeat is answered from it rather than checked anew. A refused edit is never sent,
+// so it is not kept, and its repeat is checked again.
+interface SentEdit { hash: Hex; outcome: Record<string, unknown> | HttpError | null }
+const sentEdits = new Map<string, SentEdit>()
+
+async function repeatedEdit(sent: SentEdit): Promise<Record<string, unknown>> {
+  if (sent.outcome instanceof HttpError) throw sent.outcome
+  if (sent.outcome) return sent.outcome
+  // one that got no answer goes on: the repeat waits for it again
+  let ok: boolean
+  try {
+    ok = await mined(sent.hash)
+  } catch {
+    throw new HttpError(504, "edit_pending")
+  }
+  sent.outcome = ok ? { tx: sent.hash } : new HttpError(409, "record_reverted", { revert: null })
+  return repeatedEdit(sent)
+}
+
 export async function editRecords(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { labelHash, key, value, nonce, deadline } = body
   if (!isHash(labelHash) || typeof nonce !== "number" || typeof deadline !== "number" || !Number.isInteger(nonce) || !Number.isInteger(deadline)) throw badRequest()
@@ -983,13 +1002,16 @@ export async function editRecords(body: Record<string, unknown>): Promise<Record
     if (kind === null || typeof value !== "string") throw badRequest()
     if (value !== "" && linkProblem(kind, value) !== null) throw new HttpError(400, "invalid_link")
   }
-  if (deadline < nowSeconds()) throw badRequest()
   const node = nodeOf(labelHash)
   const domain = { name: "SimplexResolver", version: "1", chainId: deployment.chainId, verifyingContract: deployment.resolver }
   const digest = clear
     ? hashTypedData({ domain, primaryType: "ClearRecords", types: { ClearRecords: [{ name: "node", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }, message: { node, nonce: BigInt(nonce), deadline: BigInt(deadline) } })
     : hashTypedData({ domain, primaryType: "SetText", types: { SetText: [{ name: "node", type: "bytes32" }, { name: "key", type: "string" }, { name: "value", type: "string" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }, message: { node, key: key as string, value: value as string, nonce: BigInt(nonce), deadline: BigInt(deadline) } })
   const signer = await recoverAddress({ hash: digest, signature })
+  const editKey = JSON.stringify([labelHash, clear, key, value, nonce, deadline, signature])
+  const earlier = sentEdits.get(editKey)
+  if (earlier) return repeatedEdit(earlier)
+  if (deadline < nowSeconds()) throw badRequest()
   // a failed chain read is the provider's, not the request's
   let owner: Address, current: bigint
   try {
@@ -1000,14 +1022,26 @@ export async function editRecords(body: Record<string, unknown>): Promise<Record
   }
   if (signer !== owner) throw badRequest()
   if (BigInt(nonce) !== current) throw badRequest()
+  // kept from the moment it goes out
+  const edit: { sent: SentEdit | null } = { sent: null }
+  const goingOut = (hash: Hex) => {
+    edit.sent = { hash, outcome: null }
+    sentEdits.set(editKey, edit.sent)
+  }
   try {
     const tx = clear
-      ? await sendTx(resolver, "clearRecordsWithSig", [node, BigInt(nonce), BigInt(deadline), signature])
-      : await sendTx(resolver, "setTextWithSig", [node, key, value, BigInt(nonce), BigInt(deadline), signature])
+      ? await sendTx(resolver, "clearRecordsWithSig", [node, BigInt(nonce), BigInt(deadline), signature], goingOut)
+      : await sendTx(resolver, "setTextWithSig", [node, key, value, BigInt(nonce), BigInt(deadline), signature], goingOut)
+    if (edit.sent) edit.sent.outcome = { tx }
     return { tx }
   } catch (e) {
-    if (e instanceof Reverted) throw new HttpError(409, "record_reverted", { revert: e.revert })
     if (e instanceof NotSent) throw new HttpError(503, "provider_unavailable")
+    // a dry run that reverts sends nothing; a transaction that reverts is the edit's answer
+    if (e instanceof Reverted) {
+      const reverted = new HttpError(409, "record_reverted", { revert: e.revert })
+      if (edit.sent) edit.sent.outcome = reverted
+      throw reverted
+    }
     // no answer from the chain is not a refusal: the edit may still be mined, which the page says
     throw new HttpError(504, "edit_pending")
   }
