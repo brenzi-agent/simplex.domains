@@ -247,7 +247,7 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   const c = s.checkout
   const blocked = blockedBy(s)
   // the other way to pay sits under Pay, where a step's text link does
-  const eth = c.code || blocked ? null : el("span", {}, "Paying with ETH? ", el("a", { href: DAPP_URL, target: "_blank", rel: "noopener" }, "Register in the dApp"))
+  const eth = c.code || blocked ? null : el("a", { href: DAPP_URL, target: "_blank", rel: "noopener" }, "Open dApp to pay with ETH")
   return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null), alt: eth },
     el("div", { class: "review" }, orderCard(c),
       c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or check another code.`) : null,
