@@ -742,6 +742,8 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
 }
 
 const waitsSeen = new Map<string, number>()
+// a timed wait's bar starts this full, so as it becomes active it reads apart from the stages still to come
+const WAIT_FILL_START = 0.08
 const waitLeft = (view: api.RegistrationView) => (view.revealAfter ?? 0) - api.serviceNow() / 1000
 function fillWait(stage: HTMLElement, view: api.RegistrationView): void {
   const now = api.serviceNow()
@@ -749,7 +751,7 @@ function fillWait(stage: HTMLElement, view: api.RegistrationView): void {
   if (!waitsSeen.has(view.id)) waitsSeen.set(view.id, now)
   const start = waitsSeen.get(view.id)!
   const done = end > start ? Math.min(1, (now - start) / (end - start)) : 1
-  stage.style.setProperty("--done", String(done))
+  stage.style.setProperty("--done", String(Math.max(WAIT_FILL_START, done)))
 }
 
 const TURN_SLACK_MS = 20
