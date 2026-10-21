@@ -61,12 +61,15 @@ async function fitsWindow(page: Page, name: string, frames?: Record<string, Fram
       const actions = row ? row.getBoundingClientRect() : shown.classList.contains("step") ? { top: shown.getBoundingClientRect().bottom } : undefined
       const content = [...shown.querySelectorAll(":scope > .screen-body > *")].map((k) => k.getBoundingClientRect()).filter((b) => b.height > 0)
       const footer = Math.round(document.querySelector("body > footer")!.getBoundingClientRect().height)
+      // what is kept whole, as a name's end with its TLD, a price with its term and a name code, drawn on more than one line
+      const split = [...shown.querySelectorAll(".nowrap, .deal, .code-text")].filter((n) => new Set([...n.getClientRects()].map((r) => Math.round(r.top))).size > 1)
       return {
         overflow: Math.max(0, document.scrollingElement!.scrollHeight - innerHeight - footer),
         overlap: actions && content.length ? Math.max(0, Math.round(Math.max(...content.map((b) => b.bottom)) - actions.top)) : 0,
+        split: split.map((n) => n.textContent),
       }
     })
-    await expect.poll(measured, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ overflow: 0, overlap: 0 })
+    await expect.poll(measured, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ overflow: 0, overlap: 0, split: [] })
     if (frames) {
       const at = await page.evaluate(() => {
         const back = document.querySelector("body > main .back span")
@@ -256,11 +259,10 @@ async function backInView(page: Page, name: string): Promise<void> {
 // the tops of the home's headline and search
 const homeTops = (page: Page) => page.evaluate(() => ["h1", ".search-field"].map((s) => Math.round(document.querySelector(`.home ${s}`)!.getBoundingClientRect().top)))
 
-test("a step's lead breaks where the mockup does: the links step's last sentence whole on its own line on a laptop", async ({ page, browserName }) => {
-  test.skip(browserName === "webkit", "WebKit's text-wrap: pretty evens a paragraph's lines rather than only its last")
+test("a step's lead breaks where the mockup does on a laptop: in two even lines, or at its line break", async ({ page }) => {
   await search(page, uniqueLabel("lead"))
   await page.getByRole("button", { name: "Register" }).click()
-  await expect(lineStarts(onStep(page).locator(".lead"))).resolves.toEqual(["P", "Y"])
+  await expect(lineStarts(onStep(page).locator(".lead"))).resolves.toEqual(["P", "o"])
   await page.goto("/#/code")
   await expect(lineStarts(onStep(page).locator(".lead"))).resolves.toEqual(["A", "t"])
 })
@@ -306,8 +308,10 @@ const rowFit = (page: Page) => page.evaluate(() => {
   const row = document.querySelector(".answer .row")!.getBoundingClientRect()
   const inside = [...document.querySelectorAll(".answer .row *")].map((n) => n.getBoundingClientRect()).filter((b) => b.height > 0)
   const name = document.querySelector(".answer .row .name")!
+  const rest = name.nextElementSibling!.getBoundingClientRect()
   return { spill: Math.round(Math.max(0, ...inside.map((b) => Math.max(b.bottom - row.bottom, row.top - b.top, b.right - row.right, row.left - b.left)))),
-    height: Math.round(row.height), nameLines: Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight)) }
+    height: Math.round(row.height), nameLines: Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight)),
+    ownLine: Math.round(name.getBoundingClientRect().bottom) <= Math.round(rest.top) }
 })
 // a name of six letters that fits one row beside two chats on a phone, as most do
 const SHORT_NAME = "udumhd"
@@ -338,6 +342,8 @@ test.describe(() => {
           expect(fit.spill, `${at}: past its row`).toBe(0)
           if (label.length < 8) expect(fit.nameLines, `${at}: the name's lines`).toBe(1)
           if (label === SHORT_NAME && state !== "available") expect(fit.height, `${at}: the row's height`).toBe(72)
+          // a name too long for its row takes a line of its own, its chats and whose it is under it
+          if (label.length === MAX_LABEL_LENGTH) expect(fit.ownLine, `${at}: the name's own line`).toBe(state !== "available" || size === FIT_SIZES[1])
           expect(await overflow(page), at).toBe(0)
         }
       }
@@ -545,19 +551,21 @@ test(`Edit links keeps still and fits both windows as it saves, for a name of ${
   await fitsWindow(page, "9b-check-code-refused")
 })
 
-test(`a name of ${MAX_LABEL_LENGTH} wide letters in a sentence runs on from the words before it, at their size, at both sizes`, async ({ page }) => {
+test(`a name of ${MAX_LABEL_LENGTH} wide letters in a sentence starts a line of its own, at the sentence's size, its TLD on its last letters' line`, async ({ page }) => {
   await search(page, wideLabel(MAX_LABEL_LENGTH))
   await toCodeStep(page)
   const lead = onStep(page).locator(".lead")
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
     const drawn = await lead.evaluate((node) => {
-      const name = node.querySelector(".long")!
+      const name = node.querySelector(".nt")!
       const words = document.createRange()
       words.selectNodeContents(node.firstChild!)
-      return { size: getComputedStyle(name).fontSize === getComputedStyle(node).fontSize, firstLine: Math.round(name.getClientRects()[0].top) === Math.round(words.getClientRects()[0].top) }
+      const tail = name.querySelector(".nowrap")!
+      return { size: getComputedStyle(name).fontSize === getComputedStyle(node).fontSize, ownLine: Math.round(name.getClientRects()[0].top) > Math.round(words.getClientRects()[0].top),
+        tail: tail.textContent, tailLines: new Set([...tail.getClientRects()].map((r) => Math.round(r.top))).size }
     })
-    expect(drawn, `the name in the lead at ${size.width}x${size.height}`).toEqual({ size: true, firstLine: true })
+    expect(drawn, `the name in the lead at ${size.width}x${size.height}`).toEqual({ size: true, ownLine: true, tail: expect.stringMatching(/^[mw]{3}\.simplex\.$/), tailLines: 1 })
   }
 })
 

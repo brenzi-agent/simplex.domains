@@ -241,9 +241,11 @@ body > main { display: flex; flex-direction: column; min-width: 0; }
   color: var(--primary); }
 .back svg.i { width: 22px; height: 22px; }
 .back:hover { text-decoration: none; color: var(--accent); }
-/* a heading with a long name in it is drawn smaller as a whole */
-.screen-head:has(h1 .long) { --fs-h1: 28px; }
-.screen-head .lead { grid-area: 2 / 1 / auto / -1; max-width: 52ch; margin-inline: auto; text-align: center; text-wrap: pretty; }
+/* a heading with a long name in it is drawn smaller as a whole, across the column */
+.screen-head:has(h1 .long) { --fs-h1: 26px; }
+.screen-head h1:has(.long) { grid-column: 1 / -1; line-height: 1.2; }
+h1 .long { word-break: break-all; }
+.screen-head .lead { grid-area: 2 / 1 / auto / -1; max-width: 52ch; margin-inline: auto; text-align: center; text-wrap: balance; }
 .screen-body { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 14px; }
 /* the main button centred, its text-link alternative under it */
 .actions-row { display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -255,11 +257,8 @@ body > main { display: flex; flex-direction: column; min-width: 0; }
 html:has(.modal[open]) { overflow: hidden; scrollbar-gutter: stable; }
 
 .grad { background: var(--heading); -webkit-background-clip: text; background-clip: text; color: transparent; }
-/* balance would break a name before its TLD to even the lines; a name that fits its line stays whole */
-h1:has(.grad) { text-wrap: pretty; }
-.name { font: 700 22px/1.2 var(--display); letter-spacing: -.01em; overflow-wrap: anywhere; }
-.name span { color: var(--faint); white-space: nowrap; }
-.name.long { font-size: 18px; }
+.name { font: 700 22px/1.2 var(--display); overflow-wrap: anywhere; }
+.name .tld { color: var(--faint); }
 
 /* the home, as the direction 1 mockup: the headline under the header, the search, and below it the room its answers take,
    kept from the start; an answer taller than the room grows it downwards, so nothing above it moves */
@@ -274,7 +273,10 @@ h1:has(.grad) { text-wrap: pretty; }
 .answer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; min-height: var(--room); }
 /* one row as the app lists a chat: the name, the chats it opens, and whose it is or its price */
 .row { display: flex; align-items: center; gap: 16px; min-height: 72px; padding: 12px 18px 12px 22px; }
-.row .name { flex: 1; min-width: 0; }
+.row .name { flex: 1 1 auto; min-width: 0; }
+/* a name too long for the row takes its own line; its chats and whose it is move under it */
+.answer .row:not(.buy) { flex-wrap: wrap; row-gap: 6px; }
+.answer .row:not(.buy) > .name + * { margin-left: auto; }
 .row .soft, .row > a { font-size: 15px; white-space: nowrap; }
 .deal { white-space: nowrap; }
 .price { font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -489,11 +491,8 @@ svg.qr { display: block; width: 132px; height: auto; }
 /* a name can be 63 letters long */
 h1, .lead { overflow-wrap: anywhere; }
 main h1:focus { outline: none; }
-/* a name in a sentence moves to the next line whole; only a name longer than the line breaks, before its TLD first */
-.inline-name { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
-.long { overflow-wrap: anywhere; }
-/* a long name in a sentence runs on from the words before it, at their size */
-span.long:not(.grad) { word-break: break-all; }
+/* a name in a sentence moves to the next line whole; only a name longer than the line breaks */
+.nt { overflow-wrap: anywhere; }
 .monero-base { fill: #4C4C4C; }
 /* Monero's mark for dark grounds has a white base */
 html.dark .monero-base { fill: #fff; }
@@ -540,22 +539,19 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .screen-head h1 { grid-area: 2 / 1; }
   .screen-head .lead { grid-row: 3; }
   .screen-head:has(h1 .long) { --fs-h1: 22px; }
-  .screen-head .lead { line-height: 1.4; }
   .invest { padding-bottom: 20px; }
   .actions-row > .btn { width: 100%; min-width: 0; }
   .home { --room: 178px; padding-top: 48px; }
   .home h1 { --fs-h1: 34px; }
   .home .sub { font-size: 16px; }
   .search { margin-top: 28px; }
-  /* a name that does not fit beside the rest of its row takes a line of its own, the rest under it */
-  .row { flex-wrap: wrap; gap: 10px; }
-  .answer .row { padding: 14px 14px 14px 18px; }
-  .row .name { flex: 1 1 auto; }
-  .row .name:not(.long) { font-size: 19px; }
-  .row > :last-child { margin-left: auto; }
-  /* the order's chats, wrapped under a long name, start where the name does, as under the home's rows */
-  .order > .row > .chats { margin-left: 0; }
+  /* an available name takes its own line, its price and Register under it */
+  .row.buy { flex-wrap: wrap; row-gap: 10px; padding-block: 14px; }
+  /* a name of six letters, two chats and "Your name" fit one line */
+  .answer .row { padding-inline: 18px 14px; }
+  .answer .row:not(.buy) { column-gap: 10px; }
   .chats { gap: 0; }
+  .name { font-size: 19px; }
   .row.buy .name { flex-basis: 100%; }
   .row.buy .deal { margin-right: auto; }
   .card { padding: 16px 18px; }
@@ -568,7 +564,6 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .card.use p:not(.note) { font-size: 15px; line-height: 1.4; }
   .code-input { padding-inline: 14px; }
   .code-input input { font-size: clamp(14px, 100cqi / 23.2, 16px); letter-spacing: 0; }
-  .order .name.long { font-size: 16px; }
   /* the order's table and methods a little tighter, so the review of a name of 63 wide letters fits the phone's frame */
   .method { height: 68px; font-size: 14px; gap: 4px; }
   .trow { font-size: 14px; }

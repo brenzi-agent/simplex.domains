@@ -82,23 +82,25 @@ export function alertBox(tone: Tone, ic: IconName, title: string | null, text: K
   return el("div", { class: `notice ${tone}` }, icon(ic), el("div", {}, title ? el("b", {}, title) : null, text))
 }
 
-// a name this long runs on in its line, so it fits a phone; a shorter one moves to the next line whole
-const LONG_NAME = 24
-const isLong = (label: string) => label.length > LONG_NAME
-const nameClass = (label: string) => isLong(label) ? "long" : "inline-name"
+// A name's last letters and its TLD stay on one line, so ".simplex" never starts a line alone; the rest of a name too
+// long for its line breaks between any two letters.
+const TAIL = 3
+const nameHead = (label: string) => label.slice(0, -TAIL)
+const nameTail = (label: string) => label.slice(-TAIL)
+// a heading with a name longer than this is drawn smaller as a whole
+const LONG_NAME = 20
 
 // `after` is the punctuation that follows the name, kept on its line
 export function nameText(label: string, tld: string, after = ""): HTMLSpanElement {
-  return el("span", { class: nameClass(label) }, label, el("wbr"), `.${tld}${after}`)
+  return el("span", { class: "nt" }, nameHead(label), el("span", { class: "nowrap" }, `${nameTail(label)}.${tld}${after}`))
 }
 
-// a long name breaks before its top-level domain first
 export function nameTitle(label: string, cls = "name", tld = "simplex"): HTMLDivElement {
-  return el("div", { class: isLong(label) ? `${cls} long` : cls }, label, el("wbr"), el("span", {}, `.${tld}`))
+  return el("div", { class: cls }, nameHead(label), el("span", { class: "nowrap" }, nameTail(label), el("span", { class: "tld" }, `.${tld}`)))
 }
 
 export function gradName(label: string, tld = "simplex"): HTMLSpanElement {
-  return el("span", { class: `grad ${nameClass(label)}` }, label, el("wbr"), `.${tld}`)
+  return el("span", { class: label.length > LONG_NAME ? "grad nt long" : "grad nt" }, nameHead(label), el("span", { class: "nowrap" }, `${nameTail(label)}.${tld}`))
 }
 
 export function liveRegion(cls?: string): HTMLDivElement {
