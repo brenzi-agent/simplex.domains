@@ -2,7 +2,7 @@ import { expect } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { labelHash } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
-import { control, mockRegistration, REGISTRATION_MS, registrationOf, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { control, mockRegistration, REGISTRATION_MS, registrationOf, restoreOrder, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 test("a name taken first moves the paid order to another name, owned by the same code", async ({ page, request }) => {
   const label = uniqueLabel("tk")
@@ -13,8 +13,9 @@ test("a name taken first moves the paid order to another name, owned by the same
   await expect(page.getByText(/^Choose another name of up to \$100\.00, .* or take a code for names of \d+ or more letters, for 2 years \+ 30 days\.$/)).toBeVisible()
   // the two ways forward are stacked, the move to another name first
   const [other, code] = [page.getByRole("button", { name: "Choose another name" }), page.getByRole("button", { name: "Take a code" })]
+  // the main button centred, the other way under it
   const [otherBox, codeBox] = [(await other.boundingBox())!, (await code.boundingBox())!]
-  expect(otherBox.x).toBeCloseTo(codeBox.x, 0)
+  expect(otherBox.x + otherBox.width / 2).toBeCloseTo(codeBox.x + codeBox.width / 2, 0)
   expect(otherBox.y + otherBox.height).toBeLessThanOrEqual(codeBox.y)
   await expect(page.getByText(`Reference ${invoiceId}`)).toBeVisible()
   await shot(page, "N8-taken")
@@ -186,9 +187,8 @@ test("a late payment to a replaced invoice is kept by a restored browser after t
 
   const other = await browser.newContext()
   const restored = await other.newPage()
-  await restored.goto("/#/restore")
-  await restored.getByLabel("Name code").fill(ownerCode)
-  await restored.getByRole("button", { name: "Restore" }).click()
+  // the order moved to the other name, which Your names lists it under
+  await restoreOrder(restored, ownerCode, next)
   await restored.waitForURL((url) => url.searchParams.get("order") === second)
   await control(request, `partial/${invoiceId}`)
   await restored.goto(`/?order=${invoiceId}`)

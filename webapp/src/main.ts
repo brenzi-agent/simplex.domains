@@ -2,7 +2,8 @@
 import "./styles.css"
 import { checkoutStepOf, EDIT_PATH, viewOf } from "./screens/routes.ts"
 import { checkoutPage } from "./views/checkout.ts"
-import { editPage, historyPage, restorePage, trademarksPage } from "./views/names.ts"
+import { setUpChrome } from "./views/chrome.ts"
+import { checkCodePage, editPage, historyPage, trademarksPage } from "./views/names.ts"
 import { orderPage } from "./views/order.ts"
 import { searchPage } from "./views/search.ts"
 import { go, historyMoved, nextRoute, setRenderer } from "./views/shell.ts"
@@ -16,14 +17,15 @@ function render(): void {
     case "order": return orderPage(query.get("order"), query.get("registration"))
     case "checkout": return checkoutPage(checkoutStepOf(path))
     case "names": return historyPage()
-    case "restore": return restorePage()
     case "trademarks": return trademarksPage()
+    case "code": return checkCodePage()
     case "edit": return void editPage(EDIT_PATH.exec(path)![1])
     case "search": return searchPage(new URLSearchParams(hashQuery))
   }
 }
 
 setRenderer(render)
+setUpChrome()
 window.addEventListener("popstate", (e) => {
   if (historyMoved(e)) render()
 })

@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test"
-import { control, onStep, search, startOrder, test, toCodeStep, toReview, uniqueLabel } from "./helpers.ts"
+import { codeField, control, onStep, search, startOrder, test, toCodeStep, toReview, uniqueLabel } from "./helpers.ts"
 
 // EIP-55's own example, and the same wallet with one letter's case changed
 const APP_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
@@ -81,38 +81,26 @@ test("an app link whose wallet fails its checksum does not work", async ({ page 
   await expect(page.getByRole("heading", { name: "This link from SimpleX does not work" })).toBeVisible()
 })
 
-test("Enter in Add a code adds the code and empties the field, with focus kept in it", async ({ page, request }) => {
+test("Enter in Check your code's field does what its button does: a prepaid code finds a name, a name code is added", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.goto("/#/names")
-  const field = page.getByRole("textbox", { name: "Add a code" })
-  await field.fill(code)
+  await page.goto("/#/code")
+  await expect(codeField(page), "the field takes focus as the screen opens").toBeFocused()
+  await codeField(page).fill(code)
   await expect(page.locator(".verdict.ok")).toBeVisible()
   await page.keyboard.press("Enter")
-  await expect(page.locator(".list-row", { hasText: code })).toBeVisible()
-  await expect(field).toHaveValue("")
-  await expect(field).toBeFocused()
-  await expect(page.getByRole("button", { name: "Add", exact: true })).toBeDisabled()
+  await expect(page.getByLabel("Name", { exact: true })).toBeVisible()
+  await expect(page.locator("body > header .code-chip")).toBeVisible()
 })
 
-test("a restore refused for the code itself puts focus back in the code's field", async ({ page }) => {
-  await page.goto("/#/restore")
-  await page.getByLabel("Name code").fill("SN-not-a-code")
-  await page.getByRole("button", { name: "Restore" }).focus()
-  await page.keyboard.press("Enter")
-  await expect(page.getByText("This code is not valid")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Restore" })).toBeDisabled()
-  await expect(page.getByLabel("Name code")).toBeFocused()
-})
-
-test("a restore the service refuses puts focus back in the code's field", async ({ page }) => {
+test("a name code the service finds no order for puts focus back in the code's field", async ({ page }) => {
   await openCodeStep(page, uniqueLabel("noorder"))
   const ownerCode = await page.evaluate(() => Object.keys(localStorage).find((k) => k.startsWith("simplex-names:pending:"))!.split(":").pop()!)
-  await page.goto("/#/restore")
-  await page.getByLabel("Name code").fill(ownerCode)
-  await page.getByRole("button", { name: "Restore" }).focus()
+  await page.goto("/#/code")
+  await codeField(page).fill(ownerCode)
+  await page.getByRole("button", { name: "Add to Your names" }).focus()
   await page.keyboard.press("Enter")
   await expect(page.getByText("No order was found for this code")).toBeVisible()
-  await expect(page.getByLabel("Name code")).toBeFocused()
+  await expect(codeField(page)).toBeFocused()
 })
 
 test("a pending code with no order leaves focus on the page when its Find link goes", async ({ page }) => {
@@ -151,20 +139,11 @@ test("an app's order refused for its method draws the checkout again in place, w
   expect(await page.evaluate(() => history.length)).toBe(entries)
 })
 
-test("a code already in Your names is said so when added again, and a well-formed unknown code is not called a typo", async ({ page, request }) => {
+test("a well-formed code the service does not know is not called a typo", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.goto("/#/names")
-  const field = page.getByRole("textbox", { name: "Add a code" })
-  const add = page.getByRole("button", { name: "Add", exact: true })
-  await field.fill(code)
-  await expect(page.locator(".verdict.ok")).toBeVisible()
-  await add.click()
-  await expect(page.locator(".list-row", { hasText: code })).toBeVisible()
-  await field.fill(code)
-  await expect(page.locator(".verdict.bad")).toContainText("Already in your codes")
-  await expect(add).toBeDisabled()
   await page.route("**/api/code/check", (route) => route.fulfill({ status: 400, json: { error: "code_invalid" } }))
-  await field.fill("")
-  await field.fill(code)
+  await page.goto("/#/code")
+  await codeField(page).fill(code)
   await expect(page.locator(".verdict.bad")).toContainText("SimpleX did not issue it, or withdrew it.")
+  await expect(page.getByRole("button", { name: "Find a name" })).toBeDisabled()
 })

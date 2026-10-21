@@ -55,7 +55,7 @@ export interface Profile {
   image: string | null
   subscribers: number | null
 }
-interface Entity extends Profile {
+export interface Entity extends Profile {
   link: string
   deepLink: string
 }

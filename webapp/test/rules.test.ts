@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { clock, dateOf, dollars, letters, methodName, seconds, shortAddress, termText, untilFromNow } from "../src/format.ts"
+import { clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, TERM_START_S, termEnd, termText } from "../src/format.ts"
 import { foldLabel, labelProblem, linkKind, linkProblem, LINK_MAX_BYTES, priceFor } from "../src/names.ts"
 
 describe("label rules", () => {
@@ -66,11 +66,22 @@ describe("formatting", () => {
     expect(dateOf(Date.UTC(2028, 10, 12) / 1000, true)).toBe("12\u00a0Nov 2028")
   })
 
-  it("counts the term with its 30 bonus days", () => {
-    const now = Math.floor(Date.now() / 1000)
-    expect(untilFromNow(2) - now).toBeGreaterThanOrEqual((2 * 365 + 30) * 86400 - 1)
-    expect(untilFromNow(2) - now).toBeLessThanOrEqual((2 * 365 + 30) * 86400 + 1)
+  it("writes the term with its 30 bonus days", () => {
     expect(termText(5)).toBe("5 years + 30 days")
+  })
+
+  it("counts the free days to the term's start, a part day as a whole one, and none once it has started", () => {
+    const day = 86400
+    expect(TERM_START_S).toBe(Date.UTC(2027, 0, 1) / 1000)
+    expect(freeDays(Date.UTC(2026, 9, 21) / 1000)).toBe(72)
+    expect(freeDays(TERM_START_S - day / 2)).toBe(1)
+    expect([freeDays(TERM_START_S), freeDays(TERM_START_S + 5 * day)]).toEqual([0, 0])
+  })
+
+  it("ends a term its years after its start, or after now once the start has passed", () => {
+    expect(dateOf(termEnd(2, Date.UTC(2026, 9, 21) / 1000))).toBe("1\u00a0January 2029")
+    expect(dateOf(termEnd(5, Date.UTC(2026, 9, 21) / 1000))).toBe("1\u00a0January 2032")
+    expect(dateOf(termEnd(2, Date.UTC(2027, 5, 15) / 1000))).toBe("15\u00a0June 2029")
   })
 
   it("writes seconds in the singular and the plural", () => {

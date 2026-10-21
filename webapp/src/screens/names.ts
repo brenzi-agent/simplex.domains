@@ -138,24 +138,22 @@ export function editable(answer: SearchAnswer, owner: string): boolean {
   return answer.owner.toLowerCase() === owner.toLowerCase() && answer.records !== null
 }
 
-type RefusalKind = "invalid" | "prepaid" | "none" | "unasked" | "other"
-export interface Refusal { verdict: boolean; title: string; text: string; again: boolean }
+type RefusalKind = "none" | "unasked" | "other"
+export interface Refusal { title: string; text: string; again: boolean }
+// why a name code found no order to add; only the service's not answering can change by asking again
 export const REFUSALS: Record<RefusalKind, Refusal> = {
-  invalid: { verdict: true, title: "This code is not valid", text: "Check it for a mistyped character.", again: false },
-  prepaid: { verdict: true, title: "This is a prepaid code", text: "It pays for a name rather than owning one. Add it under Your names, or use it at checkout.", again: false },
-  none: { verdict: false, title: "No order was found for this code", text: "The service has no order registered to its wallet.", again: false },
-  unasked: { verdict: false, title: "The service could not be asked now", text: "Your code is fine to try again in a moment.", again: true },
-  other: { verdict: false, title: "This code does not open the order", text: "The order found for it was made with another code.", again: false },
+  none: { title: "No order was found for this code", text: "The service has no order registered to its wallet.", again: false },
+  unasked: { title: "The service could not be asked now", text: "Your code is fine to try again in a moment.", again: true },
+  other: { title: "This code does not open the order", text: "The order found for it was made with another code.", again: false },
 }
 
 export interface RestoreState { busy: boolean; refusal: RefusalKind | null; hold: Hold | null }
-export type RestoreEvent = { type: "opened" } | { type: "edited" } | { type: "refused"; why: RefusalKind } | { type: "find-started" } | ({ type: "held" } & Hold) | { type: "hold-ended" }
+export type RestoreEvent = { type: "edited" } | { type: "refused"; why: RefusalKind } | { type: "find-started" } | ({ type: "held" } & Hold) | { type: "hold-ended" }
 
 export const initialRestore = (hold: Hold | null): RestoreState => ({ busy: false, refusal: null, hold })
 
 export function reduceRestore(s: RestoreState, e: RestoreEvent): RestoreState {
   switch (e.type) {
-    case "opened": return s
     case "edited": return s.hold ? s : { ...s, refusal: null }
     case "refused": return { ...s, busy: false, refusal: e.why }
     case "find-started": return { ...s, busy: true, refusal: null }

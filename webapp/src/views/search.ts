@@ -2,50 +2,36 @@
 import * as api from "../api.ts"
 import { labelHash } from "../crypto/registration.ts"
 import { checksumAddress, fromHex, hex } from "../crypto/wallet.ts"
-import { alertBox, btn, chip, el, icon, type Kid, link, nameText, nameTitle, setAction, waitOut } from "../dom.ts"
+import { alertBox, btn, el, icon, type Kid, link, nameText, nameTitle, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dollars, letters, SEP, shortAddress, termText } from "../format.ts"
+import { dollars, letters, shortAddress } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import { foldLabel, MAX_LABEL_LENGTH } from "../names.ts"
 import type { Hold } from "../screens/hold.ts"
 import { againLine, ranOut } from "../screens/names.ts"
 import { checkoutUrl } from "../screens/routes.ts"
 import {
-  type Answer, initialSearch, type Mine, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent, type SearchKind, type SearchState,
+  type Answer, initialSearch, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent, type SearchKind, type SearchState,
 } from "../screens/search.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
-import {
-  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, focusOn, go, historyPlace, INVEST_AMOUNT, isRedraw, isRoute, kept, keptLive, outcome, searchLink, spacer, throughHistory, WEFUNDER_URL,
-  whenDropped,
-} from "./shell.ts"
+import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, go, historyPlace, isRedraw, isRoute, kept, keptLive, outcome, searchLink, throughHistory } from "./shell.ts"
+import { chatButton } from "./chats.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
-import { linkName } from "./links.ts"
-
-// links from the service come from records on chain, which anyone can write: only SimpleX and https links are followed
-const SAFE_LINK = /^(simplex:\/|https:\/\/)/
 
 // word joiners keep "a–z" and "0–9" whole: a line may otherwise break after their dash
 const RANGES = "a\u2060–\u2060z, 0\u2060–\u20609"
 const RULE = `A name has 6 letters or more: ${RANGES} and single hyphens between them.`
 
-// the landing's words (simplex.domains index.html:287-288, 309-310, 351-361)
+// the landing's words (simplex.domains index.html:287-288)
 const HEADLINE = "Your SimpleX domain"
 const SUB = "One name for your public channel and contact address"
-const INVEST_CTA = "Invest to claim your name"
-const INVEST_NOTE = ["Invest in SimpleX Chat ", "to get a name for 5 years"] as const
-const INVEST_TITLE = "Invest to claim your name before the sale"
-const INVEST_TITLE_ID = "invest-title"
-const INVEST_FOCUS = "invest"
-// the popup's return value when the page it was opened on is left
-const LEFT = "left"
 
 let state: SearchState = initialSearch()
 let shown: SearchKind | null = null
 let opens = 0
 let pageRoute = -1
 let field: HTMLInputElement | null = null
-let investDialog: HTMLDialogElement | null = null
 
 const onPage = (page: number) => page === opens && isRoute(pageRoute)
 
@@ -74,7 +60,6 @@ export function searchPage(params: URLSearchParams): void {
     shown = null
     opens += 1
   }
-  if (!isRedraw()) whenDropped(() => investDialog?.close(LEFT))
   pageRoute = currentRoute()
   dispatch({ type: "opened", opening, name, fromApp, retarget, hold: tabHold() })
   if (opening === "bad-app-link") return
@@ -130,11 +115,10 @@ async function runSearch(label: string, seq: number): Promise<void> {
   if (answer.status === "available") void pointAtOwnOrder(label, hash, page)
 }
 
-function mineFor(hash: string, answer: api.SearchAnswer): Mine | null {
-  if (answer.status !== "registered" || answer.owner === undefined) return null
+function mineFor(hash: string, answer: api.SearchAnswer): boolean {
+  if (answer.status !== "registered" || answer.owner === undefined) return false
   const owner = answer.owner.toLowerCase()
-  const order = store.orders().find((o) => o.request.labelHash === hash && o.owner.toLowerCase() === owner)
-  return order ? { registrationId: order.registrationId, withCode: order.ownerCode !== null } : null
+  return store.orders().some((o) => o.request.labelHash === hash && o.owner.toLowerCase() === owner)
 }
 
 async function pointAtOwnOrder(label: string, hash: string, page: number): Promise<void> {
@@ -187,13 +171,14 @@ function register(): void {
   const { label, answer } = s.answer
   const chain = { resolver: answer.resolver, sponsor: answer.sponsor, chainId: answer.chainId, tld: answer.tld }
   if (s.retarget) return void retarget(s.retarget, label, chain)
+  const code = codeFor(s, label)
   const started = session.checkout()
   if (started && started.label === label && started.appOwner === s.fromApp && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started)) {
-    session.updateCheckout(label, { chain, searchAt: historyPlace() })
+    session.updateCheckout(label, { chain, searchAt: historyPlace(), code, codeError: undefined })
     return go(checkoutUrl("links"))
   }
   session.setCheckout({
-    label, price: answer.price, chain, contact: "", channel: "", method: "btc", code: null, ownerCode: null, saved: false,
+    label, price: answer.price, chain, contact: "", channel: "", method: "btc", code, ownerCode: null, saved: false,
     appOwner: s.fromApp, appSecret: null, searchAt: historyPlace(), step: "links",
   })
   go(checkoutUrl("links"))
@@ -233,8 +218,7 @@ function buildBadAppLink(s: SearchState): HTMLElement {
 function searchBox(): HTMLElement {
   const input = el("input", { type: "text", placeholder: "yourname", "aria-label": "Name", autocomplete: "off", autocapitalize: "none", spellcheck: "false" })
   field = input
-  const search = btn("Search", "", () => submit())
-  search.dataset.focus = "search"
+  const search = el("button", { class: "btn lens", type: "button", "aria-label": "Search", "data-focus": "search", onclick: () => submit() }, icon("search"))
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit() })
   // names are lower case, so upper case folds as it is typed; the caret stays where it was
   const fold = () => {
@@ -253,7 +237,7 @@ function searchBox(): HTMLElement {
     if (!(e as InputEvent).isComposing) fold()
     typed(input)
   })
-  return el("div", { class: "search-row" }, el("label", { class: "field" }, input, el("span", { class: "tld" }, ".simplex")), search)
+  return el("label", { class: "field search-field" }, input, el("span", { class: "tld" }, ".simplex"), search)
 }
 
 function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
@@ -261,7 +245,7 @@ function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
   const input = box.querySelector("input")!
   const search = box.querySelector("button")!
   if (input.value !== s.typed) input.value = s.typed
-  box.querySelector(".field")!.classList.toggle("bad", s.bad)
+  box.classList.toggle("bad", s.bad)
   search.disabled = s.paused
   if (s.searching) search.setAttribute("aria-busy", "true")
   else search.removeAttribute("aria-busy")
@@ -270,18 +254,11 @@ function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
     submit()
   }
   holdEnder(signal, holdEnded)(s.hold !== null)
+  // the answer's room is kept from the start, so the headline and the field never move as an answer comes
   return el("section", { class: "home" },
-    kept("home-top", spacer),
-    el("div", { class: "headline" }, el("h1", {}, HEADLINE), el("p", { class: "sub" }, SUB)),
-    kept("home-cap", () => el("div", { class: "vspace cap" })),
+    el("h1", {}, HEADLINE), el("p", { class: "sub" }, SUB),
     openingLine(s),
-    box,
-    // the answer takes the invest block's place below the search, so the page above it stays still
-    el("div", { class: "below" },
-      keptLive("search-answer", "answer", answerOf(s, retry, signal)),
-      el("div", { class: "vspace cap" }),
-      s.opening === "plain" ? investBlock() : null,
-      el("div", { class: "vspace" })))
+    el("div", { class: "search" }, box, keptLive("search-answer", "answer", answerOf(s, retry, signal))))
 }
 
 function openingLine(s: SearchState): HTMLElement | null {
@@ -321,20 +298,28 @@ function pauseLine(hold: Hold, signal: AbortSignal): HTMLElement {
   return node
 }
 
+// the tab's active code pays for a name it covers; a name opened from the app, or a paid order's move, pays its own way
+const usesCode = (s: SearchState) => s.fromApp === null && s.retarget === null
+const codeFor = (s: SearchState, label: string) => {
+  const code = session.activeCode()
+  return code && usesCode(s) && label.length >= code.minLength ? code : null
+}
+
 function availableAnswer(s: SearchState, label: string, answer: Available, signal: AbortSignal): Kid[] {
   const retarget = s.retarget
   const unpayable = unaffordable(s, answer)
   const covers = retarget && (unpayable ? `This name costs more than the ${dollars(retarget.paid, true)} your order is worth.` : "Covered by your payment")
   const own = ownOrderOf(s)
-  const button = setAction(btn(retarget ? "Register with your payment" : "Register", "", register, icon("arrow")), s.register.busy, unpayable || own !== null || s.hold !== null)
-  // an order of ours takes the term's line in the card, so the answer keeps its height as the order is found
-  const term = own ? ["You already have an order for this name. ", el("a", { class: "nowrap", href: own }, "Open that order")] : [`${letters(label.length)}${SEP}${termText(answer.years)}`]
+  const code = codeFor(s, label)
+  const short = usesCode(s) ? session.activeCode() : null
+  const button = setAction(btn(retarget ? "Register with your payment" : "Register", "small", register), s.register.busy, unpayable || own !== null || s.hold !== null)
+  const deal = code ? [el("s", {}, dollars(answer.price)), " ", el("b", { class: "price" }, "$0"), el("span", { class: "soft" }, ` / ${code.years} years`)]
+    : [el("b", { class: "price" }, dollars(answer.price)), el("span", { class: "soft" }, ` / ${answer.years} years`)]
   return [
-    el("div", { class: "card" },
-      nameTitle(label, "name", answer.tld),
-      el("p", { class: "note" }, ...term),
-      covers ? el("p", { class: "note" }, covers) : null,
-      el("div", { class: "deal" }, el("b", { class: "price" }, dollars(answer.price)), button)),
+    el("div", { class: "card row buy" }, nameTitle(label, "name", answer.tld), el("span", { class: "deal" }, deal), button),
+    !code && short ? el("p", { class: "hint" }, `Your code covers names of ${short.minLength} or more letters. `, el("span", { class: "nowrap" }, `This name has ${label.length}.`)) : null,
+    covers ? line("", "wallet", covers) : null,
+    own ? line("", "info", "You already have an order for this name. ", el("a", { class: "nowrap", href: own }, "Open that order")) : null,
     unpayable || own ? null : registerNote(s, signal),
   ]
 }
@@ -346,85 +331,20 @@ function registerNote({ hold, register: { refusal } }: SearchState, signal: Abor
   return alertBox("danger", "alert", "That did not go through", words)
 }
 
-function takenAnswer(found: Found, answer: Extract<api.SearchAnswer, { status: "registered" }>): HTMLElement {
+// One row as the app lists a chat: the name, the chats it opens as the app's own pictures, and whose it is.
+function takenAnswer(found: Found, answer: Extract<api.SearchAnswer, { status: "registered" }>): Kid[] {
   const { label, mine } = found
   // there are no renewals, so a name of ours past its expiry is over here, though the chain keeps it ours in its grace period
   const expiresAt = answer.expiresAt ?? null
   const lapsed = mine && expiresAt !== null && expiresAt < found.now / 1000 ? `${ranOut(expiresAt)} ${againLine(expiresAt, answer, found.now)}` : null
   // a name whose registration is being mined has no owner on chain yet
-  const status = mine ? (lapsed ? chip("Expired", "bad") : chip("Yours", "ok", true)) : answer.owner === undefined ? chip("Being registered", "brand", true) : chip("Taken", "bad", true)
-  // links kept by another resolver, or of a name that has expired, are not edited here, as Your names does not offer to
-  const editing = mine && mine.withCode && answer.records !== null && !lapsed
-  const yours = mine ? el("div", { class: "yours" }, el("a", { href: "/#/names" }, "Your names"),
-    editing ? el("a", { href: `/#/edit/${mine.registrationId}` }, "Edit links") : null) : null
-  const note = lapsed ?? (answer.entities.length > 0 ? null
-    : answer.owner === undefined ? "Someone is registering it right now. Its owner and links show once it is on chain." : "Registered, and not pointing at any address or channel that we know of yet.")
-  return el("div", { class: "card" },
-    el("div", { class: "head" }, nameTitle(label, "name"), status),
-    note ? el("p", { class: "note" }, note) : null,
-    answer.entities.length > 0 ? el("div", { class: "entities" }, ...answer.entities.map(entityCard)) : null,
-    yours)
-}
-
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?"
-
-function hue(text: string): number {
-  let h = 0
-  for (const c of text) h = (h * 31 + c.charCodeAt(0)) % 360
-  return h
-}
-
-// A profile without a picture shows its initials on its name's colour, the same wherever it is drawn. One lightness for
-// every hue keeps white initials at 4.5:1 or more once the browser fits the colour into sRGB, which 55% did not for greens.
-function initialsAvatar(displayName: string): HTMLElement {
-  const avatar = el("span", { class: "avatar" }, initials(displayName))
-  avatar.style.background = `oklch(52% 0.15 ${hue(displayName)})`
-  return avatar
-}
-
-// a link's preview has no deep link, so it shows the profile alone
-export function entityCard(e: { type: "address" | "channel"; displayName: string; image: string | null; deepLink?: string }): HTMLElement {
-  const avatar = e.image ? el("img", { class: "avatar", src: e.image, alt: "" }) : initialsAvatar(e.displayName)
-  return el("div", { class: "entity" },
-    avatar,
-    el("div", { class: "who" }, el("b", { title: e.displayName }, e.displayName), el("span", {}, linkName(e.type === "address" ? "contact" : "channel"))),
-    e.deepLink && SAFE_LINK.test(e.deepLink) ? el("a", { href: e.deepLink }, "Open in SimpleX") : null)
-}
-
-function investBlock(): HTMLElement {
-  const open = btn(INVEST_CTA, "", openInvest)
-  open.dataset.focus = INVEST_FOCUS
-  open.setAttribute("aria-haspopup", "dialog")
-  return el("div", { class: "cta" }, open, el("p", { class: "perk-note" }, INVEST_NOTE[0], el("br", { class: "perk-br" }), INVEST_NOTE[1]))
-}
-
-const term = (what: string, length: string) => el("div", { class: "term" }, el("span", {}, what), el("span", {}, length))
-
-// The landing's invest popup (index.html:347-363) as a modal dialog, outside main, as a modal dialog a redraw moves stops being modal.
-function investPopup(): HTMLDialogElement {
-  if (investDialog) return investDialog
-  const dialog = el("dialog", { class: "modal", "aria-labelledby": INVEST_TITLE_ID })
-  const close = () => dialog.close()
-  dialog.append(
-    el("div", { class: "modal-backdrop", onclick: close }),
-    el("div", { class: "modal-panel" },
-      el("button", { class: "modal-close", type: "button", "aria-label": "Close", onclick: close }, icon("close")),
-      el("h2", { id: INVEST_TITLE_ID }, INVEST_TITLE),
-      el("p", {}, `If you invest ${INVEST_AMOUNT} or more in the SimpleX Chat crowdfunding, you will receive `, el("strong", {}, "a free SimpleX domain as a perk"),
-        ", and will be able to register it before the sale starts."),
-      el("p", {}, "You will control this name with your own key, and can point it to your channel, business or contact address in SimpleX Network."),
-      el("div", { class: "eyebrow" }, "Free SimpleX domain registration period"),
-      el("div", { class: "terms" }, term("Early bird", "5 years"), term("After that", "3 years")),
-      el("a", { class: "btn modal-cta", href: WEFUNDER_URL, target: "_blank", rel: "noopener" }, "Learn more on Wefunder")))
-  // the button that opened it may have been drawn again meanwhile, so focus goes back by its key
-  dialog.addEventListener("close", () => { if (dialog.returnValue !== LEFT) focusOn(INVEST_FOCUS) })
-  investDialog = document.body.appendChild(dialog)
-  return dialog
-}
-
-function openInvest(): void {
-  const dialog = investPopup()
-  // Escape closes without a value, so the last close's value is cleared first
-  dialog.returnValue = ""
-  dialog.showModal()
+  const registering = answer.owner === undefined
+  const whose = mine ? (lapsed ? el("span", { class: "soft" }, "Expired") : el("a", { class: "nowrap", href: "/#/names" }, "Your name"))
+    : el("span", { class: "soft" }, registering ? "Being registered" : "Taken")
+  const name = `${label}.${answer.tld}`
+  return [
+    el("div", { class: "card row" }, nameTitle(label, "name", answer.tld),
+      answer.entities.length ? el("span", { class: "chats" }, answer.entities.map((e, i) => chatButton(e, name, `chat-${i}`))) : null, whose),
+    lapsed ? line("", "clock", lapsed) : registering ? line("", "clock", "Someone is registering it right now. Its owner and links show once it is on chain.") : null,
+  ]
 }

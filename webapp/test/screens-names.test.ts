@@ -281,9 +281,6 @@ describe("restore", () => {
     expect(initialRestore({ until: NOW + 5000, lead: NO_LEAD })).toEqual({ busy: false, refusal: null, hold: { until: NOW + 5000, lead: NO_LEAD } })
     expect(start).toEqual({ busy: false, refusal: null, hold: null })
   })
-  it("opened changes nothing", () => {
-    expect(reduceRestore(start, { type: "opened" })).toBe(start)
-  })
   it("find-started marks the lookup at work and clears the last refusal", () => {
     expect(reduceRestore({ ...start, refusal: "unasked" }, { type: "find-started" })).toEqual({ busy: true, refusal: null, hold: null })
   })
@@ -291,7 +288,7 @@ describe("restore", () => {
     expect(reduceRestore({ ...start, busy: true }, { type: "refused", why: "none" })).toEqual({ busy: false, refusal: "none", hold: null })
   })
   it("edited takes the refusal away, unless the tab is waiting", () => {
-    expect(reduceRestore({ ...start, refusal: "invalid" }, { type: "edited" })).toEqual(start)
+    expect(reduceRestore({ ...start, refusal: "none" }, { type: "edited" })).toEqual(start)
     const held = { ...start, hold: { until: NOW + 5000, lead: "Your code is fine. " } }
     expect(reduceRestore(held, { type: "edited" })).toBe(held)
   })
@@ -302,7 +299,6 @@ describe("restore", () => {
   })
   it("REFUSALS: a refusal of the code itself waits for an edit; one of the service can be tried again", () => {
     expect(Object.entries(REFUSALS).filter(([, r]) => r.again).map(([k]) => k)).toEqual(["unasked"])
-    expect(Object.entries(REFUSALS).filter(([, r]) => r.verdict).map(([k]) => k).sort()).toEqual(["invalid", "prepaid"])
   })
 })
 

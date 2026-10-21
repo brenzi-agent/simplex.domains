@@ -1,4 +1,4 @@
-import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Page } from "@playwright/test"
+import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Locator, type Page } from "@playwright/test"
 import { mkdirSync } from "node:fs"
 import { mockUrl, pageUrl } from "./slots.ts"
 
@@ -92,12 +92,41 @@ const METHOD_NAMES = { card: "Card", btc: "Bitcoin", xmr: "Monero" }
 export const onStep = (page: Page) => page.locator("body > main > section")
 export const payButton = (page: Page) => onStep(page).getByRole("button", { name: /^Pay / })
 
-export const CODE_LABEL = "I have a code"
-// checkout's code field, which its "I have a code" link opens
-export const checkoutCode = (page: Page) => onStep(page).getByRole("textbox", { name: CODE_LABEL })
-export async function openCode(page: Page): Promise<void> {
-  await onStep(page).getByRole("button", { name: CODE_LABEL }).click()
-  await expect(checkoutCode(page)).toBeFocused()
+// Check your code's field, which takes a prepaid code or a name code
+export const codeField = (page: Page) => onStep(page).getByRole("textbox", { name: "Code", exact: true })
+
+// A prepaid code entered in Check your code, which then pays for the names this tab finds.
+export async function useCode(page: Page, code: string): Promise<void> {
+  await page.goto("/#/code")
+  await codeField(page).fill(code)
+  await onStep(page).getByRole("button", { name: "Find a name" }).and(page.locator(":enabled")).click()
+  await expect(page.getByLabel("Name", { exact: true })).toBeVisible()
+}
+
+// A name code entered in Check your code, which finds its order and adds it to Your names.
+export async function addNameCode(page: Page, code: string): Promise<void> {
+  await page.goto("/#/code")
+  await codeField(page).fill(code)
+  await onStep(page).getByRole("button", { name: "Add to Your names" }).click()
+  await expect(onStep(page).getByRole("heading", { name: "Your names" })).toBeVisible()
+}
+
+// A name code added in another browser, which then opens the order it found for the name, as its row in Your names keeps it.
+export async function restoreOrder(page: Page, ownerCode: string, label: string): Promise<void> {
+  await addNameCode(page, ownerCode)
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` })).toBeVisible()
+  const url = await page.evaluate((name) => {
+    const record = Object.entries(localStorage).filter(([k]) => k.startsWith("simplex-names:order:")).map(([, v]) => JSON.parse(v)).find((r) => r.label === name)
+    return record.invoiceId ? `/?order=${record.invoiceId}` : `/?registration=${record.registrationId}`
+  }, label)
+  await page.goto(url)
+}
+
+// the name code on a page, shown first, as a page shows it only on Show
+export async function shownCode(page: Page): Promise<Locator> {
+  const box = onStep(page).locator(".code-display", { has: page.getByTestId("owner-code") })
+  await box.getByRole("button", { name: "Show" }).click()
+  return page.getByTestId("owner-code")
 }
 
 // where session.ts keeps the tab's checkout, with the owner code made for it
@@ -138,26 +167,26 @@ export async function previewsShown(page: Page): Promise<void> {
   for (const field of await onStep(page).locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
 }
 
-// Search, Register, both links, the name code saved, to Check your order with its code field open: the review at its fullest.
-// The field opens to a pointer's click, as Playwright's own click over WebDriver BiDi first scrolls its target to the window's centre.
+// The Links step's two links: one in its Link field, the other kind in the field its text link adds.
+export async function fillLinks(page: Page, contact: string, channel: string): Promise<void> {
+  const step = onStep(page)
+  await step.getByRole("textbox", { name: "Link", exact: true }).fill(contact)
+  await step.getByRole("button", { name: "Add a channel link" }).click()
+  await step.getByRole("textbox", { name: "Channel" }).fill(channel)
+}
+
+// Search, Register, both links and the name code saved, to Check your order: the review at its fullest.
 export async function toFullReview(page: Page, label: string): Promise<void> {
   await search(page, label)
   const step = onStep(page)
   await step.getByRole("button", { name: "Register" }).click()
-  await step.getByRole("textbox", { name: "Contact address" }).fill(contactLink("R1"))
-  await step.getByRole("textbox", { name: "Channel" }).fill(channelLink("R2"))
+  await fillLinks(page, contactLink("R1"), channelLink("R2"))
   await previewsShown(page)
   await step.getByRole("button", { name: "Continue" }).click()
   await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
   await savedToReview(page)
-  // the review's rise ends before the link is aimed at
+  // the review's rise ends before it is measured
   await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
-  // a redraw, as a line on another order brings, can replace the link as it is aimed at
-  await expect(async () => {
-    const box = (await step.getByRole("button", { name: CODE_LABEL }).boundingBox())!
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-    await expect(checkoutCode(page)).toBeFocused({ timeout: 1_000 })
-  }).toPass()
 }
 
 // Samples every frame from the next one, keeping what `sample` returns other than null; resolves once a frame is sampled.

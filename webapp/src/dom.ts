@@ -84,8 +84,9 @@ const LONG_NAME = 24
 const isLong = (label: string) => label.length > LONG_NAME
 const nameClass = (label: string) => isLong(label) ? "long" : "inline-name"
 
-export function nameText(label: string, tld: string): HTMLSpanElement {
-  return el("span", { class: nameClass(label) }, label, el("wbr"), `.${tld}`)
+// `after` is the punctuation that follows the name, kept on its line
+export function nameText(label: string, tld: string, after = ""): HTMLSpanElement {
+  return el("span", { class: nameClass(label) }, label, el("wbr"), `.${tld}${after}`)
 }
 
 // a long name breaks before its top-level domain first
@@ -116,14 +117,34 @@ export function setAction(button: HTMLButtonElement, busy: boolean, held: boolea
 const COPIED_MS = 1500
 const COPIED_FADE_MS = 200
 const copiedTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>[]>()
-export function codeDisplay(code: string, testId?: string): HTMLElement {
-  // Firefox ends no line at a hyphen before a digit, so a break opportunity follows each hyphen past the first; no line starts with one.
+// Firefox ends no line at a hyphen before a digit, so a break opportunity follows each hyphen past the first; no line starts with one.
+function codeText(code: string): Kid[] {
   const groups = code.split("-")
-  const parts = groups.flatMap((group, i) => {
+  return groups.flatMap((group, i) => {
     const text = i < groups.length - 1 ? `${group}-` : group
     return i > 1 ? [el("wbr"), text] : [text]
   })
-  return el("div", { class: "code-display" }, el("span", { class: "code-text", "data-testid": testId }, ...parts), copyButton(code, "field-copy", "Copy code"))
+}
+
+const MASK = "\u2022"
+// the code's prefix, its groups drawn as dots, so it can be copied without being seen
+const masked = (code: string) => code.split("-").map((group, i) => i ? MASK.repeat(group.length) : group).join("-")
+
+// A name code is shown only on Show, as anyone who sees it can take the name; Copy copies it either way.
+export function codeDisplay(code: string, testId?: string, hidden = false): HTMLElement {
+  const text = el("span", { class: "code-text", "data-testid": testId }, ...(hidden ? [masked(code)] : codeText(code)))
+  const buttons = el("span", { class: "code-buttons" }, copyButton(code, "field-copy", "Copy code"))
+  if (hidden) {
+    const show = el("button", { class: "field-copy", type: "button", onclick: () => {
+      const shown = text.classList.contains("masked")
+      refill(text, ...(shown ? codeText(code) : [masked(code)]))
+      text.classList.toggle("masked", !shown)
+      show.textContent = shown ? "Hide" : "Show"
+    } }, "Show")
+    text.classList.add("masked")
+    buttons.prepend(show)
+  }
+  return el("div", { class: "code-display" }, text, buttons)
 }
 
 let announcer: HTMLElement | null = null
@@ -142,9 +163,9 @@ function uncopy(button: HTMLElement, note: HTMLElement): void {
 }
 
 const COPY = "Copy"
-export function copyButton(value: string, cls: string, name = COPY): HTMLButtonElement {
+export function copyButton(value: string, cls: string, name = COPY, text = COPY): HTMLButtonElement {
   const note = el("span", { class: "copied-note", "aria-hidden": "true" })
-  const button = el("button", { class: `copy-btn ${cls}`.trim(), type: "button", "aria-label": name }, COPY, note)
+  const button = el("button", { class: `copy-btn ${cls}`.trim(), type: "button", "aria-label": name }, text, note)
   button.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(value)

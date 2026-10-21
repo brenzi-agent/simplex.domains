@@ -4,22 +4,27 @@ import {
 } from "./helpers.ts"
 
 const SIZES = [{ width: 1280, height: 800 }, { width: 390, height: 844 }]
-const BACK_PX = 40
 
-// Back sits wholly in the window as a 40 px circle at each size, and is the first stop after the header for the keyboard.
+// Back sits wholly in the window as the badges store's, a chevron and its word with no circle, at least 40 px tall, beside
+// the heading at its middle on a laptop and above it on a phone, and is the first stop after the header for the keyboard.
 async function backReady(page: Page, name: string): Promise<void> {
   const back = onStep(page).locator(".back")
   await expect(back, `${name}: Back`).toHaveAttribute("aria-label", "Back")
+  await expect(back, `${name}: Back's words`).toHaveText("Back")
   for (const size of SIZES) {
     await page.setViewportSize(size)
     await expect(back, `${name} at ${size.width}x${size.height}: Back in the window`).toBeInViewport({ ratio: 1 })
     const drawn = await back.evaluate((node) => {
+      const style = getComputedStyle(node)
       const box = node.getBoundingClientRect()
-      return { width: Math.round(box.width), height: Math.round(box.height), radius: parseFloat(getComputedStyle(node).borderTopLeftRadius) }
+      const heading = node.parentElement!.querySelector("h1")!.getBoundingClientRect()
+      const firstLine = parseFloat(getComputedStyle(node.parentElement!.querySelector("h1")!).lineHeight)
+      return { tall: box.height >= 40, chevron: node.querySelector("svg") !== null, border: style.borderTopStyle, fill: style.backgroundColor,
+        beside: Math.abs((box.top + box.bottom) / 2 - (heading.top + firstLine / 2)) <= 4, above: box.bottom <= heading.top + 8 }
     })
-    expect(drawn, `${name} at ${size.width}x${size.height}: Back's box`).toEqual({ width: BACK_PX, height: BACK_PX, radius: expect.any(Number) })
-    expect(drawn.radius, `${name}: Back is round`).toBeGreaterThanOrEqual(BACK_PX / 2)
-    await page.locator(".theme-switch").focus()
+    expect(drawn, `${name} at ${size.width}x${size.height}: Back's look`).toMatchObject({ tall: true, chevron: true, border: "none", fill: "rgba(0, 0, 0, 0)" })
+    expect(size.width > 520 ? drawn.beside : drawn.above, `${name} at ${size.width}x${size.height}: Back ${size.width > 520 ? "beside the heading's first line" : "above the heading"}`).toBe(true)
+    await page.locator("body > header").locator(".theme-switch:visible, .menu-button:visible").last().focus()
     await page.keyboard.press("Tab")
     await expect(back, `${name} at ${size.width}x${size.height}: Tab from the header`).toBeFocused()
     expect(await back.evaluate((node) => node.matches(":focus-visible") && getComputedStyle(node).outlineStyle !== "none"), `${name}: Back's focus ring`).toBe(true)
@@ -27,7 +32,7 @@ async function backReady(page: Page, name: string): Promise<void> {
   await page.setViewportSize(SIZES[0])
 }
 
-test("the round Back is in the window and reached by the keyboard on every screen that has one, at a laptop's and a phone's size", async ({ page, request }) => {
+test("Back is in the window and reached by the keyboard on every screen that has one, at a laptop's and a phone's size", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("backs"), { method: "btc" })
   await control(request, `settle/${invoiceId}`)
   const registrationId = await registrationOf(request, invoiceId)
@@ -48,7 +53,7 @@ test("the round Back is in the window and reached by the keyboard on every scree
   await backReady(page, "Too many attempts")
   await page.unroute("**/api/invoice")
 
-  for (const [path, heading] of [["/#/names", "Your names"], ["/#/restore", "Restore with a name code"], ["/#/trademarks", "Trademark owners"]]) {
+  for (const [path, heading] of [["/#/names", "Your names"], ["/#/code", "Check your code"], ["/#/trademarks", "Trademark owners"]]) {
     await page.goto(path)
     await expect(onStep(page).getByRole("heading", { name: heading })).toBeVisible()
     await backReady(page, heading)
@@ -56,7 +61,7 @@ test("the round Back is in the window and reached by the keyboard on every scree
   await page.goto(`/?order=${invoiceId}`)
   await expect(page.getByRole("heading", { name: /is\s+yours/ })).toBeVisible({ timeout: 120_000 })
   await page.goto(`/#/edit/${registrationId}`)
-  await expect(onStep(page).getByRole("heading", { name: /^Edit links for / })).toBeVisible()
+  await expect(onStep(page).getByRole("heading", { name: "Edit links" })).toBeVisible()
   await backReady(page, "Edit links")
 })
 
@@ -78,10 +83,10 @@ async function moveAround(page: Page): Promise<string[]> {
   // typed into the page, as a new document would lose the frames recorded so far
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("still"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
-  await expect(page.locator(".answer .card")).toBeVisible()
+  await expect(page.locator(".answer .row")).toBeVisible()
   await page.getByRole("button", { name: "Register" }).click()
   await expect(onStep(page).getByRole("heading", { name: "What should your name open?" })).toBeVisible()
-  await page.locator(".theme-switch").click()
+  await page.locator(".top-links .theme-switch").click()
   // the switch's transitions have started two frames on, and are recorded until they end
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
   await settled(page)
@@ -118,7 +123,7 @@ test("a whole-screen swap shows one screen in every frame, never the old one bes
     [LINKS_HEADING, () => page.getByRole("button", { name: "Register" }).click()],
     [CODE_HEADING, () => onStep(page).getByRole("button", { name: "Skip for now" }).click()],
     ["Your names", () => page.locator("body > header").getByRole("link", { name: "Your names" }).click()],
-    ["Restore with a name code", () => page.getByRole("link", { name: "Restore with a name code" }).first().click()],
+    ["Check your code", () => page.getByRole("link", { name: "Add a code" }).click()],
     ["Your names", () => page.goBack()],
     [CODE_HEADING, () => page.getByRole("button", { name: "Continue checkout" }).first().click()],
   ]
@@ -155,7 +160,7 @@ test("a link's profile takes its placeholder's place as it is, rather than arriv
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await page.route("**/api/link/preview", async (route) => {
     await new Promise((done) => setTimeout(done, PREVIEW_DELAY_MS))
-    await route.fulfill({ json: { type: "address", displayName: "Late profile", image: null } })
+    await route.fulfill({ json: { type: "address", kind: "contact", displayName: "Late profile", fullName: "", image: null, subscribers: null } })
   })
   await search(page, uniqueLabel("inplace"))
   await onStep(page).getByRole("button", { name: "Register" }).click()
@@ -166,9 +171,9 @@ test("a link's profile takes its placeholder's place as it is, rather than arriv
     const card = document.querySelector("body > main .link-field .entity:not(.skeleton)")
     return card ? getComputedStyle(card).opacity : null
   })
-  await onStep(page).getByRole("textbox", { name: "Contact address" }).fill(contactLink("IP"))
+  await onStep(page).getByRole("textbox", { name: "Link", exact: true }).fill(contactLink("IP"))
   // the field left while its profile is asked for shows the placeholder
-  await onStep(page).getByRole("textbox", { name: "Channel" }).focus()
+  await onStep(page).getByRole("link", { name: "Back" }).focus()
   await expect(onStep(page).locator(".link-field .entity.skeleton")).toBeVisible()
   await expect(onStep(page).locator(".link-field .entity", { hasText: "Late profile" })).toBeVisible()
   await settled(page)
@@ -180,24 +185,23 @@ test("a link's profile takes its placeholder's place as it is, rather than arriv
 // each frame's theme tokens beside the colours of the controls drawn with them
 const CONTROL_COLOURS = () => {
   const root = getComputedStyle(document.documentElement)
-  const button = getComputedStyle(document.querySelector("body > main .btn")!)
+  const button = getComputedStyle(document.querySelector("body > main .btn:not([disabled])")!)
   const back = getComputedStyle(document.querySelector("body > main .back")!)
   return [
     [root.getPropertyValue("--primary"), button.backgroundColor],
     [root.getPropertyValue("--primary-ink"), button.color],
-    [root.getPropertyValue("--surface"), back.backgroundColor],
+    [root.getPropertyValue("--primary"), back.color],
   ]
 }
 
 test("a switch of theme moves the controls' colours with the page's, frame by frame, both ways", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await search(page, uniqueLabel("theme"))
-  await onStep(page).getByRole("button", { name: "Register" }).click()
-  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
+  await toReview(page)
   await settled(page)
   for (const theme of ["dark", "light"]) {
     await recordFrames(page, CONTROL_COLOURS)
-    await page.locator(".theme-switch").click()
+    await page.locator(".top-links .theme-switch").click()
     await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
     await settled(page)
     const frames = await recordedFrames<string[][]>(page)
@@ -221,11 +225,8 @@ async function pressedLook(page: Page, button: Locator): Promise<string> {
 
 test("a button held down under a mouse shows its press over its hover, a primary and a quiet one", async ({ page }) => {
   await search(page, uniqueLabel("press"))
-  await onStep(page).getByRole("button", { name: "Register" }).click()
-  const skip = onStep(page).getByRole("button", { name: "Skip for now" })
-  expect(await pressedLook(page, skip), "Skip for now held down").toBe(PRESSED)
-  await skip.click()
-  await expect(onStep(page).getByRole("heading", { name: "Save your name code" })).toBeVisible()
+  await toReview(page)
+  expect(await pressedLook(page, payButton(page)), "Pay held down").toBe(PRESSED)
   await page.goto("/#/names")
   await page.getByText("Forget everything in this browser").click()
   expect(await pressedLook(page, page.getByRole("button", { name: "Keep them" })), "Keep them held down").toBe(PRESSED)

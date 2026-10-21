@@ -1,16 +1,16 @@
 // The checkout's steps: the links the name opens, its name code, and Check your order with how it pays, and Pay.
 import * as api from "../api.ts"
-import { alertBox, btn, codeDisplay, el, icon, type Kid, link, nameText, nameTitle, setAction } from "../dom.ts"
+import { alertBox, btn, codeDisplay, el, link, nameText, nameTitle, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, dollars, methodName, SEP, termText, untilFromNow } from "../format.ts"
+import { dateOf, dollars, freeDays, methodName, TERM_START_S, termEnd } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
-import { type LinkKind, PRICED_YEARS, priceFor } from "../names.ts"
+import { type LinkKind, PRICED_YEARS } from "../names.ts"
 import { changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, initialState, reduce, screenOf, stepFor, type WaitingOrder } from "../screens/checkout.ts"
 import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
-import { clearTyped, CODE_ERRORS, codeField, type CodeVerdict, refuseCode } from "./codes.ts"
-import { focusUnsettled, linkEntry, linkField, linkName, linkPreview } from "./links.ts"
+import { CODE_ERRORS } from "./codes.ts"
+import { focusUnsettled, linkChat, linkFieldsFor } from "./links.ts"
 import {
   asStep, type Builder, currentRoute, draw, focusOn, go, goFrom, isRedraw, isRoute, kept, keptLive, limitScreen, outcome, redirect, refresh, screen, searchLink, whenLeaving,
 } from "./shell.ts"
@@ -18,17 +18,19 @@ import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./ho
 import { openedInstead, RETRY_MS } from "./order.ts"
 
 const METHOD_ORDER: Method[] = ["card", "btc", "xmr"]
-// a field per name, so what was typed in it stays with its checkout
-const codeKey = (label: string) => `checkout-code-${label}`
-const CODE_LABEL = "I have a code"
 const CHECKOUT_NOTE = "checkout-note"
-const PAY_WITH_ID = "pay-with-label"
 const SAVED_LABEL = "I have saved my name code"
+// the dApp that registers a name paid for in ETH
+const DAPP_URL = "https://app.simplex.domains"
+// the contract's maxCommitmentAge (dev/deploy.ts): a paid order not revealed within it has to commit again
+const REVEAL_HOURS = 24
 
 const years = (c: session.Checkout) => c.code?.years ?? PRICED_YEARS
 // a card order waiting for Stripe holds a second paid order; a code pays nothing, so it holds none
 const blockedBy = ({ checkout, waiting }: CheckoutState) => checkout.code ? null : waiting
-const payLabel = (c: session.Checkout) => c.code ? "Register" : c.appOwner ? "Continue" : `Pay ${dollars(c.price, true)} with ${methodName(c.method)}`
+// cents only where a price has them
+const price = (cents: number) => dollars(cents, cents % 100 !== 0)
+const payLabel = (c: session.Checkout) => c.code ? "Register with your code" : c.appOwner ? "Continue" : `Pay ${price(c.price)} with ${methodName(c.method)}`
 
 function waitingCardOrder(): WaitingOrder | null {
   const order = store.orders().find((o) => o.method === "card" && o.cardSubmittedAt && o.invoiceId)
@@ -38,8 +40,6 @@ function waitingCardOrder(): WaitingOrder | null {
 let state: CheckoutState
 let shown: CheckoutKind | null = null
 let pageRoute = -1
-// a code verdict that came while the order was on its way, heard once the order comes back to the checkout
-let unheard: CodeVerdict | null | undefined
 
 // The name code is made as its step opens and kept as pending, so Your names lists it before any order exists.
 export function checkoutPage(asked: CheckoutStep): void {
@@ -51,10 +51,8 @@ export function checkoutPage(asked: CheckoutStep): void {
   const c = session.checkout()!
   if (c.ownerCode) store.addPending({ ownerCode: c.ownerCode, label: c.label, tld: c.chain.tld, createdAt: new Date().toISOString() })
   if (!isRedraw() || shown === null || state.checkout.label !== c.label) {
-    // a code field opened stays open over Change and Back within the same checkout
-    state = initialState(c, step, shown !== null && state.checkout.label === c.label && state.checkout.ownerCode === c.ownerCode && state.codeOpen)
+    state = initialState(c, step)
     shown = null
-    unheard = undefined
   }
   pageRoute = currentRoute()
   // a wait met elsewhere in the tab holds this page's actions too
@@ -72,10 +70,6 @@ function dispatch(event: CheckoutEvent): void {
   const kind = screenOf(state)
   shown = kind
   draw(kind, (signal) => asStep(BUILDERS[kind](state, signal)))
-  if (kind !== "review" || state.sending || unheard === undefined) return
-  const late = unheard
-  unheard = undefined
-  heed(late)
 }
 
 const holdEnds = (signal: AbortSignal) => holdEnder(signal, () => dispatch({ type: "hold-ended" }))
@@ -88,8 +82,13 @@ function act(event: CheckoutEvent, apply: (event: CheckoutEvent) => void = dispa
   return true
 }
 
-// a link typed is shown by its own field, so the page takes it without drawing
-const setLink = (kind: LinkKind, link: string) => void act({ type: "link-set", kind, link }, (event) => { state = reduce(state, event) })
+const hasLinks = (c: session.Checkout) => Boolean(c.contact || c.channel)
+// a link typed is shown by its own field, so the page takes it without drawing, unless the step's actions change with it
+const setLink = (kind: LinkKind, link: string) => {
+  const event: CheckoutEvent = { type: "link-set", kind, link }
+  const turns = hasLinks(reduce(state, event).checkout) !== hasLinks(state.checkout)
+  act(event, turns ? dispatch : (e) => { state = reduce(state, e) })
+}
 
 // Follows an invoice, each answer once it moves on from the one seen, while `followed` returns true; an invoice the service forgot is null.
 async function follow(invoiceId: string, signal: AbortSignal, followed: (seen: api.InvoiceView | null) => boolean, seen?: api.InvoiceView): Promise<void> {
@@ -137,27 +136,24 @@ async function showOpenOrder(signal: AbortSignal): Promise<void> {
   void follow(open.invoiceId, signal, show, open)
 }
 
-function linkLine(kind: LinkKind, key: string, value: Node | string, action: string, name: string): HTMLElement {
-  const change = link(action, () => { go(checkoutUrl("links")); focusOn(`link-${kind}`) })
-  change.setAttribute("aria-label", name)
-  change.dataset.focus = `change-${kind}`
-  return el("div", { class: "link-line" }, el("span", { class: "k" }, key), value, change)
-}
+const row = (what: string, value: Node | string, cls?: string) => el("div", { class: `trow${cls ? ` ${cls}` : ""}` }, el("span", {}, what), el("span", {}, value))
 
-function linkLines(c: session.Checkout): HTMLElement | null {
-  if (c.appOwner) return null
-  const set = api.LINK_KINDS.filter((kind) => c[kind])
-  return el("div", { class: "link-lines" }, set.length
-    ? set.map((kind) => linkLine(kind, linkName(kind), linkPreview(c[kind]), "Change", `Change the ${linkName(kind).toLowerCase()}`))
-    : linkLine("contact", "Links", el("span", {}, "None"), "Add", "Add links"))
-}
-
-function summaryCard(c: session.Checkout): HTMLElement {
+// The order as the search answered it, with the chats its links open, over what it costs: its term, the free days
+// before the term starts, its end, and a code that pays for it.
+function orderCard(c: session.Checkout): HTMLElement {
   const y = years(c)
-  return el("section", { class: "card summary-card" }, nameTitle(c.label, "name", c.chain.tld),
-    el("div", { class: "total" }, el("span", { class: "term-line" }, termText(y), SEP, el("span", { class: "nowrap" }, `until ${dateOf(untilFromNow(y), true)}`)),
-      el("b", { class: "nowrap" }, ...(c.code ? [el("s", {}, dollars(priceFor(c.price, y), true)), "$0.00"] : [dollars(c.price, true)]))),
-    linkLines(c))
+  const now = Date.now() / 1000
+  const free = freeDays(now)
+  const name = `${c.label}.${c.chain.tld}`
+  const chats = c.appOwner ? [] : api.LINK_KINDS.filter((kind) => c[kind]).map((kind) => linkChat(c[kind], name, `chat-${kind}`))
+  return el("section", { class: "card order" },
+    el("div", { class: "row" }, nameTitle(c.label, "name", c.chain.tld), chats.length ? el("span", { class: "chats" }, chats) : null),
+    el("div", { class: "table" },
+      row("Term", `${y} years`),
+      free > 0 ? row(`Free until ${dateOf(TERM_START_S)}`, free === 1 ? "1 day" : `${free} days`) : null,
+      row("Registered until", dateOf(termEnd(y, now))),
+      c.code ? row("Your code", `\u2212${price(c.price)}`, "ok") : null,
+      row("Total", c.code ? "$0" : price(c.price), "total")))
 }
 
 // an order on its way is sent as it is: its method and code stay as they are until it is answered
@@ -185,65 +181,35 @@ function methodsBlock({ checkout: c, openOrder: order, sending }: CheckoutState)
     const [on, off] = [m === c.method, m === c.unavailable]
     return el("div", { class: "method", role: "radio", "data-method": m, "data-focus": `method-${m}`, "aria-checked": String(on), "aria-disabled": off || sending ? "true" : undefined,
       tabindex: on ? "0" : "-1", onclick: () => chooseMethod(m), onkeydown: (e: Event) => keyed(e as KeyboardEvent, m) },
-    methodMark(m), el("b", {}, methodName(m)), off ? el("span", {}, "Temporarily unavailable") : null)
+    methodMark(m), el("b", {}, methodName(m)))
   })
   return el("section", { class: "pay-with" },
     order ? el("p", { class: "note other-order" }, `Another order ${order.confirming ? "is confirming its payment" : "is waiting for its payment"}. `,
       el("a", { class: "nowrap", href: store.invoiceUrl(order.invoiceId) }, "Open that order")) : null,
     c.unavailable ? alertBox("warn", "alert", `${methodName(c.unavailable)} is temporarily unavailable`, "Try another method, or come back later.") : null,
-    el("span", { class: "label", id: PAY_WITH_ID }, "Pay with"),
-    el("div", { class: "methods", role: "radiogroup", "aria-labelledby": PAY_WITH_ID }, ...radios))
+    el("div", { class: "methods", role: "radiogroup", "aria-label": "Pay with" }, ...radios))
 }
-
-const coveredLine = (code: session.AppliedCode) => el("section", { class: "pay-with covered" },
-  alertBox("ok", "check", "Paid with your code", `Registered for ${termText(code.years)}, with nothing to pay.`))
 
 const waitingNotice = (blocked: WaitingOrder) => el("section", { class: "pay-with" },
   alertBox("info", "info", "You have an order waiting to be confirmed", "A second order would be a second charge, so this one cannot start yet. When that payment is confirmed or expires, you can start a new one here."),
   el("div", {}, btn("Open the waiting order", "quiet", () => go(store.invoiceUrl(blocked.invoiceId)))))
 
-const tooShort = (v: CodeVerdict | null, label: string) => v?.ok === true && label.length < v.code.minLength
-
-// A code that pays is applied, anything else takes off the field's code; read from the module's state, as the field is kept across draws.
-function heed(v: CodeVerdict | null): void {
-  const { label, code, codeError } = state.checkout
-  if (v?.ok && !tooShort(v, label)) act({ type: "code-applied", code: v.code })
-  // an edit takes off the code the field held, and the service's last refusal of one
-  else if (code || codeError) act({ type: "code-removed" })
-}
-
-// The field's verdict, heard at once unless the order on its way was sent without it; one for longer names is refused here.
-function onVerdict(v: CodeVerdict | null): string | null {
-  const { label } = state.checkout
-  if (state.sending) unheard = v
-  else heed(v)
-  return v?.ok && tooShort(v, label) ? `This code covers names of ${v.code.minLength} or more letters; ${label} has ${label.length}.` : null
-}
-
-const codeEntry = () => codeField(codeKey(state.checkout.label), CODE_LABEL, onVerdict, state.checkout.code, state.checkout.codeError ?? null)
-
-// the link the field opens from is drawn away, so focus goes into the field, which is where the link was in view
-function openCode(): void {
-  dispatch({ type: "code-opened" })
-  codeEntry().querySelector("input")!.focus({ preventScroll: true })
-}
-
-// the link holds the field's place, so the field opens without moving the page
-const codeBlock = (s: CheckoutState) => s.codeOpen ? locked(codeEntry(), s.sending) : el("div", { class: "field code-link" }, link(CODE_LABEL, openCode))
-
 const actionLabel = (text: string, s: CheckoutState) => s.sending && !s.busy ? "Sending your order…" : text
 
-function payBlock(s: CheckoutState, blocked: boolean, signal: AbortSignal): HTMLElement {
-  const pay = btn(actionLabel(payLabel(s.checkout), s), "block", () => void submitOrder(), icon("arrow"))
+function payButton(s: CheckoutState, blocked: boolean): HTMLButtonElement {
+  const pay = btn(actionLabel(payLabel(s.checkout), s), "", () => void submitOrder())
   pay.dataset.focus = "pay"
-  setAction(pay, s.busy, blocked || s.sending || s.hold !== null)
-  const held = !blocked && !s.sending ? s.hold : null
-  holdEnds(signal)(s.hold !== null)
-  return el("div", { class: "pay-block" }, pay, keptLive(CHECKOUT_NOTE, undefined, held && holdNotice(held, signal)))
+  return setAction(pay, s.busy, blocked || s.sending || s.hold !== null)
 }
 
-function continueButton(onclick: () => void, held = false, label: Kid = "Continue"): HTMLButtonElement {
-  const next = setAction(btn(label, "block", onclick, icon("arrow")), false, held)
+function payNote(s: CheckoutState, blocked: boolean, signal: AbortSignal): HTMLElement {
+  const held = !blocked && !s.sending ? s.hold : null
+  holdEnds(signal)(s.hold !== null)
+  return keptLive(CHECKOUT_NOTE, undefined, held && holdNotice(held, signal))
+}
+
+function continueButton(onclick: () => void, held = false): HTMLButtonElement {
+  const next = setAction(btn("Continue", "", onclick), false, held)
   next.dataset.focus = "continue"
   return next
 }
@@ -253,38 +219,42 @@ const linksDone = (fields: HTMLElement[]) => { if (!focusUnsettled(fields)) go(c
 
 function buildLinks(s: CheckoutState): HTMLElement {
   const c = s.checkout
-  const fields = [
-    locked(kept("link-contact", () => linkField("contact", c.contact, (link) => setLink("contact", link))), s.sending),
-    locked(kept("link-channel", () => linkField("channel", c.channel, (link) => setLink("channel", link))), s.sending),
-  ]
-  // one button, named Skip for now while both fields are empty and Continue once a link is typed, so the step keeps still
+  const links = kept("links", () => linkFieldsFor({ contact: c.contact, channel: c.channel }, setLink))
+  locked(links.node, s.sending)
+  // Continue needs a link; without one the step goes on by Skip for now
+  const linked = hasLinks(c)
+  const skip = linked ? null : link("Skip for now", () => go(checkoutUrl("review")))
+  skip?.setAttribute("data-focus", "skip")
   return screen({ title: "What should your name open?", back: searchLink(c.label, null),
-    lead: ["When someone opens ", nameText(c.label, c.chain.tld), " in SimpleX, it connects them to you or shows your channel. Paste the links from the app; you can change them later."] },
-    el("div", { class: "link-fields" }, linkEntry("contact", fields[0]), linkEntry("channel", fields[1])),
-    continueButton(() => linksDone(fields), false, [el("span", { class: "skip" }, "Skip for now"), el("span", { class: "go" }, "Continue")]))
+    lead: ["Paste your SimpleX contact address or channel link. ", el("span", { class: "nowrap" }, "You can change it later.")],
+    alt: skip, action: continueButton(() => linksDone(links.fields()), !linked) },
+    el("span", { class: "label" }, "Link"), links.node)
 }
 
 function buildCode(s: CheckoutState): HTMLElement {
   const c = s.checkout
   const box = el("input", { type: "checkbox", checked: c.saved, disabled: s.sending, "data-focus": "saved" })
   box.addEventListener("change", () => { if (!state.sending && !act({ type: "saved", saved: box.checked })) refresh() })
-  return screen({ title: "Save your name code", lead: ["It is the only key to ", nameText(c.label, c.chain.tld), ". If you lose it, nothing can recover it."], back: checkoutUrl("links") },
-    codeDisplay(c.ownerCode!, "owner-code"),
-    store.canPersist() ? null : alertBox("danger", "alert", "This code could not be saved in this browser", "Save a copy now: it will be the only one."),
-    el("label", { class: "check" }, box, el("span", { class: "box" }), SAVED_LABEL),
-    continueButton(() => go(checkoutUrl("review")), !c.saved))
+  return screen({ title: "Save your name code", lead: ["It is the only key to ", nameText(c.label, c.chain.tld, "."), " If you lose it, nothing can recover it."], back: checkoutUrl("links"),
+    action: continueButton(() => go(checkoutUrl("review")), !c.saved) },
+    codeDisplay(c.ownerCode!, "owner-code", true),
+    store.canPersist() ? el("p", { class: "note center" }, "Private windows and Tor Browser forget it when closed.")
+      : alertBox("danger", "alert", "This code could not be saved in this browser", "Save a copy now: it will be the only one."),
+    el("label", { class: "check" }, box, el("span", { class: "box" }), SAVED_LABEL))
 }
 
 function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   const c = s.checkout
   const fromApp = c.appOwner !== null
   const blocked = blockedBy(s)
-  return screen({ title: "Check your order", back: fromApp ? searchLink(c.label, c.appOwner) : checkoutUrl("code") },
-    el("div", { class: "review" }, summaryCard(c),
+  return screen({ title: "Check your order", back: fromApp ? searchLink(c.label, c.appOwner) : checkoutUrl("code"), action: payButton(s, blocked !== null) },
+    el("div", { class: "review" }, orderCard(c),
       fromApp && !store.canPersist() ? alertBox("warn", "alert", "This browser will not keep this order", "Keep this page open until the name is registered; a reload loses it.") : null,
-      c.code ? coveredLine(c.code) : blocked ? waitingNotice(blocked) : methodsBlock(s),
-      fromApp ? null : codeBlock(s),
-      payBlock(s, blocked !== null, signal)))
+      c.codeError ? alertBox("danger", "alert", null, `${c.codeError} Pay for the name here, or check another code.`) : null,
+      c.code ? el("div", { class: "notes" }, el("p", {}, "Your code pays for this name. Nothing more to pay.")) : blocked ? waitingNotice(blocked) : methodsBlock(s),
+      c.code || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours, to finish the registration.`),
+        el("p", {}, "Paying with ETH? ", el("a", { href: DAPP_URL, target: "_blank", rel: "noopener" }, "Register in the dApp"))),
+      payNote(s, blocked !== null, signal)))
 }
 
 function buildPriceChanged({ checkout: c }: CheckoutState): HTMLElement {
@@ -308,7 +278,7 @@ function buildFailed(s: CheckoutState): HTMLElement {
   // the same order is sent again from here; Back leaves it for the search
   const retry = setAction(btn("Try again", "", () => void submitOrder()), s.busy, false)
   return outcome({ tone: "danger", icon: "alert", title: "That did not go through", text: "Nothing was charged. If this happens again, get in touch.",
-    action: el("div", { class: "actions" }, retry, btn("Back", "quiet", () => go(searchLink(c.label, c.appOwner)))) })
+    action: retry, alt: link("Back", () => go(searchLink(c.label, c.appOwner))) })
 }
 
 const BUILDERS: Record<CheckoutKind, Builder<CheckoutState>> = {
@@ -352,7 +322,6 @@ async function sendOrder(): Promise<void> {
   const mine = currentRoute()
   const search = searchLink(c.label, c.appOwner)
   const done = (url: string) => {
-    clearTyped(codeKey(c.label))
     const current = session.checkout()
     const ours = current?.label === c.label && current.ownerCode === c.ownerCode
     if (ours) session.setCheckout(null)
@@ -366,6 +335,8 @@ async function sendOrder(): Promise<void> {
     built = await flow.orderRequest(draft)
     if (c.code) {
       const res = await api.registerWithCode(built.request, c.code.display)
+      // the code is the order's now, so it pays for nothing more in this tab
+      session.setActiveCode(null)
       if (res.invoiceId) return await openInvoice(draft, built, res.invoiceId, "code", done)
       store.saveOrder({ ...flow.recordFor(draft, built, "code", 0, { registrationId: res.registrationId, invoiceId: null }), prepaidCode: c.code.display })
       return done(store.orderUrl({ invoiceId: null, registrationId: res.registrationId }))
@@ -408,11 +379,9 @@ function orderError(e: unknown, c: session.Checkout): void {
     return void act({ type: "order-refused", reason: "taken" })
   }
   if (code in CODE_ERRORS) {
-    // the field is emptied for another code, so a verdict on the one it held is moot
-    unheard = undefined
-    // drawn first, so the field is open again for another code when it takes focus and says why
-    act({ type: "order-refused", reason: "code", error: CODE_ERRORS[code] })
-    return refuseCode(codeEntry(), CODE_ERRORS[code])
+    // a code the service will not take pays for nothing more in this tab
+    session.setActiveCode(null)
+    return void act({ type: "order-refused", reason: "code", error: CODE_ERRORS[code] })
   }
   if (code === "provider_unavailable") return void act({ type: "order-refused", reason: "method" })
   if (code === "catalog_changed" && e instanceof api.ApiError && typeof e.body.price === "number") return void act({ type: "price-changed", price: e.body.price })

@@ -6,9 +6,7 @@ import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { secondsLeft } from "./hold.ts"
 
-export const WEFUNDER_URL = "https://wefunder.com/simplex.chat?utm_source=domains"
 export const CONTACT_EMAIL = "chat@simplex.chat"
-export const INVEST_AMOUNT = "$500"
 
 let rerender: () => void = () => undefined
 
@@ -16,6 +14,8 @@ export const setRenderer = (render: () => void) => { rerender = render }
 
 let route = 0
 const leaving: (() => void)[] = []
+const pageLeft: (() => void)[] = []
+const drawnHooks: (() => void)[] = []
 const dropping: (() => void)[] = []
 let redrawing = false
 // the route the screen on show was drawn on; a redraw of the same page carries it to the redrawn route
@@ -23,8 +23,8 @@ let drawnRoute = -1
 let shownKind: string | null = null
 let shownScreen: HTMLElement | null = null
 let screenStop: AbortController | null = null
-// nodes a reader types into, kept for the route so a redraw moves them rather than rebuilding them
-const keptNodes = new Map<string, HTMLElement>()
+// nodes a reader types into, or what holds them, kept for the route so a redraw moves them rather than rebuilding them
+const keptNodes = new Map<string, unknown>()
 
 // A new route ends the last one's polls and timers: async work checks its token with isRoute before drawing.
 export function nextRoute(): void {
@@ -34,6 +34,7 @@ export function nextRoute(): void {
   if (samePage) drawnRoute = route
   else {
     dropping.splice(0).forEach((f) => f())
+    pageLeft.forEach((f) => f())
     keptNodes.clear()
     screenStop?.abort()
     screenStop = null
@@ -51,6 +52,9 @@ export const whenLeaving = (f: () => void) => { leaving.push(f) }
 
 // once the page is left for another, rather than drawn again, as its kept nodes are dropped
 export const whenDropped = (f: () => void) => { dropping.push(f) }
+// each time any page is left for another, or drawn
+export const onPageLeft = (f: () => void) => { pageLeft.push(f) }
+export const onDrawn = (f: () => void) => { drawnHooks.push(f) }
 
 const nextAt = () => Math.max(-1, ...Object.keys(session.scrolled()).map(Number)) + 1
 let historyAt = typeof history.state?.at === "number" ? history.state.at as number : nextAt()
@@ -135,10 +139,12 @@ export function refresh(): void {
 }
 
 export type Builder<S> = (state: S, signal: AbortSignal) => HTMLElement
-interface ScreenHead { title: Kid; lead?: Kid; back?: string }
-interface Outcome { tone: Tone; icon: IconName; title: string; text: Kid; action?: Node | null; reference?: string; extra?: Kid; back?: string }
+// a screen's main action and its text-link alternative, which a step holds at one place on every step
+interface Actions { action?: Node | null; alt?: Node | null }
+interface ScreenHead extends Actions { title: Kid; lead?: Kid; back?: string }
+interface Outcome extends Actions { tone: Tone; icon: IconName; title: string; text: Kid; reference?: string; extra?: Kid; back?: string }
 
-export function kept<T extends HTMLElement>(key: string, make: () => T): T {
+export function kept<T>(key: string, make: () => T): T {
   const known = keptNodes.get(key)
   if (known) return known as T
   const made = make()
@@ -165,7 +171,6 @@ function arrivals(screen: Element): [Element, string][] {
 }
 // a node put in the place held for it, as a preview in its skeleton's, is there already rather than arriving
 export const inPlace = <T extends Element>(node: T) => { node.classList.add(SHOWN); return node }
-let fontsAwaited = false
 // the key of a control a redraw turned off, whose focus dropped to the page: a later redraw that offers it gives it back
 let lostKey: string | null = null
 
@@ -187,16 +192,13 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement):
   for (const [node, key] of arrivals(next)) if (!drawn || drawn.has(key)) node.classList.add(SHOWN)
   main.replaceChildren(next)
   if (!redrawn && !first) next.classList.add(ENTER)
-  if (!redrawn) holdSpacers(next)
-  // the first page opens anew once the fonts its layout asked for have loaded; a face a later change asks for moves nothing
-  if (!fontsAwaited && kind !== LOADING) void document.fonts.ready.then(reopen)
-  fontsAwaited ||= kind !== LOADING
   shownScreen = next
   main.inert = false
   shownKind = kind
   drawnRoute = route
   popped = false
   document.title = titleOf(next)
+  drawnHooks.forEach((f) => f())
   lostKey = null
   if (!first) settleFocus(active, caret, toHeading, focusKey)
   // the place a page was left at is kept for the page itself, not for the loading line before it
@@ -243,41 +245,36 @@ const titleOf = (next: HTMLElement) => {
   return heading ? `${heading} · ${SITE_TITLE}` : SITE_TITLE
 }
 
-const screenHead = (title: Kid, back: string | undefined) =>
-  el("div", { class: "screen-head" }, back ? el("a", { class: "back", href: back, "aria-label": "Back", title: "Back" }, icon("back")) : null, el("h1", {}, title))
+// Back as the badges store draws it, a chevron and its word, beside the heading; the lead under both
+const screenHead = (title: Kid, back: string | undefined, lead?: Kid) => el("div", { class: "screen-head" },
+  back ? el("a", { class: "back", href: back, "aria-label": "Back" }, icon("chevron"), el("span", { "aria-hidden": "true" }, "Back")) : null, el("h1", {}, title),
+  lead ? el("p", { class: "lead" }, lead) : null)
+
+const actionsOf = ({ action, alt }: Actions) => action || alt ? el("div", { class: "actions-row" }, alt ? el("div", { class: "alt" }, alt) : null, action) : null
 
 export function screen(head: ScreenHead, ...body: Kid[]): HTMLElement {
-  return el("section", { class: "screen" },
-    screenHead(head.title, head.back),
-    head.lead ? el("p", { class: "lead" }, head.lead) : null,
-    ...body)
+  return el("section", { class: "screen" }, screenHead(head.title, head.back, head.lead), el("div", { class: "screen-body" }, ...body), actionsOf(head))
 }
 
-// A purchase step or an outcome fills the window, its content between two spacers; a list starts under the header, so rows never shift.
-export const asStep = (screen: HTMLElement) => { screen.classList.add("step"); screen.replaceChildren(kept("step-top", spacer), ...screen.children, spacer()); return screen }
-export const spacer = () => el("div", { class: "vspace" })
+// A purchase step, an outcome or a screen like them is a frame of one height: its heading block, its content, and its
+// actions' row, so Back, the heading and the main button stand at one place on every step, the row kept when it is empty.
+export function asStep(screen: HTMLElement): HTMLElement {
+  screen.classList.add("step")
+  if (!screen.querySelector(":scope > .actions-row")) screen.append(el("div", { class: "actions-row" }))
+  return screen
+}
 
 export function outcome(o: Outcome): HTMLElement {
-  return el("section", { class: "screen outcome" },
-    screenHead(o.title, o.back),
-    alertBox(o.tone, o.icon, null, o.text),
-    o.extra ?? null,
-    o.action ?? null,
-    o.reference ? referenceLine(o.reference) : null)
-}
-
-// The spacers above a step's or the home's content, kept for the route, hold where it opened; what changes moves only what is below.
-function holdSpacers(screen: HTMLElement): void {
-  const spacers = [...screen.querySelectorAll<HTMLElement>(":scope > .vspace:not(:last-child)")]
-  for (const spacer of spacers) spacer.removeAttribute("style")
-  spacers.map((spacer) => `0 0 ${spacer.getBoundingClientRect().height}px`).forEach((flex, i) => { spacers[i].style.flex = flex })
+  return el("section", { class: "screen outcome" }, screenHead(o.title, o.back),
+    el("div", { class: "screen-body" }, alertBox(o.tone, o.icon, null, o.text), o.extra ?? null, o.reference ? referenceLine(o.reference) : null),
+    actionsOf(o))
 }
 
 const LIMITED = "Too many orders were tried from here."
 
 export function limitScreen(hold: Hold | null, again: () => void, back: string, signal: AbortSignal): HTMLElement {
   const line = el("span", {}, `${LIMITED} Nothing was charged.`)
-  const tryAgain = btn("Try again", "block", again)
+  const tryAgain = btn("Try again", "", again)
   tryAgain.disabled = hold !== null
   const shown = outcome({ tone: "warn", icon: "clock", title: "Too many attempts", text: line, action: tryAgain, back })
   // the count goes in once the line is in its notice, where its spoken copy goes beside it
@@ -290,7 +287,7 @@ export const referenceLine = (reference: string) => el("p", { class: "note ref" 
 // shown only before a document's first draw, placed as the screen after it will be, so its heading stays put
 export function drawLoading(title: string, place = (screen: HTMLElement) => screen): void {
   if (frame().childElementCount) return
-  draw(LOADING, () => place(el("section", { class: "screen" }, el("h1", {}, title))))
+  draw(LOADING, () => place(screen({ title })))
 }
 
 export const isDark = () => document.documentElement.classList.contains("dark")
@@ -315,17 +312,12 @@ function toggleTheme(): void {
 
 export const OFFLINE_NOTE = "You are offline. Searches, payments and order updates need the connection."
 
-// After the footer and counted in the frame, so the footer scrolls clear of it; it stays and only its words change, which a reader hears.
+// Over the footer at the window's foot, out of the flow, so it moves nothing; it stays and only its words change, which a reader hears.
 const offlineText = el("span", {})
 const offline = el("div", { class: "offline", role: "status" }, el("div", { class: "offline-note" }, icon("offline"), offlineText))
-// The frame takes the note's height before it joins the flow: a layout taller than the window gets a scrollbar in Firefox, which can rewrap lines and stay.
 function showConnection(): void {
   const text = navigator.onLine ? "" : OFFLINE_NOTE
-  if (offlineText.textContent === text) return
-  offline.style.position = "absolute"
-  offlineText.textContent = text
-  fitFrame()
-  offline.style.removeProperty("position")
+  if (offlineText.textContent !== text) offlineText.textContent = text
 }
 
 // Checked whenever the page is drawn or looked at, as Firefox does not always tell a page opened offline that the network is back.
@@ -336,26 +328,9 @@ function frame(): HTMLElement {
   const main = document.querySelector<HTMLElement>("body > main")!
   if (document.body.dataset.framed) return main
   document.body.dataset.framed = "1"
-  document.querySelector(".theme-switch")!.addEventListener("click", toggleTheme)
+  for (const button of document.querySelectorAll(".theme-switch")) button.addEventListener("click", toggleTheme)
   document.body.addEventListener("transitionend", (e) => { if (e.target === document.body && e.pseudoElement === "::after") themed() })
   paintBars()
   document.body.append(offline)
-  measureFrame()
   return main
 }
-
-// The header's, footer's and offline note's heights, rounded up, so a screen filling the rest of the window never scrolls it.
-const frameParts = () => [...document.querySelectorAll<HTMLElement>("body > header, body > footer, body > .offline")]
-const fitFrame = () => document.documentElement.style.setProperty("--frame-h", `${Math.ceil(frameParts().reduce((h, p) => h + p.getBoundingClientRect().height, 0))}px`)
-
-function measureFrame(): void {
-  const resized = new ResizeObserver(fitFrame)
-  for (const part of frameParts()) resized.observe(part)
-  fitFrame()
-  // A resized window opens its screen anew, and again once its layout's fonts load; a scrollbar or the offline note leaves it as it was.
-  const sized = () => `${innerWidth}x${innerHeight}`
-  let size = sized()
-  addEventListener("resize", () => { if (sized() !== size) { size = sized(); reopen(); void document.fonts.ready.then(reopen) } })
-}
-
-const reopen = () => { fitFrame(); if (shownScreen) holdSpacers(shownScreen) }

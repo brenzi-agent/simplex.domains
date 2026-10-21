@@ -4,7 +4,7 @@ import { hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import { GRACE_S } from "../src/screens/names.ts"
 import {
-  control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, REGISTRATION_MS, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel,
+  codeField, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, REGISTRATION_MS, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel,
   waitRegistered,
 } from "./helpers.ts"
 
@@ -27,12 +27,15 @@ test("search answers every kind of name", async ({ page, request }) => {
   await shot(page, "N1c-chars")
 
   await search(page, "bakery")
-  await expect(page.locator(".answer .entity")).toHaveCount(2)
-  await expect(page.locator(".answer .chip")).toHaveText("Taken")
-  await expect(page.getByText("Alice's Bakery").or(page.getByText("Alice’s Bakery")).first()).toBeVisible()
+  // the chats the name opens, as the app's own pictures in its row, and whose it is
+  await expect(page.locator(".answer .row .chat")).toHaveCount(2)
+  await expect(page.locator(".answer .row")).toContainText("Taken")
+  await expect(page.locator(".answer").getByRole("button", { name: /^Alice.s Bakery, contact address$/ })).toBeVisible()
+  await expect(page.locator(".answer").getByRole("button", { name: "Bakery news, channel" })).toBeVisible()
   await shot(page, "N2a-taken")
   await search(page, "harbour")
-  await expect(page.getByText("Registered, and not pointing at any address or channel that we know of yet.")).toBeVisible()
+  await expect(page.locator(".answer .row")).toHaveText("harbour.simplexTaken")
+  await expect(page.locator(".answer .chat")).toHaveCount(0)
   await shot(page, "N2b-unlinked")
   await search(page, "support")
   await expect(page.locator(".answer .line")).toHaveText("Reserved names are not sold here. If it is yours to use, write to chat@simplex.chat.")
@@ -41,9 +44,10 @@ test("search answers every kind of name", async ({ page, request }) => {
 
   const label = uniqueLabel("free")
   await search(page, label)
-  const card = page.locator(".answer .card")
+  const card = page.locator(".answer .row")
   await expect(card).toContainText(`${label}.simplex`)
-  await expect(card).toContainText("2 years + 30 days")
+  // a price and its term, without the letters counted or the bonus days
+  await expect(card.locator(".deal")).toHaveText(/^\$\d+ \/ 2 years$/)
   await expect(card.locator(".price")).toHaveText(/^\$\d+$/)
   await expect(card.getByRole("button", { name: "Register" })).toBeEnabled()
   await shot(page, "N2-available")
@@ -59,27 +63,38 @@ test("search answers every kind of name", async ({ page, request }) => {
   await shot(page, "N2e-rate-limited")
 })
 
-test("the home fills the window between its header and footer without scrolling, as the landing does", async ({ page }) => {
-  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+test("the window holds the home down to its invest note, with the footer below the fold, as the badges store's", async ({ page }) => {
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 1280, height: 800 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport)
     await page.goto("/")
     await page.evaluate(() => document.fonts.ready)
-    const fit = () => page.evaluate(() => ({
-      scroll: document.documentElement.scrollHeight,
-      gap: Math.round(document.querySelector("body > footer")!.getBoundingClientRect().top - document.querySelector(".home")!.getBoundingClientRect().bottom),
-    }))
-    await expect.poll(fit, `${viewport.width} px: the page's height, and the room between the home and the footer`).toEqual({ scroll: viewport.height, gap: 0 })
+    const fit = () => page.evaluate(() => {
+      const footer = document.querySelector("body > footer")!.getBoundingClientRect()
+      return { invest: Math.round(document.querySelector("body > .invest")!.getBoundingClientRect().bottom), footer: Math.round(footer.top), scroll: document.documentElement.scrollHeight - Math.round(footer.height) }
+    })
+    await expect.poll(fit, `${viewport.width}x${viewport.height}: the invest note's foot, the footer's top and the page above the footer`)
+      .toEqual({ invest: viewport.height, footer: viewport.height, scroll: viewport.height })
   }
+  await expect(page.locator("body > .invest").getByRole("link", { name: "Learn more on Wefunder" })).toHaveAttribute("href", /^https:\/\/wefunder\.com\/simplex\.chat/)
+  await expect(page.locator("body > footer").getByRole("link")).toHaveText(["Trademark owners", "simplex.chat/contact"])
 })
 
-test("the home's field, Search and Register are one height, on a laptop and on a phone", async ({ page }) => {
+test("the search is one pill with Search inside it, and each answer is one row of one height, on a laptop and on a phone", async ({ page }) => {
   for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport)
     await search(page, uniqueLabel("height"))
     await expect(page.getByRole("button", { name: "Register" })).toBeVisible()
-    const heights = await Promise.all([page.locator(".search-row .field"), page.getByRole("button", { name: "Search" }), page.getByRole("button", { name: "Register" })]
-      .map((control) => control.evaluate((node) => Math.round(node.getBoundingClientRect().height))))
-    expect(new Set(heights).size, `${viewport.width} px: the field's, Search's and Register's heights ${heights}`).toBe(1)
+    const box = (await page.locator(".search-field").boundingBox())!
+    const lens = (await page.getByRole("button", { name: "Search" }).boundingBox())!
+    expect(Math.round(box.height), "the field's height").toBe(48)
+    expect(lens.x > box.x && lens.x + lens.width < box.x + box.width && lens.y > box.y && lens.y + lens.height < box.y + box.height, "Search inside the field").toBe(true)
+    const rows: number[] = []
+    for (const name of ["bakery", "harbour"]) {
+      await search(page, name)
+      await expect(page.locator(".answer .row")).toContainText("Taken")
+      rows.push(Math.round((await page.locator(".answer .row").boundingBox())!.height))
+    }
+    expect(rows, `${viewport.width} px: a taken name's row with its chats and without`).toEqual([72, 72])
   }
 })
 
@@ -191,28 +206,29 @@ test("a double click acts once, whatever the redrawn page puts under the pointer
   await expect(page.getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
   // the second click did not go on to the name code step, nor into a link field
   expect(new URL(page.url()).hash).toBe("#/checkout/links")
-  await expect(onStep(page).getByRole("textbox", { name: "Address" })).not.toBeFocused()
+  await expect(onStep(page).getByRole("textbox", { name: "Link", exact: true })).not.toBeFocused()
   await expect(onStep(page).getByRole("button", { name: "Skip for now" })).toBeEnabled()
 })
 
 test("restore waits out a rate limit on finding a code's orders", async ({ page, request }) => {
   const { ownerCode } = await startOrder(page, uniqueLabel("rlim"), { method: "btc" })
-  await control(request, "search", { findLimitSeconds: 3 })
-  await page.goto("/#/restore")
-  await page.getByLabel("Name code").fill(ownerCode)
-  await page.getByRole("button", { name: "Restore" }).click()
+  await control(request, "search", { findLimitSeconds: 6 })
+  await page.goto("/#/code")
+  await codeField(page).fill(ownerCode)
+  await page.getByRole("button", { name: "Add to Your names" }).click()
   await expect(page.getByText("Too many attempts")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Restore" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Add to Your names" })).toBeDisabled()
   // a screen reader hears the wait once, from a still copy; the countdown itself is hidden from it
-  await expect(page.locator(".sr-only", { hasText: "Your code is fine. Try again in 3 seconds." })).toHaveCount(1)
+  // the code is judged before Add shows, so the wait has run a second or so by the time it is asked
+  await expect(page.locator(".sr-only", { hasText: /^Your code is fine\. Try again in \d seconds\.$/ })).toHaveCount(1)
   await expect(page.locator(".notice span[aria-hidden=true]")).toBeVisible()
   // typing meanwhile does not shorten the wait
-  await page.getByLabel("Name code").press("End")
-  await page.getByLabel("Name code").press("Space")
-  await expect(page.getByRole("button", { name: "Restore" })).toBeDisabled()
-  await expect(page.getByRole("button", { name: "Restore" })).toBeEnabled({ timeout: 10_000 })
-  await page.getByRole("button", { name: "Restore" }).click()
-  await page.waitForURL(/\?order=/)
+  await codeField(page).press("End")
+  await codeField(page).press("Space")
+  await expect(page.getByRole("button", { name: "Add to Your names" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Add to Your names" })).toBeEnabled({ timeout: 10_000 })
+  await page.getByRole("button", { name: "Add to Your names" }).click()
+  await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
 })
 
 test("a link from the app with a damaged wallet says it does not work", async ({ page }) => {
@@ -243,7 +259,7 @@ test("Back to a search from the links step shows its answer at once", async ({ p
     w.__seen = []
     new MutationObserver((records) => {
       for (const n of records.flatMap((r) => [...r.addedNodes])) {
-        if (n instanceof Element && n.matches(".home") && !n.querySelector(".answer .card")) w.__seen.push("a home without the answer")
+        if (n instanceof Element && n.matches(".home") && !n.querySelector(".answer .row")) w.__seen.push("a home without the answer")
       }
     }).observe(document.body, { childList: true, subtree: true })
   })
@@ -269,7 +285,7 @@ for (const [failure, change, shown] of [
     await rechecked
     await expect(page.locator(".answer .line", { hasText: shown })).toBeVisible()
     await expect(page.getByRole("button", { name: "Register" })).toHaveCount(0)
-    await expect(page.locator(".answer .card")).toHaveCount(0)
+    await expect(page.locator(".answer .row")).toHaveCount(0)
   })
 }
 
@@ -306,21 +322,16 @@ test("search shows an expired name of yours with when it ran out and when it can
     status: "registered", entities: [], owner: OWNER, records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt, tld: "simplex",
   } }))
   await page.goto(`/#/?name=${label}`)
-  await expect(page.locator(".answer .chip", { hasText: "Expired" })).toBeVisible()
-  await expect(page.locator(".answer .note")).toHaveText(`Its registration ran out on ${dateOf(expiresAt)}. It can be registered again from ${dateOf(expiresAt + GRACE_S)}.`)
+  await expect(page.locator(".answer .row")).toContainText("Expired")
+  await expect(page.locator(".answer .line")).toHaveText(`Its registration ran out on ${dateOf(expiresAt)}. It can be registered again from ${dateOf(expiresAt + GRACE_S)}.`)
 })
 
 const SEARCH_RTT_MS = 300
 
-test("as a search pause ends, the paused line gives way to a checking line rather than the invest block, until the answer", async ({ page, request }) => {
+test("as a search pause ends, the paused line gives way to a checking line rather than an empty room, until the answer", async ({ page, request }) => {
   await page.goto("/")
-  await expect(page.getByRole("button", { name: "Invest to claim your name" })).toBeVisible()
   // what each drawn frame shows below the search, from the press on
-  await recordFrames(page, () => {
-    const invest = document.querySelector<HTMLElement>(".below .cta")
-    const shown = document.querySelector(".answer .card") ? "answer" : document.querySelector(".answer .line")?.textContent ?? ""
-    return invest && invest.getClientRects().length > 0 ? `invest${shown ? ` + ${shown}` : ""}` : shown
-  })
+  await recordFrames(page, () => document.querySelector(".answer .row") ? "answer" : document.querySelector(".answer .line")?.textContent ?? "")
   // each search takes a moment to answer, as one over a network does
   await page.route(/\/api\/name\//, async (route) => {
     await new Promise((answered) => setTimeout(answered, SEARCH_RTT_MS))
@@ -330,7 +341,7 @@ test("as a search pause ends, the paused line gives way to a checking line rathe
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("resume"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
   await expect(page.locator(".answer .line", { hasText: "Searching is paused" })).toBeVisible()
-  await expect(page.locator(".answer .card")).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator(".answer .row")).toBeVisible({ timeout: 30_000 })
   const frames = await recordedFrames<string>(page)
   const paused = frames.findIndex((f) => f.startsWith("Searching is paused"))
   const answered = frames.indexOf("answer")

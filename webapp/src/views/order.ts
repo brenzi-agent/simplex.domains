@@ -18,6 +18,8 @@ import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
 import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
 
 export const RETRY_MS = 3000
+// where a name code is entered
+const CHECK_CODE = "/#/code"
 // The badge service's words for a cancel the provider took while the service still shows the invoice open; a card
 // invoice has no address. The browser keeps the cancel, so the warning stays until the invoice closes.
 const cancelStillOpen = (invoice: api.InvoiceView) => invoice.cryptoCurrency
@@ -336,10 +338,10 @@ function buildPaidByInvoice({ view, record }: OrderState): HTMLElement {
 const labelOf = (view: api.RegistrationView, record: store.OrderRecord | null) => view.label ?? record?.label ?? null
 const UNKNOWN_NAME = "The name shows once it is registered"
 
-function orderLine({ view, record, invoice }: OrderState): HTMLElement {
+// the order in one line, the lead of each screen that pays or registers it
+function orderLine({ view, record, invoice }: OrderState): Kid[] {
   const label = labelOf(view!, record)
-  return el("p", { class: "note" }, label ? nameText(label, view!.tld) : UNKNOWN_NAME, SEP, el("span", { class: "nowrap" }, termText(view!.years)), SEP,
-    invoice ? dollars(invoice.amount, true) : "With a code")
+  return [label ? nameText(label, view!.tld) : UNKNOWN_NAME, SEP, el("span", { class: "nowrap" }, termText(view!.years)), SEP, invoice ? dollars(invoice.amount, true) : "With a code"]
 }
 
 const TICKER: Record<"btc" | "xmr", string> = { btc: "BTC", xmr: "XMR" }
@@ -374,6 +376,7 @@ const partSentence = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Part of
 function cancelLink(s: OrderState): HTMLAnchorElement {
   const working = s.busy === "cancel"
   const cancel = link(working ? "Cancelling…" : "Cancel this invoice", () => void cancelInvoice())
+  cancel.classList.add("danger-link")
   cancel.dataset.focus = "cancel"
   if (working) cancel.setAttribute("aria-disabled", "true")
   return cancel
@@ -386,20 +389,19 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
   const due = partial ? inv.cryptoAmountDue! : inv.cryptoAmount!
   const uri = paymentUri(coin, inv.address!, due)
   holdEnds(signal)(s.hold !== null)
-  return screen({ title: `Pay with ${methodName(coin)}`, lead: partial ? undefined : "Bookmark this page to come back to this payment." },
+  // a part paid takes the bookmark's line with its notice
+  return screen({ title: `Pay with ${methodName(coin)}`, lead: [...orderLine(s), partial ? null : [el("br"), "Bookmark this page to come back to this payment."]],
+    alt: partial ? null : cancelLink(s) },
     partial ? alertBox("warn", "alert", null, partSentence(inv, coin)) : null,
-    orderLine(s),
     insteadLine(inv),
     el("div", { class: "qr-grid" },
       uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`), el("a", { href: uri }, "Open in wallet")) : null,
       // labels in sentence case, as their copy buttons say them; the label style draws them in capitals
       copyField(`${partial ? "rest to send" : "amount"} in ${TICKER[coin]}`, due),
       copyField(`${methodName(coin)} address`, inv.address!)),
-    el("p", { class: "note waiting" }, el("span", {}, partial ? "Waiting for the rest of the payment" : "Waiting for payment", SEP, rateLine(inv, signal)),
-      partial ? null : cancelLink(s)),
+    el("div", { class: "note waiting" }, el("span", {}, partial ? "Waiting for the rest of the payment" : "Waiting for payment", SEP, rateLine(inv, signal)), referenceLine(inv.invoiceId)),
     // a wait the tab is in shows why the link does nothing until it is over
-    actionNote(s, partial ? null : signal),
-    referenceLine(inv.invoiceId))
+    actionNote(s, partial ? null : signal))
 }
 
 // The Stripe frame reloads, losing what was typed, whenever its form moves in the page; so while the card screen stays
@@ -466,12 +468,12 @@ function buildPayCard(s: OrderState): HTMLElement {
   const invoice = s.invoice!
   const form = kept("stripe-form", () => el("div", { class: "stripe" }))
   if (cardIn !== form) mountInto(form, invoice)
-  payButton = setAction(btn(`Pay ${dollars(invoice.amount, true)}`, "block", () => void payByCard()), s.busy === "card", card === null)
+  payButton = setAction(btn(`Pay ${dollars(invoice.amount, true)}`, "", () => void payByCard()), s.busy === "card", card === null)
   payButton.dataset.focus = "pay"
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
   const forgetful = store.canPersist() ? null : alertBox("warn", "alert", "This browser cannot remember a card payment",
     "After paying, keep this page open until it moves on. Reloading would show the card form again.")
-  return screen({ title: "Pay by card" }, orderLine(s), insteadLine(invoice), forgetful, form, actionNote(s, null), payButton)
+  return screen({ title: "Pay by card", lead: orderLine(s), action: payButton }, insteadLine(invoice), forgetful, form, actionNote(s, null))
 }
 
 function cardStandIn(form: HTMLElement): void {
@@ -485,7 +487,7 @@ const searchFrom = (view: api.RegistrationView, record: store.OrderRecord | null
 
 // what a browser without the order's record can do: take in the name code, or, for an app's order, nothing here
 function withoutRecord(view: api.RegistrationView, cls: string, text = "Enter your name code"): HTMLButtonElement {
-  return view.sealed === null ? btn("Search a name", cls, () => go(searchFrom(view, null))) : btn(text, cls, () => go("/#/restore"), icon("key"))
+  return view.sealed === null ? btn("Search a name", cls, () => go(searchFrom(view, null))) : btn(text, cls, () => go(CHECK_CODE))
 }
 
 const CLOSED_TITLE = "Invoice closed"
@@ -523,7 +525,7 @@ function closedAction(s: OrderState, closed: ClosedCase): HTMLButtonElement {
   // a cancel the service still shows open takes no more payment, so nothing here pays it
   if (closed === "paid-late" || closed === "still-open") return btn("Search a name", "quiet", () => go(searchFrom(view!, record)))
   if (!record) return withoutRecord(view!, "quiet")
-  if (closed === "cancelled") return btn("Order the name again", "", () => go(searchLink(record.label, record.ownerCode === null ? record.owner : null)), icon("arrow"))
+  if (closed === "cancelled") return btn("Order the name again", "", () => go(searchLink(record.label, record.ownerCode === null ? record.owner : null)))
   return newInvoiceButton(s, closed === "received" && !record.cancelled ? "quiet" : "", reorder)
 }
 
@@ -624,7 +626,7 @@ function buildConfirming(s: OrderState): HTMLElement {
     ? alertBox("info", "clock", confirmations(invoice.requiredConfirmations ?? 1),
       `${invoice.cryptoAmount} ${TICKER[coin]} arrived. Registration starts once it confirms; this page moves on by itself.`)
     : alertBox("info", "clock", "Waiting for Stripe to\u00a0confirm", "Stripe usually confirms within a minute. Registration starts by itself; this page moves on.")
-  return screen({ title: coin ? "Confirming your payment" : "Paying by card" }, orderLine(s), notice, referenceLine(invoice.invoiceId))
+  return screen({ title: coin ? "Confirming your payment" : "Paying by card", lead: orderLine(s) }, notice, referenceLine(invoice.invoiceId))
 }
 
 function enterCardAgain(): void {
@@ -685,14 +687,13 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
 
 type StageState = "done" | "active" | "failed" | ""
 const STAGES = [
-  { n: "1", going: "Committing", done: "Committed" },
-  { n: "2", going: "Waiting", done: "Waiting" },
-  { n: "3", going: "Registering", done: "Registered" },
+  { going: "Committing", done: "Committed" },
+  { going: "Waiting", done: "Waiting" },
+  { going: "Registering", done: "Registered" },
 ]
 
 function stages(states: StageState[]): HTMLElement {
   return el("ol", { class: "stages", role: "list" }, ...STAGES.map((stage, i) => el("li", { class: `stage ${states[i]}`.trim() },
-    el("span", { class: "node" }, states[i] === "done" ? icon("check") : states[i] === "failed" ? icon("close") : stage.n),
     el("b", {}, states[i] === "done" ? stage.done : stage.going))))
 }
 
@@ -739,12 +740,11 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
     else say(note, REGISTERING_NOTE)
   }
   onTheSecond(() => waitLeft(view), tick, signal)
-  return screen({ title: headingOf(s), lead: leadOf(s) },
+  return screen({ title: headingOf(s), lead: leadOf(s), action: refused ? btn("Try again", "", tryAgain) : null },
     steps,
     // the note keeps the height of its longest words, so the page keeps still as they change
     el("div", { class: "countdown" }, clockNode, el("p", {}, note, el("span", { class: "sizer", "aria-hidden": "true" }, WAIT_NOTE))),
     refused ? alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration.") : null,
-    refused ? btn("Try again", "quiet block", tryAgain, icon("refresh")) : null,
     referenceLine(s.invoice?.invoiceId ?? view.id))
 }
 
@@ -776,26 +776,24 @@ function onTheSecond(left: () => number, f: () => void, signal: AbortSignal): vo
 function buildNotOnDevice({ view, invoice }: OrderState): HTMLElement {
   return outcome({ tone: "info", icon: "key", title: "The name code is not in this browser",
     text: ["This order registers a name to ", el("span", { class: "nowrap" }, shortAddress(view!.owner)), ". Its code was made in the browser it was bought in. Enter the code you saved to carry on here."],
-    action: btn("Enter your name code", "", () => go("/#/restore"), icon("arrow")), reference: invoice?.invoiceId ?? view!.id })
+    action: btn("Enter your name code", "", () => go(CHECK_CODE)), reference: invoice?.invoiceId ?? view!.id })
 }
 
-function registeredActions(view: api.RegistrationView, record: store.OrderRecord | null): HTMLElement {
-  if (!record) return withoutRecord(view, "quiet block", "Restore with your name code")
-  const names = el("a", { class: record.ownerCode ? "btn" : "btn quiet", href: "/#/names" }, "Your names")
-  return el("div", { class: "actions pair" }, record.ownerCode
-    ? [names, el("a", { class: "btn quiet", href: `/#/edit/${view.id}` }, icon("link"), "Edit links")]
-    : [btn("Back to SimpleX", "", () => { location.href = "simplex:/" }), names])
+// a name of this browser's code needs nothing more from here; one of the app's goes back to it, and one of another browser's restores its code
+function registeredAction(view: api.RegistrationView, record: store.OrderRecord | null): HTMLButtonElement | null {
+  if (!record) return withoutRecord(view, "", "Restore with your name code")
+  return record.ownerCode ? null : btn("Back to SimpleX", "", () => { location.href = "simplex:/" })
 }
 
 function buildRegistered(s: OrderState): HTMLElement {
   const view = s.view!
   const label = labelOf(view, s.record)
   const code = s.record?.ownerCode ?? null
-  return screen({ title: [label ? gradName(label, view.tld) : "The name", " is\u00a0yours"], lead: registeredLead(view, s.record) },
-    code ? el("div", { class: "card next-step qr-grid" }, el("div", { class: "qr" }, qrSvg(code, "name code")),
-      el("div", {}, el("h2", {}, "Redeem it in the app"), el("p", { class: "note" }, "Scan or enter the code in SimpleX: the name moves to the app's wallet.")),
-      codeDisplay(code, "owner-code")) : null,
-    registeredActions(view, s.record))
+  return screen({ title: [label ? gradName(label, view.tld) : "The name", " is\u00a0yours"], lead: registeredLead(view, s.record), action: registeredAction(view, s.record) },
+    code ? el("div", { class: "card use" }, el("h2", {}, "Use in the app"),
+      el("p", {}, "In SimpleX, open Your SimpleX address, tap Set SimpleX name and enter ", nameText(label ?? "", view.tld, "."), " For a channel, set it in the channel's profile."),
+      el("p", { class: "note" }, "Keep your name code: it owns the name and edits its links."),
+      codeDisplay(code, "owner-code", true)) : null)
 }
 
 function registeredLead(view: api.RegistrationView, record: store.OrderRecord | null): string {
@@ -826,19 +824,19 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
   const worth = dollars(view.price, true)
   const canAct = Boolean(record?.ownerCode)
   const fromApp = openedFromApp(view, record)
-  const other = setAction(btn("Choose another name", "block", () => go(`/#/?retarget=${view.id}`)), false, !canAct)
-  const code = setAction(btn("Take a code", "quiet block", () => void takeCode()), canAct && s.busy === "code", !canAct || s.hold !== null)
+  const other = setAction(btn("Choose another name", "", () => go(`/#/?retarget=${view.id}`)), false, !canAct)
+  const code = setAction(btn("Take a code", "quiet", () => void takeCode()), canAct && s.busy === "code", !canAct || s.hold !== null)
   code.dataset.focus = "take-code"
   holdEnds(signal)(s.hold !== null)
   const cannot = canAct ? null : fromApp
     ? alertBox("info", "phone", "This order was opened from SimpleX", "Choose another name or take a code in the app.")
     : alertBox("info", "key", "The name code is not in this browser", "Restore it in Your names to choose another name or take a code.")
-  return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."] },
-    orderLine(s),
+  return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."],
+    alt: code, action: other },
+    el("p", { class: "note" }, ...orderLine(s)),
     stages(["done", "done", "failed"]),
     el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it, or take a code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for ${termText(PRICED_YEARS)}.`),
     cannot,
-    el("div", { class: "actions" }, other, code),
     actionNote(s, canAct ? signal : null),
     referenceLine(invoice.invoiceId))
 }
@@ -869,7 +867,7 @@ function buildCodeIssued({ view: issued, record }: OrderState): HTMLElement {
   if (!record?.ownerCode) {
     return outcome({ tone: "info", icon: "key", title: "This order became a code",
       text: "The code is made from the order's name code, so it shows in the browser that has it. Restore the name code here to see it.",
-      action: btn("Enter your name code", "", () => go("/#/restore"), icon("arrow")), reference: view.id })
+      action: btn("Enter your name code", "", () => go(CHECK_CODE)), reference: view.id })
   }
   const code = record.takenCode ?? flow.takenCodeOf(record, view.id)
   return outcome({ tone: "ok", icon: "key", title: "Here is a code instead",
@@ -884,17 +882,16 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   const { view: failed, record, invoice } = s
   const view = failed!
   // a code refused for good leaves nothing to try again, so the page offers another search as the other endings do
-  const retry = setAction(btn("Try again", "", () => void retryRegistration(), icon("refresh")), s.busy === "retry", s.hold !== null)
+  const retry = setAction(btn("Try again", "", () => void retryRegistration()), s.busy === "retry", s.hold !== null)
   retry.dataset.focus = "retry"
   const action = s.codeRefused ? btn("Search a name", "quiet", () => go(searchFrom(view, record))) : retry
   holdEnds(signal)(s.hold !== null)
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
-  return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s) },
-    orderLine(s),
+  return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s), action },
+    el("p", { class: "note" }, ...orderLine(s)),
     stages(failedAt),
     alertBox("danger", "alert", view.error ?? "The registration did not go through", "The service's own retries gave up."),
     actionNote(s, signal),
-    action,
     referenceLine(invoice?.invoiceId ?? view.id))
 }
 

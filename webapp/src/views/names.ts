@@ -1,7 +1,6 @@
 // Your names: this browser's orders and codes, restoring an order with its name code, and editing a name's links.
 import * as api from "../api.ts"
-import { parseNameCode } from "../crypto/code.ts"
-import { alertBox, btn, chip, codeDisplay, copyButton, disabled, el, gradName, icon, type Kid, reducedMotion, setAction, waitOut } from "../dom.ts"
+import { alertBox, btn, chip, codeDisplay, copyButton, el, type Kid, nameText, nameTitle, reducedMotion, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, methodName, SEP, termText } from "../format.ts"
 import type { IconName } from "../icons.ts"
@@ -13,11 +12,13 @@ import {
 } from "../screens/names.ts"
 import { checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
+import type { AppliedCode } from "../session.ts"
 import * as store from "../store.ts"
-import { codeField } from "./codes.ts"
-import { focusUnsettled, linkEntry, linkField } from "./links.ts"
+import { chatPicture } from "./chats.ts"
+import { codeField, type CodeVerdict } from "./codes.ts"
+import { focusUnsettled, type LinkFields, linkFieldsFor } from "./links.ts"
 import {
-  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusHeading, focusOn, go, isRoute, kept, keptLive, redirect, screen, whenLeaving,
+  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusHeading, focusOn, go, isRedraw, isRoute, kept, keptLive, redirect, screen, whenLeaving,
 } from "./shell.ts"
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, secondsLeft, tabHold } from "./hold.ts"
@@ -27,13 +28,13 @@ const HOME = "/#/"
 const NAMES = "/#/names"
 
 // a row's action keeps focus over a redraw by its row's key and its own
-const small = (text: string, key: string, onclick: () => void, ic?: IconName) =>
-  el("a", { class: "small-btn", href: "#", role: "button", "data-focus": key, onclick: (e: Event) => { e.preventDefault(); onclick() } }, ic ? icon(ic) : null, text)
+const small = (text: string, key: string, onclick: () => void) =>
+  el("a", { href: "#", role: "button", "data-focus": key, onclick: (e: Event) => { e.preventDefault(); onclick() } }, text)
 
-function row(key: string, mark: string, title: string, sub: Kid, state: Node, acts: Kid[], ...below: Kid[]): HTMLElement {
+function row(key: string, title: Node, sub: Kid, state: Node | null, acts: Kid[], ...below: Kid[]): HTMLElement {
   return el("div", { class: "list-row", "data-key": key },
-    el("span", { class: "mark", "aria-hidden": "true" }, mark), el("div", { class: "main" }, el("b", { title }, title), el("div", { class: "sub" }, sub)),
-    el("span", { class: "state" }, state), el("div", { class: "acts" }, ...acts), ...below)
+    el("div", { class: "main" }, title, el("div", { class: "sub" }, sub)),
+    state && el("span", { class: "state" }, state), el("div", { class: "acts" }, ...acts), ...below)
 }
 
 let list: ListState = initialList({ orders: [], pending: [], codes: [], canPersist: true }, null, {}, {}, 0)
@@ -180,19 +181,18 @@ const leadOf = (canPersist: boolean) => canPersist ? "This list is kept only in 
 const FORGET = "forget"
 const KEEP = "keep"
 
-function forgetBlock(s: ListState): HTMLElement | null {
-  if (!hasRecords(s)) return null
-  if (!s.asking) {
-    return el("a", { class: "danger-link", href: "#", role: "button", "data-focus": FORGET, onclick: (e: Event) => {
-      e.preventDefault()
-      // the question is asked over the records as stored now, another tab's included
-      dispatchList(storedEvent())
-      dispatchList({ type: "forget-asked" })
-      focusOn(KEEP)
-      // the question and both its answers come into view, as focus does not scroll, gliding there unless asked not to
-      document.querySelector(".forget")?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "instant" : "smooth" })
-    } }, "Forget everything in this browser")
-  }
+const forgetLink = () => el("a", { class: "danger-link", href: "#", role: "button", "data-focus": FORGET, onclick: (e: Event) => {
+  e.preventDefault()
+  // the question is asked over the records as stored now, another tab's included
+  dispatchList(storedEvent())
+  dispatchList({ type: "forget-asked" })
+  focusOn(KEEP)
+  // the question and both its answers come into view, as focus does not scroll, gliding there unless asked not to
+  document.querySelector(".forget")?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "instant" : "smooth" })
+} }, "Forget everything in this browser")
+
+function forgetQuestion(s: ListState): HTMLElement | null {
+  if (!s.asking) return null
   const keep = btn("Keep them", "quiet", () => {
     dispatchList({ type: "forget-kept" })
     focusOn(FORGET)
@@ -203,46 +203,20 @@ function forgetBlock(s: ListState): HTMLElement | null {
   el("div", { class: "actions" }, btn("Forget everything", "danger", forgetEverything), keep))
 }
 
-const ADD_CODE = "add-code"
-
-// Your names' code field with its Add, kept across draws: Add takes a code judged unused and not listed yet.
-function addCodeBox(): HTMLElement {
-  let addable: session.AppliedCode | null = null
-  const add = disabled(btn("Add", "quiet", () => {
-    const code = addable
-    if (!code) return
-    store.addCode({ code: code.display, minLength: code.minLength, years: code.years, addedAt: new Date().toISOString() })
-    input.value = ""
-    input.dispatchEvent(new Event("input"))
-    input.focus()
-    dispatchList(storedEvent())
-  }))
-  const field = codeField(`${ADD_CODE}-field`, "Add a code", (v) => {
-    const listed = v?.ok === true && store.codes().some((c) => c.code === v.code.display)
-    addable = v?.ok && !listed ? v.code : null
-    add.disabled = addable === null
-    return listed ? "Already in your codes. It is listed under Codes above." : null
-  }, null, null, add)
-  const input = field.querySelector("input")!
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") add.click() })
-  return field
-}
-
-const restoreLink = () => el("a", { href: "/#/restore" }, "Restore with a name code")
+const CHECK = "/#/code"
 
 function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
   const open = session.checkout()
   const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...listedOrders(s).map((o) => orderRow(o, s))]
   return screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME },
-    el("div", { class: "card list" }, el("h2", {}, "Names"), names.length ? names : el("p", { class: "note" }, "No names in this browser yet. ", restoreLink())),
-    names.length ? el("p", { class: "note" }, restoreLink()) : null,
-    el("div", { class: "card list" }, el("h2", {}, "Codes"), el("p", { class: "note" }, "Prepaid codes that pay for a name at checkout."),
-      s.codes.map((c) => codeRow(c, s)), kept(ADD_CODE, addCodeBox)),
-    forgetBlock(s))
+    el("div", { class: "card list" }, names.length ? names : el("p", { class: "note" }, "No names in this browser yet.")),
+    el("h2", { class: "label" }, "Codes"),
+    el("div", { class: "card list" }, s.codes.length ? s.codes.map((c) => codeRow(c, s)) : el("p", { class: "note" }, "Prepaid codes that pay for a name.")),
+    el("div", { class: "end-links" }, el("a", { href: CHECK }, "Add a code"), s.asking || !hasRecords(s) ? null : forgetLink()),
+    forgetQuestion(s))
 }
 
-const markOf = (label: string) => label.slice(0, 1).toUpperCase()
 
 const PROGRESS: Partial<Record<api.Phase, string>> = {
   queued: "Paid, waiting to commit",
@@ -276,7 +250,7 @@ function subLine(o: store.OrderRecord, { view, invoice, answer }: RowSeen, now: 
 }
 
 function codeToggle(id: string, shown: boolean): HTMLElement {
-  const toggle = small(shown ? "Hide code" : "Show code", `${id}-code`, () => dispatchList({ type: "code-toggled", id }), "key")
+  const toggle = small("Name code", `${id}-code`, () => dispatchList({ type: "code-toggled", id }))
   toggle.setAttribute("aria-expanded", String(shown))
   return toggle
 }
@@ -290,21 +264,27 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
   const seen = s.seen[id]
   // the order may have moved to another name since it was stored
   const label = seen?.view.label ?? o.label
-  const title = `${label}.${seen?.view.tld ?? o.tld}`
+  const tld = seen?.view.tld ?? o.tld
   // a registered row takes its final shape at once; its name's answer, read after it, only takes Edit links away
   const registered = seen?.view.phase === "registered"
   const code = registered ? o.ownerCode : null
   const shown = code !== null && s.shownCode === id
   const edits = registered && !lapsed(seen, s.now) && (!seen.answer || editable(seen.answer, o.owner))
   const acts = code === null ? [small("Open", `${id}-open`, () => go(store.orderUrl(o)))]
-    : [codeToggle(id, shown), edits ? small("Edit links", `${id}-edit`, () => go(`/#/edit/${id}`), "link") : null]
-  return row(id, markOf(label), title, seen ? subLine(o, seen, s.now) : recordedPaid(o), rowChip(s, o, seen), acts, shown ? rowCode(code) : null)
+    : [codeToggle(id, shown), edits ? small("Edit links", `${id}-edit`, () => go(`/#/edit/${id}`)) : null]
+  // a registered name shows the chats it opens, as the home's answer does
+  const chats = registered && seen.answer?.status === "registered" ? seen.answer.entities.map(chatPicture) : []
+  return row(id, nameTitle(label, "name", tld), seen ? subLine(o, seen, s.now) : recordedPaid(o), rowChip(s, o, seen),
+    [chats.length ? el("span", { class: "chats" }, chats) : null, ...acts], shown ? rowCode(code) : null)
 }
 
-function rowChip(s: ListState, o: store.OrderRecord, seen: RowSeen | undefined): HTMLElement {
+function rowChip(s: ListState, o: store.OrderRecord, seen: RowSeen | undefined): HTMLElement | null {
   if (s.unread.includes(o.registrationId)) return chip("Not checked", "warn")
   if (!seen) return chip("Checking", "", true)
-  const [text, tone] = lapsed(seen, s.now) ? ["Expired", "bad"] : phaseChip(seen.view, seen.invoice, o, s.now)
+  if (lapsed(seen, s.now)) return chip("Expired", "bad")
+  // a registered name says so by its date
+  if (seen.view.phase === "registered") return null
+  const [text, tone] = phaseChip(seen.view, seen.invoice, o, s.now)
   return chip(text, tone, tone !== "bad")
 }
 
@@ -315,12 +295,12 @@ function pendingRow(p: store.PendingCode, s: ListState, open: session.Checkout |
   const resume = open?.ownerCode === p.ownerCode ? small("Continue checkout", `${key}-continue`, () => session.checkout()?.ownerCode === p.ownerCode ? go(checkoutUrl(open.step)) : dispatchList(storedEvent())) : null
   const findable = resume === null && finding !== "none"
   const hold = findable ? s.hold : null
-  const find = findable ? small("Find the order", `${key}-find`, () => void findOrder(p), "refresh") : null
+  const find = findable ? small("Find the order", `${key}-find`, () => void findOrder(p)) : null
   if (find && (finding === "finding" || s.hold)) find.setAttribute("aria-disabled", "true")
   const state = hold ? chip("", "warn")
     : finding === "none" ? chip("No order was made", "bad")
       : finding === "unchecked" ? chip("Not checked", "bad") : chip("Checkout not finished", "warn")
-  const node = row(key, markOf(p.label), `${p.label}.${p.tld}`, `Name code made ${dateOf(Date.parse(p.createdAt) / 1000, true)}`, state,
+  const node = row(key, nameTitle(p.label, "name", p.tld), `Name code made ${dateOf(Date.parse(p.createdAt) / 1000, true)}`, state,
     [resume ?? find, small("Remove", `${key}-remove`, () => removePending(p))])
   // the count goes in once the chip is in its row, where its spoken copy goes beside it
   if (hold) waitOut(state, secondsLeft(hold), (left) => `Try again in ${left}`, () => undefined, signal)
@@ -329,57 +309,68 @@ function pendingRow(p: store.PendingCode, s: ListState, open: session.Checkout |
 
 function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {
   const check = s.checked[c.code]
-  const copy = copyButton(c.code, "small-btn")
+  const copy = copyButton(c.code, "text-link")
   copy.dataset.focus = `${c.code}-copy`
   const [text, tone] = check === undefined ? ["Checking", ""] : check === "unchecked" ? ["Not checked", "warn"] : CODE_CHIPS[check]
-  const node = row(c.code, "≡", c.code, `Names of ${c.minLength} or more letters, for ${termText(c.years)}${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000, true)}`,
-    chip(text, tone, check === undefined || check === "unused"), [copy])
+  // an unused code pays for the names this tab finds from now on
+  const use = check === "unused" ? small("Use", `${c.code}-use`, () => { session.setActiveCode({ display: c.code, minLength: c.minLength, years: c.years }); go(HOME) }) : null
+  const node = row(c.code, el("b", { class: "mono" }, c.code), `Names of ${c.minLength} or more letters, for ${termText(c.years)}${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000, true)}`,
+    chip(text, tone, check === undefined || check === "unused"), [use, copy])
   node.classList.add("code-row")
   return node
 }
 
-let restore: RestoreState = initialRestore(null)
-let restoreRoute = -1
-let restoreField: HTMLInputElement | null = null
-const RESTORE = "restore"
+// Check your code: a prepaid code pays for the names this tab finds; a name code finds its order and adds it to Your names.
+let check: { verdict: CodeVerdict | null; restore: RestoreState } = { verdict: null, restore: initialRestore(null) }
+let checkRoute = -1
+const CHECK_CODE = "check-code"
+const ADDING = "add"
 
-export function restorePage(): void {
-  restore = initialRestore(tabHold())
-  restoreRoute = currentRoute()
-  dispatchRestore({ type: "opened" })
-  restoreField?.focus()
+export function checkCodePage(): void {
+  // a page drawn again, as the header's code taken off draws it, keeps what its field judged
+  const fresh = !isRedraw()
+  if (fresh) check = { verdict: null, restore: initialRestore(tabHold()) }
+  checkRoute = currentRoute()
+  showCheck()
+  if (!fresh) return
+  const input = codeField(`${CHECK_CODE}-field`, "Code", heard).querySelector("input")!
+  // Enter does what the screen's button does
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") document.querySelector<HTMLButtonElement>("body > main .actions-row .btn")?.click() })
+  input.focus()
 }
 
 function dispatchRestore(event: RestoreEvent): void {
-  restore = reduceRestore(restore, event)
-  if (isRoute(restoreRoute)) draw(RESTORE, (signal) => asStep(buildRestore(restore, signal)))
+  check = { ...check, restore: reduceRestore(check.restore, event) }
+  showCheck()
 }
 
-function restoreBox(): HTMLElement {
-  const input = el("input", { type: "text", "aria-label": "Name code", spellcheck: "false", placeholder: "SN-…", autocomplete: "off" })
-  restoreField = input
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !restoreOff(restore)) void runRestore() })
-  input.addEventListener("input", () => dispatchRestore({ type: "edited" }))
-  return el("label", { class: "field code-input" }, icon("key"), input)
+const showCheck = () => { if (isRoute(checkRoute)) draw(CHECK_CODE, (signal) => asStep(buildCheck(check, signal))) }
+
+function heard(v: CodeVerdict | null): void {
+  check = { verdict: v, restore: reduceRestore(check.restore, { type: "edited" }) }
+  showCheck()
 }
 
-async function runRestore(): Promise<void> {
-  const text = restoreField!.value
-  // focus on Restore, which a refusal of the code itself keeps off, goes back to the code
-  const pressed = document.activeElement instanceof HTMLElement && document.activeElement.dataset.focus === RESTORE
+// the code pays from now on, and is kept in Your names
+function useCode(code: AppliedCode): void {
+  if (!store.codes().some((c) => c.code === code.display)) store.addCode({ code: code.display, minLength: code.minLength, years: code.years, addedAt: new Date().toISOString() })
+  session.setActiveCode(code)
+  go(HOME)
+}
+
+async function addNameCode(text: string): Promise<void> {
+  // focus on Add, which a refusal keeps off, goes back to the code
+  const pressed = document.activeElement instanceof HTMLElement && document.activeElement.dataset.focus === ADDING
   const refuse = (why: Extract<RestoreEvent, { type: "refused" }>["why"]) => {
     dispatchRestore({ type: "refused", why })
-    if (pressed && !REFUSALS[why].again) restoreField?.focus({ preventScroll: true })
+    if (pressed && !REFUSALS[why].again) document.querySelector<HTMLInputElement>(".code-input input")?.focus({ preventScroll: true })
   }
-  const code = parseNameCode(text)
-  if (code === null) return refuse("invalid")
-  if (code.kind === "prepaid") return refuse("prepaid")
   dispatchRestore({ type: "find-started" })
   try {
-    const { record } = await flow.restore(text)
-    if (isRoute(restoreRoute)) go(store.orderUrl(record))
+    await flow.restore(text)
+    if (isRoute(checkRoute)) go(NAMES)
   } catch (e) {
-    if (!isRoute(restoreRoute)) return
+    if (!isRoute(checkRoute)) return
     if (e instanceof api.ApiError && e.code === "not_found") return refuse("none")
     // the service asks for a wait before the next lookup; the button stays off until then, whatever is typed meanwhile
     if (holdFrom(e)) return dispatchRestore({ type: "held", until: holdEnd(), lead: "Your code is fine. " })
@@ -387,23 +378,27 @@ async function runRestore(): Promise<void> {
   }
 }
 
-// a refusal of the code itself holds Restore until the code is edited; one of the service can be tried again
-const restoreOff = ({ busy, hold, refusal }: RestoreState) => busy || hold !== null || (refusal !== null && !REFUSALS[refusal].again)
+// a refusal of the code holds Add until the code is edited; one of the service can be tried again
+const addOff = ({ busy, hold, refusal }: RestoreState) => busy || hold !== null || (refusal !== null && !REFUSALS[refusal].again)
 
-function buildRestore(s: RestoreState, signal: AbortSignal): HTMLElement {
-  const box = kept("restore-code", restoreBox)
-  const refusal = s.refusal && REFUSALS[s.refusal]
-  box.className = `field code-input${refusal ? " bad" : ""}`
-  const action = setAction(btn(s.busy ? "Finding the code's orders…" : "Restore", "block", () => void runRestore(), s.busy ? null : icon("arrow")), s.busy, restoreOff(s))
-  action.dataset.focus = RESTORE
-  holdEnder(signal, () => dispatchRestore({ type: "hold-ended" }))(s.hold !== null)
-  const note = s.hold ? holdNotice(s.hold, signal)
-    : refusal ? refusal.verdict ? el("p", { class: "verdict bad" }, icon("alert"), `${refusal.title}. ${refusal.text}`) : alertBox("danger", "alert", refusal.title, refusal.text)
-      : null
-  return screen({ title: "Restore with a name code", lead: "Enter the name code you saved to find your order. The code never leaves this browser.", back: NAMES },
-    el("div", { class: "code-entry" }, el("span", { class: "label" }, "Name code"), box),
-    keptLive("restore-note", undefined, note),
-    action)
+function checkAction({ verdict, restore }: typeof check): HTMLElement {
+  if (verdict?.kind === "owner") {
+    const add = setAction(btn(restore.busy ? "Finding the code's orders…" : "Add to Your names", "", () => void addNameCode(verdict.code)), restore.busy, addOff(restore))
+    add.dataset.focus = ADDING
+    return add
+  }
+  const find = setAction(btn("Find a name", "", () => { if (verdict?.kind === "prepaid") useCode(verdict.code) }), false, verdict?.kind !== "prepaid")
+  find.dataset.focus = "find"
+  return find
+}
+
+function buildCheck(c: typeof check, signal: AbortSignal): HTMLElement {
+  const refusal = c.restore.refusal && REFUSALS[c.restore.refusal]
+  holdEnder(signal, () => dispatchRestore({ type: "hold-ended" }))(c.restore.hold !== null)
+  const note = c.restore.hold ? holdNotice(c.restore.hold, signal) : refusal ? alertBox("danger", "alert", refusal.title, refusal.text)
+    : c.verdict?.kind === "prepaid" ? el("p", { class: "note center" }, "Search for a name; its price shows as $0.") : null
+  return screen({ title: "Check your code", lead: "A prepaid code pays for a name. A name code brings a name you own to this browser.", back: HOME, action: checkAction(c) },
+    codeField(`${CHECK_CODE}-field`, "Code", heard), keptLive("check-note", undefined, note))
 }
 
 let edit: EditState = initialEdit("", null)
@@ -458,23 +453,24 @@ function readAgain(): void {
   void readEdit(editRoute)
 }
 
-const editTitle = ({ record }: EditState): Kid => ["Edit links for ", gradName(record!.label, record!.tld)]
+const EDIT_TITLE = "Edit links"
+const nameOf = ({ record }: EditState) => record ? nameText(record.label, record.tld) : null
 
-const editNotice = (title: Kid, ...content: Kid[]): HTMLElement => screen({ title, back: NAMES }, ...content)
+const editNotice = (s: EditState, ...content: Kid[]): HTMLElement => screen({ title: EDIT_TITLE, back: NAMES, lead: nameOf(s) }, ...content)
 
-const notice = (ic: IconName, title: string, text: string): Builder<EditState> => (s) => editNotice(editTitle(s), alertBox("info", ic, title, text))
+const notice = (ic: IconName, title: string, text: string): Builder<EditState> => (s) => editNotice(s, alertBox("info", ic, title, text))
 
 // The chain takes an expired name's link edits from its holder until someone registers it again; this page sends none.
 function buildExpired(s: EditState): HTMLElement {
   const { view, answer, now } = s.read!
-  return editNotice(editTitle(s), alertBox("info", "clock", "This name has expired",
+  return editNotice(s, alertBox("info", "clock", "This name has expired",
     `${ranOut(view.expiresAt)} Names are not renewed, so this page no longer edits its links. ${againLine(view.expiresAt, answer, now)}`))
 }
 
 function buildUnreadable(s: EditState, signal: AbortSignal): HTMLElement {
   if (!s.reading) after(EDIT_RETRY_MS, readAgain, signal)
-  return editNotice(editTitle(s), alertBox("warn", "alert", "The name could not be read now", "This page tries again by itself."),
-    setAction(btn("Try again", "quiet block", readAgain, icon("refresh")), s.reading, false))
+  return screen({ title: EDIT_TITLE, back: NAMES, lead: nameOf(s), action: setAction(btn("Try again", "", readAgain), s.reading, false) },
+    alertBox("warn", "alert", "The name could not be read now", "This page tries again by itself."))
 }
 
 function resultNode(f: EditForm, signal: AbortSignal): HTMLElement | null {
@@ -491,16 +487,8 @@ function resultNode(f: EditForm, signal: AbortSignal): HTMLElement | null {
   }
 }
 
-// a field checks the link it opens with as it is made, which is no change to send
-function editField(kind: keyof api.Links, value: string): HTMLElement {
-  let made = false
-  const field = linkField(kind, value, (link) => { if (made) dispatchEdit({ type: "field-changed", kind, value: link }) })
-  made = true
-  return field
-}
-
-async function saveLinks(fields: HTMLElement[]): Promise<void> {
-  if (focusUnsettled(fields)) return
+async function saveLinks(links: LinkFields): Promise<void> {
+  if (focusUnsettled(links.fields())) return
   const route = editRoute
   dispatchEdit({ type: "save-started" })
   const { record, read, form } = edit
@@ -520,28 +508,21 @@ async function saveLinks(fields: HTMLElement[]): Promise<void> {
     const now = edit.form!
     const nonce = fresh?.status === "registered" && fresh.recordsNonce != null && fresh.recordsNonce > now.nonce ? fresh.recordsNonce : null
     const records = nonce !== null && fresh?.status === "registered" && fresh.records ? fresh.records : null
-    if (records) showChain(records, now, fields)
+    if (records) showChain(records, now, links)
     dispatchEdit({ type: "save-refused", moved: nonce === null ? null : { nonce, records } })
   }
 }
 
-function showChain(records: api.Links, f: EditForm, fields: HTMLElement[]): void {
-  ;(["contact", "channel"] as const).forEach((kind, i) => {
-    const input = fields[i].querySelector("input")!
-    if ((f.sent.length && kind in f.changes && !f.sent.includes(kind)) || input.value === records[kind]) return
-    fields[i].dataset.kept = records[kind]
-    input.value = records[kind]
-    input.dispatchEvent(new Event("input", { bubbles: true }))
-  })
+// the links on chain take the fields' place, except a link this save sent none of yet, which stays as typed
+function showChain(records: api.Links, f: EditForm, links: LinkFields): void {
+  for (const kind of api.LINK_KINDS) if (!(f.sent.length && kind in f.changes && !f.sent.includes(kind))) links.show(kind, records[kind])
 }
 
 function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {
   const f = s.form!
-  const fields = [
-    kept("edit-contact", () => editField("contact", f.current.contact)),
-    kept("edit-channel", () => editField("channel", f.current.channel)),
-  ]
-  const save = setAction(btn("Save links", "block", () => void saveLinks(fields)), f.saving, f.hold !== null || f.unanswered || f.settled)
+  // the fields check the links they open with as they are made, which is no change to send
+  const links = kept("edit-links", () => linkFieldsFor(f.current, (kind, value) => dispatchEdit({ type: "field-changed", kind, value })))
+  const save = setAction(btn("Save links", "", () => void saveLinks(links)), f.saving, f.hold !== null || f.unanswered || f.settled)
   save.dataset.focus = "save"
   const answer = resultNode(f, signal)
   // Save, turned off by its answer, hands focus to the answer, which shares its key
@@ -550,16 +531,12 @@ function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {
     answer.dataset.focus = "save"
   }
   holdEnder(signal, () => dispatchEdit({ type: "hold-ended" }))(f.hold !== null)
-  return screen({ title: editTitle(s), back: NAMES },
-    linkEntry("contact", fields[0]),
-    linkEntry("channel", fields[1]),
-    el("p", { class: "note" }, "Saving is free: SimpleX pays the network fee."),
-    save,
-    keptLive("edit-answer", undefined, answer))
+  return screen({ title: EDIT_TITLE, back: NAMES, lead: [nameText(s.record!.label, s.record!.tld, "."), " Saving is free: SimpleX pays the network fee."], action: save },
+    el("span", { class: "label" }, "Link"), links.node, keptLive("edit-answer", undefined, answer))
 }
 
 const EDIT_BUILDERS: Record<EditKind, Builder<EditState>> = {
-  "edit-no-code": () => editNotice("Edit links", alertBox("info", "key", "The name code is not in this browser", "Restore it in Your names to edit this name's links.")),
+  "edit-no-code": (s) => editNotice(s, alertBox("info", "key", "The name code is not in this browser", "Add it in Check your code to edit this name's links.")),
   "edit-unreadable": buildUnreadable,
   "edit-expired": buildExpired,
   "edit-in-app": notice("phone", "This name is managed in SimpleX", "It was moved to the app's wallet, so its links are edited in the app."),

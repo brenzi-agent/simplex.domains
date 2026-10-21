@@ -11,7 +11,6 @@ const OWNER = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
 const AVAILABLE: SearchAnswer = { status: "available", price: 1500, currency: "usd", years: 2, ...CHAIN }
 const TAKEN: SearchAnswer = { status: "registered", entities: [], owner: OWNER, tld: "simplex" }
-const MINE = { registrationId: "reg-1", withCode: true }
 
 function record(change: Partial<OrderRecord> = {}): OrderRecord {
   return {
@@ -27,7 +26,7 @@ const open = (change: Partial<Extract<SearchEvent, { type: "opened" }>> = {}) =>
 const run = (s: SearchState, ...events: SearchEvent[]) => events.reduce(reduce, s)
 const wait = (until: number): Hold => ({ until, lead: NO_LEAD })
 const searchedEvent = (label: string, hold: Hold | null = null): SearchEvent => ({ type: "searched", label, hold })
-const answered = (s: SearchState, answer: SearchAnswer = AVAILABLE, label = s.searching!.label): SearchEvent => ({ type: "answered", seq: s.seq, label, answer, mine: null, now: NOW })
+const answered = (s: SearchState, answer: SearchAnswer = AVAILABLE, label = s.searching!.label): SearchEvent => ({ type: "answered", seq: s.seq, label, answer, mine: false, now: NOW })
 function shown(label = "alice1", answer: SearchAnswer = AVAILABLE, change: Partial<Extract<SearchEvent, { type: "opened" }>> = {}): SearchState {
   const s = open({ name: label, ...change })
   const searching = reduce(s, searchedEvent(label))
@@ -156,7 +155,7 @@ describe("reduce: typing and searching", () => {
 
 describe("reduce: searching", () => {
   it("a search under way keeps the last answer on screen until the new one comes", () => {
-    const found = reduce(reduce(initialSearch(), { type: "searched", label: "bakery", hold: null }), { type: "answered", seq: 1, label: "bakery", answer: AVAILABLE, mine: null, now: 0 })
+    const found = reduce(reduce(initialSearch(), { type: "searched", label: "bakery", hold: null }), { type: "answered", seq: 1, label: "bakery", answer: AVAILABLE, mine: false, now: 0 })
     const next = reduce({ ...found, typed: "harbour" }, { type: "searched", label: "harbour", hold: null })
     expect(next.searching).toEqual({ label: "harbour" })
     expect(next.answer).toEqual(found.answer)
@@ -169,8 +168,8 @@ describe("reduce: searching", () => {
 describe("reduce: answers", () => {
   it("answered shows the answer with what the page knew of it", () => {
     const s = reduce(open(), searchedEvent("alice1"))
-    const next = reduce(s, { type: "answered", seq: s.seq, label: "alice1", answer: TAKEN, mine: MINE, now: NOW })
-    expect(next).toMatchObject({ searching: null, answer: { kind: "found", label: "alice1", answer: TAKEN, mine: MINE, now: NOW } })
+    const next = reduce(s, { type: "answered", seq: s.seq, label: "alice1", answer: TAKEN, mine: true, now: NOW })
+    expect(next).toMatchObject({ searching: null, answer: { kind: "found", label: "alice1", answer: TAKEN, mine: true, now: NOW } })
   })
   it("a slower answer to an earlier search never replaces the latest one", () => {
     const first = reduce(open(), searchedEvent("slower1"))

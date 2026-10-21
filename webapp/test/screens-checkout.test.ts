@@ -40,7 +40,7 @@ describe("screenOf", () => {
     ["the name code step", STATES.code, "code"],
     ["the review", open(), "review"],
     ["the review with its order on its way", open({ sending: true, busy: true }), "review"],
-    ["the review with its code field open", open({ codeOpen: true }), "review"],
+    ["the review with a code that pays", open({ checkout: checkout({ code: CODE }) }), "review"],
     ["the review during a wait", open({ hold: { until: NOW + 5000, lead: NO_LEAD } }), "review"],
     ["an order refused for a changed price", STATES["status:price-changed"], "status:price-changed"],
     ["an order that met a rate limit", STATES["status:too-many"], "status:too-many"],
@@ -59,11 +59,10 @@ describe("screenOf", () => {
     const refused = reduce(open(), { type: "order-refused", reason: "failed" })
     expect(screenOf(reduce(refused, opened(refused, { step: "links" })))).toBe("links")
   })
-  it("a code applied clears the code's last refusal and stays on the page", () => {
-    const refused = reduce(initialState(checkout(), "review"), { type: "order-refused", reason: "code", error: "This code was already used." })
-    const applied = reduce(refused, { type: "code-applied", code: CODE })
-    expect(applied.checkout.codeError).toBeUndefined()
-    expect(screenOf(applied)).toBe("review")
+  it("a code refused by the service stays on the review, which then pays another way", () => {
+    const refused = reduce(initialState(checkout({ code: CODE }), "review"), { type: "order-refused", reason: "code", error: "This code was already used." })
+    expect(refused.checkout).toMatchObject({ code: null, codeError: "This code was already used." })
+    expect(screenOf(refused)).toBe("review")
   })
 })
 
@@ -74,8 +73,6 @@ describe("changeOf", () => {
     expect(changeOf(s, { type: "link-set", kind: "channel", link: CHANNEL })).toEqual({ channel: CHANNEL })
     expect(changeOf(s, { type: "saved", saved: false })).toEqual({ saved: false })
     expect(changeOf(s, { type: "method-chosen", method: "xmr" })).toEqual({ method: "xmr" })
-    expect(changeOf(s, { type: "code-applied", code: CODE })).toEqual({ code: CODE, codeError: undefined })
-    expect(changeOf(s, { type: "code-removed" })).toEqual({ code: null, codeError: undefined })
     expect(changeOf(s, { type: "order-refused", reason: "code", error: "This code was already used." })).toEqual({ code: null, codeError: "This code was already used." })
     expect(changeOf(s, { type: "price-changed", price: 2500 })).toEqual({ price: 2500 })
   })
@@ -94,8 +91,7 @@ describe("changeOf", () => {
   })
   it("events that are not the stored checkout's change nothing in it", () => {
     const others: CheckoutEvent[] = [opened(s), { type: "waiting-settled" }, { type: "open-order-seen", order: OPEN_ORDER },
-      { type: "send-started" }, { type: "order-refused", reason: "failed" }, { type: "order-refused", reason: "taken" }, { type: "hold-started", until: NOW }, { type: "hold-ended" },
-      { type: "code-opened" }]
+      { type: "send-started" }, { type: "order-refused", reason: "failed" }, { type: "order-refused", reason: "taken" }, { type: "hold-started", until: NOW }, { type: "hold-ended" }]
     for (const e of others) expect(changeOf(s, e), e.type).toBeNull()
   })
 })
@@ -135,27 +131,6 @@ describe("reduce", () => {
     expect(reduce(s, { type: "method-chosen", method: "btc" })).toBe(s)
     const off = open({ checkout: checkout({ unavailable: "card" }) })
     expect(reduce(off, { type: "method-chosen", method: "card" })).toBe(off)
-  })
-  it("code-applied applies the code and clears the last refusal of one", () => {
-    const refused = { ...s, checkout: checkout({ codeError: "This code has expired." }) }
-    expect(reduce(refused, { type: "code-applied", code: CODE })).toEqual({ ...s, checkout: { ...checkout(), code: CODE, codeError: undefined } })
-  })
-  it("code-removed takes the code off", () => {
-    const covered = { ...s, checkout: checkout({ code: CODE }) }
-    expect(reduce(covered, { type: "code-removed" })).toEqual({ ...s, checkout: checkout({ code: null }) })
-  })
-  it("code-removed, as an edit of the code's field gives, drops the service's last refusal of a code", () => {
-    const refused = reduce(s, { type: "order-refused", reason: "code", error: "This code was already used." })
-    expect(refused.checkout.codeError).toBe("This code was already used.")
-    const edited = reduce(refused, { type: "code-removed" })
-    expect(edited.checkout).toHaveProperty("codeError", undefined)
-    expect(screenOf(edited)).toBe("review")
-  })
-  it("code-opened opens the code field, which stays open as the page draws again and the code comes off", () => {
-    const shown = reduce(s, { type: "code-opened" })
-    expect(shown).toEqual({ ...s, codeOpen: true })
-    expect(reduce(shown, opened(shown)).codeOpen).toBe(true)
-    expect(reduce(reduce(shown, { type: "code-applied", code: CODE }), { type: "code-removed" }).codeOpen).toBe(true)
   })
   it("waiting-settled lets the card order that blocked a second one go", () => {
     expect(reduce({ ...s, waiting: WAITING }, { type: "waiting-settled" })).toEqual(s)
@@ -229,15 +204,7 @@ describe("stepFor", () => {
 describe("initialState", () => {
   it("starts on its step with the checkout as stored and nothing else known", () => {
     expect(initialState(checkout(), "links")).toEqual({
-      step: "links", checkout: checkout(), sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null, codeOpen: false,
+      step: "links", checkout: checkout(), sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null,
     })
-  })
-  it("opens the code field for a checkout that carries a code or the service's refusal of one, as after a reload", () => {
-    expect(initialState(checkout({ code: CODE }), "review").codeOpen).toBe(true)
-    expect(initialState(checkout({ codeError: "This code was already used." }), "review").codeOpen).toBe(true)
-  })
-  it("keeps the code field open when the page it was opened on is opened again, and closed otherwise", () => {
-    expect(initialState(checkout(), "review", true).codeOpen).toBe(true)
-    expect(initialState(checkout(), "review", false).codeOpen).toBe(false)
   })
 })

@@ -6,10 +6,9 @@ import { type Hold, NO_LEAD } from "./hold.ts"
 export type Opening = "fromApp" | "retarget" | "plain" | "bad-app-link"
 export type SearchKind = `search:${Exclude<Opening, "bad-app-link">}` | "status:bad-app-link"
 
-export interface Mine { registrationId: string; withCode: boolean }
 export type Answer =
   | { kind: "rule"; label: string; problem: LabelProblem }
-  | { kind: "found"; label: string; answer: SearchAnswer; mine: Mine | null; now: number }
+  | { kind: "found"; label: string; answer: SearchAnswer; mine: boolean; now: number }
   | { kind: "unchecked" }
   | { kind: "checking" }
 
@@ -38,7 +37,7 @@ export type SearchEvent =
   | { type: "opened"; opening: Opening; name: string; fromApp: string | null; retarget: OrderRecord | null; hold: Hold | null }
   | { type: "typed"; text: string }
   | { type: "searched"; label: string; hold: Hold | null }
-  | { type: "answered"; seq: number; label: string; answer: SearchAnswer; mine: Mine | null; now: number }
+  | { type: "answered"; seq: number; label: string; answer: SearchAnswer; mine: boolean; now: number }
   | { type: "unanswered"; seq: number }
   | { type: "search-held"; seq: number; until: number }
   | { type: "hold-ended" }

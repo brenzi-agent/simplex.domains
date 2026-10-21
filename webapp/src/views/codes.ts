@@ -1,14 +1,15 @@
-// The prepaid code field that checkout and Your names share, judged as it is typed.
+// The code field of Check your code, judged as it is typed: a prepaid code that pays for a name, or a name code that owns one.
 import * as api from "../api.ts"
 import { codeProgress, parseNameCode } from "../crypto/code.ts"
-import { seconds, termText } from "../format.ts"
+import { seconds } from "../format.ts"
 import { el, icon, liveRegion, refill } from "../dom.ts"
 import type * as session from "../session.ts"
 import { kept, whenDropped } from "./shell.ts"
 
 export type CodeVerdict =
-  | { ok: true; code: session.AppliedCode; line: string }
-  | { ok: false; title: string; line: string }
+  | { kind: "prepaid"; code: session.AppliedCode; line: string }
+  | { kind: "owner"; code: string; line: string }
+  | { kind: "refused"; title: string; line: string }
 
 const STATE_LINES: Record<Exclude<api.CodeState, "unused">, [string, string]> = {
   reserved: ["This code is being used for a name now", "Each code registers one name; this one is held by an unfinished registration."],
@@ -18,6 +19,7 @@ const STATE_LINES: Record<Exclude<api.CodeState, "unused">, [string, string]> = 
   unpaid: ["This code is not paid for yet", "It works once its payment is confirmed."],
 }
 
+// the service's refusals of a code an order carried
 export const CODE_ERRORS: Record<string, string> = {
   code_invalid: "This code is not valid.",
   code_used: "This code was already used.",
@@ -27,25 +29,27 @@ export const CODE_ERRORS: Record<string, string> = {
   code_not_covering: "This code does not cover this name.",
 }
 
-const unused = (code: session.AppliedCode): CodeVerdict => ({ ok: true, code, line: `Covers names of ${code.minLength} or more letters, for ${termText(code.years)}.` })
+const coversLine = (code: session.AppliedCode) => `Prepaid code: it pays for a name of ${code.minLength} or more letters, for ${code.years} years.`
+const unused = (code: session.AppliedCode): CodeVerdict => ({ kind: "prepaid", code, line: coversLine(code) })
 
-const MISTYPED: CodeVerdict = { ok: false, title: "This code is not valid", line: "Check it for a mistyped character." }
+const MISTYPED: CodeVerdict = { kind: "refused", title: "This code is not valid", line: "Check it for a mistyped character." }
+const OWNER_LINE = "Name code. Adding it shows its name in Your names, where you can edit its links."
 
-// A typo or an owner code is answered on the page; anything else asks the service, which spends nothing.
+// A typo or a name code is answered on the page; a prepaid code asks the service, which spends nothing.
 async function judgeCode(text: string, signal: AbortSignal): Promise<CodeVerdict> {
   const parsed = parseNameCode(text)
   if (parsed === null) return MISTYPED
-  if (parsed.kind === "owner") return { ok: false, title: "This is a name code", line: "It owns a name. Restore it in Your names." }
+  if (parsed.kind === "owner") return { kind: "owner", code: text, line: OWNER_LINE }
   try {
     const answer = await api.checkCode(parsed.display, signal)
     if (answer.state === "unused") return unused({ display: parsed.display, minLength: answer.minLength, years: answer.years })
     const [title, line] = STATE_LINES[answer.state]
-    return { ok: false, title, line }
+    return { kind: "refused", title, line }
   } catch (e) {
     // well formed but unknown to the service: not a typo, which the check digit would have caught
-    if (e instanceof api.ApiError && e.code === "code_invalid") return { ok: false, title: "This code is not valid", line: "SimpleX did not issue it, or withdrew it." }
-    if (e instanceof api.ApiError && e.code === "rate_limited") return { ok: false, title: "Too many checks just now", line: `Your code may be fine. Try again in ${seconds(e.retryAfter ?? api.LIMITED_WAIT_S)}.` }
-    return { ok: false, title: "The code could not be checked", line: "Try again in a moment." }
+    if (e instanceof api.ApiError && e.code === "code_invalid") return { kind: "refused", title: "This code is not valid", line: "SimpleX did not issue it, or withdrew it." }
+    if (e instanceof api.ApiError && e.code === "rate_limited") return { kind: "refused", title: "Too many checks just now", line: `Your code may be fine. Try again in ${seconds(e.retryAfter ?? api.LIMITED_WAIT_S)}.` }
+    return { kind: "refused", title: "The code could not be checked", line: "Try again in a moment." }
   }
 }
 
@@ -53,8 +57,8 @@ async function judgeCode(text: string, signal: AbortSignal): Promise<CodeVerdict
 const JUDGE_PAUSE_MS = 400
 
 // Each edit says nothing until its own verdict; a character no code has is refused at once, and a code long enough is
-// judged once typing pauses. Nothing is judged once the signal ends; the result forgets a judgement on its way.
-function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => void, signal: AbortSignal): () => void {
+// judged once typing pauses. Nothing is judged once the signal ends.
+function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => void, signal: AbortSignal): void {
   let seq = 0
   let pause: ReturnType<typeof setTimeout> | undefined
   const forget = () => {
@@ -76,49 +80,33 @@ function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => voi
     if ((e as InputEvent).inputType === "insertFromPaste") void judge(mine)
     else pause = setTimeout(() => void judge(mine), JUDGE_PAUSE_MS)
   })
-  return forget
 }
 
-const said = (v: CodeVerdict) => v.ok ? v.line : `${v.title}. ${v.line}`
-// a field's way to take a refusal from elsewhere, as the service's when the order is sent
-const refusers = new WeakMap<HTMLElement, (text: string) => void>()
+const said = (v: CodeVerdict) => v.kind === "refused" ? `${v.title}. ${v.line}` : v.line
 // what was typed in a field, by its key, shown and judged again when its page is opened again
 const typed = new Map<string, string>()
 
-// `judged` may return a refusal to say instead of the verdict; `label` names the field, and an `action` goes beside it.
-export function codeField(key: string, label: string, judged: (v: CodeVerdict | null) => string | null,
-  start: session.AppliedCode | null = null, refusal: string | null = null, action: HTMLElement | null = null): HTMLElement {
+// `heard` hears each verdict, and nothing while the code is being typed.
+export function codeField(key: string, label: string, heard: (v: CodeVerdict | null) => void): HTMLElement {
   return kept(key, () => {
     const verdictId = `${key}-verdict`
-    const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, spellcheck: "false", placeholder: "SN6-…", autocomplete: "off", value: start?.display ?? typed.get(key) })
-    const box = el("label", { class: "field code-input" }, icon("key"), input)
+    const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, spellcheck: "false", placeholder: "SN…", autocomplete: "off", value: typed.get(key) })
+    const box = el("label", { class: "field code-input" }, input)
     const line = liveRegion("verdict")
     line.id = verdictId
-    const show = (v: CodeVerdict | null, instead: string | null) => {
-      const tone = instead !== null || v?.ok === false ? " bad" : v ? " ok" : ""
+    const show = (v: CodeVerdict | null) => {
+      const tone = v === null ? "" : v.kind === "refused" ? " bad" : " ok"
       box.className = `field code-input${tone}`
       line.className = `verdict${tone}`
-      refill(line, tone === " bad" && icon("alert"), instead ?? (v ? said(v) : null))
+      refill(line, tone === " bad" && icon("alert"), v && said(v))
+      heard(v)
     }
-    if (start || refusal) show(start && unused(start), refusal)
     const life = new AbortController()
     whenDropped(() => life.abort())
-    const forget = watchCode(input, (v) => show(v, judged(v)), life.signal)
+    watchCode(input, show, life.signal)
     input.addEventListener("input", () => typed.set(key, input.value))
     // judged once the page that asked for the field is drawn, as a verdict may change the page
-    if (!start && input.value) queueMicrotask(() => input.dispatchEvent(new Event("input")))
-    const entry = el("div", { class: "code-entry" }, action ? el("div", { class: "field-row" }, box, action) : box, line)
-    refusers.set(entry, (text) => {
-      forget()
-      input.value = ""
-      typed.delete(key)
-      show(null, text)
-      input.focus()
-    })
-    return entry
+    if (input.value) queueMicrotask(() => input.dispatchEvent(new Event("input")))
+    return el("div", { class: "code-entry" }, box, line)
   })
 }
-
-export const refuseCode = (entry: HTMLElement, text: string) => refusers.get(entry)?.(text)
-
-export const clearTyped = (key: string) => void typed.delete(key)

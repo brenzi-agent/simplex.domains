@@ -1,19 +1,20 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  CHECKOUT_KEY, checkoutCode, checkoutOwnerCode, CODE_HEADING, control, mockRegistration, onStep, openCode, payButton, REGISTRATION_MS, registrationOf, savedToReview, search, shot,
-  startOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
+  CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, savedToReview, search, shot,
+  shownCode, startOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
 test("a second tab's order survives a write from a tab opened earlier", async ({ browser, request }) => {
   const context = await browser.newContext()
   const [early, late] = [await context.newPage(), await context.newPage()]
-  await early.goto("/#/names")
+  await early.goto("/#/code")
   const label = uniqueLabel("tab")
   await startOrder(late, label, { method: "btc" })
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await early.getByRole("textbox", { name: "Add a code" }).fill(code)
-  await early.getByRole("button", { name: "Add", exact: true }).click()
-  await early.reload()
+  // the page opened before the order keeps the code it checks
+  await codeField(early).fill(code)
+  await early.getByRole("button", { name: "Find a name" }).and(early.locator(":enabled")).click()
+  await early.goto("/#/names")
   await expect(early.locator(".list-row", { hasText: `${label}.simplex` })).toBeVisible()
   await expect(early.locator(".list-row", { hasText: code })).toBeVisible()
   await context.close()
@@ -35,9 +36,9 @@ test("a slow answer to an earlier search never replaces the latest one", async (
   await name.press("Enter")
   await name.fill("bakery")
   await name.press("Enter")
-  await expect(page.locator(".answer .chip", { hasText: "Taken" })).toBeVisible()
+  await expect(page.locator(".answer .row", { hasText: "Taken" })).toBeVisible()
   await page.waitForTimeout(2500)
-  await expect(page.locator(".answer .chip", { hasText: "Taken" })).toBeVisible()
+  await expect(page.locator(".answer .row", { hasText: "Taken" })).toBeVisible()
   await expect(page.locator(".answer", { hasText: slow })).toHaveCount(0)
 })
 
@@ -82,38 +83,6 @@ test("a payment method is chosen with the keyboard, as one radio group", async (
   await expect(method("xmr")).toBeFocused()
   await page.keyboard.press("Tab")
   await expect(page.locator(".method:focus")).toHaveCount(0)
-})
-
-test("the invest dialog closes by Escape, its backdrop and its Close, giving focus back to what opened it, and by leaving the page", async ({ page }) => {
-  await page.goto("/#/names")
-  await page.getByRole("link", { name: "SimpleX names" }).click()
-  const invest = page.getByRole("button", { name: "Invest to claim your name" })
-  const dialog = page.getByRole("dialog", { name: "Invest to claim your name before the sale" })
-  const closers: [string, () => Promise<void>][] = [
-    ["Escape", () => page.keyboard.press("Escape")],
-    ["the backdrop", () => page.mouse.click(10, 10)],
-    ["Close", () => dialog.getByRole("button", { name: "Close" }).click()],
-  ]
-  for (const [closer, close] of closers) {
-    await invest.focus()
-    await page.keyboard.press("Enter")
-    await expect(dialog, closer).toBeVisible()
-    if (closer === "Escape") await shot(page, "N1d-invest")
-    await expect(dialog.getByRole("link", { name: "Learn more on Wefunder" })).toHaveAttribute("href", /^https:\/\/wefunder\.com\/simplex\.chat/)
-    expect(await page.evaluate(() => document.querySelector("body > main")!.contains(document.activeElement)), `${closer}: focus inside the page behind`).toBe(false)
-    await close()
-    await expect(dialog, closer).toBeHidden()
-    await expect(invest, closer).toBeFocused()
-  }
-  await invest.click()
-  await expect(dialog).toBeVisible()
-  // the page's own close listener, added first, has run once this one hears the close event
-  const closed = await dialog.evaluateHandle((d) => ({ heard: new Promise<void>((done) => d.addEventListener("close", () => done(), { once: true })) }))
-  await page.evaluate(() => history.back())
-  await expect(page.getByRole("heading", { name: "Your names" })).toBeFocused()
-  await expect(dialog).toBeHidden()
-  await closed.evaluate((c) => c.heard)
-  await expect(page.getByRole("heading", { name: "Your names" }), "focus stays on the page gone back to").toBeFocused()
 })
 
 test("a card payment settled while its page was closed frees checkout", async ({ page, request }) => {
@@ -203,10 +172,10 @@ test("a registered order opened in a browser without its code offers restore", a
   await page2.goto(`/?order=${invoiceId}`)
   await expect(page2.getByText("Its name code is not in this browser.")).toBeVisible()
   await page2.getByRole("button", { name: "Restore with your name code" }).click()
-  await page2.getByLabel("Name code").fill(ownerCode)
-  await page2.getByRole("button", { name: "Restore" }).click()
-  await waitRegistered(page2, label)
-  await expect(page2.getByTestId("owner-code"), "the restored browser holds the code").toHaveText(ownerCode)
+  await codeField(page2).fill(ownerCode)
+  await page2.getByRole("button", { name: "Add to Your names" }).click()
+  await page2.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: "Name code" }).click()
+  await expect(page2.locator(".row-code .code-text"), "the restored browser holds the code").toHaveText(ownerCode)
   await other.close()
 })
 
@@ -224,7 +193,7 @@ test("a failed retarget shows one message below the result, however often it is 
     await page.getByRole("button", { name: "Register with your payment" }).click()
     await expect(page.getByText("That did not go through")).toHaveCount(1)
   }
-  await expect(page.locator(".answer .card .notice")).toHaveCount(0)
+  await expect(page.locator(".answer .row .notice"), "the message stays out of the name's row").toHaveCount(0)
   await shot(page, "N8a2-retarget-failed")
 })
 
@@ -301,7 +270,7 @@ test("full storage that still reads is warned about on the name code step, which
   await toCodeStep(page)
   await expect(onStep(page).getByText("This code could not be saved in this browser")).toBeVisible()
   await expect(onStep(page).getByText("Save a copy now: it will be the only one.")).toBeVisible()
-  await expect(onStep(page).getByTestId("owner-code")).toHaveText(await checkoutOwnerCode(page))
+  await expect(await shownCode(page)).toHaveText(await checkoutOwnerCode(page))
   await savedToReview(page)
   await payButton(page).click()
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
@@ -349,13 +318,13 @@ test("an order left before its wait ends asks for this browser in Your names", a
   await page.goto("/#/names")
   const row = page.locator(".list-row", { hasText: `${label}.simplex` })
   await expect(row.locator(".chip")).toHaveText("Open to finish")
-  await row.locator(".small-btn", { hasText: /^Open$/ }).click()
+  await row.getByRole("button", { name: "Open", exact: true }).click()
   await waitRegistered(page, label)
 })
 
 test("a name typed with .simplex is searched without it, and the field shows the name searched with its caret at the end", async ({ page }) => {
   await search(page, "Bakery.simplex")
-  await expect(page.locator(".answer .entity")).toHaveCount(2)
+  await expect(page.locator(".answer .chat")).toHaveCount(2)
   const field = page.getByLabel("Name", { exact: true })
   await expect(field).toHaveValue("bakery")
   expect(await field.evaluate((n: HTMLInputElement) => [n.selectionStart, n.selectionEnd])).toEqual([6, 6])
@@ -444,7 +413,7 @@ test("Your names keeps a long name clear of its row's chip at every width", asyn
   for (const width of [600, 1024]) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto("/#/names")
-    const title = page.locator(".list-row .main b", { hasText: label })
+    const title = page.locator(".list-row .main .name", { hasText: label })
     await expect(title).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
     // beside the chip on a wide screen, above it once the row stacks: the name never runs under it
@@ -455,10 +424,10 @@ test("Your names keeps a long name clear of its row's chip at every width", asyn
     await page.evaluate(() => document.fonts.ready)
     const [t, c] = await page.evaluate((label) => {
       const row = [...document.querySelectorAll(".list-row")].find((r) => r.textContent!.includes(label))!
-      return [row.querySelector(".main b")!.getBoundingClientRect(), row.querySelector(".chip")!.getBoundingClientRect()].map((r) => ({ x: r.x, y: r.y, width: r.width, height: r.height }))
+      return [row.querySelector(".main .name")!.getBoundingClientRect(), row.querySelector(".chip")!.getBoundingClientRect()].map((r) => ({ x: r.x, y: r.y, width: r.width, height: r.height }))
     }, label)
     expect(t.x + t.width <= c.x || t.y + t.height <= c.y, `${width}px: name ${JSON.stringify(t)}, chip ${JSON.stringify(c)}`).toBe(true)
-    await expect(title).toHaveAttribute("title", `${label}.simplex`)
+    await expect(title, "the whole name, as it wraps rather than being cut").toHaveText(`${label}.simplex`)
   }
 })
 
@@ -486,12 +455,12 @@ test("a rate-limited cancel holds, and the hold outlives the page drawing itself
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await expect(page.getByRole("button", { name: "Get a new invoice" })).toBeDisabled()
   await expect(page.getByText("Too many attempts")).toBeVisible()
-  // the other actions of the tab wait too: search is paused, and a restore would wait
+  // the other actions of the tab wait too: search is paused, and adding a name code would wait
   await page.getByRole("link", { name: "SimpleX names" }).click()
   await expect(page.getByText(/Searching is paused: try again in \d+ seconds/).first()).toBeVisible()
-  await page.getByRole("link", { name: "Your names" }).click()
-  await page.getByRole("link", { name: /Restore with a name code/ }).click()
-  await expect(page.getByRole("button", { name: "Restore" })).toBeDisabled()
+  await page.locator("body > header").getByRole("link", { name: "Check your code" }).click()
+  await codeField(page).fill(await page.evaluate(() => Object.values(localStorage).map((v) => { try { return JSON.parse(v).ownerCode as string } catch { return "" } }).find(Boolean)!))
+  await expect(page.getByRole("button", { name: "Add to Your names" })).toBeDisabled()
 })
 
 test("Back from a paused order keeps the order paused", async ({ page }) => {
@@ -508,10 +477,9 @@ test("Back from a paused order keeps the order paused", async ({ page }) => {
   await expect(page.getByText("Too many attempts")).toBeVisible()
 })
 
-test("an order on its way keeps its method and code as sent until it is answered", async ({ page }) => {
+test("an order on its way keeps its method as sent until it is answered", async ({ page }) => {
   await search(page, uniqueLabel("lock"))
   await toReview(page)
-  await openCode(page)
   let answer: () => void = () => undefined
   const answered = new Promise<void>((resolve) => { answer = resolve })
   await page.route("**/api/invoice", async (route) => {
@@ -520,7 +488,6 @@ test("an order on its way keeps its method and code as sent until it is answered
     await route.fulfill({ status: 500, json: { error: "internal" } })
   })
   await payButton(page).click()
-  await expect(checkoutCode(page)).toBeDisabled()
   for (const radio of await page.getByRole("radio").all()) await expect(radio).toHaveAttribute("aria-disabled", "true")
   // a click Playwright would wait on, as on any control marked disabled, comes as the page hears it
   await page.getByRole("radio", { name: "Monero" }).dispatchEvent("click")
@@ -536,9 +503,9 @@ test("Find the order shows a wait met elsewhere in the tab", async ({ page, requ
   await control(request, "search", { findLimitSeconds: 20 })
   // another tab, which does not hold this checkout, looks for its order
   const other = await page.context().newPage()
-  await other.goto("/#/restore")
-  await other.getByLabel("Name code").fill((await other.evaluate(() => Object.keys(localStorage).find((k) => k.startsWith("simplex-names:pending:"))!.split(":").pop()))!)
-  await other.getByRole("button", { name: "Restore" }).click()
+  await other.goto("/#/code")
+  await codeField(other).fill((await other.evaluate(() => Object.keys(localStorage).find((k) => k.startsWith("simplex-names:pending:"))!.split(":").pop()))!)
+  await other.getByRole("button", { name: "Add to Your names" }).click()
   await expect(other.getByText("Too many attempts")).toBeVisible()
   await other.getByRole("link", { name: "Your names" }).click()
   await expect(other.locator(".list-row .chip", { hasText: /Try again in \d+ seconds/ })).toBeVisible()
@@ -562,7 +529,7 @@ test("Back returns to where a page was left, a slow page included, and a reload 
   await page.evaluate((y) => scrollTo(0, y), place)
   // clicked from inside the page: a pointer click first scrolls the header's link into view, which WebKit does even
   // for a link always in view, moving the place it then leaves
-  await page.locator("header nav a[href='/#/names']").dispatchEvent("click")
+  await page.locator("header .top-links a[href='/#/names']").dispatchEvent("click")
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
   expect(await page.evaluate(() => scrollY)).toBe(0)
   await page.evaluate(() => history.back())
@@ -579,7 +546,7 @@ test("Back returns to where a page was left, a slow page included, and a reload 
   await expect.poll(scrollRoom).toBeGreaterThan(100)
   const orderPlace = await scrollRoom()
   await page.evaluate((y) => scrollTo(0, y), orderPlace)
-  await page.locator("header nav a[href='/#/names']").dispatchEvent("click")
+  await page.locator("header .top-links a[href='/#/names']").dispatchEvent("click")
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
   await page.route(`**/api/invoice/${invoiceId}*`, async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 900))
@@ -606,7 +573,8 @@ test("Back returns to where a page was left, a slow page included, and a reload 
 // is left, and not when it is opened again from Your names.
 for (const other of ["Monero", "a code"]) {
   test(`a checkout copied to another tab that pays with ${other} opens the first tab's invoice and says why`, async ({ page, request }) => {
-    await search(page, uniqueLabel("copy"))
+    const label = uniqueLabel("copy")
+    await search(page, label)
     await toReview(page)
     const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
     await payButton(page).click()
@@ -621,10 +589,11 @@ for (const other of ["Monero", "a code"]) {
       await payButton(copy).click()
     } else {
       const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-      await openCode(copy)
-      await checkoutCode(copy).fill(code)
-      await expect(onStep(copy).getByText("Paid with your code")).toBeVisible()
-      await onStep(copy).getByRole("button", { name: "Register" }).click()
+      // a code checked in this tab, which the copied checkout then carries, as Register gives it
+      await useCode(copy, code)
+      await copy.evaluate((key) => sessionStorage.setItem(key, JSON.stringify({ ...JSON.parse(sessionStorage.getItem(key)!), code: JSON.parse(sessionStorage.getItem("simplex-names-code")!) })), CHECKOUT_KEY)
+      await copy.goto("/#/checkout")
+      await onStep(copy).getByRole("button", { name: "Register with your code" }).click()
     }
     await copy.waitForURL(/\?order=/)
     expect(new URL(copy.url()).searchParams.get("order"), "the order's one invoice").toBe(invoiceId)

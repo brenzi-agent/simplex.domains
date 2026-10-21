@@ -1,8 +1,8 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  channelLink, checkoutCode, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, openCode, payButton, previewsShown, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf,
-  savedToReview, search, shot, startOrder, test, toFullReview, toReview, uniqueLabel, waitRegistered,
+  channelLink, CODE_HEADING, codeField, contactLink, control, fillLinks, LINKS_HEADING, onStep, payButton, previewsShown, recordedFrames, recordFrames, REGISTRATION_MS,
+  registrationOf, savedToReview, search, shot, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
 test("the purchase steps swap the whole page, one screen at a time rising in, and Back walks them in reverse", async ({ page }) => {
@@ -30,20 +30,9 @@ test("the purchase steps swap the whole page, one screen at a time rising in, an
 
 // the sizes a purchase step must fit without scrolling, a laptop's and a phone's
 const FIT_SIZES = [{ width: 1280, height: 800 }, { width: 390, height: 844 }]
-// how far a step's content may sit off the middle between the header and the footer, or off the room it keeps below it
-const CENTRE_PX = 2
 
-// The frame's height for the window, which its observer sets a frame or more after the window changes.
-const frameSettled = (page: Page) => page.waitForFunction(() => {
-  const parts = [...document.querySelectorAll("body > header, body > footer, body > .offline")]
-  const frame = Math.ceil(parts.reduce((h, p) => h + p.getBoundingClientRect().height, 0))
-  return getComputedStyle(document.documentElement).getPropertyValue("--frame-h") === `${frame}px`
-})
-
-// Where the heading of the screen in view starts, once the frame has its height, a frame after a change, and the
-// screen has risen in.
+// Where the heading of the screen in view starts, once it has risen in.
 async function headingAt(page: Page): Promise<{ x: number; y: number }> {
-  await frameSettled(page)
   return page.evaluate(async () => {
     await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
     await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)))
@@ -52,38 +41,93 @@ async function headingAt(page: Page): Promise<{ x: number; y: number }> {
   })
 }
 
-const overflow = (page: Page) => page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight)
+// how far the page reaches past the window, less the footer the badges store keeps below the fold
+const overflow = (page: Page) => page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight - Math.round(document.querySelector("body > footer")!.getBoundingClientRect().height))
 
-// The screen in view fits the window at each size, its content centred between the header and the footer, or as much
-// higher as keeps below it the room its biggest change takes, unless it is the home, which lays itself out as the landing
-// does; and is captured for review when shots are asked for. Returns where its heading starts on the laptop's window.
-async function fitsWindow(page: Page, name: string, centred = true): Promise<number> {
-  for (const size of FIT_SIZES) {
+interface Frame { heading: number; actions: number }
+
+// The screen in view fits the window at each size, its content above its actions' row; a step's heading and actions'
+// row stand where every step's do, which the caller compares. Captured for review when shots are asked for.
+async function fitsWindow(page: Page, name: string, frames?: Record<string, Frame[]>): Promise<void> {
+  for (const [i, size] of FIT_SIZES.entries()) {
     await page.setViewportSize(size)
-    const measured = () => page.evaluate((bound) => {
+    const measured = () => page.evaluate(() => {
       const shown = document.querySelector("body > main > section")!
-      const kids = [...shown.children].filter((k) => !k.matches(".vspace") && k.getBoundingClientRect().height > 0)
-      const above = kids[0].getBoundingClientRect().top - document.querySelector("body > header")!.getBoundingClientRect().bottom
-      const below = document.querySelector("body > footer")!.getBoundingClientRect().top - kids.at(-1)!.getBoundingClientRect().bottom
-      // the room the step keeps, resolved by a box out of its flow, and its own padding under its spacer
-      const probe = shown.appendChild(document.createElement("div"))
-      probe.style.position = "absolute"
-      probe.style.height = "max(var(--note-room), var(--room, 0px))"
-      const room = probe.getBoundingClientRect().height + parseFloat(getComputedStyle(shown).paddingBottom)
-      probe.remove()
-      const roomed = above < below && Math.abs(below - room) <= bound
-      return { overflow: Math.max(0, document.scrollingElement!.scrollHeight - innerHeight), offCentre: roomed ? 0 : Math.round(Math.abs(above - below)) }
-    }, CENTRE_PX)
-    // an offset within the bound reads as none, so a failure shows how far off it is
-    await expect.poll(async () => {
-      const { overflow, offCentre } = await measured()
-      return { overflow, offCentre: centred && offCentre > CENTRE_PX ? offCentre : 0 }
-    }, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ overflow: 0, offCentre: 0 })
+      const actions = shown.querySelector(":scope > .actions-row")?.getBoundingClientRect()
+      const content = [...shown.querySelectorAll(":scope > .screen-body > *")].map((k) => k.getBoundingClientRect()).filter((b) => b.height > 0)
+      const footer = Math.round(document.querySelector("body > footer")!.getBoundingClientRect().height)
+      return {
+        overflow: Math.max(0, document.scrollingElement!.scrollHeight - innerHeight - footer),
+        overlap: actions && content.length ? Math.max(0, Math.round(Math.max(...content.map((b) => b.bottom)) - actions.top)) : 0,
+      }
+    })
+    await expect.poll(measured, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ overflow: 0, overlap: 0 })
+    if (frames) {
+      const at = await page.evaluate(() => ({
+        heading: Math.round(document.querySelector("body > main h1")!.getBoundingClientRect().top),
+        actions: Math.round(document.querySelector("body > main > section > .actions-row")!.getBoundingClientRect().top),
+      }))
+      ;(frames[name] ??= [])[i] = at
+    }
   }
   await page.setViewportSize(FIT_SIZES[0])
-  await shot(page, `names-g1-${name}`)
-  return (await headingAt(page)).x
+  await shot(page, `names-u1-${name}`)
 }
+
+// every step's heading and actions' row at one place, for each window size
+function oneFrame(frames: Record<string, Frame[]>): void {
+  for (const [i, size] of FIT_SIZES.entries()) {
+    const at = Object.fromEntries(Object.entries(frames).map(([name, f]) => [name, f[i]]))
+    expect(new Set(Object.values(at).map((f) => JSON.stringify(f))).size, `the steps' heading and actions at ${size.width}x${size.height}: ${JSON.stringify(at)}`).toBe(1)
+  }
+}
+
+test("every purchase step fits a laptop's and a phone's window, its heading and main button at one place on every step", async ({ page, request }) => {
+  await page.goto("/")
+  await fitsWindow(page, "1-home")
+  // a taken name with both its links
+  await search(page, "bakery")
+  await expect(page.locator(".answer .chat")).toHaveCount(2)
+  await fitsWindow(page, "1b-home-taken")
+  const label = uniqueLabel("fit")
+  await search(page, label)
+  await page.getByRole("button", { name: "Register" }).click()
+  const step = onStep(page)
+  const frames: Record<string, Frame[]> = {}
+  await expect(step.getByRole("heading", { name: LINKS_HEADING })).toBeFocused()
+  await fitsWindow(page, "2a-links-empty", frames)
+  const linksAt = await headingAt(page)
+  await fillLinks(page, contactLink("F2"), channelLink("G2"))
+  await previewsShown(page)
+  expect(await headingAt(page), "the links step as its previews come").toEqual(linksAt)
+  await fitsWindow(page, "2-links", frames)
+  await backInView(page, "links")
+  await step.getByRole("button", { name: "Continue" }).click()
+  await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
+  await fitsWindow(page, "3-code", frames)
+  await savedToReview(page)
+  await fitsWindow(page, "4-review", frames)
+  await backInView(page, "review")
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await fitsWindow(page, "5-pay-bitcoin", frames)
+  const invoiceId = new URL(page.url()).searchParams.get("order")
+  await control(request, `confirming/${invoiceId}`)
+  await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible()
+  await fitsWindow(page, "5c-confirming", frames)
+  await control(request, `settle/${invoiceId}`)
+  await expect(page.locator(".stage.active", { hasText: "Waiting" })).toBeVisible({ timeout: REGISTRATION_MS })
+  await fitsWindow(page, "6-registering", frames)
+  await waitRegistered(page, label)
+  await fitsWindow(page, "7-registered", frames)
+  await page.goto("/#/code")
+  await fitsWindow(page, "8-check-code", frames)
+  oneFrame(frames)
+  await startOrder(page, uniqueLabel("fitcard"), { method: "card" })
+  await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
+  await fitsWindow(page, "5b-pay-card")
+})
 
 // widths a laptop's or a tablet's window has, from where the column first leaves margins beside it
 const BACK_WIDTHS = [900, 1024, 1280]
@@ -101,78 +145,28 @@ async function backInView(page: Page, name: string): Promise<void> {
   await page.setViewportSize(FIT_SIZES[0])
 }
 
-test("every purchase step fits a laptop's and a phone's window without scrolling, centred in one column, and keeps still as it fills in", async ({ page, request }) => {
-  await page.goto("/")
-  await fitsWindow(page, "1-home", false)
-  // a taken name with both its links, the tallest answer the home shows
-  await search(page, "bakery")
-  await expect(page.locator(".answer .entity")).toHaveCount(2)
-  await fitsWindow(page, "1b-home-taken", false)
-  const label = uniqueLabel("fit")
-  await search(page, label)
-  await page.getByRole("button", { name: "Register" }).click()
-  const step = onStep(page)
-  const lefts: Record<string, number> = {}
-  await expect(step.getByRole("heading", { name: LINKS_HEADING })).toBeFocused()
-  await fitsWindow(page, "2a-links-empty")
-  const linksAt = await headingAt(page)
-  await step.getByLabel("Address").fill(contactLink("F2"))
-  await step.getByLabel("Channel").fill(channelLink("G2"))
-  await previewsShown(page)
-  expect(await headingAt(page), "the links step as its previews come").toEqual(linksAt)
-  lefts.links = await fitsWindow(page, "2-links")
-  await backInView(page, "links")
-  await step.getByRole("button", { name: "Continue" }).click()
-  await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
-  lefts.code = await fitsWindow(page, "3-code")
-  await savedToReview(page)
-  lefts.review = await fitsWindow(page, "4-review")
-  await backInView(page, "review")
-  const reviewAt = await headingAt(page)
-  await openCode(page)
-  expect(await headingAt(page), "the review as its code field opens").toEqual(reviewAt)
-  await fitsWindow(page, "4b-review-code")
-  await payButton(page).click()
-  await page.waitForURL(/\?order=/)
-  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-  lefts.payment = await fitsWindow(page, "5-pay-bitcoin")
-  const invoiceId = new URL(page.url()).searchParams.get("order")
-  await control(request, `confirming/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible()
-  lefts.confirming = await fitsWindow(page, "5c-confirming")
-  await control(request, `settle/${invoiceId}`)
-  await expect(page.locator(".stage.active", { hasText: "Waiting" })).toBeVisible({ timeout: REGISTRATION_MS })
-  lefts.registering = await fitsWindow(page, "6-registering")
-  await waitRegistered(page, label)
-  lefts.registered = await fitsWindow(page, "7-registered")
-  expect(new Set(Object.values(lefts)).size, `each step's heading starts at the column's edge: ${JSON.stringify(lefts)}`).toBe(1)
-  await startOrder(page, uniqueLabel("fitcard"), { method: "card" })
-  await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
-  await fitsWindow(page, "5b-pay-card")
-})
-
-// WebKit rounds the home's spacers to whole pixels anew as the content below them changes
-const WEBKIT_ROUNDING_PX = 1
 // the tops of the home's headline and search
-const homeTops = (page: Page) => page.evaluate(() => ["h1", ".search-row"].map((s) => Math.round(document.querySelector(`.home ${s}`)!.getBoundingClientRect().top)))
+const homeTops = (page: Page) => page.evaluate(() => ["h1", ".search-field"].map((s) => Math.round(document.querySelector(`.home ${s}`)!.getBoundingClientRect().top)))
 
-test("the home keeps its headline and search still as each kind of answer comes, at a laptop's and a phone's size", async ({ page, browserName }) => {
-  const rounding = browserName === "webkit" ? WEBKIT_ROUNDING_PX : 0
+test("the home keeps its headline and search still as each kind of answer comes, at a laptop's and a phone's size", async ({ page, request }) => {
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
     await page.goto("/")
-    // the frame's height is measured as the page is first laid out, and the fonts change the headline's
     await page.evaluate(() => document.fonts.ready.then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))))
     const before = await homeTops(page)
-    // each search on the same page, whose fonts have loaded
-    for (const [name, answer] of [["bakery", ".entity"], ["harbour", ".note"], ["support", ".line"], ["abc", ".line"], [uniqueLabel("still"), ".price"]]) {
+    // each search on the same page, whose fonts have loaded: taken, taken without links, reserved, a rule, available, and no answer
+    const answers: [string, string, () => Promise<unknown>][] = [["bakery", ".chat", async () => undefined], ["harbour", ".row", async () => undefined],
+      ["support", ".line", async () => undefined], ["abc", ".line", async () => undefined], [uniqueLabel("still"), ".price", async () => undefined],
+      [uniqueLabel("down"), ".line.warn", () => control(request, "search", { chainDown: true })]]
+    for (const [name, answer, before_] of answers) {
+      await before_()
       await page.getByLabel("Name", { exact: true }).fill(name)
       await page.getByLabel("Name", { exact: true }).press("Enter")
       await expect(page.locator(`.answer ${answer}`).first()).toBeVisible()
-      const moved = (await homeTops(page)).map((at, i) => Math.abs(at - before[i]))
-      expect(Math.max(...moved), `${name} at ${size.width}x${size.height}: headline and search moved ${moved}`).toBeLessThanOrEqual(rounding)
-      expect(await page.evaluate(() => document.scrollingElement!.scrollHeight), `${name} at ${size.width}x${size.height}`).toBe(size.height)
+      expect(await homeTops(page), `${name} at ${size.width}x${size.height}: headline and search`).toEqual(before)
+      expect(await overflow(page), `${name} at ${size.width}x${size.height}`).toBe(0)
     }
+    await control(request, "search", { chainDown: false })
   }
 })
 
@@ -180,18 +174,16 @@ test("the registering page keeps its heading still on a phone from the commit to
   await page.setViewportSize(FIT_SIZES[1])
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   const label = uniqueLabel("regstill")
+  await useCode(page, code)
   await search(page, label)
   await toReview(page)
-  await openCode(page)
-  await checkoutCode(page).fill(code)
-  await expect(onStep(page).getByText("Paid with your code")).toBeVisible()
   // each frame's heading top and the words under the clock, while the heading is the registering page's
   await recordFrames(page, () => {
     const heading = document.querySelector("body > main h1")
     const note = document.querySelector(".countdown p")?.firstChild?.textContent ?? ""
     return heading?.textContent!.startsWith("Registering") ? [Math.round(heading.getBoundingClientRect().top), note] : null
   })
-  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await onStep(page).getByRole("button", { name: "Register with your code" }).click()
   await waitRegistered(page, label)
   const frames = await recordedFrames<[number, string]>(page)
   expect(new Set(frames.map(([, note]) => note)).size, "the page went through more than one stage").toBeGreaterThan(1)
@@ -206,35 +198,38 @@ for (const length of [15, 25, MAX_LABEL_LENGTH]) {
   test(`every purchase step fits both windows for a name of ${length} wide letters`, async ({ page, request }) => {
     const label = wideLabel(length)
     const shots = `long-${length}`
+    const frames: Record<string, Frame[]> = {}
     await search(page, label)
     await expect(page.getByRole("button", { name: "Register" })).toBeEnabled()
-    await fitsWindow(page, `${shots}-1-home`, false)
+    await fitsWindow(page, `${shots}-1-home`)
     await page.getByRole("button", { name: "Register" }).click()
     const step = onStep(page)
-    await step.getByLabel("Address").fill(contactLink("W1"))
-    await step.getByLabel("Channel").fill(channelLink("W2"))
+    await fillLinks(page, contactLink("W1"), channelLink("W2"))
     await previewsShown(page)
-    await fitsWindow(page, `${shots}-2-links`)
+    await fitsWindow(page, `${shots}-2-links`, frames)
     await step.getByRole("button", { name: "Continue" }).click()
     await expect(step.getByRole("heading", { name: CODE_HEADING })).toBeVisible()
-    await fitsWindow(page, `${shots}-3-code`)
+    await fitsWindow(page, `${shots}-3-code`, frames)
     await savedToReview(page)
-    await fitsWindow(page, `${shots}-4-review`)
-    await openCode(page)
-    await fitsWindow(page, `${shots}-4b-review-code`)
+    await fitsWindow(page, `${shots}-4-review`, frames)
     await payButton(page).click()
     await page.waitForURL(/\?order=/)
     await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-    await fitsWindow(page, `${shots}-5-pay-bitcoin`)
+    await fitsWindow(page, `${shots}-5-pay-bitcoin`, frames)
     await control(request, `settle/${new URL(page.url()).searchParams.get("order")}`)
     await expect(page.locator(".stage.active", { hasText: "Waiting" })).toBeVisible({ timeout: REGISTRATION_MS })
     await fitsWindow(page, `${shots}-6-registering`)
     await waitRegistered(page, label)
     await fitsWindow(page, `${shots}-7-registered`)
+    // a heading with the name in it may take more lines; the main button stays where every step's is
+    for (const [i, size] of FIT_SIZES.entries()) {
+      expect(new Set(Object.values(frames).map((f) => f[i].actions)).size, `the actions' row at ${size.width}x${size.height}: ${JSON.stringify(frames)}`).toBe(1)
+    }
+    oneFrame(frames)
   })
 }
 
-test("a part paid takes the lead's place with its notice, the payment keeping its heading still and fitting both windows", async ({ page, request }) => {
+test("a part paid takes the bookmark's line with its notice, the payment keeping its heading still and fitting both windows", async ({ page, request }) => {
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
     const { invoiceId } = await startOrder(page, uniqueLabel("part"), { method: "btc" })
@@ -247,26 +242,23 @@ test("a part paid takes the lead's place with its notice, the payment keeping it
     await expect(onStep(page).getByText(/^Part of the payment arrived: [\d.]+ of [\d.]+ BTC is seen\./)).toBeVisible()
     await expect(onStep(page).getByText("Bookmark this page to come back to this payment.")).toHaveCount(0)
   }
-  await shot(page, "names-g4-part-paid")
+  await shot(page, "names-u1-part-paid")
 })
 
-test("the review keeps its heading still as a code's verdict comes and goes, with both links, at both sizes", async ({ page }) => {
+test("Check your code keeps its heading and main button still as a verdict comes and goes, at both sizes", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
-    await toFullReview(page, uniqueLabel("verdict"))
-    const before = await headingAt(page)
-    await checkoutCode(page).fill("Q")
-    await expect(onStep(page).locator(".verdict.bad")).toBeVisible()
-    expect(await headingAt(page), `the heading with the verdict at ${size.width}x${size.height}`).toEqual(before)
-    expect(await overflow(page), `the page's overflow with the verdict at ${size.width}x${size.height}`).toBe(0)
-    await checkoutCode(page).fill("")
-    await expect(onStep(page).locator(".verdict.bad")).toHaveCount(0)
-    expect(await headingAt(page), `the heading once the verdict clears at ${size.width}x${size.height}`).toEqual(before)
+    await page.goto("/#/code")
+    const at = () => page.evaluate(() => ["body > main h1", "body > main .actions-row .btn"].map((s) => Math.round(document.querySelector(s)!.getBoundingClientRect().top)))
+    const before = await at()
+    for (const [typed, verdict] of [["Q", ".verdict.bad"], [code, ".verdict.ok"], ["SN-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA", ".verdict.bad"], ["", ".verdict:empty"]]) {
+      await codeField(page).fill(typed)
+      await expect(onStep(page).locator(verdict)).toHaveCount(1)
+      expect(await at(), `the heading and the button with "${typed}" at ${size.width}x${size.height}`).toEqual(before)
+      expect(await overflow(page), `the page's overflow with "${typed}" at ${size.width}x${size.height}`).toBe(0)
+    }
   }
-  // a field takes its colour at once for a reader who asked for less movement
-  expect(await checkoutCode(page).evaluate((input) => getComputedStyle(input.closest(".field")!).transitionDuration)).toBe("0s")
-  await checkoutCode(page).fill("Q")
-  await shot(page, "names-g4-review-verdict")
 })
 
 test("going offline and back moves neither the home's heading nor the review's, and scrolls neither, at both sizes", async ({ page, context }) => {
@@ -294,11 +286,11 @@ test("going offline and back moves neither the home's heading nor the review's, 
   }
   await context.setOffline(true)
   await expect(page.locator(".offline-note")).toBeVisible()
-  await shot(page, "names-g4-review-offline")
+  await shot(page, "names-u1-review-offline")
   await context.setOffline(false)
 })
 
-test("a line on another order waiting comes into the room the review keeps, the review fitting both windows", async ({ page }) => {
+test("a line on another order waiting comes into the review below its heading, the review fitting both windows", async ({ page }) => {
   await startOrder(page, uniqueLabel("waiting"), { method: "btc" })
   // the review heading's top in each frame of every page from here on
   await recordFrames(page, () => {
@@ -313,18 +305,17 @@ test("a line on another order waiting comes into the room the review keeps, the 
     const tops = [...new Set(await recordedFrames<number>(page))]
     expect(tops, `the review heading's tops at ${size.width}x${size.height}`).toHaveLength(1)
     expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
+    await fitsWindow(page, "4c-review-other-order")
     // its link stays whole on one line, a phone putting the line's words above it
     const link = onStep(page).getByRole("link", { name: "Open that order" })
     expect(await link.evaluate((a) => a.getClientRects().length), `the link's lines at ${size.width}x${size.height}`).toBe(1)
   }
-  await shot(page, "names-g5-review-other-order")
 })
 
-// An order of ours found for the name, a refused link and a code that pays are each their page's biggest change: the
-// page keeps its heading through it and fits both windows.
+// An order of ours found for the name, and a refused link, are each their page's biggest change: the page keeps its
+// heading through it and fits both windows.
 for (const length of [10, MAX_LABEL_LENGTH]) {
-  test(`an order of ours for a name of ${length} wide letters keeps the home still and fitting both windows`, async ({ page, browserName }) => {
-    const rounding = browserName === "webkit" ? WEBKIT_ROUNDING_PX : 0
+  test(`an order of ours for a name of ${length} wide letters keeps the home still and fitting both windows`, async ({ page }) => {
     const label = wideLabel(length)
     await startOrder(page, label, { method: "btc" })
     for (const size of FIT_SIZES) {
@@ -336,15 +327,14 @@ for (const length of [10, MAX_LABEL_LENGTH]) {
       await page.getByLabel("Name", { exact: true }).press("Enter")
       await expect(page.locator(".answer").getByRole("link", { name: "Open that order" })).toBeVisible()
       await expect(page.locator(".answer").getByText("You already have an order for this name")).toBeVisible()
-      const moved = (await homeTops(page)).map((at, i) => Math.abs(at - before[i]))
-      expect(Math.max(...moved), `headline and search moved ${moved} at ${size.width}x${size.height}`).toBeLessThanOrEqual(rounding)
+      expect(await homeTops(page), `headline and search at ${size.width}x${size.height}`).toEqual(before)
       expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
     }
-    await shot(page, `names-g5-home-own-order-${length}`)
+    await shot(page, `names-u1-home-own-order-${length}`)
   })
 }
 
-test(`Edit links and Restore sit centred as the steps do, and Edit links keeps still and fits both windows as it saves, for a name of ${MAX_LABEL_LENGTH} wide letters`, async ({ page, request }) => {
+test(`Edit links keeps still and fits both windows as it saves, for a name of ${MAX_LABEL_LENGTH} wide letters, and Check your code fits them refusing a code`, async ({ page, request }) => {
   const label = wideLabel(MAX_LABEL_LENGTH)
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await control(request, `settle/${invoiceId}`)
@@ -359,9 +349,12 @@ test(`Edit links and Restore sit centred as the steps do, and Edit links keeps s
     await expect(save).toBeEnabled()
     const before = await headingAt(page)
     // each frame's overflow and heading top, from the change through the save to its answer
-    await recordFrames(page, () => [document.scrollingElement!.scrollHeight - innerHeight, Math.round(document.querySelector("main h1")!.getBoundingClientRect().top)])
-    await page.getByRole("textbox", { name: "Channel" }).fill(channelLink(`E${i}`))
-    await page.getByRole("textbox", { name: "Channel" }).blur()
+    await recordFrames(page, () => [document.scrollingElement!.scrollHeight - innerHeight - Math.round(document.querySelector("body > footer")!.getBoundingClientRect().height),
+      Math.round(document.querySelector("main h1")!.getBoundingClientRect().top)])
+    const field = page.getByRole("textbox", { name: i ? "Channel" : "Link", exact: true })
+    if (i) await page.getByRole("button", { name: "Add a channel link" }).click()
+    await field.fill(i ? channelLink(`E${i}`) : contactLink(`E${i}`))
+    await field.blur()
     await save.click()
     await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
     expect(await headingAt(page), `the heading once saved at ${size.width}x${size.height}`).toEqual(before)
@@ -369,21 +362,17 @@ test(`Edit links and Restore sit centred as the steps do, and Edit links keeps s
     expect(Math.max(...frames.map(([over]) => over)), `each frame's overflow at ${size.width}x${size.height}`).toBe(0)
     expect([...new Set(frames.map(([, top]) => top))], `the heading's tops at ${size.width}x${size.height}`).toEqual([before.y])
   }
-  await shot(page, "names-g7-edit-links-saved")
-  await page.goto("/#/restore")
-  await fitsWindow(page, "9-restore")
-  await page.getByLabel("Name code").fill("SN-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA")
-  await page.getByRole("button", { name: "Restore" }).click()
-  await expect(page.getByText("This code is not valid")).toBeVisible()
-  for (const size of FIT_SIZES) {
-    await page.setViewportSize(size)
-    expect(await overflow(page), `Restore refused at ${size.width}x${size.height}`).toBe(0)
-  }
+  await shot(page, "names-u1-edit-links-saved")
+  await page.goto("/#/code")
+  await fitsWindow(page, "9-check-code")
+  await codeField(page).fill("SN-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA")
+  await expect(onStep(page).getByText("This code is not valid")).toBeVisible()
+  await fitsWindow(page, "9b-check-code-refused")
 })
 
 test(`a name of ${MAX_LABEL_LENGTH} wide letters in a sentence runs on from the words before it, at their size, at both sizes`, async ({ page }) => {
   await search(page, wideLabel(MAX_LABEL_LENGTH))
-  await page.getByRole("button", { name: "Register" }).click()
+  await toCodeStep(page)
   const lead = onStep(page).locator(".lead")
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
@@ -397,59 +386,50 @@ test(`a name of ${MAX_LABEL_LENGTH} wide letters in a sentence runs on from the 
   }
 })
 
-// how a refusal under a field is drawn: its weight, its line, whether an icon leads it, and how far under the field it is
-async function refusalLook(refusal: Locator, field: Locator) {
-  await expect(refusal).toBeVisible()
-  const [drawn, box] = [(await refusal.boundingBox())!, (await field.boundingBox())!]
-  const style = await refusal.evaluate((node) => ({ weight: getComputedStyle(node).fontWeight, line: getComputedStyle(node).lineHeight, icon: node.querySelector("svg") !== null }))
-  return { ...style, under: Math.round(drawn.y - box.y - box.height) }
-}
-
-test("a refused link, a refused code and a refused name code are drawn alike under their fields, at both sizes", async ({ page }) => {
+test("a refused link reads as a line under its field, and a refused code in a box under its own, at both sizes", async ({ page }) => {
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
     await search(page, uniqueLabel("refusal"))
     const step = onStep(page)
     await step.getByRole("button", { name: "Register" }).click()
-    const channel = step.getByRole("textbox", { name: "Channel" })
-    await channel.fill(contactLink("RF"))
-    const link = await refusalLook(step.locator(".field-error"), step.locator(".link-field .field", { has: page.getByRole("textbox", { name: "Channel" }) }))
-    await channel.fill("")
-    await step.getByRole("button", { name: "Skip for now" }).click()
-    await savedToReview(page)
-    await openCode(page)
-    await checkoutCode(page).fill("Q")
-    const code = await refusalLook(step.locator(".verdict.bad"), step.locator(".code-input"))
-    await page.goto("/#/restore")
-    await page.getByLabel("Name code").fill("SN-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA")
-    await page.getByRole("button", { name: "Restore" }).click()
-    const restore = await refusalLook(onStep(page).locator(".verdict.bad"), onStep(page).locator(".code-input"))
-    expect(code, `the refused code beside the refused link at ${size.width}x${size.height}`).toEqual(link)
-    expect(restore, `the refused name code beside the refused link at ${size.width}x${size.height}`).toEqual(link)
+    const link = step.getByRole("textbox", { name: "Link", exact: true })
+    await link.fill("https://example.com/x#nothing")
+    const refusal = step.locator(".field-error")
+    await expect(refusal).toHaveText("Paste a SimpleX contact address or channel short link.")
+    const [drawn, box] = [(await refusal.boundingBox())!, (await step.locator(".link-field .field").boundingBox())!]
+    expect({ under: Math.round(drawn.y - box.y - box.height), icon: await refusal.locator("svg").count() }, `the refused link at ${size.width}x${size.height}`).toEqual({ under: 8, icon: 1 })
+    await page.goto("/#/code")
+    await codeField(page).fill("SN-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA")
+    const verdict = onStep(page).locator(".verdict.bad")
+    await expect(verdict).toHaveText(/This code is not valid/)
+    expect(await verdict.evaluate((v) => getComputedStyle(v).borderTopStyle), `the refused code's box at ${size.width}x${size.height}`).toBe("solid")
   }
 })
 
-// The payment's line of name, term and amount: how many lines it takes, and how many of its separator dots start a line,
-// drawn at the line's left edge.
+// The payment's line of name, term and amount: how many separator dots it has, and how many start a line, drawn on
+// another line than the character before them.
 const separatorsOf = (line: Locator) => line.evaluate((node) => {
-  const left = node.getBoundingClientRect().left
-  const at = (text: Node, i: number) => { const range = document.createRange(); range.setStart(text, i); range.setEnd(text, i + 1); return range.getBoundingClientRect().left }
-  const dots: boolean[] = []
+  const top = (text: Node, i: number) => { const range = document.createRange(); range.setStart(text, i); range.setEnd(text, i + 1); return Math.round(range.getBoundingClientRect().top) }
+  let dots = 0
+  let starting = 0
   const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
   for (let text = walker.nextNode(); text; text = walker.nextNode()) {
-    for (let i = text.textContent!.indexOf("\u00b7"); i >= 0; i = text.textContent!.indexOf("\u00b7", i + 1)) dots.push(at(text, i) - left < 1)
+    for (let i = text.textContent!.indexOf("\u00b7"); i >= 0; i = text.textContent!.indexOf("\u00b7", i + 1)) {
+      dots += 1
+      if (i === 0 || top(text, i - 1) !== top(text, i)) starting += 1
+    }
   }
-  return { lines: Math.round(node.getBoundingClientRect().height / parseFloat(getComputedStyle(node).lineHeight)), dots: dots.length, starting: dots.filter(Boolean).length }
+  return { dots, starting }
 })
 
 test("the payment's line keeps each separator dot at the end of a line, never starting one, for long names on a phone", async ({ page }) => {
   await page.setViewportSize(FIT_SIZES[1])
   for (const length of [25, MAX_LABEL_LENGTH]) {
     await startOrder(page, wideLabel(length), { method: "btc" })
-    const line = onStep(page).locator(".lead + .note")
+    const line = onStep(page).locator(".screen-head .lead")
     await expect(line).toBeVisible()
-    const { lines, dots, starting } = await separatorsOf(line)
-    expect({ wraps: lines > 1, dots }, `the line of a name of ${length} letters`).toEqual({ wraps: true, dots: 2 })
+    const { dots, starting } = await separatorsOf(line)
+    expect(dots, `the dots of a name of ${length} letters`).toBe(2)
     expect(starting, `dots starting a line, for a name of ${length} letters`).toBe(0)
   }
 })
@@ -461,14 +441,13 @@ test("a link field focused shows its link alone, from its start, across the fiel
   await search(page, uniqueLabel("focuslink"))
   const step = onStep(page)
   await step.getByRole("button", { name: "Register" }).click()
-  await step.getByRole("textbox", { name: "Contact address" }).fill(contactLink("FL"))
-  await step.getByRole("textbox", { name: "Channel" }).fill(channelLink("FL"))
+  await fillLinks(page, contactLink("FL"), channelLink("FL"))
   await previewsShown(page)
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
-    for (const name of ["Contact address", "Channel"]) {
-      const input = step.getByRole("textbox", { name })
-      const field = step.locator(".link-field .field", { has: page.getByRole("textbox", { name }) })
+    for (const name of ["Link", "Channel"]) {
+      const input = step.getByRole("textbox", { name, exact: true })
+      const field = step.locator(".link-field .field", { has: page.getByRole("textbox", { name, exact: true }) })
       // a person's click on the profile the field shows
       await field.locator(".entity").click()
       await expect(input).toBeFocused()
@@ -489,33 +468,25 @@ for (const length of [25, MAX_LABEL_LENGTH]) {
       await search(page, wideLabel(length))
       const step = onStep(page)
       await step.getByRole("button", { name: "Register" }).click()
-      await step.getByRole("textbox", { name: "Contact address" }).fill(contactLink("V3"))
-      await step.getByRole("textbox", { name: "Contact address" }).blur()
+      await step.getByRole("textbox", { name: "Link", exact: true }).fill(contactLink("V3"))
+      await step.getByRole("textbox", { name: "Link", exact: true }).blur()
       await expect(step.locator(".link-field .entity:not(.skeleton)")).toBeVisible()
+      await step.getByRole("button", { name: "Add a channel link" }).click()
       const before = await headingAt(page)
       await step.getByRole("textbox", { name: "Channel" }).fill(contactLink("V3"))
-      await expect(step.locator(".field-error")).toHaveText("This is a contact address link: paste it in the Contact address field.")
+      await expect(step.locator(".field-error")).toHaveText("This is a contact address link: paste it in the Link field.")
       expect(await headingAt(page), `the heading at ${size.width}x${size.height}`).toEqual(before)
       expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
+      await fitsWindow(page, `links-refused-${length}`)
     }
-    await shot(page, `names-g5-links-refused-${length}`)
   })
 
-  test(`a code that pays keeps the review still and fitting both windows, its verdict only heard, for a name of ${length} wide letters`, async ({ page, request }) => {
+  test(`a code that pays shows the review at $0 fitting both windows, for a name of ${length} wide letters`, async ({ page, request }) => {
     const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-    for (const size of FIT_SIZES) {
-      await page.setViewportSize(size)
-      await toFullReview(page, wideLabel(length))
-      const before = await headingAt(page)
-      await checkoutCode(page).fill(code)
-      await expect(onStep(page).getByText("Paid with your code")).toBeVisible()
-      expect(await headingAt(page), `the heading at ${size.width}x${size.height}`).toEqual(before)
-      expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
-    }
-    // the card says what the verdict says, so the verdict is left for a screen reader to announce
-    const verdict = onStep(page).locator(".verdict.ok")
-    await expect(verdict).toHaveText(/^Covers names of 6 or more letters/)
-    expect(await verdict.evaluate((v) => v.getBoundingClientRect().height), "the verdict's height").toBeLessThanOrEqual(1)
-    await shot(page, `names-g5-review-code-paid-${length}`)
+    await useCode(page, code)
+    await toFullReview(page, wideLabel(length))
+    await expect(onStep(page).locator(".trow.total")).toHaveText("Total$0")
+    await expect(onStep(page).getByRole("radio")).toHaveCount(0)
+    await fitsWindow(page, `review-code-paid-${length}`)
   })
 }

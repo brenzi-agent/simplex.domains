@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto"
 import { durationFor, registerIntentDigest, type Registration } from "../src/crypto/registration.ts"
 import { checksumAddress, fromHex, hex, signDigest, walletFromEntropy, type Wallet } from "../src/crypto/wallet.ts"
 import {
-  CHECKOUT_KEY, control, MOCK, onStep, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, search, searchName, shot, startOrder, test, toCodeStep, uniqueLabel,
+  CHECKOUT_KEY, codeField, control, MOCK, onStep, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, search, searchName, shot, startOrder, test, toCodeStep, uniqueLabel,
 } from "./helpers.ts"
 
 const APP_SIGNS = "Waiting for SimpleX to sign the registration with your app's wallet."
@@ -17,7 +17,7 @@ async function orderFromApp(page: Page, app: Wallet, label: string, shots = fals
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeVisible()
   expect(new URL(page.url()).hash).toBe("#/checkout")
   await expect(page.getByText("I have a code")).toHaveCount(0)
-  await expect(page.locator(".link-lines, .code-display")).toHaveCount(0)
+  await expect(page.locator(".card.order .chat, .code-display")).toHaveCount(0)
   if (shots) await shot(page, "L2-checkout-from-app")
   await page.getByRole("button", { name: "Continue" }).click()
   await page.waitForURL(/\?order=/)
@@ -64,7 +64,6 @@ test("an order opened from the app registers to the app's wallet once the app si
   await appSigns(page, request, app, label, invoiceId)
   await expect(page.getByRole("heading", { name: `${label}.simplex is yours` })).toBeVisible({ timeout: REGISTRATION_MS })
   await expect(page.getByRole("button", { name: "Back to SimpleX" })).toBeVisible()
-  await expect(page.locator("body > main").getByRole("link", { name: "Your names" })).toBeVisible()
   await expect(page.getByRole("link", { name: "Edit links" }), "the app sets the links of a name in its wallet").toHaveCount(0)
   await shot(page, "L3-registered-to-app")
   expect((await searchName(request, label)).owner).toBe(checksumAddress(app.address))
@@ -194,12 +193,9 @@ test("offline, the footer scrolls clear of the note, and its last link takes a c
       // how far each of the footer's items reaches past the note's top, scrolled to the end once the window has its new
       // size (Firefox takes it after Playwright's call returns), the note has its own and the frame has caught up
       const overlaps = () => page.evaluate(({ width, height: windowHeight }) => {
-        const height = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().height
-        const frame = Math.ceil(height("body > header") + height("body > footer") + height("body > .offline"))
-        // the home fills the window, so its parts add up to the window's height once its size has reached the page's layout
-        const settled = innerWidth === width && innerHeight === windowHeight
-          && Math.abs(frame + height("body > main") - windowHeight) < 1
-          && getComputedStyle(document.documentElement).getPropertyValue("--frame-h") === `${frame}px`
+        const bottom = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().bottom + scrollY
+        // the window holds the page down to its invest note once its size has reached the page's layout
+        const settled = innerWidth === width && innerHeight === windowHeight && Math.abs(bottom("body > .invest") - windowHeight) < 1
         scrollTo(0, document.documentElement.scrollHeight)
         const noteTop = document.querySelector(".offline-note")!.getBoundingClientRect().top
         return { settled, overlaps: [...document.querySelectorAll("body > footer > *")].map((n) => Math.max(0, Math.ceil(n.getBoundingClientRect().bottom - noteTop))) }
@@ -220,29 +216,30 @@ test("offline, the footer scrolls clear of the note, and its last link takes a c
 
 const LOOKUP_RTT_MS = 500
 
-test("Restore keeps its place while it looks for the code's orders, saying so on the button", async ({ page }) => {
+test("Add to Your names keeps its place while it looks for the code's orders, saying so on the button", async ({ page }) => {
   await search(page, uniqueLabel("restbusy"))
   await toCodeStep(page)
   const ownerCode = await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).ownerCode as string, CHECKOUT_KEY)
-  await page.goto("/#/restore")
-  await page.getByLabel("Name code").fill(ownerCode)
-  const restore = page.getByRole("button", { name: "Restore" })
-  const top = (await restore.boundingBox())!.y
+  await page.goto("/#/code")
+  await codeField(page).fill(ownerCode)
+  const add = page.getByRole("button", { name: "Add to Your names" })
+  const top = (await add.boundingBox())!.y
   // the lookup takes a moment, as one over a network does, so frames are drawn while it is busy
   await page.route("**/api/registration/find", async (route) => {
     await new Promise((answered) => setTimeout(answered, LOOKUP_RTT_MS))
     await route.continue()
   })
-  // the button's top in each frame it says it is busy
+  // the button's top and words in each frame it says it is busy
   await recordFrames(page, () => {
-    const button = document.querySelector<HTMLElement>("main .btn.block")
-    return button?.getAttribute("aria-busy") === "true" ? Math.round(button.getBoundingClientRect().top) : null
+    const button = document.querySelector<HTMLElement>("main .actions-row .btn")
+    return button?.getAttribute("aria-busy") === "true" ? [Math.round(button.getBoundingClientRect().top), button.textContent] : null
   })
-  await restore.click()
+  await add.click()
   await expect(page.getByText("No order was found for this code")).toBeVisible()
-  const busy = await recordedFrames<number>(page)
+  const busy = await recordedFrames<[number, string]>(page)
   expect(busy.length, "frames drawn while it looked").toBeGreaterThan(0)
-  expect([...new Set(busy)], "the button's top while it looked").toEqual([Math.round(top)])
+  expect([...new Set(busy.map(([at]) => at))], "the button's top while it looked").toEqual([Math.round(top)])
+  expect([...new Set(busy.map(([, words]) => words))]).toEqual(["Finding the code's orders…"])
 })
 
 test("on a phone, Forget's question glides into view rather than jumping there", async ({ page }) => {

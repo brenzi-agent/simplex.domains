@@ -7,15 +7,15 @@ The page talks only to the names service under `/api`. In development that servi
 ## Layout
 
 - `src/crypto/`: owner and prepaid codes, the wallet, the commitment and the signed messages, the sealed order.
-- `src/flow.ts`: building an order, revealing it, another name or a code after `taken`, restore, link edits.
-- `src/api.ts`, `src/store.ts`, `src/session.ts`: the service's API, what this browser keeps, and the tab's checkout.
+- `src/flow.ts`: building an order, revealing it, another name or a code after `taken`, finding a name code's order, link edits.
+- `src/api.ts`, `src/store.ts`, `src/session.ts`: the service's API, what this browser keeps, and the tab's checkout and active prepaid code.
 - `src/screens/`: each view's state and the reducer that moves it, with no clock, DOM, storage or network.
-- `src/views/`: `shell.ts`, the frame between `index.html`'s header and footer (`draw` puts a screen in, `kept` keeps a node a reader types into across redraws, `screen` and `outcome` build the two kinds of screen); and the five views: `search.ts` (the home, with the landing's invest dialog), `checkout.ts` (the Links, name code and Check your order steps), `order.ts` (payment, registration and every ending), `names.ts` (Your names, restore and edit links) and `codes.ts` (the prepaid code field that checkout and Your names share). `links.ts` holds the link fields that the Links step and Edit links share.
+- `src/views/`: `shell.ts`, the frame between `index.html`'s header and its invest note and footer (`draw` puts a screen in, `kept` keeps a node a reader types into across redraws, `screen` and `outcome` build the two kinds of screen, `asStep` gives a screen the steps' frame); `chrome.ts`, the phone's menu and the header's active code; and the views: `search.ts` (the home), `checkout.ts` (the Links, name code and Check your order steps), `order.ts` (payment, registration and every ending) and `names.ts` (Your names, Check your code and Edit links). `chats.ts` draws the chats a name opens, as the app's default pictures, and their popup after the app's connection alert; `links.ts` holds the link field that the Links step and Edit links share; `codes.ts` the code field of Check your code.
 - `src/stripe.ts`: Stripe's Payment Element, mounted when the page carries a publishable key.
 - `dev/`: the local chain deployment, the mock service and `start.sh`.
 - `test/`: unit tests (vitest). `e2e/`: browser tests (Playwright) against the dev backend.
 
-The purchase steps (search, Links, name code, Check your order, payment) follow one another; an order opened from the app skips Links and the name code. Every screen, a purchase step as any other, such as Your names, an order's outcome, restore or edit links, replaces the whole page between the header and footer and rises into place (220 ms); the old screen goes at once, so two never show together. What a step adds, such as a search's answer, a notice or a link's profile, fades in (180 ms); a change of theme eases its colours (200 ms). A reader who asks for reduced motion gets none of it.
+The window holds the header, the screen and the invest note; the footer is below the fold, as on the badges store. The purchase steps (search, Links, name code, Check your order, payment) follow one another; an order opened from the app skips Links and the name code. Each step, and each screen like one (an order's outcome, Check your code, Edit links), is a frame of one height, 572 px on a laptop and 616 px on a phone, so Back, the heading and the main button stand at the same place on every step; the content runs down from under the heading, so nothing above a change moves. The home keeps its answer's room from the start, so its headline and field never move. A prepaid code entered in Check your code pays for the names the tab finds until it is taken off in the header; a name code entered there finds its order and adds it to Your names. Every screen replaces the whole page between the header and the invest note and rises into place (220 ms); the old screen goes at once, so two never show together. What a step adds, such as a search's answer, a notice or a link's profile, fades in (180 ms); a change of theme eases its colours (200 ms). A reader who asks for reduced motion gets none of it.
 
 ## Run everything with Docker
 
@@ -60,7 +60,7 @@ ENS_CONTRACTS_DIR=<ens-contracts> ANVIL=<anvil> MIN_COMMITMENT_AGE=10 dev/start.
 npm run dev
 ```
 
-`start.sh` starts anvil (one block a second), deploys the contracts with `dev/deploy.ts`, registers `bakery` (with links) and `harbour` (without), reserves `support`, `simplex` and `official`, then starts the mock on 127.0.0.1:8099. It prints three prepaid codes. Vite serves the page on http://127.0.0.1:5173 and proxies `/api` and `/control` to the mock.
+`start.sh` starts anvil (one block a second), deploys the contracts with `dev/deploy.ts`, registers `bakery` (with links) and `harbour` (without), reserves `support`, `simplex` and `official`, then starts the mock on 127.0.0.1:8099. It prints three prepaid codes. A link's profile, in a name's answer and a link's preview, is the app's: its kind (contact, channel, business or bot), names, picture and a channel's subscribers; the mock makes a contact link whose fragment starts with `Biz` a business, `Bot` a bot, and `Pic` one with a picture. Vite serves the page on http://127.0.0.1:5173 and proxies `/api` and `/control` to the mock.
 
 `MIN_COMMITMENT_AGE` is the seconds a registration waits after its commit; the contracts' deploy scripts use 60.
 

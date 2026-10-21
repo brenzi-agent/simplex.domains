@@ -33,18 +33,15 @@
   --body: "Manrope", "Manrope fallback", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", monospace;
 
-  --fs-h1: clamp(28px, 2.8vw, 36px);
-  --h1-line: 1.05;
-  --fs-h2: clamp(20px, 2.3vw, 24px);
-  /* whole pixels at both clamps, a phone's 16 and a laptop's 18, and a fraction between them, 1072 to 1214 px wide */
-  --fs-lead: clamp(16px, 1.4vw + 1px, 18px);
-  --fs-body: 18px;
-  --fs-small: clamp(14px, 1.5vw, 16px);
-  --fs-label: 13px;
-  --frame-pad: clamp(18px, 3.5vw, 44px);
-  --column: 640px;
-  --control-pad: 16px;
-  --lead-pull: 4px;
+  --fs-h1: 40px;
+  --fs-h2: 22px;
+  --fs-lead: 17px;
+  --fs-body: 16px;
+  --fs-small: 14px;
+  --fs-label: 12px;
+  --column: 600px;
+  --control-h: 44px;
+  --field-h: 48px;
 
   --fast: 150ms;
   --ease: cubic-bezier(.22, .61, .36, 1);
@@ -63,20 +60,24 @@
   --heading: linear-gradient(to bottom, var(--hd-a) 0%, var(--hd-b) 33%, var(--hd-c) 100%);
   --ink: #0D1B3A;
   --ink-soft: rgba(13, 27, 58, .651);
+  --faint: rgba(13, 27, 58, .45);
   --primary: #0053D0;
   --accent: #0197FF;
   --toggle: #001796;
   --sym-back: #023789;
-  --line-strong: rgba(0, 83, 208, .4);
+  --line-strong: rgba(0, 83, 208, .32);
   --chip: rgba(0, 83, 208, .06);
   --chip-line: rgba(0, 83, 208, .14);
   --primary-ink: #ffffff;
   --surface: #ffffff;
   --surface-line: rgba(0, 83, 208, .14);
-  --surface-shadow: 0 30px 70px rgba(6, 24, 70, .22);
   --backdrop: rgba(6, 20, 56, .38);
   --disabled: rgba(13, 27, 58, .07);
   --on-disabled: rgba(13, 27, 58, .50);
+  /* the app's secondaryVariant, the tint of its default chat pictures */
+  --avatar: #C9D1DE;
+  --menu-bg: #FFFFFF;
+  --menu-ink: #001796;
 
   --ok-fg: #1c7c3f;     --ok-bg: #e8f5ec;     --ok-line: #bfe3cc;
   --warn-fg: #8a6100;   --warn-bg: #fff8e6;   --warn-line: #f0dcae;
@@ -88,20 +89,23 @@ html.dark {
   --hd-a: #70F0F9; --hd-b: #70F0F9; --hd-c: #50D8F1;
   --ink: #EAF2FF;
   --ink-soft: rgba(234, 242, 255, .735);
+  --faint: rgba(234, 242, 255, .5);
   --primary: #70F0F9;
   --accent: #02C0FF;
   --toggle: #ffffff;
   --sym-back: #ffffff;
-  --line-strong: rgba(112, 240, 249, .42);
+  --line-strong: rgba(112, 240, 249, .4);
   --chip: rgba(112, 240, 249, .08);
   --chip-line: rgba(112, 240, 249, .2);
   --primary-ink: #041038;
   --surface: #0A1C44;
   --surface-line: rgba(112, 240, 249, .18);
-  --surface-shadow: 0 30px 70px rgba(0, 0, 0, .5);
-  --backdrop: rgba(2, 8, 26, .58);
+  --backdrop: rgba(2, 8, 26, .6);
   --disabled: rgba(255, 255, 255, .13);
   --on-disabled: rgba(255, 255, 255, .62);
+  --avatar: #3E4E72;
+  --menu-bg: #0A0F2B;
+  --menu-ink: #FFFFFF;
 
   --ok-fg: #7FE3A6;     --ok-bg: rgba(127, 227, 166, .12);     --ok-line: rgba(127, 227, 166, .28);
   --warn-fg: #F5C86A;   --warn-bg: rgba(245, 200, 106, .12);   --warn-line: rgba(245, 200, 106, .28);
@@ -110,81 +114,103 @@ html.dark {
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
-/* a code's verdict while the code pays says what the Paid with your code card says, so it is only heard */
-.sr-only, .review:has(.covered) .verdict { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 html { background: var(--page-color); }
-body { position: relative; isolation: isolate; min-height: 100dvh; display: flex; flex-direction: column; font: 500 var(--fs-body)/1.5 var(--body); color: var(--ink);
+/* the window holds the header, the page and the invest note; the footer is below the fold, as the badges store's */
+body { --footer-h: calc(78px + var(--note-room)); position: relative; isolation: isolate; min-height: calc(100dvh + var(--footer-h)); display: grid; grid-template-rows: auto 1fr auto var(--footer-h);
+  font: 500 var(--fs-body)/1.5 var(--body); color: var(--ink);
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; text-wrap: pretty; }
 /* the two themes' grounds, one over the other, so a switch of theme fades between them */
 body::before, body::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: var(--page-light); }
 body::after { background: var(--page-dark); opacity: 0; transition: opacity 200ms; }
 html.dark body::after { opacity: 1; }
-a { color: var(--primary); text-decoration: none; font-weight: 600; }
-a:hover { text-decoration: underline; text-underline-offset: 3px; }
+a, .text-link { color: var(--primary); text-decoration: none; font-weight: 600; }
+a:hover, .text-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 button { font: inherit; color: inherit; }
+.text-link { background: none; border: 0; cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
 svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .mono { font-family: var(--mono); }
 .nowrap { white-space: nowrap; }
-h1 { font: 700 var(--fs-h1)/var(--h1-line) var(--display); letter-spacing: -.025em; background: var(--heading); -webkit-background-clip: text;
+.soft { color: var(--ink-soft); }
+h1 { font: 700 var(--fs-h1)/1.1 var(--display); letter-spacing: -.02em; background: var(--heading); -webkit-background-clip: text;
   background-clip: text; -webkit-text-fill-color: transparent; color: transparent; padding-bottom: .04em; text-wrap: balance; }
-h2 { font: 700 var(--fs-h2)/1.15 var(--display); letter-spacing: -.015em; }
-.lead { font-size: var(--fs-lead); font-weight: 500; color: var(--ink-soft); }
-.note { font-size: var(--fs-small); font-weight: 500; color: var(--ink-soft); }
+h2 { font: 700 var(--fs-h2)/1.2 var(--display); letter-spacing: -.01em; }
+.lead { font-size: var(--fs-lead); color: var(--ink-soft); }
+.note { font-size: var(--fs-small); color: var(--ink-soft); }
 .label { font-size: var(--fs-label); line-height: 1.4; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); }
 
-/* the landing's header (landing:117-129): not sticky, no bar */
-.topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: var(--frame-pad); }
+/* the header, as the direction 1 mockup's: the logo, and the toolbar's text links and theme icon */
+.topbar { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 96px; padding-inline: clamp(16px, 3.4vw, 44px); }
 .brand { display: inline-flex; }
-.brand img { height: clamp(36px, 4.4vw, 52px); width: auto; display: block; }
-.brand .logo-dark, html.dark .brand .logo-light { display: none; }
+.brand img { width: 168px; height: auto; display: block; }
+.brand .logo-dark, html.dark .brand .logo-light, .brand svg.sym, .menu-button { display: none; }
 html.dark .brand .logo-dark { display: block; }
-.top-links { display: flex; align-items: center; gap: clamp(14px, 2vw, 24px); font-size: var(--fs-small); }
-.theme-switch { display: inline-flex; background: none; border: 0; cursor: pointer; padding: 6px; margin: -6px; }
+.top-links { display: flex; align-items: center; gap: 22px; font-size: 15px; }
+.top-links a { white-space: nowrap; }
+.theme-switch { display: inline-flex; align-items: center; gap: 12px; background: none; border: 0; cursor: pointer; padding: 6px; margin: -6px; color: var(--menu-ink); }
 .theme-switch svg { width: 22px; height: auto; display: block; overflow: visible; }
 .theme-switch svg path { fill: var(--toggle); }
-.theme-switch .sun, html.dark .theme-switch .moon { display: none; }
-html.dark .theme-switch .sun { display: block; }
-body > main { flex: 1 0 auto; }
-
-/* the landing's footer (landing:167-194, 197-200) */
-.footer { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: var(--frame-pad); text-align: center; }
-.pay { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px; }
-.pay-note { font-size: var(--fs-small); font-weight: 500; color: var(--ink-soft); }
-.pay-row { display: flex; flex-direction: row-reverse; flex-wrap: wrap; justify-content: center; gap: clamp(10px, 1.6vw, 16px); }
-.pay-btn { appearance: none; display: inline-flex; align-items: center; gap: 7px; font: 500 var(--fs-small) var(--body); padding: 0; border: 0;
-  background: none; color: var(--ink-soft); cursor: default; }
-.pay-btn svg { width: 21px; height: 21px; display: block; flex: none; }
+.theme-switch .sun, html.dark .theme-switch .moon, .to-light, html.dark .to-dark { display: none; }
+html.dark .theme-switch .sun, html.dark .to-light { display: block; }
 .sym .sym-back { fill: var(--sym-back); }
-.footer-links { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 14px; font-size: var(--fs-small); color: var(--ink-soft); }
-.footer-links a { font-weight: 500; }
-.footer-links .sep { color: var(--line-strong); font-weight: 400; }
+.code-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 4px 6px 4px 14px; border: 1px solid var(--surface-line); border-radius: 999px;
+  background: var(--surface); font-size: var(--fs-small); font-weight: 600; white-space: nowrap; }
+.code-chip .unlink { width: 26px; height: 26px; }
+body > main { display: flex; flex-direction: column; min-width: 0; }
+/* a phone's header, as simplex.chat's: the symbol, and a menu button that opens the menu over the page */
+@media (max-width: 520px) {
+  .topbar { height: 54px; padding: 0 16px; }
+  .brand img, .top-links { display: none !important; }
+  .brand svg.sym { display: block; width: 32px; height: 32px; }
+  .menu-button { display: grid; place-items: center; width: 36px; height: 36px; margin-right: -8px; background: none; border: 0; border-radius: 8px; cursor: pointer; }
+  .menu-button svg { width: 20px; height: auto; fill: var(--toggle); }
+  .menu-button .cross, .menu-button[aria-expanded="true"] .burger { display: none; }
+  .menu-button[aria-expanded="true"] .cross { display: block; width: 16px; }
+  .menu { position: absolute; top: 54px; left: 0; right: 0; z-index: 30; min-height: calc(100dvh - 54px); display: grid; align-content: start; padding: 8px 0;
+    background: var(--menu-bg); }
+  .menu > :is(a, button) { font: 500 26px/1.2 var(--body); color: var(--menu-ink); padding: 14px 32px; text-align: left; background: none; border: 0; cursor: pointer; }
+  .menu > .small { font-size: 18px; padding-block: 8px; }
+  .menu hr { border: 0; border-top: 1px solid var(--surface-line); margin: 6px 32px; }
+  .menu > .theme-line { margin: 0; font-size: 18px; padding-block: 14px; }
+  .theme-line::before { content: ""; flex: none; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset -7px -3px 0 0 var(--toggle); rotate: -20deg; }
+  html:has(.menu:not([hidden])) { overflow: hidden; }
+}
 
-/* flat pill buttons (landing:133-141), a field's height */
-.btn { --spin: var(--primary-ink); position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: var(--control-pad) 32px;
-  border-radius: 999px; border: 1px solid transparent; background: var(--primary); color: var(--primary-ink); font: 600 18px/22px var(--body);
-  letter-spacing: .01em; white-space: nowrap; cursor: pointer; }
-.btn:not([disabled]):hover { text-decoration: none; }
-.btn.block { display: flex; width: 100%; }
+/* the invest note under the page, and the footer's links after a rule (badges styles.css .invest, footer) */
+.invest { padding: 16px 16px 20px; text-align: center; }
+.invest .half { display: inline-block; }
+.invest-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 4px; white-space: nowrap; }
+/* the wordmark, a touch taller than the text and lifted so its baseline sits with the text's */
+.invest-link .wefunder { height: 22px; width: auto; display: block; transform: translateY(-2px); }
+.footer { width: min(100% - 32px, var(--column) + 40px); margin-inline: auto; padding-bottom: var(--note-room); border-top: 1px solid var(--surface-line); text-align: center; }
+.footer a { display: inline-block; padding: 22px 12px 34px; font-size: var(--fs-small); line-height: 1.5; }
+
+/* the primary button, a field's companion at a control's height, its width its label's */
+.btn { --spin: var(--primary-ink); position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: var(--control-h);
+  min-width: 200px; padding: 0 28px; border-radius: 999px; border: 1px solid transparent; background: var(--primary); color: var(--primary-ink);
+  font: 600 16px/1 var(--body); white-space: nowrap; cursor: pointer; }
+.btn:hover { text-decoration: none; }
+.btn.small { height: 38px; min-width: 0; padding: 0 18px; font-size: 14px; }
+.btn.lens { width: 38px; height: 38px; min-width: 0; padding: 0; flex: none; }
 .btn.quiet { --spin: var(--primary); background: none; color: var(--primary); border-color: var(--line-strong); }
 .btn.danger { background: var(--danger-fg); color: var(--page-color); }
 .btn[disabled] { background: var(--disabled); color: var(--on-disabled); border-color: transparent; cursor: default; }
 /* a button at work keeps its size and colour, a spinner in place of its words */
 .btn[aria-busy="true"] { background: var(--primary); color: transparent; cursor: progress; }
 .btn.quiet[aria-busy="true"] { background: none; border-color: var(--line-strong); }
-.btn[aria-busy="true"]::after { content: ""; position: absolute; inset: 0; margin: auto; width: 20px; height: 20px; border-radius: 50%;
+.btn[aria-busy="true"]::after { content: ""; position: absolute; inset: 0; margin: auto; width: 18px; height: 18px; border-radius: 50%;
   border: 2px solid var(--spin); border-right-color: transparent; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(1turn); } }
 
-.card { background: var(--surface); border: 1px solid var(--surface-line); border-radius: 20px; padding: 24px; }
-/* pill fields, as the landing's email field (landing:231-233), ringed while in use */
-.field { display: flex; align-items: center; gap: 10px; padding: calc(var(--control-pad) - 1px) 24px; border: 1px solid var(--surface-line); border-radius: 999px;
-  background: var(--chip); cursor: text; }
-.field:focus-within { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 1px var(--accent); }
-/* Firefox draws a text input no shorter than its font's own line height, a pixel over Chromium's for this font, so the height is
-   set to Chromium's: 4/3 of the font size */
-.field input { flex: 1; min-width: 0; height: calc(4em / 3); border: 0; background: none; outline: none; font: 500 var(--fs-body) var(--body); color: var(--ink); }
-.field input::placeholder { color: var(--ink-soft); }
+.card { background: var(--surface); border: 1px solid var(--surface-line); border-radius: 18px; padding: 20px 22px; }
+/* pill fields, as the mockup's search field, ringed while in use */
+.field { display: flex; align-items: center; gap: 10px; height: var(--field-h); padding: 0 20px; border: 1px solid var(--line-strong); border-radius: 999px;
+  background: var(--surface); cursor: text; }
+.field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.field > svg.i { color: var(--faint); }
+.field input { flex: 1; min-width: 0; height: 24px; border: 0; background: none; outline: none; font: 600 var(--fs-body) var(--body); color: var(--ink); }
+.field input::placeholder { color: var(--faint); font-weight: 500; }
 .field.bad { border-color: var(--danger-fg); }
 .field.bad:focus-within { box-shadow: 0 0 0 1px var(--danger-fg); }
 .field.ok { border-color: var(--ok-fg); }
@@ -193,194 +219,178 @@ body > main { flex: 1 0 auto; }
 .notice.warn { color: var(--warn-fg); background: var(--warn-bg); border-color: var(--warn-line); }
 .notice.danger { color: var(--danger-fg); background: var(--danger-bg); border-color: var(--danger-line); }
 .notice.info { color: var(--ink); background: var(--chip); border-color: var(--chip-line); }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 14px; font-weight: 600;
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600;
   background: var(--chip); color: var(--primary); }
 .chip.ok { background: var(--ok-bg); color: var(--ok-fg); }
 .chip.warn { background: var(--warn-bg); color: var(--warn-fg); }
 .chip.bad { background: var(--danger-bg); color: var(--danger-fg); }
+.chip .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
 
-/* inner pages: one centred column with Back above the heading (badges screens.ts:35-43) */
-.screen { --screen-gap: 16px; width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: 12px 16px 48px;
-  display: flex; flex-direction: column; gap: var(--screen-gap); }
-/* a purchase step or an outcome fills the room between the header and the footer, as the home does, its content between
-   two spacers that take no gap */
-.screen.step { --screen-gap: 16px; min-height: calc(100dvh - var(--frame-h)); padding-block: 8px; }
-.screen > .vspace { flex: 1 1 0; margin-block: calc(var(--screen-gap) / -2); }
-/* A step opens keeping below it the room its biggest change takes, the offline note's or its own (--room), until shell.ts
-   holds the spacer above at its height; then a change takes the room below. */
-.screen.step > .vspace:not([style]) ~ .vspace:last-child { min-height: max(var(--note-room), var(--room, 0px)); }
-/* a code's verdict, or a line on another order waiting, which arrives after the review is drawn */
-.screen.step:has(.review) { --room: calc(1.4 * 14px + 12px); }
-/* a link refused: its line under the field, after the field's gap */
-.screen.step:has(.link-fields) { --room: calc(8px + 1.4 * 14px); }
-/* Edit links saved: its notice of a title and its words, a line or a phone's two, after the gap */
-.screen.step:has(> .link-entry) { --room: calc(var(--saved-lines, 2) * 1.5 * var(--fs-small) + 26px + var(--screen-gap)); }
-/* a part paid: its notice, of two lines with its padding and border, in place of the lead and the lead's pull to the heading */
-.screen.step:has(.waiting) { --room: calc(3 * var(--fs-small) + 26px + var(--lead-pull) - 1.5 * var(--fs-lead)); }
-/* an empty live region keeps its place in the column without adding a gap */
-.screen > [role="status"]:empty { margin-top: calc(-1 * var(--screen-gap)); }
-.screen-head { display: grid; gap: 8px; }
-/* the lead reads with its heading, closer to it than the blocks below are to each other */
-.screen-head + .lead { margin-top: calc(-1 * var(--lead-pull)); }
-.back { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--surface-line); border-radius: 999px; justify-self: start;
-  background: var(--surface); color: var(--primary); }
-.back svg.i { width: 20px; height: 20px; }
-.back:hover { background: var(--chip); border-color: var(--line-strong); }
-.outcome { text-align: center; }
-.outcome .btn { align-self: center; }
-.outcome .actions { justify-content: center; }
-/* the invest popup keeps the page behind it still */
+/* Every screen is one centred column: its heading block, Back beside the heading as the badges store draws it, then its
+   content and its actions' row. A step is a frame of one height, so Back, the heading and the main button stand at one
+   place on every step; the content runs down from under the heading, so nothing above a change moves as it comes. */
+.screen { --back-w: 72px; width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: 36px 16px 48px; display: grid;
+  grid-template-columns: minmax(0, 1fr); align-content: start; row-gap: 22px; }
+.screen.step { --step-h: 572px; height: calc(var(--step-h) + 36px); padding-bottom: 0; grid-template-rows: auto minmax(0, 1fr) 78px; }
+.screen-head { display: grid; grid-template-columns: var(--back-w) minmax(0, 1fr) var(--back-w); row-gap: 10px; }
+.screen-head h1 { grid-area: 1 / 2; text-align: center; }
+/* a heading without Back takes the whole column */
+.screen-head h1:first-child { grid-column: 1 / -1; }
+.back { grid-area: 1 / 1; align-self: start; justify-self: start; display: inline-flex; align-items: center; gap: 2px; min-height: 40px; margin: 2px 0 0 -6px;
+  color: var(--primary); }
+.back svg.i { width: 22px; height: 22px; }
+.back:hover { text-decoration: none; color: var(--accent); }
+/* a heading with a long name in it is drawn smaller as a whole */
+.screen-head:has(h1 .long) { --fs-h1: 28px; }
+.screen-head .lead { grid-area: 2 / 1 / auto / -1; max-width: 52ch; margin-inline: auto; text-align: center; text-wrap: balance; }
+.screen-body { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 14px; }
+/* the main button centred, its text-link alternative under it */
+.actions-row { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.actions-row > .btn { min-width: 280px; }
+.actions-row > .alt { order: 1; font-size: 15px; }
+.end-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; font-size: 15px; }
+/* a chat's popup keeps the page behind it still */
 html:has(.modal[open]) { overflow: hidden; }
 
 .grad { background: var(--heading); -webkit-background-clip: text; background-clip: text; color: transparent; }
 /* balance would break a name before its TLD to even the lines; a name that fits its line stays whole */
 h1:has(.grad) { text-wrap: pretty; }
+.name { font: 700 22px/1.2 var(--display); letter-spacing: -.01em; overflow-wrap: anywhere; }
+.name span { color: var(--faint); white-space: nowrap; }
+.name.long { font-size: 18px; }
 
-.answer .name, .summary-card .name { font-family: var(--display); font-weight: 700; font-size: 30px; letter-spacing: -.025em; line-height: 1.1; overflow-wrap: anywhere; }
-.answer .name span, .summary-card .name span { color: var(--ink-soft); white-space: nowrap; }
-:is(.answer, .summary-card) .name.long { font-size: 20px; }
-/* a heading with a long name in it is drawn smaller as a whole */
-.screen-head:has(h1 .long) { --fs-h1: clamp(20px, 2.2vw, 28px); }
-.chip .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+/* the home, as the direction 1 mockup: the headline, the search, and below it the room its answers take, kept from the start */
+.home { --room: 120px; flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 16px; text-align: center; }
+.home h1 { --fs-h1: 56px; line-height: 1.05; letter-spacing: -.015em; }
+.home .sub { margin-top: 12px; font-size: 19px; color: var(--ink-soft); text-wrap: balance; }
+.home > .notice { width: 100%; max-width: var(--column); margin-top: 24px; }
+.search { width: 100%; max-width: var(--column); display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 36px; text-align: left; }
+.search-field { padding: 0 5px 0 20px; }
+.search-field .tld { color: var(--faint); font-weight: 600; }
+.answer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; height: var(--room); }
+/* one row as the app lists a chat: the name, the chats it opens, and whose it is or its price */
+.row { display: flex; align-items: center; gap: 16px; min-height: 72px; padding: 12px 18px 12px 22px; }
+.row .name { flex: 1; min-width: 0; }
+.row .soft, .row > a { font-size: 15px; white-space: nowrap; }
+.deal { white-space: nowrap; }
+.price { font-weight: 700; font-variant-numeric: tabular-nums; }
+.chats { display: inline-flex; gap: 2px; }
+.chat { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.chat:hover { background: var(--chip); }
+.chat-pic { display: grid; place-items: center; width: 32px; height: 32px; flex: none; color: var(--avatar); }
+.chat-pic svg { width: 100%; height: 100%; fill: currentColor; }
+/* a profile's own picture is drawn round inside the box, as the app pads it by a twelfth */
+.chat-pic img { width: 84%; height: 84%; border-radius: 50%; object-fit: cover; }
+.line { display: flex; gap: 8px; padding-inline: 20px; font-size: var(--fs-small); color: var(--ink-soft); }
+.line svg.i { margin-top: 2px; width: 16px; height: 16px; }
+.line.bad { color: var(--danger-fg); }
+.hint { text-align: center; font-size: var(--fs-small); color: var(--warn-fg); }
+.line.warn { color: var(--warn-fg); }
 
-/* the landing's first screen (landing:144-168), its countdown replaced by the search */
-/* --frame-h is the header's, footer's and offline note's height, which shell.ts measures, so the home fills the first screen as the landing's hero does.
-   WebKit rounds each of the four spacers' share of the room to its 1/64 px unit, which can take the home past the window and
-   scroll the page a pixel; --spacer-rounding leaves room for the four rounded up. */
-.home { --spacer-rounding: calc(4px / 64); display: flex; flex-direction: column; align-items: center; text-align: center; padding-inline: 16px;
-  min-height: calc(100dvh - var(--frame-h) - var(--spacer-rounding)); }
-.home .vspace { flex: 1; }
-.home .vspace.cap { min-height: 12px; max-height: 108px; }
-/* Below the search the room is the invest block's and its two spacers' shares, as on the landing; the answer takes the
-   block's place there, so the page above it stays still while the answer fits. --invest-h is the block's button, gap and note. */
-.home { --invest-h: calc(2 * var(--control-pad) + 24px + clamp(14px, 1.8vh, 20px) + 26px); }
-.home .below { flex: 2 1 var(--invest-h); display: flex; flex-direction: column; align-items: center; width: 100%; }
-.below:has(> .answer:not(:empty)) > :is(.cta, .cap) { display: none; }
-/* The landing sizes its headline in its own width's units (cqw); these are the same sizes from that width, as Firefox,
-   restyling the page around them, resolves container units against the window for a frame. */
-.headline { --headline-w: min(600px, 100vw - 32px); display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 600px; }
-.headline h1 { font-size: clamp(28px, var(--headline-w) * .103, 66px); line-height: 1.02; white-space: nowrap; font-kerning: none; }
-.headline .sub { font-size: clamp(11px, var(--headline-w) * .0392, 26px); margin-top: calc(var(--headline-w) * .03); white-space: nowrap; color: var(--ink-soft); font-kerning: none; }
-.home > .notice { width: 100%; max-width: var(--column); margin-bottom: 14px; }
-.search-row { display: flex; gap: 10px; width: 100%; max-width: var(--column); }
-.search-row .field { flex: 1; }
-/* the TLD's line is the input's, so the field is a button's height */
-.search-row .tld { color: var(--ink-soft); line-height: calc(4em / 3); }
-.answer { width: 100%; max-width: var(--column); text-align: left; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-.answer:not(:empty) { margin-top: 14px; }
-.answer .card { display: grid; gap: 12px; padding-block: 20px; }
-.answer .head, .answer .deal { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
-.answer .price { font: 700 32px/1 var(--display); letter-spacing: -.02em; }
-.answer .line { display: flex; gap: 8px; font-size: var(--fs-small); color: var(--ink-soft); }
-.answer .line svg.i { margin-top: 3px; }
-.answer .line.bad { color: var(--danger-fg); }
-.answer .line.warn { color: var(--warn-fg); }
-.cta { display: flex; flex-direction: column; align-items: center; gap: clamp(14px, 1.8vh, 20px); width: 100%; }
-.cta .btn { width: 100%; max-width: 384px; }
-.perk-note { color: var(--ink-soft); line-height: 1.45; }
-.perk-br { display: none; }
-@media (max-width: 540px) {
-  .perk-br { display: inline; }
-  .home { --invest-h: calc(2 * var(--control-pad) + 24px + clamp(14px, 1.8vh, 20px) + 52px); }
-}
-/* a field with its action at its right end; a phone stacks them, as the code needs the field's whole width */
-.field-row { display: flex; gap: 10px; }
-.field-row .field { flex: 1; }
-@media (max-width: 480px) { .search-row, .field-row { flex-direction: column; } }
-
-/* the landing's invest popup (landing:196-227); the dialog is the landing's full-screen .modal */
-.modal { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 24px; border: 0;
+/* a chat's popup, after the app's connection alert: a dialog over the whole window */
+.modal { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 20px; border: 0;
   background: none; color: inherit; display: flex; align-items: center; justify-content: center; }
 .modal:not([open]) { display: none; }
 .modal::backdrop { background: none; }
 .modal-backdrop { position: absolute; inset: 0; background: var(--backdrop); backdrop-filter: blur(3px); }
-.modal-panel { position: relative; z-index: 1; width: clamp(min(440px, 100%), 62vw, 720px); max-height: calc(100dvh - 48px); overflow: auto;
-  background: var(--surface); color: var(--ink); border-radius: 24px; box-shadow: var(--surface-shadow); padding: clamp(42px, 6vw, 60px); }
-.modal-close { position: absolute; top: 24px; right: 24px; width: 20px; height: 20px; padding: 0; border: 0; background: none; color: var(--ink-soft); cursor: pointer; }
-.modal-close svg.i { display: block; width: 100%; height: 100%; stroke-width: 1.5; }
-.modal-close:hover { color: var(--ink); }
-.modal-panel h2 { padding-right: 30px; }
-.modal-panel p { color: var(--ink-soft); line-height: 1.78; margin-top: 12px; }
-.eyebrow { font-weight: 600; margin: 28px 0 14px; }
-.terms { display: flex; flex-direction: column; gap: 12px; }
-.term { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; }
-.term span:first-child { color: var(--ink-soft); }
-.term span:last-child { font-weight: 600; }
-.modal-cta { display: flex; margin: 30px auto 0; width: 100%; max-width: 384px; padding: 16px 20px; }
-@media (max-width: 710px) {
-  .modal-panel { padding: clamp(28px, 4vw, 40px); }
-  .modal-close { width: 16px; height: 16px; }
-}
+.pop { position: relative; z-index: 1; width: min(100%, 360px); max-height: calc(100dvh - 40px); overflow: auto; display: grid; justify-items: center; gap: 6px;
+  padding: 26px 24px 18px; border: 1px solid var(--surface-line); border-radius: 22px; background: var(--surface); color: var(--ink); font-size: var(--fs-small);
+  text-align: center; overflow-wrap: anywhere; }
+.pop > .chat-pic { width: 76px; height: 76px; margin-bottom: 6px; }
+.pop h2 { font: 700 21px/1.25 var(--body); }
+.pop > .soft { font-weight: 600; }
+.pop-qr { margin: 10px 0 4px; padding: 10px; background: #fff; border: 1px solid var(--surface-line); border-radius: 14px; line-height: 0; }
+.pop-qr svg.qr { width: 148px; }
+.pop-acts { width: 100%; display: grid; gap: 8px; margin-top: 10px; }
+.pop .text-link { padding: 8px 12px; color: var(--ink-soft); }
+@media (max-width: 520px) { .pop-qr { display: none; } }
 
-/* checkout steps: blocks in one column, as the badges checkout (badges screens.ts:466-505) */
-.summary-card { display: grid; gap: 8px; padding: 20px 24px; }
-.summary-card .term-line { color: var(--ink-soft); font-size: var(--fs-small); }
-.summary-card .total { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
-.summary-card .total b { margin-left: auto; font: 700 20px/1.2 var(--display); letter-spacing: -.01em; }
-.pay-with, .code-entry, .pay-block, .link-fields, .forget { --block-gap: 12px; display: grid; gap: var(--block-gap); }
+/* Check your order: the search's row for the name over a table of what it costs, as the badges checkout's
+   (badges screens.ts:466-505); a value never wraps */
+.card.order { padding: 0; }
+.order > .row { min-height: 52px; border-bottom: 1px solid var(--surface-line); }
+.table { display: grid; padding: 4px 22px 6px; }
+.trow { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 5px 0; font-size: 15px; }
+.trow span:first-child { color: var(--ink-soft); }
+.trow span:last-child { font-weight: 600; text-align: right; white-space: nowrap; }
+.trow.ok span:last-child { color: var(--ok-fg); }
+.trow.total { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--surface-line); font-size: 17px; }
+.trow.total span { color: var(--ink); font-weight: 700; }
+.deal s { color: var(--faint); font-weight: 600; }
+.pay-with, .code-entry, .link-fields, .forget { --block-gap: 12px; display: grid; gap: var(--block-gap); }
 /* an empty verdict or note stays in the accessibility tree, so its next words are announced; in a column, unlike a grid,
    its negative margin takes back the gap */
-.code-entry, .pay-block { display: flex; flex-direction: column; }
-:is(.code-entry, .pay-block) > [role="status"]:empty { margin-top: calc(-1 * var(--block-gap)); }
-.link-fields, .link-entry, .link-field { grid-template-columns: minmax(0, 1fr); }
-.link-entry, .link-field { display: grid; gap: 8px; }
-/* the review's links on one grid: label, the profile each opens, and Change */
-.link-lines { display: grid; grid-template-columns: max-content minmax(0, 1fr) auto; gap: 6px 16px; }
-/* a link set shows as the profile it opens, on one line: its avatar and name */
-.link-line { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; font-size: var(--fs-small); }
-.link-line .k { color: var(--ink-soft); font-weight: 600; }
-.link-line > :nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* a link's preview is its avatar and name on one line; the field's label, or the line's, says what it is */
-:is(.link-line, .link-field) .entity { min-width: 0; padding: 0; gap: 8px; background: none; border: 0; }
-:is(.link-line, .link-field) .entity.skeleton { height: 24px; }
-:is(.link-line, .link-field) .entity .avatar { width: 24px; height: 24px; border-radius: 8px; font-size: 11px; }
-:is(.link-line, .link-field) .entity .who span { display: none; }
+.code-entry { display: flex; flex-direction: column; }
+.code-entry > [role="status"]:empty { margin-top: calc(-1 * var(--block-gap)); }
+/* an empty live region keeps its place in the column without adding a gap */
+.screen-body > [role="status"]:empty { margin-top: -14px; }
+.link-fields, .link-field { grid-template-columns: minmax(0, 1fr); }
+.link-field { display: grid; gap: 8px; }
+.link-fields > a { justify-self: start; font-size: 15px; }
+.link-fields > a::before { content: "+ "; }
+.link-field .field { height: 52px; padding-inline: 18px 8px; }
+.link-field .field:has(.entity:not(.skeleton)):not(:focus-within) > svg.i { display: none; }
+.unlink { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--ink-soft); cursor: pointer; }
+.unlink svg.i { width: 12px; height: 12px; }
+.unlink:hover { background: var(--chip); }
+.field:has(input:placeholder-shown) .unlink, .field:has(input:not(:placeholder-shown)) .paste { display: none; }
+/* the chats an order's links open, read only */
+.opens { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.opens .chat-pic { width: 22px; height: 22px; }
+/* a link's profile on one line: its picture, its name, and what kind of chat it is */
+.entity { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.entity .chat-pic { width: 28px; height: 28px; }
+.entity small { margin-left: auto; padding-left: 8px; font-size: 13px; color: var(--ink-soft); white-space: nowrap; }
+.entity b { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.opens .entity b { font-size: var(--fs-small); }
+.entity.skeleton { width: 120px; height: 24px; border-radius: 12px; background: var(--chip); }
 .link-field > :empty { display: none; }
 /* The profile a link opens sits at its field's end, no taller than the text, so the field keeps its height as it comes.
    A link whose profile could not be read is already in the field, so its text is not shown again. */
 .link-field .preview { display: flex; flex: 0 1 auto; max-width: 50%; min-width: 0; }
-.link-field .preview > span { display: none; }
+.link-field .preview > .raw { display: none; }
 /* a link whose profile shows is drawn as that profile, its text coming back in its place while the field is focused */
 .link-field .field:has(.entity:not(.skeleton)):not(:focus-within) input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
-.link-field .field:has(.entity:not(.skeleton)):not(:focus-within) .preview { max-width: none; }
+.link-field .field:has(.entity:not(.skeleton)):not(:focus-within) .preview { flex: 1; max-width: none; margin-left: -6px; }
+.preview .entity { flex: 1; }
 /* while the field is focused its link shows alone, from its start, at the field's whole width */
 .link-field .field:focus-within .preview { display: none; }
-.link-field .entity.skeleton { width: 120px; }
-/* Skip would drop a link typed, so the step's button is Skip for now only while both fields are empty */
-.link-fields:has(input:not(:placeholder-shown)) + .btn .skip, .link-fields:not(:has(input:not(:placeholder-shown))) + .btn .go { display: none; }
-.review { display: grid; gap: var(--screen-gap); }
-/* "I have a code" is drawn at a field's height, so the field opens in its place */
-.field.code-link { background: none; border-color: transparent; padding-inline: 0; font-size: var(--fs-small); line-height: calc(var(--fs-body) * 4 / 3); cursor: auto; }
+/* tighter than other steps' content, so the fullest review, a line on another order and two-line notes included, fits the frame */
+.review { display: grid; gap: 12px; }
+.review .pay-with { --block-gap: 8px; }
+.notes { display: grid; gap: 2px; font-size: var(--fs-small); color: var(--ink-soft); text-align: center; }
+/* the payment methods as the badges checkout's cards: the mark over the name, the chosen one ringed */
 .methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.method { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px; padding: calc(var(--control-pad) - 1px) 12px; line-height: 24px;
-  border: 1px solid var(--surface-line); border-radius: 16px; background: var(--surface); cursor: pointer; text-align: center; }
-.method svg { width: 24px; height: 24px; }
-.method span { flex-basis: 100%; color: var(--ink-soft); font-size: var(--fs-small); line-height: 1.3; }
-/* the chosen method takes the landing's blue: its line drawn twice as heavy, over a tint */
-.method[aria-checked="true"] { border-color: var(--primary); color: var(--primary); background: var(--chip); box-shadow: inset 0 0 0 1px var(--primary); }
+.method { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 78px; padding: 0 8px; font-size: 15px;
+  border: 1px solid var(--surface-line); border-radius: 18px; background: var(--surface); cursor: pointer; }
+.method svg { width: 26px; height: 26px; }
+.method[aria-checked="true"] { border-color: var(--primary); color: var(--primary); box-shadow: inset 0 0 0 1.5px var(--primary); }
 .method[aria-disabled="true"] { color: var(--ink-soft); background: var(--chip); cursor: default; }
-.method[aria-disabled="true"] span { color: var(--danger-fg); }
 .method:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 /* a refused link and a refused code read alike: a line 8 px under the field, its icon before it */
 .verdict, .field-error, .other-order { font-size: 14px; line-height: 1.4; }
-.verdict:not(:empty), .field-error { display: flex; gap: 8px; font-weight: 600; }
-.code-entry > .verdict:not(:empty) { margin-top: calc(8px - var(--block-gap)); }
-.screen > [role="status"] > .verdict { margin-top: calc(8px - var(--screen-gap)); }
+.verdict:not(:empty), .field-error { display: flex; gap: 8px; font-weight: 600; padding-inline: 20px; }
+.screen-body > [role="status"] > .verdict { margin-top: -6px; }
 .verdict.ok { color: var(--ok-fg); }
+/* Check your code says what a code is in a box under its field */
+.code-entry > .verdict:not(:empty) { margin-top: 0; padding: 12px 16px; border: 1px solid var(--ok-line); border-radius: 14px; background: var(--ok-bg); }
+.code-entry > .verdict.bad { border-color: var(--danger-line); background: var(--danger-bg); }
 .verdict.bad, .field-error { color: var(--danger-fg); }
+.notice svg.i, .field-error svg.i, .verdict svg.i { margin-top: 1px; }
+.notice.info svg.i { color: var(--primary); }
+.notice b { display: block; overflow-wrap: anywhere; }
 
 /* payment: the QR, with its wallet link, beside the amount and the address; the name code: its QR beside the words */
 /* qrSvg draws its own white frame */
 svg.qr { display: block; width: 132px; height: auto; }
 /* a phone puts the address, or the code, under the QR, across the column */
-.qr-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px 16px; align-items: start; }
+.qr-grid { display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 12px 16px; align-items: start; }
 .qr-grid > .qr { grid-row: span 2; }
-.qr-grid > .copy-field { align-self: center; }
 .card.qr { display: grid; place-items: center; gap: 8px; padding: 12px; font-size: var(--fs-small); }
-.card.qr svg.qr { width: 160px; }
+.card.qr svg.qr { width: 150px; }
 .copy-field .label { display: block; margin-bottom: 6px; }
-.copy-field .val { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 16px; border-radius: 14px; background: var(--chip); border: 1px solid var(--chip-line);
-  font: 600 15px var(--mono); overflow-wrap: anywhere; text-wrap: balance; }
+.copy-field .val { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line);
+  font: 500 14px var(--mono); overflow-wrap: anywhere; text-wrap: balance; }
 .copy-field .val span { flex: 1; }
 .copy-field .val .word { word-break: break-all; }
 .copy-btn { position: relative; }
@@ -388,18 +398,18 @@ svg.qr { display: block; width: 132px; height: auto; }
 .copied-note::after { content: ""; position: absolute; left: 50%; top: 100%; translate: -50% 0; border: 5px solid transparent; border-top-color: var(--ink); }
 .copy-btn.copied .copied-note { opacity: 1; translate: -50% 0; }
 /* a small Copy button, green while the copy is fresh */
-.field-copy { flex: none; height: 32px; margin-block: -4px; padding: 0 14px; border: 1px solid var(--surface-line); border-radius: 999px; background: var(--surface); color: var(--primary);
+.field-copy { flex: none; height: 34px; padding: 0 14px; border: 1px solid var(--surface-line); border-radius: 999px; background: var(--surface); color: var(--primary);
   font: 600 14px var(--body); cursor: pointer; }
 .field-copy:hover { background: var(--chip); border-color: var(--chip-line); }
 .field-copy.copied { color: var(--ok-fg); border-color: var(--ok-line); }
 .waiting { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; }
-.waiting a { color: var(--danger-fg); }
+.danger-link { color: var(--danger-fg); }
 .stripe { border-radius: 16px; }
 /* Stripe's card form mounts after its step is drawn, so its box holds the form's height from the start: card only, with
-   Stripe.js dahlia, 221-230 px tall on the 640 px column and 306-320 px on a phone's, in Chromium and Firefox. The
-   column is whole from 672 px: 640 px and its 16 px gutters. */
+   Stripe.js dahlia, 221-230 px tall on the 600 px column and 306-320 px on a phone's, in Chromium and Firefox. The
+   column is whole from 632 px: 600 px and its 16 px gutters. */
 .stripe:not(:has(> .label)) { min-height: 320px; }
-@media (min-width: 672px) { .stripe:not(:has(> .label)) { min-height: 230px; } }
+@media (min-width: 632px) { .stripe:not(:has(> .label)) { min-height: 230px; } }
 /* the development stand-in, framed as the form it stands in for */
 .stripe:has(> .label) { padding: 18px; border: 1px dashed var(--surface-line); }
 .stripe .label { display: flex; justify-content: space-between; margin-bottom: 4px; }
@@ -408,101 +418,73 @@ svg.qr { display: block; width: 132px; height: auto; }
 .stripe .box { padding: 13px 14px; border-radius: 12px; border: 1px solid var(--surface-line); background: var(--surface); color: var(--ink-soft); font-weight: 600; }
 .stripe .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 
-/* --done is the wait's share gone by, which the registering page sets each second */
-.stages { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 16px; list-style: none; }
-.stage { position: relative; padding-top: 34px; }
-.stage::before { content: ""; position: absolute; top: 14px; left: 0; right: 0; height: 3px; border-radius: 3px; background: var(--surface-line); }
+/* the stages as bars, the active one filling as its wait goes by; --done is the wait's share gone by, which the page sets each second */
+.stages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; list-style: none; }
+.stage { display: grid; gap: 8px; }
+.stage::before { content: ""; height: 4px; border-radius: 2px; background: var(--surface-line); }
 .stage.done::before { background: var(--ok-fg); }
 .stage.active::before { background: linear-gradient(90deg, var(--primary) 0%, var(--primary) calc(var(--done, 0) * 100%), var(--surface-line) calc(var(--done, 0) * 100%)); }
 .stage.failed::before { background: var(--danger-fg); }
-.stage .node { position: absolute; top: 0; left: 0; width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; background: var(--surface);
-  border: 2px solid var(--surface-line); font-weight: 700; font-size: 13px; color: var(--ink-soft); }
-.stage .node svg.i { width: 16px; height: 16px; stroke-width: 2.5; }
-.stage.failed .node svg.i { width: 11px; height: 11px; stroke-width: 3; }
-.stage.done .node { background: var(--ok-fg); border-color: var(--ok-fg); color: var(--surface); }
-.stage.active .node { border-color: var(--primary); color: var(--primary); }
-.stage.failed .node { background: var(--danger-fg); border-color: var(--danger-fg); color: var(--surface); }
-.stage b { display: block; margin-top: 8px; font-size: 16px; }
-.stage:not(.done, .active, .failed) b { color: var(--ink-soft); }
-.countdown { display: flex; align-items: center; gap: 18px; padding: 10px 18px; border-radius: 18px; background: var(--chip); border: 1px solid var(--chip-line); }
+.stage b { font-size: 15px; }
+.stage:not(.done, .active, .failed) b { color: var(--ink-soft); font-weight: 600; }
+.countdown { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-radius: 16px; background: var(--surface); border: 1px solid var(--surface-line); }
 /* the clock and the icon after it take the same room, a clock's "0:00" */
-.countdown b { display: inline-grid; place-items: center; min-height: 1em; min-width: 4ch; font: 700 var(--fs-h2)/1 var(--display); color: var(--primary); font-variant-numeric: tabular-nums; }
+.countdown b { display: inline-grid; place-items: center; min-height: 1em; min-width: 4ch; font: 700 22px/1 var(--body); color: var(--primary); font-variant-numeric: tabular-nums; }
 .countdown b svg.i { width: .8em; height: .8em; }
 .countdown p { display: grid; color: var(--ink-soft); font-size: var(--fs-small); }
 /* the words in view and the longest ones, hidden, share one cell */
 .countdown p > * { grid-area: 1 / 1; }
 .countdown .sizer { visibility: hidden; }
 
-.code-display { display: flex; align-items: center; gap: 12px; padding: 16px 16px 16px 24px; border-radius: 16px; background: var(--chip); border: 1px solid var(--chip-line);
-  font: 700 19px var(--mono); letter-spacing: .02em; }
-.code-display .code-text { flex: 1; text-align: center; text-wrap: balance; }
-.notice svg.i, .field-error svg.i, .verdict svg.i { margin-top: 1px; }
-.notice.info svg.i { color: var(--primary); }
-.notice b { display: block; overflow-wrap: anywhere; }
-.next-step > :nth-child(2) { display: grid; gap: 8px; align-self: center; }
-
-/* what a taken name points at */
-.entities { display: flex; flex-direction: column; gap: 8px; }
-.entity { display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-radius: 16px; background: var(--chip); border: 1px solid var(--surface-line); }
-.entity .avatar { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-weight: 800; flex: none; }
-/* a name longer than its room is cut short on its one line, with its whole in a tooltip */
-.entity .who { flex: 1 1 auto; min-width: 0; }
-.entity .who b { display: block; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.entity .who span { display: block; color: var(--ink-soft); font-size: 13px; font-weight: 600; line-height: 1.35; white-space: nowrap; }
-/* the profile's name and its link read at one size */
-.entity .who b, .entity > a { font-size: 15px; }
-.entity > a { white-space: nowrap; }
-
+.code-display { display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 20px; border-radius: 16px; background: var(--chip); border: 1px solid var(--surface-line);
+  font: 600 16px var(--mono); }
+.code-display .code-text { flex: 1; min-width: 0; text-wrap: balance; }
+.code-display .masked { color: var(--ink-soft); }
+.code-buttons { display: flex; gap: 6px; }
+.screen-body > .ref { text-align: center; }
+.card.use { display: grid; gap: 12px; }
+.card.use p:not(.note) { color: var(--ink-soft); }
 
 /* The longest code, a name code of 38 characters, fits whole beside the key icon and its gap (28px): a monospace
-   character is a little over .6em wide, plus its letter spacing. Below 14px it reads poorly on a phone, so a narrower field scrolls.
-   The field keeps the height of the others, whose text is larger. */
+   character is a little over .6em wide, plus its letter spacing. Below 14px it reads poorly on a phone, so a narrower field scrolls. */
 .code-input { container-type: inline-size; }
-.code-input input { height: calc(var(--fs-body) * 4 / 3); font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(14px, (100cqi - 28px) / 23.8, 15px); }
+.code-input input { font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(14px, (100cqi - 28px) / 23.8, 15px); }
 
-.total s { color: var(--ink-soft); font-size: 20px; margin-right: 8px; }
-.check { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--surface-line); background: var(--surface);
-  font-weight: 700; position: relative; cursor: pointer; }
+.check { display: inline-flex; align-items: center; gap: 10px; justify-self: center; font-weight: 600; position: relative; cursor: pointer; }
 .check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .check input:focus-visible + .box { outline: 2px solid var(--accent); outline-offset: 3px; }
 .check input:checked + .box { background: var(--primary); border-color: var(--primary); }
-.check .box::after { content: ""; display: block; width: 5px; height: 10px; margin: 2px auto 0; border: solid var(--primary-ink); border-width: 0 2.5px 2.5px 0; rotate: 45deg; opacity: 0; }
-.check .box { width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--line-strong); background: var(--surface); flex: none; }
+.check .box::after { content: ""; display: block; width: 5px; height: 10px; margin: 1px auto 0; border: solid var(--primary-ink); border-width: 0 2px 2px 0; rotate: 45deg; opacity: 0; }
+.check .box { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--line-strong); background: var(--surface); flex: none; }
 .check input:checked + .box::after { opacity: 1; }
 
-/* Your names: a card per list, a row per name or code, its actions under its name (badges screens.ts:897-921) */
-.card.list { padding-bottom: 8px; }
-.list > h2 { padding-bottom: 12px; }
-.list > .note { padding-bottom: 16px; }
-.list-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px 14px; padding: 16px 0; border-top: 1px solid var(--surface-line); }
-.list-row .mark { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--chip); color: var(--primary); font-weight: 700; }
-/* a long name breaks anywhere, so it shows whole beside the row's chip */
-.list-row .main b { font-size: 16px; display: block; overflow-wrap: anywhere; }
-.list-row .sub { color: var(--ink-soft); font-size: 14px; margin-top: 2px; }
-.list-row .acts { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
-.list > .code-entry { padding: 16px 0; border-top: 1px solid var(--surface-line); }
-.row-code { grid-column: 1 / -1; display: grid; justify-items: center; gap: 14px; }
-.row-code .code-display { width: 100%; }
-.small-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--surface-line); background: var(--surface); color: var(--ink); font-weight: 600; font-size: 14px; }
-.danger-link { display: block; text-align: center; color: var(--danger-fg); font-size: 14px; }
+/* Your names: a card of names and one of codes, a row per name or code with its actions as text links */
+.card.list { padding: 0 22px; }
+.list > .note { padding-block: 14px; }
+.list-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-height: 72px; padding: 14px 0; }
+.list-row + .list-row, .list > .note + .list-row, .list > .code-entry { border-top: 1px solid var(--surface-line); }
+.list-row .main { flex: 1 1 240px; min-width: 0; display: grid; gap: 2px; }
+.list-row .main .name { font-size: 20px; }
+.list-row .sub { color: var(--ink-soft); font-size: var(--fs-small); }
+.list-row .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: var(--fs-small); }
+.list > .code-entry { padding: 14px 0; }
+.row-code { flex-basis: 100%; display: grid; gap: 12px; }
+.danger-link { font-size: var(--fs-small); }
 /* Forget's question comes into view with room below it; its answers are an equal pair, side by side when each gets the
    220 px that holds "Forget everything" */
 .forget { scroll-margin-bottom: 24px; }
 .forget .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+/* a field with its action at its right end; a phone stacks them, as the code needs the field's whole width */
 
-/* webapp additions to the mockups' rules */
 .mt-14 { margin-top: 14px; } .mt-16 { margin-top: 16px; }
 .center { display: flex; justify-content: center; }
 .left { text-align: left; }
-
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.actions.pair { display: grid; grid-template-columns: 1fr 1fr; }
-.pair .btn { padding-inline: 16px; }
+.actions .btn { min-width: 0; }
 
 /* a name can be 63 letters long */
 h1, .lead { overflow-wrap: anywhere; }
 main h1:focus { outline: none; }
-.answer .yours { display: flex; gap: 18px; font-weight: 700; font-size: 14.5px; }
 /* a name in a sentence moves to the next line whole; only a name longer than the line breaks, before its TLD first */
 .inline-name { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
 .long { overflow-wrap: anywhere; }
@@ -513,92 +495,86 @@ span.long:not(.grad) { word-break: break-all; }
 html.dark .monero-base { fill: #fff; }
 
 @media (hover: hover) {
-  .small-btn:hover, .brand:hover { text-decoration: none; }
-  .small-btn:hover { background-color: var(--chip); border-color: var(--chip-line); color: var(--ink); }
+  .brand:hover { text-decoration: none; }
   .btn:not([disabled], [aria-busy="true"]):hover { filter: brightness(1.08); }
   .btn.quiet:not([disabled], [aria-busy="true"]):hover { background: var(--chip); filter: none; }
   .method[aria-checked="false"]:not([aria-disabled]):hover { border-color: var(--line-strong); background: color-mix(in srgb, var(--surface), var(--primary) 4%); }
-  .check:hover { border-color: var(--line-strong); }
+  .check:hover .box { border-color: var(--primary); }
 }
 /* after the hover rules and as specific as the quiet one, as a button pressed with a mouse still matches them */
 :is(.btn, .btn.quiet):not([disabled], [aria-busy="true"]):active { filter: brightness(.94); }
-/* The offline note follows the footer, over the end of its padding, and stays at the window's foot, passing clicks beside
-   it through to the page. Its room, which a step keeps below it as it opens, is its lines, padding, border and offsets
-   less the padding it covers; its words take two lines below the width where they fit one. */
-:root { --note-offset: 12px; --note-line: calc(1.4 * 14px); --note-lines: 1;
-  --note-room: calc(var(--note-lines) * var(--note-line) + 22px + 2 * var(--note-offset) + env(safe-area-inset-bottom) - var(--frame-pad)); }
+/* The offline note stays at the window's foot, out of the flow, passing clicks beside it through to the page; the footer,
+   below the fold, takes its room under its links, so they scroll clear of it. Its words take two lines where one is too short. */
+:root { --note-room: 0px; --note-lines: 1; }
 @media (max-width: 699px) { :root { --note-lines: 2; } }
-.offline { position: sticky; bottom: 0; z-index: 15; display: flex; padding-inline: 16px; pointer-events: none; }
-.offline-note { pointer-events: auto; width: fit-content; max-width: var(--column); margin: calc(var(--note-offset) - var(--frame-pad)) auto calc(var(--note-offset) + env(safe-area-inset-bottom)); display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line); color: var(--ink); font-size: 14px; line-height: var(--note-line); }
+body:has(.offline-note > span:not(:empty)) { --note-room: calc(var(--note-lines) * 1.4 * 14px + 22px + 16px + env(safe-area-inset-bottom)); }
+.offline { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; display: flex; padding: 0 16px calc(12px + env(safe-area-inset-bottom)); pointer-events: none; }
+.offline-note { pointer-events: auto; width: fit-content; max-width: var(--column); margin-inline: auto; display: flex; gap: 10px; align-items: center; padding: 10px 16px;
+  border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line); color: var(--ink); font-size: 14px; line-height: 1.4; }
 .offline-note svg.i { flex: none; width: 18px; height: 18px; color: var(--warn-fg); }
 /* without words the note keeps its live text in place, drawn as nothing */
-.offline-note:has(> span:empty) { margin-block: 0; padding: 0; border: 0; }
+.offline-note:has(> span:empty) { padding: 0; border: 0; }
 .offline-note:has(> span:empty) svg.i { display: none; }
 /* a link at work, or held by a wait, shows it is not to be pressed */
 a[aria-disabled="true"] { opacity: .6; cursor: default; }
 
 /* The tap area reaches past a control's edge to 44 px while the drawn size stays. */
 @media (pointer: coarse) {
-  .small-btn, .field-copy { position: relative; }
-  .small-btn::before, .field-copy::before { content: ""; position: absolute; inset: -6px; }
-  .waiting a, .answer .yours a, .entity > a { padding-block: 12px; margin-block: -12px; }
-  .danger-link { padding-block: 12px; }
+  .field-copy { position: relative; }
+  .field-copy::before { content: ""; position: absolute; inset: -6px; }
+  .row > a, .alt a, .acts a, .end-links a { padding-block: 12px; margin-block: -12px; }
 }
 
-/* a laptop's short window draws the steps tighter, so a name of any length leaves the room their changes take */
-@media (min-width: 561px) and (max-height: 860px) {
-  .screen.step { --screen-gap: 12px; --control-pad: 12px; --fs-h1: 32px; }
-  .screen.step:is(:has(.review), :has(> .link-entry)) { --screen-gap: 8px; }
-  .screen-head:has(h1 .long) { --fs-h1: 26px; }
-  .summary-card { padding-block: 16px; }
-  .review :is(.pay-with, .code-entry) { --block-gap: 8px; }
-}
-
-/* a phone */
-@media (max-width: 560px) {
+/* a phone: its heading smaller, Back above it on a line kept on every screen, and the main button across the column with
+   its text link under it, the row the same height whether or not a step has the link */
+@media (max-width: 520px) {
+  :root { --fs-h1: 30px; --fs-lead: 15px; }
+  .screen { padding-top: 20px; row-gap: 16px; }
+  .screen.step { --step-h: 616px; height: calc(var(--step-h) + 20px); }
+  .screen-head { grid-template-columns: minmax(0, 1fr); grid-template-rows: 24px auto; row-gap: 8px; }
+  .back { margin-top: -8px; }
+  .screen-head h1 { grid-area: 2 / 1; }
+  .screen-head .lead { grid-row: 3; }
+  .screen-head:has(h1 .long) { --fs-h1: 22px; }
+  .screen-head .lead { line-height: 1.4; }
+  .actions-row > .btn { width: 100%; min-width: 0; }
+  .home { --room: 146px; justify-content: flex-start; padding-top: 48px; }
+  /* two lines, as the mockup draws it, rather than one that only some fonts' widths fit */
+  .home h1 { --fs-h1: 36px; max-width: 9em; }
+  .home .sub { font-size: 16px; }
+  .search { margin-top: 28px; }
+  .row .name { font-size: 19px; }
+  .row.buy { flex-wrap: wrap; row-gap: 10px; padding: 14px 14px 14px 18px; }
+  .row.buy .name { flex-basis: 100%; }
+  .row.buy .deal { margin-right: auto; }
+  .card { padding: 16px 18px; }
   .card.list { padding-inline: 16px; }
   /* two balanced lines, broken after a dash, read better than a long one squeezed small */
-  .code-display { font-size: 16px; letter-spacing: 0; padding: 14px 12px 14px 16px; }
-  /* a row's chip goes under its name, which keeps the row's width */
-  .list-row { grid-template-columns: 40px minmax(0, 1fr); }
-  .list-row .state { grid-column: 2; }
-  .code-input { padding-inline: 12px; }
-  .code-input > svg.i { display: none; }
+  .code-display { flex-wrap: wrap; justify-content: center; padding: 12px 14px; font-size: 15px; letter-spacing: 0; }
+  .code-display .code-text { flex-basis: 100%; text-align: center; }
+  /* the steps for the app, tighter, so the card holds a name of 63 wide letters in its frame */
+  .card.use { gap: 8px; }
+  .card.use p:not(.note) { font-size: 15px; line-height: 1.4; }
+  .code-input { padding-inline: 14px; }
   .code-input input { font-size: clamp(14px, 100cqi / 23.2, 16px); letter-spacing: 0; }
-  /* a purchase step fits the phone's window: smaller cards, methods and fields */
-  /* a name of wide letters takes two lines here, which the review's tighter blocks make room for */
-  .summary-card { padding: 16px 18px; }
-  .summary-card .name { font-size: 22px; }
-  .answer .name { font-size: 24px; }
-  .summary-card .name.long { font-size: 16px; }
-  .review :is(.pay-with, .code-entry) { --block-gap: 6px; }
-  /* a line on another order stands as far from Pay with as the blocks around it do */
-  .other-order { margin-bottom: 6px; }
-  .screen, .home { --control-pad: 11px; }
-  .screen.step { --screen-gap: 12px; --saved-lines: 3; }
-  .method { flex-direction: column; padding: 8px 6px; gap: 2px; font-size: 16px; line-height: 1.3; }
-  .method span { flex-basis: auto; }
-  .method svg { width: 22px; height: 22px; }
-  .entity .who b, .entity > a { font-size: 14px; }
-  .entity .who span { font-size: 12px; }
-  .link-fields { gap: 8px; }
-  .link-entry { gap: 6px; }
-  /* a review line's label goes above its profile, so the name has the line and the avatars align */
-  .link-lines { grid-template-columns: minmax(0, 1fr); gap: 6px; }
-  .link-line { grid-column: auto; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; }
-  .link-line .k { grid-column: 1 / -1; font-size: 13px; line-height: 1.3; }
-  .qr-grid > .qr { grid-row: auto; }
-  .qr-grid > :last-child { grid-column: 1 / -1; }
-  /* a smaller QR leaves the amount beside it its one line */
-  .qr-grid svg.qr, .qr-grid .card.qr svg.qr { width: 120px; }
-  .screen.step .lead { font-size: 15px; line-height: 1.4; }
+  .order .name.long { font-size: 16px; }
+  /* the order's table and methods a little tighter, so the review of a name of 63 wide letters fits the phone's frame */
+  .method { height: 68px; font-size: 14px; gap: 4px; }
+  .trow { padding-block: 5px; font-size: 14px; }
+  .trow.total { padding-top: 10px; font-size: 16px; }
+  .methods { gap: 8px; }
+  .method { font-size: 14px; gap: 6px; }
+  /* the QR is for another device; a phone opens its wallet by the link */
+  .qr-grid { grid-template-columns: minmax(0, 1fr); }
+  .qr-grid svg.qr { display: none; }
+  .card.qr { place-items: start; padding: 0; border: 0; background: none; }
 }
 
 /* Motion: a screen swapped in, a purchase step as any other, rises into place; what a step adds comes in. Nothing goes out
    but at once, so two screens never show together. */
 .enter { animation: rise 220ms var(--ease) backwards; }
 /* controls ease their colours as the pointer, a choice or a state changes them, and follow the theme's tokens as it switches */
-html:not(.theming) :is(.btn, .field, .back, .method, .field-copy, .small-btn, .check, .check .box) { transition: background-color var(--fast), border-color var(--fast), box-shadow var(--fast), color var(--fast), filter var(--fast); }
+html:not(.theming) :is(.btn, .field, .back, .chat, .unlink, .method, .field-copy, .check, .check .box) { transition: background-color var(--fast), border-color var(--fast), box-shadow var(--fast), color var(--fast), filter var(--fast); }
 .copied-note { transition: opacity var(--fast), translate var(--fast) var(--ease); }
 :where(.answer > *, .notice, .entity, .other-order, .field-error, .verdict:not(:empty), .offline-note:not(:has(> span:empty))) { animation: arrive 180ms var(--ease) backwards; }
 /* shell.ts marks what a redraw draws again as shown */
