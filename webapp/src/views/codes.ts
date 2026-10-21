@@ -1,6 +1,6 @@
 // The code field of Check your code, judged as it is typed: a prepaid code that pays for a name, or a name code that owns one.
 import * as api from "../api.ts"
-import { codeProgress, parseNameCode } from "../crypto/code.ts"
+import { codeProgress, mayBeOwnerCode, parseNameCode } from "../crypto/code.ts"
 import { seconds } from "../format.ts"
 import { el, icon, liveRegion, refill } from "../dom.ts"
 import * as flow from "../flow.ts"
@@ -138,9 +138,9 @@ export function codeField(key: string, label: string, heard: (v: CodeVerdict | n
     const life = new AbortController()
     whenDropped(() => life.abort())
     watchCode(input, show, life.signal)
-    // a name code is never kept to show again, as anyone who sees it can take the name
+    // a name code is never kept to show again, nor most of one mistyped or cut short, as anyone who sees it can take the name
     input.addEventListener("input", () => {
-      if (parseNameCode(input.value.trim())?.kind === "owner") typed.delete(key)
+      if (mayBeOwnerCode(input.value)) typed.delete(key)
       else typed.set(key, input.value)
     })
     // judged once the page that asked for the field is drawn, as a verdict may change the page

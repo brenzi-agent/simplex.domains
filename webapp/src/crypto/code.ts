@@ -44,6 +44,12 @@ export function codeProgress(text: string): CodeProgress {
   return body.length <= shortest + 1 || body.length >= OWNER_CODE_LENGTH ? "complete" : "partial"
 }
 
+// Whether typed text may hold most of a name code, mistyped or cut short: longer than any prepaid code and not a valid one.
+export function mayBeOwnerCode(text: string): boolean {
+  const body = text.replace(/[^\p{L}\p{N}]/gu, "").length - PREFIX.length
+  return body > PREPAID_BODY_LENGTH + 2 && parseNameCode(text)?.kind !== "prepaid"
+}
+
 export function parseNameCode(text: string): NameCode | null {
   const cleaned = text.replace(/[^\p{L}\p{N}]/gu, "").toUpperCase()
   if (!cleaned.startsWith(PREFIX)) return null

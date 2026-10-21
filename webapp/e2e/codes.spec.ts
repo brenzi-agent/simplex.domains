@@ -527,6 +527,12 @@ test("Check your code opened again shows a prepaid code typed there, never a nam
   await expect(page.locator(".verdict.bad")).toContainText("No order was found")
   await reopen()
   await expect(codeField(page), "the name code typed is not shown again").toHaveValue("")
+  // nor most of one: mistyped in its check, or cut short past a prepaid code's length
+  for (const [what, text] of [["mistyped", ownerCode.slice(0, -1) + (ownerCode.endsWith("0") ? "1" : "0")], ["cut short", ownerCode.slice(0, 30)]]) {
+    await codeField(page).fill(text)
+    await reopen()
+    await expect(codeField(page), `a name code ${what}`).toHaveValue("")
+  }
   await codeField(page).fill(code)
   await expect(page.locator(".verdict.ok")).toBeVisible()
   await reopen()

@@ -5,7 +5,7 @@ import {
 } from "viem"
 import { mnemonicToAccount } from "viem/accounts"
 import { describe, expect, it } from "vitest"
-import { codeHash, codeProgress, formatOwnerCode, parseNameCode, takenOrderCode } from "../src/crypto/code.ts"
+import { codeHash, codeProgress, formatOwnerCode, mayBeOwnerCode, parseNameCode, takenOrderCode } from "../src/crypto/code.ts"
 import {
   clearRecordsDigest, commitmentSecret, durationFor, labelHash, makeCommitment, namehash, recordCalls,
   registerIntentDigest, setTextDigest, type Registration,
@@ -75,6 +75,15 @@ describe("prepaid code", () => {
     expect([long.minLength, long.display.slice(0, 4), parseNameCode(long.display)]).toEqual([12, "SN12", long])
     expect(takenOrderCode(seed, "t2Jk8RmQ4vXw9NcP3yLb6g", 7).canonical).toBe(code.canonical)
     expect(takenOrderCode(seed, "other", 7).canonical).not.toBe(code.canonical)
+  })
+})
+
+describe("text that may be a name code", () => {
+  it("is a name code whole, mistyped or cut short past a prepaid code's length, and never a prepaid code or less", () => {
+    const owner = formatOwnerCode(ENTROPY)
+    const mistyped = owner.slice(0, -1) + (owner.endsWith("0") ? "1" : "0")
+    expect([owner, mistyped, owner.slice(0, 30)].map(mayBeOwnerCode)).toEqual([true, true, true])
+    expect(["SN7-BJTBP-29596-R3HJ8-25YM7", "SN12-BJTBP-29596-R3HJ8-25YM7", "SN7-BJTBP", owner.slice(0, 20), ""].map(mayBeOwnerCode)).toEqual([false, false, false, false, false])
   })
 })
 
