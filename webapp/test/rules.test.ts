@@ -35,6 +35,15 @@ describe("link rules", () => {
     expect(linkKind(channel)).toBe("channel")
   })
 
+  it("accepts a link of several servers, their hosts joined by an escaped comma, and no other escape", () => {
+    const hosts = "smp4.simplex.im%2Co5vmywmrnaxalvz6wi3zicyftgio6psuvyniis6gco6bp6ekl4cqj4id.onion"
+    const multi = `simplex:/a#Y8m3qT0vLw2Ab7cD9eF1gH3jK5mN7pQ9rS?h=${hosts}&p=5223&c=1234-w`
+    expect(linkKind(multi)).toBe("contact")
+    expect(linkKind(`https://smp9.simplex.im/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm?h=${hosts}`)).toBe("channel")
+    expect(linkKind(multi.replace("%2C", ","))).toBeNull()
+    expect(linkKind(multi.replace("%2C", "%2F"))).toBeNull()
+  })
+
   it("refuses the other kind, full links, two links and oversized links", () => {
     expect(linkProblem("channel", contact)).toBe("kind")
     expect(linkProblem("contact", "https://simplex.chat/contact#/?v=2&smp=smp%3A%2F%2Fabc")).toBe("kind")

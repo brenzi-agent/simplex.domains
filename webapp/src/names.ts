@@ -27,10 +27,11 @@ export function labelProblem(label: string): LabelProblem | null {
 
 export type LinkKind = "contact" | "channel"
 
-// The app reads a name's first short link of the right type, so only one short link per key is useful.
+// The app reads a name's first short link of the right type, so only one short link per key is useful. A link's query may
+// carry its other servers' hosts, joined by an escaped comma, as the chat core writes them.
 const SHORT_LINK: Record<LinkKind, RegExp> = {
-  contact: /^(https:\/\/[a-z0-9.-]+\/a|simplex:\/a)#[A-Za-z0-9_-]+(\?[A-Za-z0-9_=&.-]*)?$/,
-  channel: /^(https:\/\/[a-z0-9.-]+\/c|simplex:\/c)#[A-Za-z0-9_-]+(\?[A-Za-z0-9_=&.-]*)?$/,
+  contact: /^(https:\/\/[a-z0-9.-]+\/a|simplex:\/a)#[A-Za-z0-9_-]+(\?([A-Za-z0-9_=&.-]|%2C)*)?$/,
+  channel: /^(https:\/\/[a-z0-9.-]+\/c|simplex:\/c)#[A-Za-z0-9_-]+(\?([A-Za-z0-9_=&.-]|%2C)*)?$/,
 }
 
 export const linkTooLong = (link: string) => new TextEncoder().encode(link).length > LINK_MAX_BYTES
