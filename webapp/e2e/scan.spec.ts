@@ -57,7 +57,9 @@ test("the Link field offers a scan only on a phone with a camera, and only while
     expect(fits, "the placeholder fits its field beside Paste and the scan button").toBe(true)
     await phone.setViewportSize(LAPTOP)
     await expect(scan, "a laptop's camera faces its reader").toBeHidden()
+    await expect(link(phone), "the placeholder follows the window").toHaveAttribute("placeholder", "Paste a contact address or channel link")
     await phone.setViewportSize(PHONE)
+    await expect(link(phone)).toHaveAttribute("placeholder", "Paste or scan a link")
     await onStep(phone).getByRole("textbox", { name: "Link", exact: true }).fill("https://smp8.simplex.im/a#typed")
     await expect(scan).toBeHidden()
   } finally {

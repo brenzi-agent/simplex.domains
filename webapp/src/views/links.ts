@@ -64,9 +64,12 @@ interface Takes { kind: LinkKind | null; refused: () => LinkKind | null; fieldOf
 function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind | null) => void, valueKind = takes.kind): HTMLElement {
   const errorId = `link-error-${++linkFields}`
   const text = takes.kind ? KIND_TEXT[takes.kind] : ANY_LINK
-  const phone = matchMedia(PHONE).matches
-  const input = el("input", { type: "text", placeholder: phone ? text.short : text.placeholder, value, "aria-label": text.name, spellcheck: "false", autocomplete: "off",
-    "data-focus": `link-${takes.kind ?? "any"}` })
+  const input = el("input", { type: "text", value, "aria-label": text.name, spellcheck: "false", autocomplete: "off", "data-focus": `link-${takes.kind ?? "any"}` })
+  // a phone's field has room for the short placeholder only, chosen again as the window crosses the phone's width
+  const phone = matchMedia(PHONE)
+  let camera = false
+  const placeholder = () => { input.placeholder = !phone.matches ? text.placeholder : camera && !takes.kind ? ANY_LINK_SCANNED : text.short }
+  placeholder()
   // the profile a link opens shows at the field's end, and what is wrong with a link under it
   const preview = el("span", { class: "preview" })
   const unlink = el("button", { class: "unlink", type: "button", "aria-label": "Remove link", onclick: () => {
@@ -84,9 +87,10 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
   // a phone with a camera reads the link from its QR code, as the app shows it
   const scan = el("button", { class: "scan", type: "button", "aria-label": "Scan QR code", hidden: true, onclick: () => void scanned() }, icon("scan"))
   if (matchMedia(TOUCH).matches) {
-    void hasCamera().then((camera) => {
-      scan.hidden = !camera
-      if (camera && phone && !takes.kind) input.placeholder = ANY_LINK_SCANNED
+    void hasCamera().then((found) => {
+      scan.hidden = !found
+      camera = found
+      placeholder()
     })
   }
   const box = el("label", { class: "field" }, icon("link"), input, preview, paste, scan, unlink)
@@ -100,6 +104,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
   const life = new AbortController()
   let waiting = new AbortController()
   whenDropped(() => { life.abort(); waiting.abort() })
+  phone.addEventListener("change", placeholder, { signal: life.signal })
   const shown = () => !life.signal.aborted
   let seq = 0
   const holdPreviewPlace = () => show(preview.querySelector(".skeleton") ?? previewPlace())
