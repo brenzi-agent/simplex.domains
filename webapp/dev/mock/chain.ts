@@ -38,6 +38,8 @@ export const sponsor = { address: deployment.sponsor, abi: abiOf("simplex/Simple
 export const baseRegistrar = { address: deployment.baseRegistrar, abi: abiOf("ethregistrar/BaseRegistrarImplementation.sol/BaseRegistrarImplementation.json") }
 export const resolver = { address: deployment.resolver, abi: abiOf("simplex/SimplexResolver.sol/SimplexResolver.json") }
 export const registry = { address: deployment.ens, abi: abiOf("registry/ENSRegistry.sol/ENSRegistry.json") }
+// the controller's price oracle, which the owner can replace, so it is read from the controller each time
+export const priceOracleAt = (address: Address) => ({ address, abi: abiOf("simplex/SimplexPriceOracle.sol/SimplexPriceOracle.json") })
 // the sponsor passes the controller's and the base registrar's reverts through
 const revertAbi = [...sponsor.abi, ...controller.abi, ...baseRegistrar.abi, ...resolver.abi].filter((item) => item.type === "error")
 

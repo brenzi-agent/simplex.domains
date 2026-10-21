@@ -1,10 +1,9 @@
 // An order's page (?order=<invoice>) or a code registration's (?registration=<id>): payment, registration, and every ending.
 import * as api from "../api.ts"
-import { codeTier, LONGEST_TIER, parseNameCode } from "../crypto/code.ts"
+import { parseNameCode } from "../crypto/code.ts"
 import { alertBox, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, setAction, type Tone } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress } from "../format.ts"
-import { PRICED_YEARS } from "../names.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
   type ClosedCase, closedCase, coinOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
@@ -302,10 +301,10 @@ function keepCodes(s: OrderState): void {
   const { view, record, invoice, cardSubmittedAt: submitted } = s
   if (!view || !record) return
   const kind = screenOf(s)
-  if (kind === "code-issued" && !record.takenCode) {
-    const code = flow.takenCodeOf(record, view.id)
+  if (kind === "code-issued" && !record.takenCode && view.codeLength !== null) {
+    const code = flow.takenCodeOf(record, view)
     store.updateOrder(record.registrationId, { takenCode: code })
-    store.addCode({ code, minLength: codeTier(record.label.length), years: PRICED_YEARS, addedAt: new Date().toISOString() })
+    store.addCode({ code, minLength: view.codeLength, years: view.years, addedAt: new Date().toISOString() })
     dispatch({ type: "record-changed", record: { ...record, takenCode: code }, cardSubmittedAt: submitted })
   }
   const released = kind === "taken" && !invoice ? releasedCode(view, record) : null
@@ -313,11 +312,8 @@ function keepCodes(s: OrderState): void {
 }
 
 function releasedCode(view: api.RegistrationView, record: store.OrderRecord | null): Omit<store.CodeRecord, "addedAt"> | null {
-  const code = record?.prepaidCode
-  if (!code) return null
-  const parsed = parseNameCode(code)
-  const minLength = parsed?.kind === "prepaid" ? parsed.minLength : codeTier(labelOf(view, record)?.length ?? LONGEST_TIER)
-  return { code, minLength, years: view.years }
+  const parsed = record?.prepaidCode ? parseNameCode(record.prepaidCode) : null
+  return parsed?.kind === "prepaid" ? { code: parsed.display, minLength: parsed.minLength, years: view.years } : null
 }
 
 // holdsFor is the screen's signal where the screen holds an action for the tab's wait
@@ -835,27 +831,30 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
   const worth = dollars(view.price)
   const canAct = record !== null
   const other = setAction(btn("Choose another name", "", () => go(`/#/?retarget=${view.id}`)), false, !canAct)
-  const code = setAction(btn("Take a code", "quiet", () => void takeCode()), canAct && s.busy === "code", !canAct || s.hold !== null)
-  code.dataset.focus = "take-code"
+  // no code is offered when no length of name is as cheap as the order at today's prices
+  const codeLength = view.codeLength
+  const code = codeLength === null ? null : setAction(btn("Take a code", "quiet", () => void takeCode(codeLength)), canAct && s.busy === "code", !canAct || s.hold !== null)
+  if (code) code.dataset.focus = "take-code"
   holdEnds(signal)(s.hold !== null)
   const cannot = canAct ? null : alertBox("info", "key", "The name code is not in this browser", "Add it in Check your code to choose another name or take a code.")
   return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."],
     alt: code, action: other },
     el("p", { class: "note" }, ...termLine(s)),
     stages(["done", "done", "failed"]),
-    el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it, or take a code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for ${PRICED_YEARS} years.`),
+    el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it`,
+      codeLength === null ? "." : `, or take a code for names of ${codeLength} or more letters, for ${view.years} years.`),
     cannot,
     actionNote(s, canAct ? signal : null),
     referenceLine(invoice.invoiceId))
 }
 
-async function takeCode(): Promise<void> {
+async function takeCode(codeLength: number): Promise<void> {
   const gen = opened
   const view = state.view!
   const record = state.record!
   dispatch({ type: "code-started" })
   try {
-    await flow.takeCodeFor(record, view)
+    await flow.takeCodeFor(record, view, codeLength)
     return reread(gen)
   } catch (e) {
     // the code may have been issued with the answer lost, or another browser moved the order: the order says
@@ -873,9 +872,9 @@ function buildCodeIssued({ view: issued, record }: OrderState): HTMLElement {
       text: "The code is made from the order's name code, so it shows in the browser that has it. Restore the name code here to see it.",
       action: btn("Enter your name code", "", () => go(CODE_FROM_ORDER_URL)), reference: view.id })
   }
-  const code = record.takenCode ?? flow.takenCodeOf(record, view.id)
+  const code = record.takenCode ?? flow.takenCodeOf(record, view)
   return outcome({ tone: "ok", icon: "key", title: "Here is a code instead",
-    text: [`For names of ${codeTier(record.label.length)} or more letters, for ${PRICED_YEARS} years: what `, nameText(record.label, view.tld), " was paid for."],
+    text: [`For names of ${view.codeLength} or more letters, for ${view.years} years: what `, nameText(record.label, view.tld), " was paid for."],
     action: btn("Search another name", "quiet", () => go("/#/")),
     extra: [codeDisplay(code),
       el("div", { class: "code-qr" }, qrSvg(code, "code")),

@@ -14,10 +14,6 @@ const ENTROPY_BYTES = 16
 const PREPAID_BODY_LENGTH = 20
 const PREPAID_PAYLOAD = PREPAID_BODY_LENGTH - 1
 const GROUP = 5
-// a taken order's code covers its name's length, with every name of 8 or more letters in one tier
-export const LONGEST_TIER = 8
-// the shortest names a code covers: its own length, up to the longest tier
-export const codeTier = (length: number) => Math.min(length, LONGEST_TIER)
 
 type NameCode =
   | { kind: "owner"; entropy: Uint8Array }
@@ -83,9 +79,10 @@ function parsePrepaid(lengthText: string, body: string): NameCode | null {
   return { kind: "prepaid", minLength: Number(lengthText), canonical: PREFIX + lengthText + canonicalBody, display: group(PREFIX + lengthText, canonicalBody) }
 }
 
-// A taken order's code: its payload from the owner code's seed and the registration id, so the owner code recovers it.
-export function takenOrderCode(seed: Uint8Array, registrationId: string, length: number): NameCode & { kind: "prepaid" } {
-  const lengthText = String(codeTier(length))
+// A taken order's code for names of `minLength` letters or more: its payload from the owner code's seed and the
+// registration id, so the owner code recovers it.
+export function takenOrderCode(seed: Uint8Array, registrationId: string, minLength: number): NameCode & { kind: "prepaid" } {
+  const lengthText = String(minLength)
   const mac = hmac(sha256, seed, utf8ToBytes("simplex.domains taken code " + registrationId))
   // 256 is a multiple of 32, so a byte reduces without bias
   const payload = [...mac.slice(0, PREPAID_PAYLOAD)].map((b) => b % BASE)

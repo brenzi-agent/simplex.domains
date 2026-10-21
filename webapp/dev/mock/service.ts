@@ -10,7 +10,7 @@ import { codeHash, parseNameCode } from "../../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, durationFor, YEAR_S } from "../../src/crypto/registration.ts"
 import { labelProblem, linkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
 import {
-  baseRegistrar, chainNow, controller, deployment, holder, NotSent, ownerOf, read, registry, resolver, Reverted, send, sponsor,
+  baseRegistrar, chainNow, controller, deployment, holder, NotSent, ownerOf, priceOracleAt, read, registry, resolver, Reverted, send, sponsor,
 } from "./chain.ts"
 import { TERM_START_S, untilChainTime } from "../chain-time.ts"
 
@@ -91,6 +91,8 @@ interface Registration {
   createdAt: string
   failNext: boolean
   issuedCodeHash: string | null
+  // the minLength of the code issued for it, which the code's text carries
+  issuedCodeLength: number | null
   // what an exact resend of the order that made it must repeat: its fields, never its timestamp or signature
   orderHash: string
   // tries of a transaction that did not go out, since the last that did
@@ -333,11 +335,13 @@ async function viewRead<T>(field: string, unread: string[], f: () => Promise<T>)
 async function registrationView(reg: Registration): Promise<Record<string, unknown>> {
   const unread: string[] = []
   const intentNonce = reg.phase === "committed" ? await viewRead("intentNonce", unread, async () => Number(await read<bigint>(sponsor, "nonces", [reg.owner]))) : null
+  const codeLength = reg.phase === "code_issued" ? reg.issuedCodeLength
+    : reg.phase === "taken" && reg.method !== "code" ? await viewRead("codeLength", unread, () => codeLengthFor(reg)) : null
   return {
     id: reg.id, version: reg.version, phase: reg.phase, labelHash: reg.labelHash, label: reg.label, owner: reg.owner, commitment: reg.commitment, sealed: reg.sealed,
     resolver: deployment.resolver, sponsor: deployment.sponsor, chainId: deployment.chainId, tld: deployment.tld, years: reg.years, duration: reg.duration, price: reg.paid,
     commitTx: reg.commitTx, registerTx: reg.registerTx, revealAfter: reg.revealAfter, revealBefore: reg.revealBefore,
-    intentNonce, unread, expiresAt: reg.expiresAt, error: reg.error,
+    codeLength, intentNonce, unread, expiresAt: reg.expiresAt, error: reg.error,
   }
 }
 
@@ -376,6 +380,18 @@ function orderBody(body: Record<string, unknown>): OrderBody {
 function checkDuration(duration: number, years: number): void {
   const free = duration - years * YEAR_S
   if (free < 0 || Math.abs(free - Math.max(0, TERM_START_S - nowSeconds())) > TERM_SLACK_S) throw badRequest()
+}
+
+// A taken order's code pays for any name no dearer than the order: the shortest length from which every longer one costs,
+// for the order's years, at most what the order is worth; null when no length does. The whole price list is read once.
+async function codeLengthFor(reg: Registration): Promise<number | null> {
+  const oracle = priceOracleAt(await read<Address>(controller, "prices"))
+  const [base, exceptions] = await read<[bigint, { labelLength: bigint; priceCentsPerYear: bigint }[]]>(oracle, "prices")
+  const perYear = new Map(exceptions.map((e) => [Number(e.labelLength), e.priceCentsPerYear]))
+  const affordable = (length: number) => Number(perYear.get(length) ?? base) * reg.years <= reg.paid
+  let shortest: number | null = null
+  for (let length = MAX_LABEL_LENGTH; length >= MIN_LABEL_LENGTH && affordable(length); length--) shortest = length
+  return shortest
 }
 
 // an order's own chain reads fail with their own tag, which the page tells from a payment method being unavailable
@@ -467,7 +483,7 @@ export async function createInvoice(body: Record<string, unknown>): Promise<Reco
 function newRegistration(order: OrderBody, extra: Pick<Registration, "years" | "paid" | "method" | "prepaidCode" | "phase" | "orderHash">): Registration {
   const reg: Registration = {
     id: id(), invoiceId: null, ...order, ...extra, label: null, secret: null, records: null, intent: null, commitTx: null, registerTx: null,
-    revealAfter: null, revealBefore: null, expiresAt: null, error: null, createdAt: iso(nowSeconds()), failNext: false, issuedCodeHash: null, resends: 0, version: 1,
+    revealAfter: null, revealBefore: null, expiresAt: null, error: null, createdAt: iso(nowSeconds()), failNext: false, issuedCodeHash: null, issuedCodeLength: null, resends: 0, version: 1,
   }
   registrations.set(reg.id, reg)
   return reg
@@ -851,16 +867,22 @@ export async function retarget(registrationId: string, body: Record<string, unkn
 export async function takenCode(registrationId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const reg = registrations.get(registrationId)
   if (!reg) throw new HttpError(404, "not_found")
-  const hash = body.codeHash
-  if (typeof hash !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(hash)) throw badRequest()
-  await checkSigned(reg.owner, `simplex.domains code ${reg.id} ${hash} ${body.timestamp}`, body.timestamp, body.signature)
+  const { codeHash: hash, codeLength } = body
+  if (typeof hash !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(hash) || !Number.isInteger(codeLength)) throw badRequest()
+  await checkSigned(reg.owner, `simplex.domains code ${reg.id} ${hash} ${codeLength} ${body.timestamp}`, body.timestamp, body.signature)
+  // a repeat is answered from the code issued, whatever the prices are now
   if (reg.issuedCodeHash === hash) return {}
   if (reg.phase !== "taken" || reg.method === "code") throw badRequest()
+  const version = reg.version
+  const minLength = await codeLengthFor(reg).catch(unavailable)
+  if (minLength === null) throw new HttpError(409, "code_unavailable")
+  if (minLength !== codeLength) throw new HttpError(409, "code_length_changed", { codeLength: minLength })
   if (codes.has(hash)) throw new HttpError(409, "code_conflict")
-  await unchangedSince(reg, reg.version)
+  await unchangedSince(reg, version)
   // the service never sees the code, only its hash; the page shows the code it derived
-  codes.set(hash, { minLength: Math.min(reg.length, 8), years: YEARS, state: "unused", registrationId: null })
+  codes.set(hash, { minLength, years: reg.years, state: "unused", registrationId: null })
   reg.issuedCodeHash = hash
+  reg.issuedCodeLength = minLength
   reg.phase = "code_issued"
   changed(reg)
   return {}

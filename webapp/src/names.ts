@@ -2,10 +2,6 @@
 
 export const MIN_LABEL_LENGTH = 6
 export const MAX_LABEL_LENGTH = 63
-// the term a search's price is for
-export const PRICED_YEARS = 2
-// what a term of some other length is worth at that price, as a code covering more years is
-export const priceFor = (price: number, years: number, pricedYears = PRICED_YEARS) => Math.round(price * years / pricedYears)
 // a record value's bound, as the service enforces it
 export const LINK_MAX_BYTES = 4096
 

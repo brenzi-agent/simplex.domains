@@ -104,22 +104,30 @@ export async function retargetOrder(record: store.OrderRecord, label: string, li
   return view
 }
 
-// A code for a taken order, derived from the owner code, so the code alone recovers it; only its hash is sent.
-export async function takeCodeFor(record: store.OrderRecord, view: api.RegistrationView): Promise<string> {
+// A code for a taken order, derived from the owner code and the length the service gives, so the code alone recovers it;
+// only its hash is sent. Prices that moved since the view was read change the length, and the code is derived again.
+export async function takeCodeFor(record: store.OrderRecord, view: api.RegistrationView, codeLength: number): Promise<string> {
   const wallet = walletOf(record.ownerCode)!
-  const code = takenOrderCode(wallet.seed, view.id, record.label.length)
+  const code = takenOrderCode(wallet.seed, view.id, codeLength)
   const hash = codeHash(code.canonical)
   const timestamp = now()
-  const signature = hex(signDigest(wallet.privateKey, personalDigest(`simplex.domains code ${view.id} ${hash} ${timestamp}`)))
-  await api.takeCode(view.id, { codeHash: hash, timestamp, signature })
+  const signature = hex(signDigest(wallet.privateKey, personalDigest(`simplex.domains code ${view.id} ${hash} ${codeLength} ${timestamp}`)))
+  try {
+    await api.takeCode(view.id, { codeHash: hash, codeLength, timestamp, signature })
+  } catch (e) {
+    const changed = e instanceof api.ApiError && e.code === "code_length_changed" && Number.isInteger(e.body.codeLength) ? e.body.codeLength as number : null
+    if (changed === null || changed === codeLength) throw e
+    return takeCodeFor(record, view, changed)
+  }
   store.updateOrder(record.registrationId, { takenCode: code.display })
   store.addCode({ code: code.display, minLength: code.minLength, years: view.years, addedAt: new Date().toISOString() })
   return code.display
 }
 
-export function takenCodeOf(record: store.OrderRecord, registrationId: string): string {
+// the code an order became, as its view gives its length
+export function takenCodeOf(record: store.OrderRecord, view: api.RegistrationView): string {
   const wallet = walletOf(record.ownerCode)!
-  return takenOrderCode(wallet.seed, registrationId, record.label.length).display
+  return takenOrderCode(wallet.seed, view.id, view.codeLength!).display
 }
 
 type RestoreResult = { record: store.OrderRecord; view: api.RegistrationView }

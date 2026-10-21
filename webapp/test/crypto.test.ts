@@ -5,7 +5,7 @@ import {
 } from "viem"
 import { mnemonicToAccount } from "viem/accounts"
 import { describe, expect, it } from "vitest"
-import { codeHash, codeProgress, codeTier, formatOwnerCode, LONGEST_TIER, parseNameCode, takenOrderCode } from "../src/crypto/code.ts"
+import { codeHash, codeProgress, formatOwnerCode, parseNameCode, takenOrderCode } from "../src/crypto/code.ts"
 import {
   clearRecordsDigest, commitmentSecret, durationFor, labelHash, makeCommitment, namehash, recordCalls,
   registerIntentDigest, setTextDigest, type Registration,
@@ -66,12 +66,13 @@ describe("prepaid code", () => {
     expect(codeHash("SN7BJTBP29596R3HJ825YM7")).toBe(expected)
   })
 
-  it("derives a taken order's code that parses, covers the tier, and repeats", () => {
+  it("derives a taken order's code that parses, covers the length the service gives, and repeats", () => {
     const seed = walletFromEntropy(ENTROPY).seed
     const code = takenOrderCode(seed, "t2Jk8RmQ4vXw9NcP3yLb6g", 7)
     expect(parseNameCode(code.display)).toEqual(code)
     expect(code.minLength).toBe(7)
-    expect(takenOrderCode(seed, "t2Jk8RmQ4vXw9NcP3yLb6g", 12).minLength).toBe(8)
+    const long = takenOrderCode(seed, "t2Jk8RmQ4vXw9NcP3yLb6g", 12)
+    expect([long.minLength, long.display.slice(0, 4), parseNameCode(long.display)]).toEqual([12, "SN12", long])
     expect(takenOrderCode(seed, "t2Jk8RmQ4vXw9NcP3yLb6g", 7).canonical).toBe(code.canonical)
     expect(takenOrderCode(seed, "other", 7).canonical).not.toBe(code.canonical)
   })
@@ -95,12 +96,6 @@ describe("code typed so far", () => {
 
   it("says at once when no code can begin so or holds a character no code has", () => {
     for (const text of ["X", "SX", "NS7", "SN7-BJTBU", "SN7-БJTBP"]) expect(codeProgress(text), text).toBe("impossible")
-  })
-})
-
-describe("code tier", () => {
-  it("covers a name's own length up to the longest tier", () => {
-    expect([codeTier(6), codeTier(7), codeTier(8), codeTier(63)]).toEqual([6, 7, LONGEST_TIER, LONGEST_TIER])
   })
 })
 

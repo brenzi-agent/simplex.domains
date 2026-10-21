@@ -75,6 +75,8 @@ export interface RegistrationView extends ChainInfo {
   duration: number
   // what the order is worth, in cents: what was paid, or the price of the name it moved to; it caps another move
   price: number
+  // the shortest names a code for this order pays for: the code a taken paid order would become, or the one it became
+  codeLength: number | null
   commitTx: string | null
   registerTx: string | null
   revealAfter: number | null
@@ -220,7 +222,7 @@ const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unk
 const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.sponsor) && typeof a.chainId === "number" && isText(a.tld)
 const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registering", "registered", "taken", "failed", "code_issued"]
 const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && Number.isInteger(v.version) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
-  && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isCount(v.duration) && isAmount(v.price)
+  && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isCount(v.duration) && isAmount(v.price) && nullable(v.codeLength, isCount)
   && nullable(v.commitTx, isText) && nullable(v.registerTx, isText) && nullable(v.revealAfter, isAmount) && nullable(v.revealBefore, isAmount)
   && nullable(v.intentNonce, isAmount) && Array.isArray(v.unread) && v.unread.every(isText) && nullable(v.expiresAt, isAmount) && nullable(v.error, isText)
 const isInvoice = (v: unknown) => isObject(v) && isText(v.invoiceId) && ["open", "paid", "expired"].includes(v.status as string) && isAmount(v.amount)
@@ -273,7 +275,7 @@ export const reveal = (registrationId: string, body: { label: string; secret: st
   call<Record<string, never>>("POST", `/api/registration/${encodeURIComponent(registrationId)}/reveal`, body)
 export const retarget = (registrationId: string, body: Omit<SignedOrder, "owner">) =>
   checked<RegistrationView>(call("POST", `/api/registration/${encodeURIComponent(registrationId)}/name`, body), isRegistration)
-export const takeCode = (registrationId: string, body: { codeHash: string; timestamp: number; signature: string }) =>
+export const takeCode = (registrationId: string, body: { codeHash: string; codeLength: number; timestamp: number; signature: string }) =>
   call<Record<string, never>>("POST", `/api/registration/${encodeURIComponent(registrationId)}/code`, body)
 export const retry = (registrationId: string) => checked<RegistrationView>(call("POST", `/api/registration/${encodeURIComponent(registrationId)}/retry`), isRegistration)
 const isFound = (r: unknown) => isObject(r) && isText(r.registrationId) && nullable(r.invoiceId, isText) && PHASES.includes(r.phase as Phase) && isText(r.createdAt)

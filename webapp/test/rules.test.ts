@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, termEnd } from "../src/format.ts"
-import { foldLabel, labelProblem, linkKind, linkProblem, LINK_MAX_BYTES, linkTooLong, priceFor } from "../src/names.ts"
+import { foldLabel, labelProblem, linkKind, linkProblem, LINK_MAX_BYTES, linkTooLong } from "../src/names.ts"
 
 describe("label rules", () => {
   it("folds case and spaces, and accepts 6 to 63 letters with single inner hyphens", () => {
@@ -49,15 +49,6 @@ describe("link rules", () => {
     expect(linkTooLong(long)).toBe(true)
     expect(linkTooLong(`${contact}?x=${"\u00e9".repeat(LINK_MAX_BYTES / 2)}`), "two bytes a letter").toBe(true)
     expect(linkTooLong(contact)).toBe(false)
-  })
-})
-
-describe("prices", () => {
-  it("prices a code's term at the search's rate for its own term, to the cent", () => {
-    expect(priceFor(10000, 2)).toBe(10000)
-    expect(priceFor(10000, 5)).toBe(25000)
-    expect(priceFor(40000, 3, 2)).toBe(60000)
-    expect(priceFor(10001, 5)).toBe(25003)
   })
 })
 
