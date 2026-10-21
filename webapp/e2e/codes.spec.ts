@@ -102,7 +102,7 @@ test("a prepaid code from Check your code prices a name at $0 and registers it w
   await shot(page, "K8-registered-with-code")
   await page.goto("/#/names")
   const row = page.locator(".list-row", { hasText: `${label}.simplex` })
-  await expect(row).toContainText(/paid with a code/i)
+  await expect(row.locator(".sub"), "a registered name says its date alone").toHaveText(/^Until \d+\u00a0\w+ \d{4}$/)
   await shot(page, "K10-names-paid-with-code")
 
   // the code is spent

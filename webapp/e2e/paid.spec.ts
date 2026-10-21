@@ -41,6 +41,7 @@ test("the wait's line fills as the wait goes, and is full when it ends", async (
   const filled = () => drawnFill(wait)
   const first = (await filled())!
   expect(first, "the line starts short of full").toBeLessThan(1)
+  expect(first, "the line starts visibly filled, apart from the stages to come").toBeGreaterThanOrEqual(0.08)
   const fills = await page.evaluate(() => (window as unknown as { __fills: string[] }).__fills)
   expect(fills.length, "the wait stage was drawn").toBeGreaterThan(0)
   expect(fills.filter((f) => f === ""), `every wait stage is drawn with its fill set: ${fills}`).toEqual([])
@@ -274,8 +275,9 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await next.click()
 
   await expect(step.getByRole("heading", { name: "Check your order" })).toBeFocused()
-  // the order, then how it pays and what to know before paying, in one column, and the line a wait would say
-  expect(await step.locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className || n.getAttribute("role")))).toEqual(["card order", "pay-with", "notes", "status"])
+  // the order, then how it pays and what to know before paying, in one column, and under it the line a wait would say
+  expect(await step.locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["card order", "pay-with", "notes"])
+  await expect(step.locator(".screen-body > .review + [role=status]")).toHaveCount(1)
   await expect(step.locator(".card.order .name")).toHaveText(`${label}.simplex`)
   await expect(step.locator(".card.order .trow")).toHaveText([/^Term2 years$/, /^Free until 1\u00a0January 2027\d+ days?$/, /^Registered until1\u00a0January 2029$/, /^Total\$\d+$/])
   // each link as the chat it opens, read only
@@ -356,7 +358,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
 
   // a link of the kind the other field holds is refused, and Save takes focus to it
   await link.fill("https://smp8.simplex.im/c#notacontact")
-  await expect(page.getByText("This is a channel link: paste it in the Channel field.")).toBeVisible()
+  await expect(page.getByText("This is a channel link. Paste a contact address here.")).toBeVisible()
   await shot(page, "N12f-link-wrong-kind")
   await page.getByRole("button", { name: "Save links" }).click()
   await expect(link).toBeFocused()
