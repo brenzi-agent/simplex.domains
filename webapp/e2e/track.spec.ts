@@ -578,9 +578,9 @@ test("a refused link reads as a line under its field, and a refused code in a bo
     const link = step.getByRole("textbox", { name: "Link", exact: true })
     await link.fill("https://example.com/x#nothing")
     const refusal = step.locator(".field-error")
-    await expect(refusal).toHaveText("Paste a SimpleX contact address or channel short link.")
+    await expect(refusal).toHaveText("This is not a SimpleX contact address or channel link.")
     const [drawn, box] = [(await refusal.boundingBox())!, (await step.locator(".link-field .field").boundingBox())!]
-    expect({ under: Math.round(drawn.y - box.y - box.height), icon: await refusal.locator("svg").count() }, `the refused link at ${size.width}x${size.height}`).toEqual({ under: 8, icon: 1 })
+    expect({ under: Math.round(drawn.y - box.y - box.height), icon: await refusal.locator("svg").count() }, `the refused link at ${size.width}x${size.height}`).toEqual({ under: 8, icon: 0 })
     await page.goto("/#/code")
     await codeField(page).fill("SN-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA")
     const verdict = onStep(page).locator(".verdict.bad")

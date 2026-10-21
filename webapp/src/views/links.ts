@@ -18,6 +18,7 @@ const ANY_LINK_SCANNED = "Paste or scan a link"
 const PHONE = "(max-width: 520px)"
 const TOUCH = "(pointer: coarse)"
 const NO_CAMERA = "Allow the camera, or paste the link."
+const NOT_A_LINK = "This is not a SimpleX contact address or channel link."
 const linkName = (kind: LinkKind) => KIND_TEXT[kind].name
 const otherKind = (kind: LinkKind): LinkKind => kind === "contact" ? "channel" : "contact"
 
@@ -114,7 +115,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
     input.setAttribute("aria-invalid", "true")
     input.setAttribute("aria-describedby", errorId)
     // the same refusal again, as typing on in a refused link gives, keeps still
-    if (card.querySelector(".field-error")?.textContent !== text) show(null, el("p", { class: "field-error", id: errorId }, icon("alert"), text))
+    if (card.querySelector(".field-error")?.textContent !== text) show(null, el("p", { class: "field-error", id: errorId }, text))
   }
   const check = async () => {
     const mine = ++seq
@@ -150,7 +151,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
       return refuse(problem === "long" ? "This link is too long."
         : other && takes.filled(other) ? `This is a ${KIND_TEXT[other].noun}. Paste a ${KIND_TEXT[otherKind(other)].noun} here.`
         : other ? `This is a ${linkName(other).toLowerCase()} link: paste it in the ${takes.fieldOf(other)} field.`
-        : takes.kind ? `Paste a SimpleX ${linkName(takes.kind).toLowerCase()} short link.` : "Paste a SimpleX contact address or channel short link.")
+        : takes.kind ? `Paste a SimpleX ${linkName(takes.kind).toLowerCase()} short link.` : NOT_A_LINK)
     }
     if (known) {
       accept()
@@ -186,7 +187,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
     } catch {
       if (!shown()) return
       input.setAttribute("aria-describedby", errorId)
-      return show(null, el("p", { class: "field-error", id: errorId }, icon("alert"), NO_CAMERA))
+      return show(null, el("p", { class: "field-error", id: errorId }, NO_CAMERA))
     } finally {
       scan.disabled = false
     }

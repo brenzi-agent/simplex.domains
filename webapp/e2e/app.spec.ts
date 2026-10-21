@@ -28,13 +28,20 @@ test("no page leaves a font preload unused in Firefox, whether a tab's first pag
   }
 })
 
-test("a name code too long for its line breaks after a hyphen, so no line starts with one", async ({ page }) => {
-  await page.setViewportSize({ width: 360, height: 800 })
+test("a name code is drawn on one line inside its box on a phone, shown or hidden, down to 360 px", async ({ page }) => {
   await search(page, uniqueLabel("wrap"))
   await toCodeStep(page)
-  const starts = await lineStarts(onStep(page).getByTestId("owner-code"))
-  expect(starts.length, "the code wraps at this width").toBeGreaterThan(1)
-  expect(starts.slice(1), "the first character of each later line").not.toContain("-")
+  const code = onStep(page).getByTestId("owner-code")
+  for (const width of [390, 360]) {
+    await page.setViewportSize({ width, height: 800 })
+    for (const shown of [false, true]) {
+      if (shown) await onStep(page).getByRole("button", { name: "Show" }).click()
+      expect((await lineStarts(code)).length, `${shown ? "shown" : "hidden"} at ${width} px: its lines`).toBe(1)
+      const [text, box] = [(await code.boundingBox())!, (await onStep(page).locator(".code-display").boundingBox())!]
+      expect(text.x >= box.x && text.x + text.width <= box.x + box.width, `${shown ? "shown" : "hidden"} at ${width} px: inside its box`).toBe(true)
+      if (shown) await onStep(page).getByRole("button", { name: "Hide" }).click()
+    }
+  }
 })
 
 // a laptop's, a phone's and a small phone's window

@@ -376,9 +376,10 @@ html:has(.modal[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .method[aria-checked="true"] { border-color: var(--primary); color: var(--primary); box-shadow: inset 0 0 0 1.5px var(--primary); }
 .method[aria-disabled="true"] { color: var(--ink-soft); background: var(--chip); cursor: default; }
 .method:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-/* a refused link and a refused code read alike: a line 8 px under the field, its icon before it */
+/* a refused link: a line 8 px under its field */
 .verdict, .field-error, .other-order { font-size: 14px; line-height: 1.4; }
 .verdict:not(:empty), .field-error { display: flex; gap: 8px; font-weight: 600; padding-inline: 20px; }
+.field-error { font-weight: 500; padding-inline: 18px 0; text-wrap: balance; }
 .screen-body > [role="status"] > .verdict { margin-top: -6px; }
 .verdict.ok { color: var(--ok-fg); }
 /* Check your code says what a code is in a box under its field */
@@ -448,7 +449,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .countdown .sizer { visibility: hidden; }
 
 .code-display { display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 20px; border-radius: 16px; background: var(--chip); border: 1px solid var(--surface-line);
-  font: 600 16px var(--mono); }
+  font: 600 16px var(--mono); letter-spacing: .02em; }
 .code-display .code-text { flex: 1; min-width: 0; text-wrap: balance; }
 .code-display .masked { color: var(--ink-soft); }
 .code-buttons { display: flex; gap: 6px; }
@@ -558,14 +559,15 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .row.buy .deal { margin-right: auto; }
   .card { padding: 16px 18px; }
   .card.list { padding-inline: 16px; }
-  /* two balanced lines, broken after a dash, read better than a long one squeezed small */
-  .code-display { flex-wrap: wrap; justify-content: center; padding: 12px 14px; font-size: 15px; letter-spacing: 0; }
-  .code-display .code-text { flex-basis: 100%; text-align: center; }
   /* the steps for the app, tighter, so the card holds a name of 63 wide letters in its frame */
   .card.use { gap: 8px; }
   .card.use p:not(.note) { font-size: 15px; line-height: 1.4; }
   .code-input { padding-inline: 14px; }
   .code-input input { font-size: clamp(14px, 100cqi / 23.2, 16px); letter-spacing: 0; }
+  /* a name code on one line over its buttons, its 38 characters 23 em wide at most */
+  .code-display { container-type: inline-size; flex-wrap: wrap; justify-content: center; padding: 12px 6px; letter-spacing: 0; }
+  .code-display .code-text { flex-basis: 100%; text-align: center; white-space: nowrap; font-size: min(14px, 100cqi / 23); }
+  .field-error { padding-inline: 0; font-size: 13px; }
   .order > .row { padding-inline: 16px 12px; }
   .table { padding: 2px 16px 4px; }
   .method { height: 72px; font-size: 14px; }
@@ -575,8 +577,6 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .qr-grid { grid-template-columns: minmax(0, 1fr); }
   .qr-grid > .card.qr, .code-qr { display: none; }
   .scan { display: grid; }
-  /* the link field's room goes to its placeholder, beside Paste and the scan button */
-  .link-field .field > svg.i { display: none; }
   .screen-body > .wallet { display: block; }
 }
 
