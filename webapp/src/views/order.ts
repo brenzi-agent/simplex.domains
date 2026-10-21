@@ -343,6 +343,7 @@ function orderLine({ view, record, invoice }: OrderState): Kid[] {
 }
 
 const TICKER: Record<"btc" | "xmr", string> = { btc: "BTC", xmr: "XMR" }
+const WALLET = "Open in wallet"
 
 // the invoice an earlier try made, which a checkout opened in place of paying as it chose; said until its page is left
 let instead: { invoiceId: string; had: string; chosen: string } | null = null
@@ -387,13 +388,13 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
   const due = partial ? inv.cryptoAmountDue! : inv.cryptoAmount!
   const uri = paymentUri(coin, inv.address!, due)
   holdEnds(signal)(s.hold !== null)
-  // a part paid takes the bookmark's line with its notice
+  // a part paid takes the bookmark's line with its notice; a phone opens its wallet from the main button, a laptop from the QR's card
   return screen({ title: `Pay with ${methodName(coin)}`, lead: [...orderLine(s), partial ? null : [el("br"), "Bookmark this page to come back to this payment."]],
-    alt: partial ? null : cancelLink(s) },
+    action: uri ? el("a", { class: "btn wallet", href: uri }, WALLET) : null, alt: partial ? null : cancelLink(s) },
     partial ? alertBox("warn", "alert", null, partSentence(inv, coin)) : null,
     insteadLine(inv),
     el("div", { class: "qr-grid" },
-      uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`), el("a", { href: uri }, "Open in wallet")) : null,
+      uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`), el("a", { href: uri }, WALLET)) : null,
       // labels in sentence case, as their copy buttons say them; the label style draws them in capitals
       copyField(`${partial ? "rest to send" : "amount"} in ${TICKER[coin]}`, due),
       copyField(`${methodName(coin)} address`, inv.address!)),

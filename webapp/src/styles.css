@@ -385,6 +385,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .qr-grid > .qr { grid-row: span 2; }
 .card.qr { display: grid; place-items: center; gap: 8px; padding: 12px; font-size: var(--fs-small); }
 .card.qr svg.qr { width: 150px; }
+.actions-row > .wallet { display: none; }
 .copy-field .label { display: block; margin-bottom: 6px; }
 .copy-field .val { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line);
   font: 500 14px var(--mono); overflow-wrap: anywhere; text-wrap: balance; }
@@ -562,10 +563,10 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .trow.total { padding-top: 10px; font-size: 16px; }
   .methods { gap: 8px; }
   .method { font-size: 14px; gap: 6px; }
-  /* the QR is for another device; a phone opens its wallet by the link */
+  /* the QR is for another device; a phone opens its wallet from the main button */
   .qr-grid { grid-template-columns: minmax(0, 1fr); }
-  .qr-grid svg.qr { display: none; }
-  .card.qr { place-items: start; padding: 0; border: 0; background: none; }
+  .qr-grid > .card.qr { display: none; }
+  .actions-row > .wallet { display: inline-flex; }
 }
 
 /* Motion: a screen swapped in, a purchase step as any other, rises into place; what a step adds comes in. Nothing goes out

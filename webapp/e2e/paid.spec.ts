@@ -84,6 +84,15 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   await expect(wallet).toHaveAttribute("href", `bitcoin:${address}?amount=${cryptoAmount}`)
   await expect(onStep(page).getByRole("button", { name: "Copy amount in BTC" })).toBeVisible()
   await expect(onStep(page).getByRole("button", { name: "Copy Bitcoin address" })).toBeVisible()
+  // a laptop opens the wallet from the QR's card; a phone, without the QR, from the main button above Cancel this invoice
+  await expect(wallet.locator("xpath=..")).toHaveClass(/\bqr\b/)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(onStep(page).locator(".card.qr")).toBeHidden()
+  await expect(wallet).toHaveClass(/\bbtn\b/)
+  await expect(wallet).toHaveAttribute("href", `bitcoin:${address}?amount=${cryptoAmount}`)
+  const [walletBox, cancelBox] = [(await wallet.boundingBox())!, (await page.getByRole("button", { name: "Cancel this invoice" }).boundingBox())!]
+  expect(walletBox.y + walletBox.height, "the wallet's button over Cancel this invoice").toBeLessThanOrEqual(cancelBox.y)
+  await page.setViewportSize({ width: 1280, height: 900 })
 
   await control(request, `partial/${invoiceId}`)
   await expect(page.getByText("Part of the payment arrived")).toBeVisible()
