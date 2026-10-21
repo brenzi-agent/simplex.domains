@@ -192,7 +192,7 @@ export function linkFieldsFor(links: api.Links, save: (kind: LinkKind, link: str
     second = { kind, field }
     add.before(field)
     offerAdd()
-    if (focus) field.querySelector("input")!.focus({ preventScroll: true })
+    if (focus) field.querySelector("input")!.focus()
   }
   node.append(firstField, add)
   if (links.contact && links.channel) addSecond("channel", links.channel, false)

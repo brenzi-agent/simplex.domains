@@ -48,9 +48,6 @@ function openChat(e: api.Entity, name: string, key: string): void {
   })
   whenDropped(() => dialog.close(LEFT))
   document.body.append(dialog)
-  // Firefox scrolls the page, footer and all, to the control a modal dialog focuses as it opens; the page stays where it is
-  const at = scrollY
   dialog.showModal()
-  open?.focus({ preventScroll: true })
-  scrollTo(0, at)
+  open?.focus()
 }
