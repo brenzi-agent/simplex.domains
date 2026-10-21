@@ -255,3 +255,18 @@ test("an order whose links the service refuses at its reveal registers without t
   const answer = await searchName(request, label)
   expect(answer.records).toEqual({ contact: "", channel: "" })
 })
+
+test("a move to a cheaper name says the rest is not refunded, and offers the code that keeps it all", async ({ page, request }) => {
+  const label = `t${Math.random().toString(36).slice(2).replace(/[^a-z]/g, "").padEnd(6, "t")}`.slice(0, 7)
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await control(request, "take", { label })
+  await control(request, `settle/${invoiceId}`)
+  await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("cheap"))
+  await page.getByLabel("Name", { exact: true }).press("Enter")
+  await expect(page.locator(".answer .line", { hasText: "Uses" })).toHaveText("Uses $100 of your $200; the rest is not refunded. Take a code instead to keep it all.")
+  await page.getByRole("link", { name: "Take a code instead" }).click()
+  await expect(page.getByRole("button", { name: "Take a code" })).toBeVisible()
+  expect(new URL(page.url()).searchParams.get("order")).toBe(invoiceId)
+})

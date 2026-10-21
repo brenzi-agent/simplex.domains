@@ -40,7 +40,7 @@ describe("screenOf", () => {
   })
   it("a retarget page whose order went elsewhere stays the retarget page", () => {
     const s = open({ opening: "retarget", retarget: record() })
-    expect(screenOf(reduce(s, { type: "retarget-read", record: record(), moved: { to: "code", url: "/?order=inv-1" } }))).toBe("search:retarget")
+    expect(screenOf(reduce(s, { type: "retarget-read", record: record(), moved: { to: "code", url: "/?order=inv-1" }, codeOffer: null }))).toBe("search:retarget")
   })
 })
 
@@ -106,7 +106,7 @@ describe("reduce: opened", () => {
   })
   it("an order that went elsewhere stays gone when the page is drawn again", () => {
     const moved = { to: "name" as const, url: "/?order=inv-1", label: "other1", tld: "simplex" }
-    const s = reduce(open({ opening: "retarget", retarget: record() }), { type: "retarget-read", record: record(), moved })
+    const s = reduce(open({ opening: "retarget", retarget: record() }), { type: "retarget-read", record: record(), moved, codeOffer: null })
     expect(reduce(s, openedEvent({ opening: "retarget", retarget: record() }))).toMatchObject({ retarget: null, moved })
   })
   it("a new name in the link, drawn again, goes into the field", () => {
@@ -231,20 +231,27 @@ describe("reduce: answers", () => {
 })
 
 describe("reduce: retargets", () => {
+  it("retarget-read keeps where the order can become a code instead, and opening another order's move forgets it", () => {
+    const s = open({ opening: "retarget", retarget: record() })
+    const read = reduce(s, { type: "retarget-read", record: record(), moved: null, codeOffer: "/?order=inv-1" })
+    expect(read.codeOffer).toBe("/?order=inv-1")
+    expect(reduce(read, { type: "retarget-read", record: record(), moved: { to: "code", url: "/?order=inv-1" }, codeOffer: null }).codeOffer).toBeNull()
+    expect(reduce(read, { type: "opened", opening: "retarget", name: "", retarget: record({ registrationId: "reg-2" }), hold: null }).codeOffer).toBeNull()
+  })
   it("retarget-read takes the order as the service has it", () => {
     const s = open({ opening: "retarget", retarget: record() })
-    expect(reduce(s, { type: "retarget-read", record: record({ paid: 2500 }), moved: null }).retarget).toEqual(record({ paid: 2500 }))
+    expect(reduce(s, { type: "retarget-read", record: record({ paid: 2500 }), moved: null, codeOffer: null }).retarget).toEqual(record({ paid: 2500 }))
   })
   it("retarget-read for an order gone elsewhere says where, and the search is a plain one", () => {
     const s = run(open({ opening: "retarget", retarget: record() }), { type: "register-started" })
     const moved = { to: "name" as const, url: "/?order=inv-1", label: "other1", tld: "simplex" }
-    expect(reduce(s, { type: "retarget-read", record: record(), moved })).toMatchObject({ retarget: null, moved, register: { busy: false, refusal: null } })
+    expect(reduce(s, { type: "retarget-read", record: record(), moved, codeOffer: null })).toMatchObject({ retarget: null, moved, register: { busy: false, refusal: null } })
   })
   it("retarget-read for another order, or on a page with none, changes nothing", () => {
     const s = open({ opening: "retarget", retarget: record() })
-    expect(reduce(s, { type: "retarget-read", record: record({ registrationId: "reg-2" }), moved: null })).toBe(s)
+    expect(reduce(s, { type: "retarget-read", record: record({ registrationId: "reg-2" }), moved: null, codeOffer: null })).toBe(s)
     const plain = open()
-    expect(reduce(plain, { type: "retarget-read", record: record(), moved: null })).toBe(plain)
+    expect(reduce(plain, { type: "retarget-read", record: record(), moved: null, codeOffer: null })).toBe(plain)
   })
 })
 

@@ -129,6 +129,10 @@ async function readOrder(record: store.OrderRecord): Promise<{ view: api.Registr
 const movable = (view: api.RegistrationView, record: store.OrderRecord) =>
   view.phase === "taken" || view.phase === "failed" || (view.phase === "committed" && record.linksRefused === true)
 
+// a paid order taken first can still become a code worth all it paid, on its own page
+const codeOfferOf = (view: api.RegistrationView, record: store.OrderRecord) =>
+  view.phase === "taken" && record.invoiceId !== null && view.codeLength !== null ? store.orderUrl(record) : null
+
 function movedOf(view: api.RegistrationView, record: store.OrderRecord): Moved | null {
   if (movable(view, record)) return null
   const url = store.orderUrl(record)
@@ -138,7 +142,7 @@ function movedOf(view: api.RegistrationView, record: store.OrderRecord): Moved |
 async function checkRetarget(record: store.OrderRecord): Promise<void> {
   const page = opens
   const read = await readOrder(record)
-  if (read && onPage(page)) dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced) })
+  if (read && onPage(page)) dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced), codeOffer: codeOfferOf(read.view, read.synced) })
 }
 
 // a search the wait paused is sent once it ends; one already on its way, as Back sends, is not sent again
@@ -188,7 +192,7 @@ async function retarget(record: store.OrderRecord, label: string, quote: Availab
     const limited = holdFrom(e)
     if (!onPage(page)) return
     if (read?.synced.label === label) return go(store.orderUrl(record))
-    if (read && !movable(read.view, read.synced)) return dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced) })
+    if (read && !movable(read.view, read.synced)) return dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced), codeOffer: null })
     if (limited) return dispatch({ type: "register-held", until: holdEnd() })
     const code = e instanceof api.ApiError ? e.code : null
     if (code === "move_limit") return dispatch({ type: "register-refused", refusal: { why: "limit", reference: record.invoiceId ?? record.registrationId } })
@@ -294,7 +298,10 @@ const codeFor = (s: SearchState, label: string) => {
 function availableAnswer(s: SearchState, label: string, answer: Available, signal: AbortSignal): Kid[] {
   const retarget = s.retarget
   const unpayable = unaffordable(s, answer)
-  const covers = retarget && (unpayable ? `This name costs more than the ${dollars(retarget.paid)} your order is worth.` : "Covered by your payment")
+  // a cheaper name refunds nothing, which is said before the buyer chooses it
+  const cheaper = retarget && answer.price < retarget.paid ? [`Uses ${dollars(answer.price)} of your ${dollars(retarget.paid)}; the rest is not refunded.`,
+    s.codeOffer ? [" ", el("a", { href: s.codeOffer }, "Take a code instead"), " to keep it all."] : null] : null
+  const covers = retarget && (unpayable ? `This name costs more than the ${dollars(retarget.paid)} your order is worth.` : cheaper ?? "Covered by your payment")
   const own = ownOrderOf(s)
   const code = codeFor(s, label)
   const short = usesCode(s) ? session.activeCode() : null
