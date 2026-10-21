@@ -71,7 +71,7 @@ test("a wait on moving the payment that ends while Back checks the name again se
   // an order this browser made for the name before, which has Back check the name again
   await page.evaluate(({ label, hash }) => localStorage.setItem("simplex-names:order:reg-before", JSON.stringify({
     registrationId: "reg-before", invoiceId: null, label, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
-    contact: "", channel: "", method: "code", paid: 0, years: 2, secret: "0x01", tld: "simplex", createdAt: new Date().toISOString(),
+    contact: "", channel: "", method: "code", paid: 0, years: 2, tld: "simplex", createdAt: new Date().toISOString(),
     request: { labelHash: hash, length: label.length, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: "0x01", sealed: "sealed" },
   })), { label: next, hash: hex(labelHash(next)) })
   await page.getByLabel("Name", { exact: true }).fill(next)
