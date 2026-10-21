@@ -10,6 +10,7 @@ import {
   type ClosedCase, closedCase, coinOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, wakeAt,
 } from "../screens/order.ts"
+import { CODE_FROM_ORDER_URL } from "../screens/routes.ts"
 import * as store from "../store.ts"
 import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
 import { every } from "./effects.ts"
@@ -18,8 +19,6 @@ import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
 import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
 
 export const RETRY_MS = 3000
-// where a name code is entered
-const CHECK_CODE = "/#/code"
 // The badge service's words for a cancel the provider took while the service still shows the invoice open; a card
 // invoice has no address. The browser keeps the cancel, so the warning stays until the invoice closes.
 const cancelStillOpen = (invoice: api.InvoiceView) => invoice.cryptoCurrency
@@ -482,7 +481,7 @@ function cardStandIn(form: HTMLElement): void {
 }
 
 // what a browser without the order's record can do: take in the name code
-const withoutRecord = (cls: string, text = "Enter your name code") => btn(text, cls, () => go(CHECK_CODE))
+const withoutRecord = (cls: string, text = "Enter your name code") => btn(text, cls, () => go(CODE_FROM_ORDER_URL))
 
 const CLOSED_TITLE = "Invoice closed"
 const partlyPaid = (invoice: api.InvoiceView) => Number(invoice.cryptoAmountPaid ?? "0") > 0
@@ -765,7 +764,7 @@ function onTheSecond(left: () => number, f: () => void, signal: AbortSignal): vo
 function buildNotOnDevice({ view, invoice }: OrderState): HTMLElement {
   return outcome({ tone: "info", icon: "key", title: "The name code is not in this browser",
     text: ["This order registers a name to ", el("span", { class: "nowrap" }, shortAddress(view!.owner)), ". Its code was made in the browser it was bought in. Enter the code you saved to carry on here."],
-    action: btn("Enter your name code", "", () => go(CHECK_CODE)), reference: invoice?.invoiceId ?? view!.id })
+    action: btn("Enter your name code", "", () => go(CODE_FROM_ORDER_URL)), reference: invoice?.invoiceId ?? view!.id })
 }
 
 // a name of this browser's code needs nothing more from here; one of another browser's restores its code
@@ -843,7 +842,7 @@ function buildCodeIssued({ view: issued, record }: OrderState): HTMLElement {
   if (!record) {
     return outcome({ tone: "info", icon: "key", title: "This order became a code",
       text: "The code is made from the order's name code, so it shows in the browser that has it. Restore the name code here to see it.",
-      action: btn("Enter your name code", "", () => go(CHECK_CODE)), reference: view.id })
+      action: btn("Enter your name code", "", () => go(CODE_FROM_ORDER_URL)), reference: view.id })
   }
   const code = record.takenCode ?? flow.takenCodeOf(record, view.id)
   return outcome({ tone: "ok", icon: "key", title: "Here is a code instead",

@@ -10,7 +10,7 @@ import {
   againLine, initialRestore, lapsed, LINK_NAMES, ranOut, moneyReached, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
   reduceList, reduceRestore, REFUSALS, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
-import { checkoutUrl } from "../screens/routes.ts"
+import { checkoutUrl, CODE_URL } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import type { AppliedCode } from "../session.ts"
 import * as store from "../store.ts"
@@ -203,8 +203,6 @@ function forgetQuestion(s: ListState): HTMLElement | null {
   el("div", { class: "actions" }, btn("Forget everything", "danger", forgetEverything), keep))
 }
 
-const CHECK = "/#/code"
-
 function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
   const open = session.checkout()
@@ -213,7 +211,7 @@ function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
     el("div", { class: "card list" }, names.length ? names : el("p", { class: "note" }, "No names in this browser yet.")),
     el("h2", { class: "label" }, "Codes"),
     el("div", { class: "card list" }, s.codes.length ? s.codes.map((c) => codeRow(c, s)) : el("p", { class: "note" }, "Prepaid codes that pay for a name.")),
-    el("div", { class: "end-links" }, el("a", { href: CHECK }, "Add a code"), s.asking || !hasRecords(s) ? null : forgetLink()),
+    el("div", { class: "end-links" }, el("a", { href: CODE_URL }, "Add a code"), s.asking || !hasRecords(s) ? null : forgetLink()),
     forgetQuestion(s))
 }
 
@@ -323,13 +321,16 @@ function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {
 // Check your code: a prepaid code pays for the names this tab finds; a name code finds its order and adds it to Your names.
 let check: { verdict: CodeVerdict | null; restore: RestoreState } = { verdict: null, restore: initialRestore(null) }
 let checkRoute = -1
+// opened from an order's page, to which a name code added here goes back
+let checkFromOrder = false
 const CHECK_CODE = "check-code"
 const ADDING = "add"
 
-export function checkCodePage(): void {
+export function checkCodePage(fromOrder: boolean): void {
   // a page drawn again, as the header's code taken off draws it, keeps what its field judged
   const fresh = !isRedraw()
   if (fresh) check = { verdict: null, restore: initialRestore(tabHold()) }
+  checkFromOrder = fromOrder
   checkRoute = currentRoute()
   showCheck()
   if (!fresh) return
@@ -367,8 +368,8 @@ async function addNameCode(text: string): Promise<void> {
   }
   dispatchRestore({ type: "find-started" })
   try {
-    await flow.restore(text)
-    if (isRoute(checkRoute)) go(NAMES)
+    const { record } = await flow.restore(text)
+    if (isRoute(checkRoute)) go(checkFromOrder ? store.orderUrl(record) : NAMES)
   } catch (e) {
     if (!isRoute(checkRoute)) return
     if (e instanceof api.ApiError && e.code === "not_found") return refuse("none")

@@ -489,10 +489,9 @@ test("the owner code restores an order in another browser, and a bad code is ref
   await shot(page2, "N7c-restore-invalid")
 
   await codeField(page2).fill(ownerCode.toLowerCase().replaceAll("-", " "))
+  // reached from the order's page, the code found goes back to its order
   await onStep(page2).getByRole("button", { name: "Add to Your names" }).click()
-  await expect(page2.getByRole("heading", { name: "Your names" })).toBeVisible()
-  await page2.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: "Open" }).click()
-  await page2.waitForURL(/\?order=/)
+  await page2.waitForURL((url) => url.searchParams.get("order") === invoiceId)
   await waitRegistered(page2, label)
   await expect(await shownCode(page2), "the restored browser holds the code").toHaveText(ownerCode)
   await other.close()

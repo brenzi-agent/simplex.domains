@@ -2,7 +2,7 @@ import { expect } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { labelHash } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
-import { control, mockRegistration, REGISTRATION_MS, registrationOf, restoreOrder, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
+import { codeField, control, mockRegistration, onStep, REGISTRATION_MS, registrationOf, searchName, shot, startOrder, test, uniqueLabel, waitRegistered } from "./helpers.ts"
 
 test("a name taken first moves the paid order to another name, owned by the same code", async ({ page, request }) => {
   const label = uniqueLabel("tk")
@@ -187,9 +187,13 @@ test("a late payment to a replaced invoice is kept by a restored browser after t
 
   const other = await browser.newContext()
   const restored = await other.newPage()
-  // the order moved to the other name, which Your names lists it under
-  await restoreOrder(restored, ownerCode, next)
+  // the order moved to the other name and registered it; its page takes the name code and comes back to it
+  await restored.goto(`/?order=${second}`)
+  await restored.getByRole("button", { name: "Restore with your name code" }).click()
+  await codeField(restored).fill(ownerCode)
+  await onStep(restored).getByRole("button", { name: "Add to Your names" }).click()
   await restored.waitForURL((url) => url.searchParams.get("order") === second)
+  await waitRegistered(restored, next)
   await control(request, `partial/${invoiceId}`)
   await restored.goto(`/?order=${invoiceId}`)
   await expect(restored.getByText(/BTC arrived, which is not the full amount/)).toBeVisible()

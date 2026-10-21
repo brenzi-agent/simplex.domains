@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { type CheckoutStep, checkoutStepOf, checkoutUrl, type View, viewOf } from "../src/screens/routes.ts"
+import { type CheckoutStep, checkoutStepOf, checkoutUrl, CODE_FROM_ORDER_URL, CODE_URL, fromOrder, type View, viewOf } from "../src/screens/routes.ts"
 
 describe("viewOf", () => {
   const cases: [string, string, View][] = [
@@ -36,4 +36,16 @@ describe("checkoutStepOf and checkoutUrl", () => {
       expect(checkoutUrl(step)).toBe(`/#${path}`)
     })
   }
+})
+
+describe("Check your code's links", () => {
+  // as main.ts reads a link: the path and the query after the hash
+  const read = (url: string) => {
+    const [path, query = ""] = url.replace(/^\/#/, "").split("?")
+    return { view: viewOf(new URLSearchParams(), path), fromOrder: fromOrder(new URLSearchParams(query)) }
+  }
+  it("opens Check your code from the header's link, and from an order's page saying so", () => {
+    expect(read(CODE_URL)).toEqual({ view: "code", fromOrder: false })
+    expect(read(CODE_FROM_ORDER_URL)).toEqual({ view: "code", fromOrder: true })
+  })
 })

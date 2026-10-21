@@ -111,15 +111,10 @@ export async function addNameCode(page: Page, code: string): Promise<void> {
   await expect(onStep(page).getByRole("heading", { name: "Your names" })).toBeVisible()
 }
 
-// A name code added in another browser, which then opens the order it found for the name, as its row in Your names keeps it.
+// A name code added in another browser, whose order, not registered yet, is then opened from its row in Your names.
 export async function restoreOrder(page: Page, ownerCode: string, label: string): Promise<void> {
   await addNameCode(page, ownerCode)
-  await expect(page.locator(".list-row", { hasText: `${label}.simplex` })).toBeVisible()
-  const url = await page.evaluate((name) => {
-    const record = Object.entries(localStorage).filter(([k]) => k.startsWith("simplex-names:order:")).map(([, v]) => JSON.parse(v)).find((r) => r.label === name)
-    return record.invoiceId ? `/?order=${record.invoiceId}` : `/?registration=${record.registrationId}`
-  }, label)
-  await page.goto(url)
+  await page.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: "Open", exact: true }).click()
 }
 
 // the name code on a page, shown first, as a page shows it only on Show

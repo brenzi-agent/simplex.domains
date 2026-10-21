@@ -1,6 +1,6 @@
 // The router: one page per route, redrawn on navigation.
 import "./styles.css"
-import { checkoutStepOf, EDIT_PATH, viewOf } from "./screens/routes.ts"
+import { checkoutStepOf, EDIT_PATH, fromOrder, viewOf } from "./screens/routes.ts"
 import { checkoutPage } from "./views/checkout.ts"
 import { setUpChrome } from "./views/chrome.ts"
 import { checkCodePage, editPage, historyPage, trademarksPage } from "./views/names.ts"
@@ -18,7 +18,7 @@ function render(): void {
     case "checkout": return checkoutPage(checkoutStepOf(path))
     case "names": return historyPage()
     case "trademarks": return trademarksPage()
-    case "code": return checkCodePage()
+    case "code": return checkCodePage(fromOrder(new URLSearchParams(hashQuery)))
     case "edit": return void editPage(EDIT_PATH.exec(path)![1])
     case "search": return searchPage(new URLSearchParams(hashQuery))
   }

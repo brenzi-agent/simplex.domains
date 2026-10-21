@@ -174,8 +174,10 @@ test("a registered order opened in a browser without its code offers restore", a
   await page2.getByRole("button", { name: "Restore with your name code" }).click()
   await codeField(page2).fill(ownerCode)
   await page2.getByRole("button", { name: "Add to Your names" }).click()
-  await page2.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: "Name code" }).click()
-  await expect(page2.locator(".row-code .code-text"), "the restored browser holds the code").toHaveText(ownerCode)
+  // back on the order's page, which now has the code
+  await page2.waitForURL((url) => url.searchParams.get("order") === invoiceId)
+  await waitRegistered(page2, label)
+  await expect(await shownCode(page2), "the restored browser holds the code").toHaveText(ownerCode)
   await other.close()
 })
 
