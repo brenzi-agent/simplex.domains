@@ -9,13 +9,14 @@ import {
   type ClosedCase, closedCase, coinOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../screens/order.ts"
-import { CODE_FROM_ORDER_URL } from "../screens/routes.ts"
+import { checkoutUrl, CODE_FROM_ORDER_URL } from "../screens/routes.ts"
+import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
 import { every } from "./effects.ts"
 import { seenRegistered } from "./names.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
-import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
+import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, historyPlace, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
 
 export const RETRY_MS = 3000
 // The badge service's words for a cancel the provider took while the service still shows the invoice open; a card
@@ -541,8 +542,32 @@ function closedAction(s: OrderState, closed: ClosedCase): HTMLButtonElement {
   // a cancel the service still shows open takes no more payment, so nothing here pays it
   if (closed === "paid-late" || closed === "still-open") return btn("Search a name", "quiet", () => go(searchLink("")))
   if (!record) return withoutRecord("quiet")
-  if (closed === "cancelled") return btn("Order the name again", "", () => go(searchLink(record.label)))
+  if (closed === "cancelled") {
+    const again = setAction(btn("Order the name again", "", () => void orderAgain(record)), s.busy === "reorder", s.hold !== null)
+    again.dataset.focus = "reorder"
+    return again
+  }
   return newInvoiceButton(s, closed === "received" && !record.cancelled ? "quiet" : "", reorder)
+}
+
+// A cancelled order is ordered again on Check your order, with the same name code, saved already, and the same links.
+async function orderAgain(record: store.OrderRecord): Promise<void> {
+  const gen = opened
+  dispatch({ type: "reorder-started" })
+  let quote: Awaited<ReturnType<typeof flow.quoteOf>>
+  try {
+    quote = await flow.quoteOf(record.label)
+  } catch (e) {
+    if (holdOn(e, "Nothing was charged. ", gen)) return
+    return answer(gen, { type: "reorder-failed", note: warning("The name could not be checked now. Try again in a moment.") })
+  }
+  if (!isOpen(gen)) return
+  if (!quote) return go(searchLink(record.label))
+  session.setCheckout({
+    label: record.label, price: quote.price, years: quote.years, termStart: quote.termStart, chain: flow.chainOf(quote), contact: record.contact, channel: record.channel,
+    method: record.method === "code" ? "btc" : record.method, code: null, ownerCode: record.ownerCode, saved: true, searchAt: historyPlace(), step: "review",
+  })
+  go(checkoutUrl("review"))
 }
 
 function newInvoiceButton(s: OrderState, cls: string, get: () => void): HTMLButtonElement {

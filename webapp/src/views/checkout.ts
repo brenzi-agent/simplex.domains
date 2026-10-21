@@ -48,7 +48,8 @@ export function checkoutPage(asked: CheckoutStep): void {
   if (step !== asked) return redirect(checkoutUrl(step))
   session.setCheckout({ ...stored, step, ownerCode: stored.ownerCode ?? (step === "code" ? flow.newOwnerCode() : null) })
   const c = session.checkout()!
-  if (c.ownerCode) store.addPending({ ownerCode: c.ownerCode, label: c.label, tld: c.chain.tld, createdAt: new Date().toISOString() })
+  // a name code that already has an order, as one ordered again, is no pending code
+  if (c.ownerCode && !store.orders().some((o) => o.ownerCode === c.ownerCode)) store.addPending({ ownerCode: c.ownerCode, label: c.label, tld: c.chain.tld, createdAt: new Date().toISOString() })
   if (!isRedraw() || shown === null || state.checkout.label !== c.label) {
     state = initialState(c, step)
     shown = null

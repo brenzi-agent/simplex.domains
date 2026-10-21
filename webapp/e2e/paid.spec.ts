@@ -599,14 +599,24 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   expect(cancels).toHaveLength(1)
   await shot(page, "N4b-cancelled")
 
-  // nothing is ordered again until the buyer chooses, from the name, how to pay
+  // ordering again opens Check your order with the same name code, saved already; nothing is ordered until Pay
+  const ownerCodeOf = (id: string) => page.evaluate((i) => Object.values({ ...localStorage }).map((v) => { try { return JSON.parse(v) } catch { return null } })
+    .find((o) => o?.invoiceId === i)?.ownerCode as string | undefined, id)
+  const ownerCode = await ownerCodeOf(invoiceId)
   await page.getByRole("button", { name: "Order the name again" }).click()
-  await expect(page.locator(".answer .card", { hasText: `${label}.simplex` }).getByRole("button", { name: "Register" })).toBeVisible()
+  await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
+  expect(await checkoutOwnerCode(page), "the same name code").toBe(ownerCode)
   expect(cancels).toHaveLength(1)
   await page.goto("/#/names")
   await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText("Invoice cancelled")
-  const { invoiceId: second } = await startOrder(page, label, { method: "btc" })
-  expect(second).not.toBe(invoiceId)
+  await expect(page.locator(".list-row", { hasText: "Checkout not finished" }), "no second entry for the same code").toHaveCount(0)
+  await page.goBack()
+  await page.getByRole("radio", { name: "Bitcoin" }).click()
+  await payButton(page).click()
+  await page.waitForURL((url) => (url.searchParams.get("order") ?? invoiceId) !== invoiceId)
+  const second = new URL(page.url()).searchParams.get("order")!
+  expect(await checkoutOwnerCode(page).catch(() => null), "the checkout ended").toBeNull()
+  expect(await ownerCodeOf(second), "the new order's name code").toBe(ownerCode)
   await control(request, `expire/${second}`)
   await expect(page.getByText("Nothing was received before its rate window closed.")).toBeVisible()
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
