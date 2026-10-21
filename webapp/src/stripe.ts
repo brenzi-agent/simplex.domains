@@ -38,9 +38,12 @@ export function publishableKey(): string {
 
 let loading: Promise<StripeGlobal> | null = null
 
+// Firefox holds a page's load event for a script added before it, so a Stripe that never answers would keep the page loading
+const pageLoaded = () => document.readyState === "complete" ? Promise.resolve() : new Promise<void>((done) => addEventListener("load", () => done(), { once: true }))
+
 function loadStripeJs(): Promise<StripeGlobal> {
   if (loading) return loading
-  loading = new Promise<StripeGlobal>((resolve, reject) => {
+  loading = pageLoaded().then(() => new Promise<StripeGlobal>((resolve, reject) => {
     const tag = document.createElement("script")
     tag.setAttribute("src", STRIPE_JS_URL)
     tag.setAttribute("async", "")
@@ -56,7 +59,7 @@ function loadStripeJs(): Promise<StripeGlobal> {
       reject(new Error("stripe: the script did not load"))
     })
     document.head.append(tag)
-  })
+  }))
   return loading
 }
 
