@@ -118,7 +118,7 @@ export const holdsPayment = (inv: InvoiceView) => Boolean(inv.amountPaid) || Num
 // an invoice closed with nothing received, whose order a new invoice can take over
 export const closedEmpty = (inv: InvoiceView | null) => inv?.status === "expired" && !holdsPayment(inv)
 
-export interface OrderRequest {
+interface OrderRequest {
   labelHash: string
   length: number
   duration: number
@@ -263,7 +263,7 @@ export const cancelInvoice = (invoiceId: string) => checked<InvoiceView>(call("P
 
 // what a long poll on an invoice has seen: its status, its registration's version, and the payment marks, the paid amount
 // and paidInFull, as Monero can report a full payment with no amount yet
-export interface SeenInvoice { status: string; version: number; paid: string; full: boolean }
+interface SeenInvoice { status: string; version: number; paid: string; full: boolean }
 export const seenOf = (inv: InvoiceView): SeenInvoice => ({ status: inv.status, version: inv.registration.version, paid: inv.cryptoAmountPaid ?? "", full: inv.paidInFull === true })
 
 export function readInvoice(invoiceId: string, seen?: SeenInvoice, signal?: AbortSignal): Promise<InvoiceView> {
