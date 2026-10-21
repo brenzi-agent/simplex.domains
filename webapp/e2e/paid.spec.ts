@@ -213,7 +213,7 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   const row = page.locator(".list-row", { hasText: `${label}.simplex` })
   // a registered name says so by its date, and shows the chats it opens
   await expect(row.locator(".chip")).toHaveCount(0)
-  await expect(row.locator(".sub")).toContainText("Until ")
+  await expect(row.locator(".sub")).toHaveText(`Until ${dateOf((await searchName(request, label)).expiresAt as number)}`)
   await expect(row.locator(".chats .chat-pic")).toHaveCount(1)
   await shot(page, "N12-history")
   // Name code opens the code in its own row, focus staying on the toggle, which folds it again

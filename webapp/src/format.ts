@@ -16,8 +16,8 @@ export function letters(n: number): string {
 }
 
 // the day stays with its month on one line
-export function dateOf(seconds: number, short = false): string {
-  return new Date(seconds * 1000).toLocaleDateString("en-GB", { day: "numeric", month: short ? "short" : "long", year: "numeric", timeZone: "UTC" }).replace(" ", "\u00a0")
+export function dateOf(seconds: number): string {
+  return new Date(seconds * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).replace(" ", "\u00a0")
 }
 
 // a dot between parts of a line stays at the end of the part before it, never starting a line

@@ -233,13 +233,13 @@ const recordedPaid = (o: store.OrderRecord) => o.method === "code" ? "Paid with 
 function subLine(o: store.OrderRecord, { view, invoice, answer }: RowSeen, now: number): string | (Node | string)[] {
   // what was paid, from the invoice; the record's amount is the order's worth, lower after a move to a cheaper name
   const paid = invoice ? `${dollars(invoice.amount)} ${methodName(invoice.cryptoCurrency ?? "card")}` : recordedPaid(o)
-  if (lapsed({ view, answer }, now)) return `Expired ${view.expiresAt ? dateOf(view.expiresAt, true) : ""}`.trim()
-  if (view.phase === "registered") return [view.expiresAt ? `Until ${dateOf(view.expiresAt, true)}` : null, continued(paid)].filter(Boolean).join(SEP)
+  if (lapsed({ view, answer }, now)) return `Expired ${view.expiresAt ? dateOf(view.expiresAt) : ""}`.trim()
+  if (view.phase === "registered") return view.expiresAt ? `Until ${dateOf(view.expiresAt)}` : paid
   if (invoice?.status === "paid" && view.phase === "unpaid") return ["Paid after the invoice closed; support refunds it", ...reference(invoice.invoiceId)]
   if (invoice?.status === "expired" && view.phase === "unpaid") {
     const part = Number(invoice.cryptoAmountPaid ?? "0") > 0 && !invoice.paidInFull
     const arrived = part ? "Part of the payment arrived" : api.holdsPayment(invoice) ? "A payment did not complete before the invoice closed" : null
-    return arrived ? [`${arrived}; support sorts it out`, ...reference(invoice.invoiceId)] : `Nothing was charged${SEP}${dateOf(Date.parse(o.createdAt) / 1000, true)}`
+    return arrived ? [`${arrived}; support sorts it out`, ...reference(invoice.invoiceId)] : `Nothing was charged${SEP}${dateOf(Date.parse(o.createdAt) / 1000)}`
   }
   if (view.phase === "taken" && o.method === "code") return "Paid with a code, released for another name"
   if (waitsToSign(view, now)) return `Open the order so this browser can sign it${SEP}${continued(paid)}`
@@ -297,7 +297,7 @@ function pendingRow(p: store.PendingCode, s: ListState, open: session.Checkout |
   const state = hold ? chip("", "warn")
     : finding === "none" ? chip("No order was made", "bad")
       : finding === "unchecked" ? chip("Not checked", "bad") : chip("Checkout not finished", "warn")
-  const node = row(key, nameTitle(p.label, "name", p.tld), `Name code made ${dateOf(Date.parse(p.createdAt) / 1000, true)}`, state,
+  const node = row(key, nameTitle(p.label, "name", p.tld), `Name code made ${dateOf(Date.parse(p.createdAt) / 1000)}`, state,
     [resume ?? find, small("Remove", `${key}-remove`, () => removePending(p))])
   // the count goes in once the chip is in its row, where its spoken copy goes beside it
   if (hold) waitOut(state, secondsLeft(hold), (left) => `Try again in ${left}`, () => undefined, signal)

@@ -73,7 +73,6 @@ describe("formatting", () => {
     expect(shortAddress("0x014f9c09CcEeDEF1B713110d04D3a07d5B5D9b73")).toBe("0x014f\u2060…\u20609b73")
     expect([letters(1), letters(7)]).toEqual(["1 letter", "7 letters"])
     expect(dateOf(Date.UTC(2028, 10, 12) / 1000)).toBe("12\u00a0November 2028")
-    expect(dateOf(Date.UTC(2028, 10, 12) / 1000, true)).toBe("12\u00a0Nov 2028")
   })
 
   it("writes the term with its 30 bonus days", () => {
