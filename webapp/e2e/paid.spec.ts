@@ -85,14 +85,14 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   await expect(wallet).toHaveAttribute("href", `bitcoin:${address}?amount=${cryptoAmount}`)
   await expect(onStep(page).getByRole("button", { name: "Copy amount in BTC" })).toBeVisible()
   await expect(onStep(page).getByRole("button", { name: "Copy Bitcoin address" })).toBeVisible()
-  // a laptop opens the wallet from the QR's card; a phone, without the QR, from the main button above Cancel this invoice
+  // a laptop opens the wallet from the QR's card; a phone, without the QR, from the link under the address
   await expect(wallet.locator("xpath=..")).toHaveClass(/\bqr\b/)
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(onStep(page).locator(".card.qr")).toBeHidden()
-  await expect(wallet).toHaveClass(/\bbtn\b/)
+  await expect(wallet).toHaveClass(/\bwallet\b/)
   await expect(wallet).toHaveAttribute("href", `bitcoin:${address}?amount=${cryptoAmount}`)
-  const [walletBox, cancelBox] = [(await wallet.boundingBox())!, (await page.getByRole("button", { name: "Cancel this invoice" }).boundingBox())!]
-  expect(walletBox.y + walletBox.height, "the wallet's button over Cancel this invoice").toBeLessThanOrEqual(cancelBox.y)
+  const [walletBox, addressBox] = [(await wallet.boundingBox())!, (await onStep(page).locator(".copy-field").last().boundingBox())!]
+  expect(walletBox.y, "the wallet's link under the address").toBeGreaterThan(addressBox.y + addressBox.height)
   await page.setViewportSize({ width: 1280, height: 900 })
 
   await control(request, `partial/${invoiceId}`)
@@ -525,7 +525,7 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
   await shot(page, "N10-card")
   // a whole amount has no cents, as the search and the order showed it
-  await expect(onStep(page).locator(".screen-head .lead")).toContainText(/\u00b7 \$\d+$/)
+  await expect(onStep(page).locator(".screen-head .lead")).toContainText(/\u00b7 \$\d+ \/ 2 years$/)
   await expect(onStep(page).getByRole("button", { name: /^Pay \$\d+$/ })).toBeVisible()
   await expect(onStep(page).getByText("The card form is Stripe's. Nothing is charged until you pay.")).toBeVisible()
   // the development stand-in says what it is, and the invoice can be cancelled from the form as from a crypto invoice

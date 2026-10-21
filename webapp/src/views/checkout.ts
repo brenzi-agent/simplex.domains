@@ -252,7 +252,7 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
     el("div", { class: "review" }, orderCard(c),
       c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or check another code.`) : null,
       c.code ? el("div", { class: "notes" }, el("p", {}, "Your code pays for this name. Nothing more to pay.")) : blocked ? waitingNotice(blocked) : methodsBlock(s),
-      c.code || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours, to finish the registration.`))),
+      c.code || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours.`))),
     payNote(s, blocked !== null, signal))
 }
 

@@ -414,14 +414,14 @@ test("a part paid takes the bookmark's line with its notice, the payment keeping
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
     const { invoiceId } = await startOrder(page, uniqueLabel("part"), { method: "btc" })
-    await expect(onStep(page).getByText("Bookmark this page to come back to this payment.")).toBeVisible()
+    await expect(onStep(page).getByText("Bookmark this page to come back to it.")).toBeVisible()
     const before = await headingAt(page)
     await control(request, `partial/${invoiceId}`)
     await expect(onStep(page).locator(".notice.warn", { hasText: "Part of the payment arrived" })).toBeVisible()
     expect(await headingAt(page), `the heading at ${size.width}x${size.height}`).toEqual(before)
     expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
     await expect(onStep(page).getByText(/^Part of the payment arrived: [\d.]+ of [\d.]+ BTC is seen\./)).toBeVisible()
-    await expect(onStep(page).getByText("Bookmark this page to come back to this payment.")).toHaveCount(0)
+    await expect(onStep(page).getByText("Bookmark this page to come back to it.")).toHaveCount(0)
   }
   await shot(page, "names-u1-part-paid")
 })
@@ -605,14 +605,14 @@ const separatorsOf = (line: Locator) => line.evaluate((node) => {
   return { dots, starting }
 })
 
-test("the payment's line keeps each separator dot at the end of a line, never starting one, for long names on a phone", async ({ page }) => {
+test("the payment's line keeps its separator dot at the end of a line, never starting one, for long names on a phone", async ({ page }) => {
   await page.setViewportSize(FIT_SIZES[1])
   for (const length of [25, MAX_LABEL_LENGTH]) {
     await startOrder(page, wideLabel(length), { method: "btc" })
     const line = onStep(page).locator(".screen-head .lead")
     await expect(line).toBeVisible()
     const { dots, starting } = await separatorsOf(line)
-    expect(dots, `the dots of a name of ${length} letters`).toBe(2)
+    expect(dots, `the dots of a name of ${length} letters`).toBe(1)
     expect(starting, `dots starting a line, for a name of ${length} letters`).toBe(0)
   }
 })
