@@ -584,7 +584,17 @@ function buildCardUnconfirmed(s: OrderState, signal: AbortSignal): HTMLElement {
   return outcome({ tone: "warn", icon: "alert", title: "Card payment not confirmed", reference: inv.invoiceId,
     text: formFailed ? "Stripe's form was blocked or failed to load. Nothing was charged."
       : "The payment has not been confirmed. This page keeps checking: come back to it later, or quote the reference below.",
-    extra: actionNote(s, formFailed && s.record !== null ? signal : null), action: cardAction(s, formFailed) })
+    extra: actionNote(s, formFailed && s.record !== null ? signal : null), action: cardAction(s, formFailed), alt: formFailed && s.record ? coinLinks(s) : null })
+}
+
+// a card form that did not load leaves the coins: each cancels the card invoice and orders the name again paid with it
+function coinLinks(s: OrderState): HTMLElement {
+  const coin = (method: "btc" | "xmr") => {
+    const pay = link(`Pay with ${methodName(method)}`, () => void reorderAfterCancel(method))
+    if (s.busy !== null || s.hold !== null) pay.setAttribute("aria-disabled", "true")
+    return pay
+  }
+  return el("span", {}, coin("btc"), SEP, coin("xmr"))
 }
 
 // Once the service has seen a card payment, entering the card again could charge twice.
@@ -593,11 +603,12 @@ function cardAction(s: OrderState, formFailed: boolean): HTMLButtonElement | nul
   return s.invoice!.amountPaid ? null : btn("Enter the card again", "", enterCardAgain)
 }
 
-async function reorderAfterCancel(): Promise<void> {
+async function reorderAfterCancel(method: api.Method = "card"): Promise<void> {
+  if (state.busy || state.hold) return
   const gen = opened
   const invoice = state.invoice!
   dispatch({ type: "reorder-started" })
-  if (await cancelBeforeReorder(invoice, gen)) return newInvoice(invoice, store.orderByInvoice(invoice.invoiceId), gen)
+  if (await cancelBeforeReorder(invoice, gen)) return newInvoice(invoice, store.orderByInvoice(invoice.invoiceId), gen, method)
   if (store.orderByInvoice(invoice.invoiceId)?.cancelled) reread(gen)
 }
 
@@ -692,7 +703,7 @@ function buildPriceChanged({ record, invoice, price }: OrderState): HTMLElement 
     action: btn("Search again", "", () => go(searchLink(label))), reference: invoice!.invoiceId })
 }
 
-async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | undefined, gen: number): Promise<void> {
+async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | undefined, gen: number, method: api.Method = invoice.cryptoCurrency ?? "card"): Promise<void> {
   if (!isOpen(gen) || !record) return
   try {
     // the invoice as it is now: one still open, or paid into a registration, is the order; one paid after it closed
@@ -709,7 +720,7 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
       return
     }
     const built = await flow.orderRequest(flow.draftAgain(record, quote))
-    const res = await api.createOrder(built.request, invoice.cryptoCurrency ?? "card", invoice.amount)
+    const res = await api.createOrder(built.request, method, invoice.amount)
     const next = store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id })
     // the old record is the stored owner code until the new one is stored too
     store.saveOrder({ ...record, request: built.request, registrationId: res.registration.id, invoiceId: res.invoiceId, ...flow.paidWith(res), cancelled: false, cardSubmittedAt: undefined, replacedBy: undefined, createdAt: new Date(api.serviceNow()).toISOString() })
@@ -728,7 +739,7 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
     }
     if (e instanceof api.ApiError && e.code === "catalog_changed" && typeof e.body.price === "number") return dispatch({ type: "price-changed", price: e.body.price })
     if (e instanceof api.ApiError && e.code === "provider_unavailable") {
-      return dispatch({ type: "reorder-failed", note: { tone: "warn", icon: "alert", title: `${methodName(invoice.cryptoCurrency ?? "card")} is unavailable right now`,
+      return dispatch({ type: "reorder-failed", note: { tone: "warn", icon: "alert", title: `${methodName(method)} is unavailable right now`,
         text: "Nothing was charged. Try again later, or ", link: { text: "order the name again", href: searchLink(record.label), after: " to pay another way." } } })
     }
     if (holdOn(e, "Nothing was charged. ", gen)) return

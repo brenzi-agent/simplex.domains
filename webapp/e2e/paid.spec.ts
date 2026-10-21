@@ -900,6 +900,13 @@ test("a card form that does not load says so and offers a new invoice", async ({
   await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
   await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
   await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
+  // or the coins: the card invoice is cancelled and the name ordered again, paid with the coin chosen
+  const card = new URL(page.url()).searchParams.get("order")!
+  await page.getByRole("button", { name: "Pay with Monero" }).click()
+  await page.waitForURL((url) => url.searchParams.get("order") !== card)
+  await expect(page.getByRole("heading", { name: "Pay with Monero" })).toBeVisible()
+  const cancelled = await (await page.request.get(`${MOCK}/api/invoice/${card}`)).json() as { status: string }
+  expect(cancelled.status, "the card invoice").toBe("expired")
 })
 
 // a Stripe.js whose card form reports, once mounted, that it could not load, as it does for an intent Stripe refuses
