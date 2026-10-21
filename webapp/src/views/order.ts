@@ -809,7 +809,7 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
   const code = setAction(btn("Take a code", "quiet", () => void takeCode()), canAct && s.busy === "code", !canAct || s.hold !== null)
   code.dataset.focus = "take-code"
   holdEnds(signal)(s.hold !== null)
-  const cannot = canAct ? null : alertBox("info", "key", "The name code is not in this browser", "Restore it in Your names to choose another name or take a code.")
+  const cannot = canAct ? null : alertBox("info", "key", "The name code is not in this browser", "Add it in Check your code to choose another name or take a code.")
   return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."],
     alt: code, action: other },
     el("p", { class: "note" }, ...orderLine(s)),

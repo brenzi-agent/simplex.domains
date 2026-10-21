@@ -19,6 +19,12 @@ test("a name taken first moves the paid order to another name, owned by the same
   expect(otherBox.y + otherBox.height).toBeLessThanOrEqual(codeBox.y)
   await expect(page.getByText(`Reference ${invoiceId}`)).toBeVisible()
   await shot(page, "N8-taken")
+  // a browser without the order's code says where to add it
+  const elsewhere = await page.context().browser()!.newContext()
+  const stranger = await elsewhere.newPage()
+  await stranger.goto(`/?order=${invoiceId}`)
+  await expect(stranger.getByText("Add it in Check your code to choose another name or take a code.")).toBeVisible()
+  await elsewhere.close()
 
   await page.getByRole("button", { name: "Choose another name" }).click()
   await expect(page.getByText(/Your payment is kept: \$100\.00/)).toBeVisible()
