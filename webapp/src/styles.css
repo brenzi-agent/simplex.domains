@@ -334,15 +334,11 @@ h1:has(.grad) { text-wrap: pretty; }
 .unlink svg.i { width: 12px; height: 12px; }
 .unlink:hover { background: var(--chip); }
 .field:has(input:placeholder-shown) .unlink, .field:has(input:not(:placeholder-shown)) .paste { display: none; }
-/* the chats an order's links open, read only */
-.opens { display: flex; flex-wrap: wrap; gap: 6px 16px; }
-.opens .chat-pic { width: 22px; height: 22px; }
 /* a link's profile on one line: its picture, its name, and what kind of chat it is */
 .entity { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .entity .chat-pic { width: 28px; height: 28px; }
 .entity small { margin-left: auto; padding-left: 8px; font-size: 13px; color: var(--ink-soft); white-space: nowrap; }
 .entity b { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.opens .entity b { font-size: var(--fs-small); }
 .entity.skeleton { width: 120px; height: 24px; border-radius: 12px; background: var(--chip); }
 .link-field > :empty { display: none; }
 /* The profile a link opens sits at its field's end, no taller than the text, so the field keeps its height as it comes.
@@ -445,10 +441,10 @@ svg.qr { display: block; width: 132px; height: auto; }
 .card.use { display: grid; gap: 12px; }
 .card.use p:not(.note) { color: var(--ink-soft); }
 
-/* The longest code, a name code of 38 characters, fits whole beside the key icon and its gap (28px): a monospace
-   character is a little over .6em wide, plus its letter spacing. Below 14px it reads poorly on a phone, so a narrower field scrolls. */
+/* The longest code, a name code of 38 characters, fits whole in the field: a monospace character is a little over .6em
+   wide, plus its letter spacing. Below 14px it reads poorly on a phone, so a narrower field scrolls. */
 .code-input { container-type: inline-size; }
-.code-input input { font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(14px, (100cqi - 28px) / 23.8, 15px); }
+.code-input input { font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(14px, 100cqi / 23.8, 15px); }
 
 .check { display: inline-flex; align-items: center; gap: 10px; justify-self: center; font-weight: 600; position: relative; cursor: pointer; }
 .check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
@@ -462,20 +458,17 @@ svg.qr { display: block; width: 132px; height: auto; }
 .card.list { padding: 0 22px; }
 .list > .note { padding-block: 14px; }
 .list-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-height: 72px; padding: 14px 0; }
-.list-row + .list-row, .list > .note + .list-row, .list > .code-entry { border-top: 1px solid var(--surface-line); }
+.list-row + .list-row, .list > .note + .list-row { border-top: 1px solid var(--surface-line); }
 .list-row .main { flex: 1 1 240px; min-width: 0; display: grid; gap: 2px; }
 .list-row .main .name { font-size: 20px; }
 .list-row .sub { color: var(--ink-soft); font-size: var(--fs-small); }
 .list-row .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: var(--fs-small); }
-.list > .code-entry { padding: 14px 0; }
 .row-code { flex-basis: 100%; display: grid; gap: 12px; }
 .danger-link { font-size: var(--fs-small); }
 /* Forget's question comes into view with room below it; its answers are an equal pair, side by side when each gets the
    220 px that holds "Forget everything" */
 .forget { scroll-margin-bottom: 24px; }
 .forget .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-/* a field with its action at its right end; a phone stacks them, as the code needs the field's whole width */
-
 .mt-14 { margin-top: 14px; } .mt-16 { margin-top: 16px; }
 .center { display: flex; justify-content: center; }
 .left { text-align: left; }

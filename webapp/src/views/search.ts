@@ -1,4 +1,4 @@
-// The home: the landing's headline, the search box and every answer it can show, and the invest popup.
+// The home: the landing's headline, the search box and every answer it can show.
 import * as api from "../api.ts"
 import { labelHash } from "../crypto/registration.ts"
 import { hex } from "../crypto/wallet.ts"
