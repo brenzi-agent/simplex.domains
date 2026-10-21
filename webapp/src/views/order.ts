@@ -814,7 +814,7 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
     alt: code, action: other },
     el("p", { class: "note" }, ...orderLine(s)),
     stages(["done", "done", "failed"]),
-    el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it, or take a code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for ${termText(PRICED_YEARS)}.`),
+    el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it, or take a code for names of ${codeTier(label?.length ?? LONGEST_TIER)} or more letters, for ${PRICED_YEARS} years.`),
     cannot,
     actionNote(s, canAct ? signal : null),
     referenceLine(invoice.invoiceId))
@@ -846,7 +846,7 @@ function buildCodeIssued({ view: issued, record }: OrderState): HTMLElement {
   }
   const code = record.takenCode ?? flow.takenCodeOf(record, view.id)
   return outcome({ tone: "ok", icon: "key", title: "Here is a code instead",
-    text: [`For names of ${codeTier(record.label.length)} or more letters, for ${termText(PRICED_YEARS)}: what `, nameText(record.label, view.tld), " was paid for."],
+    text: [`For names of ${codeTier(record.label.length)} or more letters, for ${PRICED_YEARS} years: what `, nameText(record.label, view.tld), " was paid for."],
     action: btn("Search another name", "quiet", () => go("/#/")),
     extra: [codeDisplay(code),
       el("div", { class: "center mt-16" }, el("div", { class: "qr" }, qrSvg(code, "code"))),

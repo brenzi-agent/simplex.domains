@@ -10,7 +10,7 @@ test("a name taken first moves the paid order to another name, owned by the same
   await control(request, "take", { label })
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
-  await expect(page.getByText(/^Choose another name of up to \$100\.00, .* or take a code for names of \d+ or more letters, for 2 years \+ 30 days\.$/)).toBeVisible()
+  await expect(page.getByText(/^Choose another name of up to \$100\.00, .* or take a code for names of \d+ or more letters, for 2 years\.$/)).toBeVisible()
   // the two ways forward are stacked, the move to another name first
   const [other, code] = [page.getByRole("button", { name: "Choose another name" }), page.getByRole("button", { name: "Take a code" })]
   // the main button centred, the other way under it
@@ -101,10 +101,13 @@ test("a name taken first can become a code instead, kept under Your names", asyn
   await expect(page.getByRole("heading", { name: "Here is a code instead" })).toBeVisible()
   const code = (await page.locator(".outcome .code-text").textContent())!.trim()
   expect(code).toMatch(/^SN8-/)
+  // a code's term reads as the chip, Check your code and the home say it
+  await expect(page.locator(".outcome .notice.ok")).toContainText("For names of 8 or more letters, for 2 years: what")
   await shot(page, "N8b-code-instead")
 
   await page.goto("/#/names")
   await expect(page.locator(".list-row", { hasText: code }).locator(".chip")).toHaveText("Unused")
+  await expect(page.locator(".list-row", { hasText: code }).locator(".sub")).toContainText("Pays for a name of 8 or more letters, for 2 years")
   await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText("Code taken")
 })
 

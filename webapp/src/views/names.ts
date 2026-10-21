@@ -2,7 +2,7 @@
 import * as api from "../api.ts"
 import { alertBox, btn, chip, codeDisplay, copyButton, el, type Kid, nameText, nameTitle, reducedMotion, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, dollars, methodName, SEP, termText } from "../format.ts"
+import { dateOf, dollars, methodName, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import { qrSvg } from "../qr.ts"
 import {
@@ -312,7 +312,7 @@ function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {
   const [text, tone] = check === undefined ? ["Checking", ""] : check === "unchecked" ? ["Not checked", "warn"] : CODE_CHIPS[check]
   // an unused code pays for the names this tab finds from now on
   const use = check === "unused" ? small("Use", `${c.code}-use`, () => { session.setActiveCode({ display: c.code, minLength: c.minLength, years: c.years }); go(HOME) }) : null
-  const node = row(c.code, el("b", { class: "mono" }, c.code), `Names of ${c.minLength} or more letters, for ${termText(c.years)}${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000, true)}`,
+  const node = row(c.code, el("b", { class: "mono" }, c.code), `Pays for a name of ${c.minLength} or more letters, for ${c.years} years${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000)}`,
     chip(text, tone, check === undefined || check === "unused"), [use, copy])
   node.classList.add("code-row")
   return node
