@@ -3,6 +3,7 @@ import { newOwnerCode, walletOf } from "../src/flow.ts"
 import { CONTACT_KEY, labelHash } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
+import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
   channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fillLinks, LINKS_HEADING, MOCK, mockRegistration, onStep, payButton, REGISTRATION_MS,
@@ -450,6 +451,8 @@ test("Continue on the links step waits for a link being checked, and takes focus
   await search(page, uniqueLabel("linkbad"))
   await page.getByRole("button", { name: "Register" }).click()
   const step = onStep(page)
+  await step.getByRole("textbox", { name: "Link", exact: true }).fill(`${contactLink("W0")}?x=${"a".repeat(LINK_MAX_BYTES)}`)
+  await expect(step.getByText("This link is too long.")).toBeVisible()
   await step.getByRole("textbox", { name: "Link", exact: true }).fill(contactLink("W0"))
   await expect(step.locator(".link-field").first()).toHaveAttribute("data-state", "ok")
   await step.getByRole("button", { name: "Add a channel link" }).click()

@@ -37,8 +37,10 @@ const SHORT_LINK: Record<LinkKind, RegExp> = {
   channel: /^(https:\/\/[a-z0-9.-]+\/c|simplex:\/c)#[A-Za-z0-9_-]+(\?[A-Za-z0-9_=&.-]*)?$/,
 }
 
+export const linkTooLong = (link: string) => new TextEncoder().encode(link).length > LINK_MAX_BYTES
+
 export function linkProblem(kind: LinkKind, link: string): "kind" | "long" | null {
-  if (new TextEncoder().encode(link).length > LINK_MAX_BYTES) return "long"
+  if (linkTooLong(link)) return "long"
   return SHORT_LINK[kind].test(link) ? null : "kind"
 }
 

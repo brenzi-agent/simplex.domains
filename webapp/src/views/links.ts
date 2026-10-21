@@ -2,7 +2,7 @@
 // shown with its profile, and a second field for the other kind once the first holds a link.
 import * as api from "../api.ts"
 import { el, icon, link, refill, waitOut } from "../dom.ts"
-import { type LinkKind, linkKind, linkProblem } from "../names.ts"
+import { type LinkKind, linkKind, linkProblem, linkTooLong } from "../names.ts"
 import { chatButton, profileLine } from "./chats.ts"
 import { inPlace, whenDropped } from "./shell.ts"
 
@@ -119,7 +119,8 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
       accept()
       return kept.includes(";") ? show(null, el("p", { class: "note" }, "Several links. SimpleX opens the first one.")) : show(linkPreview(link, true))
     }
-    const problem = kind ? linkProblem(kind, link) : "kind"
+    // a link too long has no kind, so the Link field, which takes either, says it is too long first
+    const problem = kind ? linkProblem(kind, link) : linkTooLong(link) ? "long" : "kind"
     const held = kind !== null && kind === takes.refused() ? kind : null
     if (problem || held) {
       const other = held ?? linkKind(link)

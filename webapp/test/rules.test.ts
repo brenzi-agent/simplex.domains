@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, TERM_START_S, termEnd, termText } from "../src/format.ts"
-import { foldLabel, labelProblem, linkKind, linkProblem, LINK_MAX_BYTES, priceFor } from "../src/names.ts"
+import { foldLabel, labelProblem, linkKind, linkProblem, LINK_MAX_BYTES, linkTooLong, priceFor } from "../src/names.ts"
 
 describe("label rules", () => {
   it("folds case and spaces, and accepts 6 to 63 letters with single inner hyphens", () => {
@@ -41,6 +41,14 @@ describe("link rules", () => {
     expect(linkProblem("contact", `${contact};${contact}`)).toBe("kind")
     expect(linkProblem("contact", `${contact}?x=${"a".repeat(LINK_MAX_BYTES)}`)).toBe("long")
     expect(linkKind("hello")).toBeNull()
+  })
+
+  it("tells a link too long by its bytes, whatever its kind, so a link of no kind can be refused for its length", () => {
+    const long = `${contact}?x=${"a".repeat(LINK_MAX_BYTES)}`
+    expect(linkKind(long)).toBeNull()
+    expect(linkTooLong(long)).toBe(true)
+    expect(linkTooLong(`${contact}?x=${"\u00e9".repeat(LINK_MAX_BYTES / 2)}`), "two bytes a letter").toBe(true)
+    expect(linkTooLong(contact)).toBe(false)
   })
 })
 
