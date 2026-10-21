@@ -6,11 +6,12 @@ import { el, icon, liveRegion, refill } from "../dom.ts"
 import * as flow from "../flow.ts"
 import type * as session from "../session.ts"
 import * as store from "../store.ts"
+import { holdFrom } from "./hold.ts"
 import { kept, whenDropped } from "./shell.ts"
 
 export type CodeVerdict =
   | { kind: "prepaid"; code: session.AppliedCode; line: string }
-  | { kind: "owner"; code: string; line: string; orders: api.FoundOrder[] }
+  | { kind: "owner"; found: flow.CodeOrder; line: string }
   | { kind: "refused"; title: string; line: string; link?: string }
 
 const STATE_LINES: Record<Exclude<api.CodeState, "unused">, [string, string]> = {
@@ -37,8 +38,7 @@ const unused = (code: session.AppliedCode): CodeVerdict => ({ kind: "prepaid", c
 const MISTYPED: CodeVerdict = { kind: "refused", title: "This code is not valid", line: "Check it for a mistyped character." }
 const UNFINISHED: CodeVerdict = { kind: "refused", title: "This is not a SimpleX names code", line: "Check it and try again." }
 
-const names = (labels: string[]) => labels.map((label) => `${label}.simplex`).join(" and ")
-const ownerLine = (labels: string[]) => `Name code of ${names(labels)}. Adding it shows ${labels.length > 1 ? "the names" : "the name"} in Your names, where you can edit ${labels.length > 1 ? "their" : "its"} links.`
+const ownerLine = (name: string) => `Name code of ${name}.simplex. Adding it shows the name in Your names, where you can edit its links.`
 
 // A refusal that asking again can change: a rate limit, or a service that did not answer.
 function notChecked(e: unknown): CodeVerdict {
@@ -46,14 +46,15 @@ function notChecked(e: unknown): CodeVerdict {
   return { kind: "refused", title: "The code could not be checked", line: "Try again in a moment." }
 }
 
-// A name code names its names by its orders, which only the code opens.
+// A name code is named by the order it restores, which only the code opens; a rate limit holds the tab's lookups too.
 async function judgeNameCode(text: string): Promise<CodeVerdict> {
   try {
-    const { code, names: labels, orders } = await flow.namesOf(text)
-    if (labels.length === 0) return { kind: "refused", title: "This code does not open the order", line: "The order found for it was made with another code." }
-    return { kind: "owner", code, line: ownerLine(labels), orders }
+    const found = await flow.codeOrderOf(text)
+    if (!found) return { kind: "refused", title: "This code does not open the order", line: "The order found for it was made with another code." }
+    return { kind: "owner", found, line: ownerLine(found.name) }
   } catch (e) {
     if (e instanceof api.ApiError && e.code === "not_found") return { kind: "refused", title: "No order was found for this code", line: "The service has no order registered to its wallet." }
+    holdFrom(e)
     return notChecked(e)
   }
 }

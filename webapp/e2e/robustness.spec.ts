@@ -506,9 +506,9 @@ test("Find the order shows a wait met elsewhere in the tab", async ({ page, requ
   // another tab, which does not hold this checkout, looks for its order
   const other = await page.context().newPage()
   await other.goto("/#/code")
+  // a name code's verdict looks for its orders, which the limit refuses
   await codeField(other).fill((await other.evaluate(() => Object.keys(localStorage).find((k) => k.startsWith("simplex-names:pending:"))!.split(":").pop()))!)
-  await other.getByRole("button", { name: "Add to Your names" }).click()
-  await expect(other.getByText("Too many attempts")).toBeVisible()
+  await expect(other.locator(".code-entry .verdict")).toContainText("Too many checks just now")
   await other.getByRole("link", { name: "Your names" }).click()
   await expect(other.locator(".list-row .chip", { hasText: /Try again in \d+ seconds/ })).toBeVisible()
   await expect(other.getByText("Find the order")).toHaveAttribute("aria-disabled", "true")

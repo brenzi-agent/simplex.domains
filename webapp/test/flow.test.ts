@@ -186,34 +186,30 @@ describe("paidWith", () => {
   })
 })
 
-describe("namesOf and addOrders", () => {
+describe("codeOrderOf and addOrder", () => {
   const found = (registrationId: string, phase: Phase, request: { labelHash: string; sealed: string }) =>
     ({ registrationId, invoiceId: null, phase, createdAt: "2026-10-14T10:00:00Z", labelHash: request.labelHash, sealed: request.sealed })
 
-  it("names each name the code opens once, leaving out an order whose sealed name is another's or does not open", async () => {
-    const { flow } = await modules()
-    const mine = (await flow.orderRequest(draft())).request
-    const again = (await flow.orderRequest(draft())).request
-    const other = (await flow.orderRequest(draft("another"))).request
-    answers["POST /api/registration/find"] = { registrations: [
-      found("reg4", "unpaid", again), found("reg3", "committed", other), found("reg2", "failed", { labelHash: mine.labelHash, sealed: other.sealed }),
-      found("reg1", "queued", { labelHash: mine.labelHash, sealed: "not-sealed" }), found("reg0", "taken", mine),
-    ] }
-    const { code, names, orders } = await flow.namesOf(OWNER_CODE.toLowerCase())
-    expect(code).toBe(OWNER_CODE)
-    expect(names).toEqual(["dynamis", "another"])
-    expect(orders.map((o) => o.registrationId)).toEqual(["reg4", "reg3", "reg0"])
-  })
-
-  it("keeps one order of each name, the one paid into a registration, newest name first", async () => {
+  it("names the order the code restores, passing over an order whose sealed name is another's or does not open", async () => {
     const { flow, store } = await modules()
     const mine = (await flow.orderRequest(draft())).request
     const other = (await flow.orderRequest(draft("another"))).request
-    answers["GET /api/registration/reg3"] = view(other, { id: "reg3" })
-    answers["GET /api/registration/reg1"] = view(mine, { id: "reg1", phase: "queued" })
-    const records = await flow.addOrders(OWNER_CODE, [found("reg3", "committed", other), found("reg2", "unpaid", mine), found("reg1", "queued", mine)])
-    expect(records.map((r) => [r.registrationId, r.label])).toEqual([["reg3", "another"], ["reg1", "dynamis"]])
-    expect(store.orders().map((o) => o.registrationId).sort()).toEqual(["reg1", "reg3"])
+    answers["POST /api/registration/find"] = { registrations: [
+      found("reg4", "unpaid", other), found("reg3", "committed", { labelHash: mine.labelHash, sealed: other.sealed }),
+      found("reg2", "queued", { labelHash: mine.labelHash, sealed: "not-sealed" }), found("reg1", "taken", mine), found("reg0", "unpaid", mine),
+    ] }
+    const opened = await flow.codeOrderOf(OWNER_CODE.toLowerCase())
+    expect([opened?.code, opened?.name, opened?.order.registrationId]).toEqual([OWNER_CODE, "dynamis", "reg1"])
+    answers["GET /api/registration/reg1"] = view(mine, { id: "reg1", phase: "taken" })
+    expect(await flow.addOrder(opened!)).toMatchObject({ registrationId: "reg1", label: "dynamis", ownerCode: OWNER_CODE })
+    expect(store.orders().map((o) => o.registrationId)).toEqual(["reg1"])
+  })
+
+  it("finds no order when find lists only orders the code does not open", async () => {
+    const { flow } = await modules()
+    const other = (await flow.orderRequest({ ...draft(), ownerCode: formatOwnerCode(new Uint8Array(16).fill(7)) })).request
+    answers["POST /api/registration/find"] = { registrations: [found("reg3", "committed", other)] }
+    expect(await flow.codeOrderOf(OWNER_CODE)).toBeNull()
   })
 })
 

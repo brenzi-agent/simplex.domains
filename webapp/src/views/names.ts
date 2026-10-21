@@ -367,8 +367,8 @@ async function addNameCode(verdict: Extract<CodeVerdict, { kind: "owner" }>): Pr
   }
   dispatchRestore({ type: "find-started" })
   try {
-    const [newest] = await flow.addOrders(verdict.code, verdict.orders)
-    if (isRoute(checkRoute)) go(checkFromOrder ? store.orderUrl(newest) : NAMES)
+    const record = await flow.addOrder(verdict.found)
+    if (isRoute(checkRoute)) go(checkFromOrder ? store.orderUrl(record) : NAMES)
   } catch (e) {
     if (!isRoute(checkRoute)) return
     if (e instanceof api.ApiError && e.code === "not_found") return refuse("none")
