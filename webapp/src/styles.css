@@ -115,8 +115,7 @@ html.dark {
 * { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-/* the scrollbar's room is kept, so a page held still under a popup or the menu does not shift sideways as it goes */
-html { background: var(--page-color); scrollbar-gutter: stable; }
+html { background: var(--page-color); }
 /* the window holds the header, the page and the invest note; the footer is below the fold, as the badges store's */
 body { --footer-h: calc(78px + var(--note-room)); position: relative; isolation: isolate; min-height: calc(100dvh + var(--footer-h)); display: grid; grid-template-rows: auto 1fr auto var(--footer-h);
   font: 500 var(--fs-body)/1.5 var(--body); color: var(--ink);
@@ -175,7 +174,7 @@ body > main { display: flex; flex-direction: column; min-width: 0; }
   .menu hr { border: 0; border-top: 1px solid var(--surface-line); margin: 6px 32px; }
   .menu > .theme-line { margin: 0; font-size: 18px; padding-block: 14px; }
   .theme-line::before { content: ""; flex: none; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset -7px -3px 0 0 var(--toggle); rotate: -20deg; }
-  html:has(.menu:not([hidden])) { overflow: hidden; }
+  html:has(.menu:not([hidden])) { overflow: hidden; scrollbar-gutter: stable; }
 }
 
 /* the invest note under the page, and the footer's links after a rule (badges styles.css .invest, footer) */
@@ -251,7 +250,8 @@ body > main { display: flex; flex-direction: column; min-width: 0; }
 .actions-row > .alt { order: 1; font-size: 15px; }
 .end-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; font-size: 15px; }
 /* a chat's popup keeps the page behind it still */
-html:has(.modal[open]) { overflow: hidden; }
+/* a page held still under a popup keeps its scrollbar's room, so it does not shift sideways as the scrollbar goes */
+html:has(.modal[open]) { overflow: hidden; scrollbar-gutter: stable; }
 
 .grad { background: var(--heading); -webkit-background-clip: text; background-clip: text; color: transparent; }
 /* balance would break a name before its TLD to even the lines; a name that fits its line stays whole */
