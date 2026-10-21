@@ -115,6 +115,8 @@ export interface OrderRequest {
   commitment: string
   sealed: string
 }
+// an order as sent, signed by its owner at a time the service checks
+export type SignedOrder = OrderRequest & { timestamp: number; signature: string }
 
 // A request is given up after this long, so a hung one never blocks the page for good. Long polls hold as long as
 // the service decides; a link edit answers once it is mined, which a fee bump can stretch to minutes.
@@ -242,11 +244,10 @@ export async function checkCode(code: string, signal?: AbortSignal): Promise<Cod
   return answer as unknown as CodeAnswer
 }
 
-export type CreatedOrder = InvoiceView | { invoiceId: null; kind: "name"; registration: RegistrationView }
-export const createOrder = (order: OrderRequest, method: Method, price: number) =>
-  checked<CreatedOrder>(call("POST", "/api/invoice", { kind: "name", ...order, method, price }), (a) => a.invoiceId === null ? isRegistration(a.registration) : isInvoice(a))
-export const registerWithCode = (order: OrderRequest, code: string) =>
-  checked<{ registrationId: string; invoiceId?: string }>(call("POST", "/api/name/register", { ...order, code }), (a) => isText(a.registrationId) && optional(a.invoiceId, isText))
+export const createOrder = (order: SignedOrder, method: Method, price: number) =>
+  checked<InvoiceView>(call("POST", "/api/invoice", { kind: "name", ...order, method, price }), isInvoice)
+export const registerWithCode = (order: SignedOrder, code: string) =>
+  checked<{ registrationId: string }>(call("POST", "/api/name/register", { ...order, code }), (a) => isText(a.registrationId))
 export const cancelInvoice = (invoiceId: string) => checked<InvoiceView>(call("POST", `/api/invoice/${encodeURIComponent(invoiceId)}/cancel`), isInvoice)
 
 // the seen payment marks are the paid amount and paidInFull: Monero can report a full payment with no amount yet
@@ -261,14 +262,16 @@ export function readRegistration(registrationId: string, seenPhase?: string, sig
 
 export const reveal = (registrationId: string, body: { label: string; secret: string; records: { contact: string[]; channel: string[] }; nonce: number; deadline: number; signature: string }) =>
   call<Record<string, never>>("POST", `/api/registration/${encodeURIComponent(registrationId)}/reveal`, body)
-export const retarget = (registrationId: string, body: OrderRequest & { timestamp: number; signature: string }) =>
+export const retarget = (registrationId: string, body: Omit<SignedOrder, "owner">) =>
   checked<RegistrationView>(call("POST", `/api/registration/${encodeURIComponent(registrationId)}/name`, body), isRegistration)
 export const takeCode = (registrationId: string, body: { codeHash: string; timestamp: number; signature: string }) =>
   call<Record<string, never>>("POST", `/api/registration/${encodeURIComponent(registrationId)}/code`, body)
 export const retry = (registrationId: string) => checked<RegistrationView>(call("POST", `/api/registration/${encodeURIComponent(registrationId)}/retry`), isRegistration)
 const isFound = (r: unknown) => isObject(r) && isText(r.registrationId) && nullable(r.invoiceId, isText) && PHASES.includes(r.phase as Phase) && isText(r.createdAt)
+  && isText(r.labelHash) && isText(r.sealed)
+export interface FoundOrder { registrationId: string; invoiceId: string | null; phase: Phase; createdAt: string; labelHash: string; sealed: string }
 export const findRegistrations = (owner: string, timestamp: number, signature: string) =>
-  checked<{ registrations: { registrationId: string; invoiceId: string | null; phase: Phase; createdAt: string }[] }>(
+  checked<{ registrations: FoundOrder[] }>(
     call("POST", "/api/registration/find", { owner, timestamp, signature }), (a) => Array.isArray(a.registrations) && a.registrations.every(isFound))
 export const editRecord = (body: { labelHash: string; key?: string; value?: string; clear?: boolean; nonce: number; deadline: number; signature: string }) =>
   checked<{ tx: string | null }>(call("POST", "/api/name/records", body, undefined, EDIT_TIMEOUT_MS), (a) => nullable(a.tx, isText))

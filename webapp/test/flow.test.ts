@@ -83,6 +83,15 @@ describe("orderRequest", () => {
     expect(request.commitment).toBe(hex(expected))
     expect(await unseal(WALLET.seed, request.sealed)).toEqual({ label: "dynamis", ...LINKS })
   })
+
+  it("is signed by the code's key over every field but the signature, at the service's time", async () => {
+    const { flow } = await modules()
+    const { request } = await flow.orderRequest(draft())
+    expect(Math.abs(request.timestamp - Date.now() / 1000)).toBeLessThan(2)
+    const sealedHash = Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(request.sealed))).toString("hex")
+    const message = `simplex.domains order ${request.labelHash} 7 ${request.duration} ${request.commitment} 0x${sealedHash} ${request.timestamp}`
+    expect(await recoverMessageAddress({ message, signature: request.signature as Hex })).toBe(OWNER)
+  })
 })
 
 describe("revealOrder", () => {
@@ -141,7 +150,7 @@ describe("restore", () => {
   it("finds the code's order with a signed request, checks the commitment, and saves the record", async () => {
     const { flow, store } = await modules()
     const built = await flow.orderRequest(draft())
-    answers["POST /api/registration/find"] = { registrations: [{ registrationId: "reg1", invoiceId: "inv1", phase: "committed", createdAt: "2026-10-14T10:00:00Z" }] }
+    answers["POST /api/registration/find"] = { registrations: [{ registrationId: "reg1", invoiceId: "inv1", phase: "committed", createdAt: "2026-10-14T10:00:00Z", labelHash: built.request.labelHash, sealed: built.request.sealed }] }
     answers["GET /api/invoice/inv1"] = {
       invoiceId: "inv1", status: "open", amount: 20000, currency: "usd", expiresAt: "2026-10-14T11:00:00Z", kind: "name", cryptoCurrency: "xmr", registration: view(built.request),
     }
@@ -155,7 +164,7 @@ describe("restore", () => {
   it("refuses an order whose commitment the code does not open", async () => {
     const { flow, store } = await modules()
     const built = await flow.orderRequest(draft())
-    answers["POST /api/registration/find"] = { registrations: [{ registrationId: "reg1", invoiceId: null, phase: "committed", createdAt: "2026-10-14T10:00:00Z" }] }
+    answers["POST /api/registration/find"] = { registrations: [{ registrationId: "reg1", invoiceId: null, phase: "committed", createdAt: "2026-10-14T10:00:00Z", labelHash: built.request.labelHash, sealed: built.request.sealed }] }
     answers["GET /api/registration/reg1"] = view({ ...built.request, commitment: `0x${"00".repeat(32)}` })
     await expect(flow.restore(OWNER_CODE)).rejects.toThrow("commitment")
     expect(store.orders()).toEqual([])
@@ -169,11 +178,36 @@ describe("restore", () => {
 })
 
 describe("paidWith", () => {
-  it("records an answered invoice's own method and amount, and a code registration as paid by code", async () => {
+  it("records an answered invoice's own method and amount, a card's having no coin", async () => {
     const { flow } = await modules()
     expect(flow.paidWith({ invoiceId: "inv", amount: 20000, cryptoCurrency: "xmr" } as never)).toEqual({ method: "xmr", paid: 20000 })
     expect(flow.paidWith({ invoiceId: "inv", amount: 10000 } as never)).toEqual({ method: "card", paid: 10000 })
-    expect(flow.paidWith({ invoiceId: null, kind: "name" } as never)).toEqual({ method: "code", paid: 0 })
+  })
+})
+
+describe("ownOrderFor", () => {
+  const found = (registrationId: string, phase: string, labelHash: string, sealed: string) =>
+    ({ registrationId, invoiceId: null, phase, createdAt: "2026-10-14T10:00:00Z", labelHash, sealed })
+
+  it("opens the code's order on its way for the name, passing over its other names and its finished orders", async () => {
+    const { flow, store } = await modules()
+    const mine = (await flow.orderRequest(draft())).request
+    const other = (await flow.orderRequest(draft("another"))).request
+    answers["POST /api/registration/find"] = { registrations: [
+      found("reg3", "committed", other.labelHash, other.sealed), found("reg2", "taken", mine.labelHash, mine.sealed),
+      found("reg1", "queued", mine.labelHash, mine.sealed), found("reg0", "unpaid", mine.labelHash, mine.sealed),
+    ] }
+    answers["GET /api/registration/reg1"] = view(mine, { id: "reg1", phase: "queued" })
+    const record = await flow.ownOrderFor(OWNER_CODE, mine.labelHash)
+    expect(record).toMatchObject({ registrationId: "reg1", label: "dynamis", ownerCode: OWNER_CODE })
+    expect(store.orderByRegistration("reg1")?.label).toBe("dynamis")
+  })
+
+  it("finds nothing when the code has no order for the name", async () => {
+    const { flow } = await modules()
+    const other = (await flow.orderRequest(draft("another"))).request
+    answers["POST /api/registration/find"] = { registrations: [found("reg3", "committed", other.labelHash, other.sealed)] }
+    expect(await flow.ownOrderFor(OWNER_CODE, hex(labelHash("dynamis")))).toBeNull()
   })
 })
 

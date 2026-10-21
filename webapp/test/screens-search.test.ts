@@ -252,7 +252,7 @@ describe("reduce: register", () => {
   it("register-started works, and a refusal ends it", () => {
     const s = reduce(shown(), { type: "register-started" })
     expect(s.register).toEqual({ busy: true, refusal: null })
-    expect(reduce(s, { type: "register-refused", refusal: { why: "other", invoiceId: "inv-9" } }).register).toEqual({ busy: false, refusal: { why: "other", invoiceId: "inv-9" } })
+    expect(reduce(s, { type: "register-refused", refusal: { why: "other", url: "/?order=inv-9" } }).register).toEqual({ busy: false, refusal: { why: "other", url: "/?order=inv-9" } })
   })
   it("register-held holds the tab, saying nothing changed, and keeps the answer shown", () => {
     const s = reduce(shown(), { type: "register-started" })

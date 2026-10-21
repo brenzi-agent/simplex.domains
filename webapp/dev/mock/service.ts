@@ -41,6 +41,8 @@ function wholeEnv(name: string, fallback: number): number {
 // how long a long poll holds before answering unchanged
 const HOLD_MS = 20_000
 const SIGNED_REQUEST_SECONDS = 600
+// find lists an owner's newest orders, at most this many
+const FOUND_MAX = 50
 // how long a register with no answer is followed on chain before it counts as failed: 12 × 5 s
 const PENDING_CHECKS = 12
 const PENDING_CHECK_MS = 5000
@@ -87,6 +89,8 @@ interface Registration {
   createdAt: string
   failNext: boolean
   issuedCodeHash: string | null
+  // what an exact resend of the order that made it must repeat: its fields, never its timestamp or signature
+  orderHash: string
   // tries of a transaction that did not go out, since the last that did
   resends: number
 }
@@ -371,13 +375,34 @@ export function oneOrderAtATime<T>(f: () => Promise<T>): Promise<T> {
   return run
 }
 
-function sameCommitment(commitment: Hex): { open: Invoice | null; past: Registration | null } {
-  const regs = [...registrations.values()].filter((r) => r.commitment === commitment)
-  // an invoice past its rate window is closed for a new order, whether or not anyone has read it since
-  regs.forEach((r) => { if (r.invoiceId) expireIfDue(invoices.get(r.invoiceId)!) })
-  const open = regs.map((r) => (r.invoiceId ? invoices.get(r.invoiceId)! : null)).find((i) => i?.status === "open") ?? null
-  const past = regs.find((r) => r.phase !== "unpaid") ?? null
-  return { open, past }
+// An order's own fields, tagged by its kind, as an exact resend repeats them.
+const orderHashOf = (kind: "invoice" | "register", o: OrderBody, extra: unknown[]) =>
+  createHash("sha256").update(JSON.stringify([kind, o.labelHash, o.length, o.duration, o.owner, o.commitment, o.sealed, ...extra])).digest("hex")
+
+// The owner signs every order, so nobody can place one in another wallet's name; its age is checked only for a new order.
+async function checkOrderSigner(o: OrderBody, body: Record<string, unknown>): Promise<void> {
+  if (!Number.isInteger(body.timestamp)) throw badRequest()
+  const message = `simplex.domains order ${o.labelHash} ${o.length} ${o.duration} ${o.commitment} ${sha256Hex(o.sealed)} ${body.timestamp}`
+  if (await recoverMessageAddress({ message, signature: checkSignature(body.signature) }) !== o.owner) throw badRequest()
+}
+
+const freshTimestamp = (timestamp: unknown) => { if (Math.abs(nowSeconds() - (timestamp as number)) > SIGNED_REQUEST_SECONDS) throw badRequest() }
+
+// A registration is live while its invoice is open, or once paid until it is taken or turned into a code.
+function live(reg: Registration): boolean {
+  if (reg.phase === "unpaid") return reg.invoiceId !== null && invoices.get(reg.invoiceId)!.status === "open"
+  return reg.phase !== "taken" && reg.phase !== "code_issued"
+}
+
+// The answer to an exact resend, or nothing; an overdue order of the same wallet and name is closed by this one first,
+// and any other live order of the commitment, or of the wallet and name, refuses it without saying anything of itself.
+function existingOrder(o: OrderBody, orderHash: string | null, except: Registration | null = null): Registration | null {
+  const resent = orderHash === null ? undefined : [...registrations.values()].find((r) => r.orderHash === orderHash)
+  if (resent) return resent
+  const meets = (r: Registration) => r !== except && (r.commitment === o.commitment || (r.owner === o.owner && r.labelHash === o.labelHash))
+  for (const r of registrations.values()) if (meets(r) && r.invoiceId) expireIfDue(invoices.get(r.invoiceId)!)
+  if ([...registrations.values()].some((r) => meets(r) && live(r))) throw new HttpError(409, "order_exists")
+  return null
 }
 
 export async function createInvoice(body: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -385,27 +410,23 @@ export async function createInvoice(body: Record<string, unknown>): Promise<Reco
   const order = orderBody(body)
   const method = body.method
   if (method !== "card" && method !== "btc" && method !== "xmr") throw badRequest()
+  if (!Number.isInteger(body.price)) throw badRequest()
   const injected = control.invoiceError
   if (injected) {
     control.invoiceError = null
     const extra = injected === "catalog_changed" ? { price: await chainPrice(order.length, YEARS) + RAISED_PRICE_CENTS } : {}
     throw new HttpError(INVOICE_ERRORS[injected], injected, extra, injected === "rate_limited" ? RETRY_AFTER_SECONDS : null)
   }
-  const { open, past } = sameCommitment(order.commitment)
-  if (open) {
-    const reg = registrations.get(open.registrationId)!
-    if (reg.owner === order.owner && reg.labelHash === order.labelHash && open.method === method) return invoiceView(open)
-    throw badRequest({ invoiceId: open.id })
-  }
-  if (past) {
-    if (past.invoiceId) return invoiceView(invoices.get(past.invoiceId)!)
-    return { invoiceId: null, kind: "name", registration: await registrationView(past) }
-  }
+  await checkOrderSigner(order, body)
+  const orderHash = orderHashOf("invoice", order, [method, body.price])
+  const resent = existingOrder(order, orderHash)
+  if (resent) return invoiceView(invoices.get(resent.invoiceId!)!)
+  freshTimestamp(body.timestamp)
   checkDuration(order.duration, YEARS)
   await nameFree(order.labelHash)
   const price = await chainPrice(order.length, YEARS)
   if (body.price !== price) throw new HttpError(409, "catalog_changed", { price })
-  const reg = newRegistration(order, { years: YEARS, paid: price, method, prepaidCode: null, phase: "unpaid" })
+  const reg = newRegistration(order, { years: YEARS, paid: price, method, prepaidCode: null, phase: "unpaid", orderHash })
   const inv: Invoice = {
     id: id(), registrationId: reg.id, method, status: "open", amount: price,
     expiresAt: iso(nowSeconds() + INVOICE_MINUTES * 60),
@@ -418,7 +439,7 @@ export async function createInvoice(body: Record<string, unknown>): Promise<Reco
   return invoiceView(inv)
 }
 
-function newRegistration(order: OrderBody, extra: Pick<Registration, "years" | "paid" | "method" | "prepaidCode" | "phase">): Registration {
+function newRegistration(order: OrderBody, extra: Pick<Registration, "years" | "paid" | "method" | "prepaidCode" | "phase" | "orderHash">): Registration {
   const reg: Registration = {
     id: id(), invoiceId: null, ...order, ...extra, label: null, secret: null, records: null, intent: null, commitTx: null, registerTx: null,
     revealAfter: null, revealBefore: null, expiresAt: null, error: null, createdAt: iso(nowSeconds()), failNext: false, issuedCodeHash: null, resends: 0,
@@ -491,20 +512,20 @@ export function checkCode(body: Record<string, unknown>): Record<string, unknown
 const CODE_ERRORS: Partial<Record<PrepaidCode["state"], string>> = { used: "code_used", reserved: "code_reserved", expired: "code_expired", unpaid: "payment_pending", revoked: "code_invalid" }
 
 export async function registerWithCode(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const order = orderBody(body)
   const { hash, row } = prepaidOf(body.code)
   if (!row) throw new HttpError(400, "code_invalid")
-  const order = orderBody(body)
-  const repeat = [...registrations.values()].find((r) => r.prepaidCode === hash && r.owner === order.owner && r.commitment === order.commitment)
-  if (repeat) return { registrationId: repeat.id }
-  const { open, past } = sameCommitment(order.commitment)
-  if (open) throw badRequest({ invoiceId: open.id })
-  if (past) return { registrationId: past.id, ...(past.invoiceId ? { invoiceId: past.invoiceId } : {}) }
+  await checkOrderSigner(order, body)
+  const orderHash = orderHashOf("register", order, [hash])
+  const resent = existingOrder(order, orderHash)
+  if (resent) return { registrationId: resent.id }
+  freshTimestamp(body.timestamp)
   checkDuration(order.duration, row.years)
   await nameFree(order.labelHash)
   const error = CODE_ERRORS[row.state]
   if (error) throw new HttpError(error === "code_invalid" ? 400 : 409, error)
   if (order.length < row.minLength) throw new HttpError(409, "code_not_covering")
-  const reg = newRegistration(order, { years: row.years, paid: 0, method: "code", prepaidCode: hash, phase: "queued" })
+  const reg = newRegistration(order, { years: row.years, paid: 0, method: "code", prepaidCode: hash, phase: "queued", orderHash })
   row.state = "reserved"
   row.registrationId = reg.id
   void advance(reg)
@@ -784,10 +805,7 @@ export async function retarget(registrationId: string, body: Record<string, unkn
   const order = orderBody({ ...body, owner: reg.owner })
   await checkSigned(reg.owner, `simplex.domains name ${reg.id} ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${sha256Hex(order.sealed)} ${body.timestamp}`, body.timestamp, body.signature)
   if (reg.phase !== "taken" || reg.method === "code") throw badRequest()
-  // the order's own checks: a commitment that already has an order is paid for once
-  const { open, past } = sameCommitment(order.commitment)
-  if (open) throw badRequest({ invoiceId: open.id })
-  if (past) throw badRequest()
+  existingOrder(order, null, reg)
   checkDuration(order.duration, reg.years)
   await nameFree(order.labelHash)
   const price = await chainPrice(order.length, reg.years)
@@ -851,9 +869,9 @@ export async function find(body: Record<string, unknown>): Promise<Record<string
   if (typeof owner !== "string" || !isAddress(owner)) throw badRequest()
   const address = getAddress(owner)
   await checkSigned(address, `simplex.domains find ${address.toLowerCase()} ${body.timestamp}`, body.timestamp, body.signature)
-  const found = [...registrations.values()].filter((r) => r.owner === address).reverse()
+  const found = [...registrations.values()].filter((r) => r.owner === address).reverse().slice(0, FOUND_MAX)
   if (found.length === 0) throw new HttpError(404, "not_found")
-  return { registrations: found.map((r) => ({ registrationId: r.id, invoiceId: r.invoiceId, phase: r.phase, createdAt: r.createdAt })) }
+  return { registrations: found.map((r) => ({ registrationId: r.id, invoiceId: r.invoiceId, phase: r.phase, createdAt: r.createdAt, labelHash: r.labelHash, sealed: r.sealed })) }
 }
 
 export function previewLink(body: Record<string, unknown>): Profile {

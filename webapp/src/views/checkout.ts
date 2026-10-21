@@ -24,6 +24,8 @@ const SAVED_LABEL = "I have saved my name code"
 const DAPP_URL = "https://app.simplex.domains"
 // the contract's maxCommitmentAge (dev/deploy.ts): a paid order not revealed within it has to commit again
 const REVEAL_HOURS = 24
+// the service takes a signed order's timestamp within this many seconds; an older one is signed anew
+const SIGNED_WINDOW_S = 600
 
 const years = (c: session.Checkout) => c.code?.years ?? c.years
 // a card order waiting for Stripe holds a second paid order; a code pays nothing, so it holds none
@@ -320,23 +322,33 @@ async function sendOrder(): Promise<void> {
     if (location.hash.startsWith("#/checkout")) goFrom(c.searchAt, search, url)
     else go(url)
   }
-  let built: flow.BuiltOrder | null = null
+  const chosen = c.code ? "code" : c.method
+  const of = JSON.stringify([draft, c.code?.display ?? c.method, c.price])
   try {
-    built = await flow.orderRequest(draft)
-    if (c.code) {
-      const res = await api.registerWithCode(built.request, c.code.display)
-      // the code is the order's now, so it pays for nothing more in this tab
-      session.dropActiveCode(c.code.display)
-      if (res.invoiceId) return await openInvoice(draft, built, res.invoiceId, "code", done)
-      store.saveOrder({ ...flow.recordFor(draft, built, "code", 0, { registrationId: res.registrationId, invoiceId: null }), prepaidCode: c.code.display })
-      return done(store.orderUrl({ invoiceId: null, registrationId: res.registrationId }))
+    const fresh = c.sent?.of === of && api.serviceNow() / 1000 - c.sent.request.timestamp < SIGNED_WINDOW_S
+    const built = fresh ? c.sent! : { of, ...await flow.orderRequest(draft) }
+    session.updateCheckout(c.label, { sent: built })
+    try {
+      if (c.code) {
+        const res = await api.registerWithCode(built.request, c.code.display)
+        // the code is the order's now, so it pays for nothing more in this tab
+        session.dropActiveCode(c.code.display)
+        store.saveOrder({ ...flow.recordFor(draft, built, "code", 0, { registrationId: res.registrationId, invoiceId: null }), prepaidCode: c.code.display })
+        return done(store.orderUrl({ invoiceId: null, registrationId: res.registrationId }))
+      }
+      const res = await api.createOrder(built.request, c.method, c.price)
+      const { method, paid } = flow.paidWith(res)
+      store.saveOrder(flow.recordFor(draft, built, method, paid, { registrationId: res.registration.id, invoiceId: res.invoiceId }))
+      done(store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id }))
+    } catch (e) {
+      if (!(e instanceof api.ApiError && e.code === "order_exists")) throw e
+      // this name code already has a live order for the name, which it opens instead
+      const own = await flow.ownOrderFor(c.ownerCode!, built.request.labelHash)
+      if (!own) throw e
+      if (own.invoiceId && own.method !== chosen) openedInstead({ invoiceId: own.invoiceId, had: own.method, chosen })
+      done(store.orderUrl(own))
     }
-    const res = await api.createOrder(built.request, c.method, c.price)
-    const { method, paid } = flow.paidWith(res)
-    store.saveOrder(flow.recordFor(draft, built, method, paid, { registrationId: res.registration.id, invoiceId: res.invoiceId }))
-    done(store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id }))
   } catch (e) {
-    if (built && e instanceof api.ApiError && e.code === "bad_request" && typeof e.body.invoiceId === "string") return openInvoice(draft, built, e.body.invoiceId, c.code ? "code" : c.method, done)
     // the order did not go: its checkout is open to change again before the error page sends the buyer back to it
     session.stopSending(c)
     // a rate limit holds the tab's actions wherever the buyer has gone meanwhile
@@ -348,17 +360,6 @@ async function sendOrder(): Promise<void> {
     if (!ours) return refresh()
     orderError(e, c)
   }
-}
-
-// This commitment already has an order, which this browser's code owns: its record is kept first, and its page says why it pays another way.
-async function openInvoice(draft: flow.Draft, built: flow.BuiltOrder, invoiceId: string, chosen: Method | "code", done: (url: string) => void): Promise<void> {
-  const invoice = await api.readInvoice(invoiceId).catch(() => null)
-  if (invoice) {
-    const had = invoice.cryptoCurrency ?? "card"
-    store.saveOrder(flow.recordFor(draft, built, had, invoice.amount, { registrationId: invoice.registration.id, invoiceId }))
-    if (had !== chosen) openedInstead({ invoiceId, had, chosen })
-  }
-  done(store.invoiceUrl(invoiceId))
 }
 
 function orderError(e: unknown, c: session.Checkout): void {

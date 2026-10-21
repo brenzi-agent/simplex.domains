@@ -50,19 +50,22 @@ export async function quoteOf(label: string): Promise<Quote | null> {
 export const draftAgain = (record: store.OrderRecord, quote: Quote): Draft =>
   ({ label: record.label, links: { contact: record.contact, channel: record.channel }, chain: chainOf(quote), years: record.years, termStart: quote.termStart, ownerCode: record.ownerCode })
 
-export type BuiltOrder = { request: api.OrderRequest; owner: string }
+export type BuiltOrder = { request: api.SignedOrder; owner: string }
 
+// The order and its owner's signature over it, which proves that the code's wallet placed it.
 export async function orderRequest(draft: Draft): Promise<BuiltOrder> {
   const wallet = walletOf(draft.ownerCode)!
-  const duration = durationFor(draft.years, draft.termStart, now())
+  const timestamp = now()
+  const duration = durationFor(draft.years, draft.termStart, timestamp)
   const r = registrationOf(draft.label, wallet.address, commitmentSecret(wallet.seed, draft.label), draft.links, draft.chain, duration)
   const sealed = await seal(wallet.seed, { label: draft.label, ...draft.links })
   const owner = checksumAddress(wallet.address)
-  return { request: { labelHash: hex(labelHash(draft.label)), length: draft.label.length, duration: Number(duration), owner, commitment: hex(makeCommitment(r)), sealed }, owner }
+  const order = { labelHash: hex(labelHash(draft.label)), length: draft.label.length, duration: Number(duration), owner, commitment: hex(makeCommitment(r)), sealed }
+  const message = `simplex.domains order ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${await sha256Hex(sealed)} ${timestamp}`
+  return { request: { ...order, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) }, owner }
 }
 
-// An order can be answered with the commitment's existing order, paid another way or by code.
-export const paidWith = (res: api.CreatedOrder): { method: api.Method | "code"; paid: number } => res.invoiceId ? { method: res.cryptoCurrency ?? "card", paid: res.amount } : { method: "code", paid: 0 }
+export const paidWith = (res: api.InvoiceView): { method: api.Method; paid: number } => ({ method: res.cryptoCurrency ?? "card", paid: res.amount })
 
 export function recordFor(draft: Draft, built: BuiltOrder, method: api.Method | "code", paid: number, ids: { registrationId: string; invoiceId: string | null }): store.OrderRecord {
   return {
@@ -96,7 +99,7 @@ export async function retargetOrder(record: store.OrderRecord, label: string, li
   const timestamp = now()
   const { labelHash: lh, length, duration, commitment, sealed } = built.request
   const message = `simplex.domains name ${record.registrationId} ${lh} ${length} ${duration} ${commitment} ${await sha256Hex(sealed)} ${timestamp}`
-  const view = await api.retarget(record.registrationId, { ...built.request, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) })
+  const view = await api.retarget(record.registrationId, { labelHash: lh, length, duration, commitment, sealed, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) })
   store.saveOrder({ ...record, label, ...links, paid: view.price, request: built.request })
   return view
 }
@@ -143,7 +146,7 @@ export async function syncRecord(record: store.OrderRecord, view: api.Registrati
   }
 }
 
-type Found = Awaited<ReturnType<typeof api.findRegistrations>>["registrations"][number]
+type Found = api.FoundOrder
 
 // The code's orders, newest first, asked with a signature of the code's key. A fresh page has not yet heard the
 // service's clock; a refusal that sets it is signed once more.
@@ -173,6 +176,14 @@ export async function restore(text: string): Promise<RestoreResult> {
   const code = formatOwnerCode(parsed.entropy)
   const wallet = walletFromEntropy(parsed.entropy)
   return reopen(wallet, code, chooseOrder(await findOrders(wallet)))
+}
+
+// The order of this code for a name that a new order met, which find lists: one on its way, else the newest unpaid one.
+export async function ownOrderFor(ownerCode: string, nameHash: string): Promise<store.OrderRecord | null> {
+  const wallet = walletOf(ownerCode)!
+  const found = (await findOrders(wallet)).filter((r) => r.labelHash === nameHash)
+  const chosen = found.find((r) => !["unpaid", "taken", "code_issued"].includes(r.phase)) ?? found.find((r) => r.phase === "unpaid")
+  return chosen ? (await reopen(wallet, ownerCode, chosen)).record : null
 }
 
 // orders this tab found nothing newer for; find has its own rate limit, so each is asked once

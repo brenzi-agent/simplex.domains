@@ -1,5 +1,5 @@
 // This tab's checkout in progress, which ends with the tab.
-import type { ChainInfo, Method } from "./api.ts"
+import type { ChainInfo, Method, SignedOrder } from "./api.ts"
 import type { CheckoutStep } from "./screens/routes.ts"
 
 export interface AppliedCode {
@@ -29,6 +29,8 @@ export interface Checkout {
   unavailable?: Method
   // why the service refused the code this checkout carried
   codeError?: string
+  // the order last sent and what it was made of, sent again exactly while that is unchanged, so a lost answer is safe to ask for again
+  sent?: { of: string; request: SignedOrder; owner: string }
 }
 
 const CHECKOUT = "simplex-names-checkout"

@@ -148,7 +148,7 @@ type Available = Extract<api.SearchAnswer, { status: "available" }>
 
 const unaffordable = (s: SearchState, answer: Available) => s.retarget !== null && answer.price > s.retarget.paid
 // an order this browser has for the name, which the search found or the service named in refusing a second one
-const ownOrderOf = ({ ownOrder, register: { refusal } }: SearchState) => ownOrder ?? (refusal?.why === "other" ? store.invoiceUrl(refusal.invoiceId) : null)
+const ownOrderOf = ({ ownOrder, register: { refusal } }: SearchState) => ownOrder ?? (refusal?.why === "other" ? refusal.url : null)
 
 function register(): void {
   const s = state
@@ -183,8 +183,11 @@ async function retarget(record: store.OrderRecord, label: string, quote: Availab
     if (read?.synced.label === label) return go(store.orderUrl(record))
     if (read && read.view.phase !== "taken") return dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced) })
     if (limited) return dispatch({ type: "register-held", until: holdEnd() })
-    const other = e instanceof api.ApiError && typeof e.body.invoiceId === "string" ? e.body.invoiceId : null
-    dispatch({ type: "register-refused", refusal: other ? { why: "other", invoiceId: other } : { why: e instanceof api.ApiError && e.code === "name_taken" ? "taken" : "failed" } })
+    // the code's own order for the new name is the one the move met
+    const exists = e instanceof api.ApiError && e.code === "order_exists"
+    const other = exists ? await flow.ownOrderFor(record.ownerCode, hex(labelHash(label))).catch(() => null) : null
+    if (!onPage(page)) return
+    dispatch({ type: "register-refused", refusal: other ? { why: "other", url: store.orderUrl(other) } : { why: e instanceof api.ApiError && e.code === "name_taken" ? "taken" : "failed" } })
   }
 }
 

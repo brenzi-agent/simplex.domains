@@ -677,7 +677,10 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
       return
     }
     if (e instanceof api.ApiError && e.code === "name_taken") return go(searchLink(record.label))
-    if (e instanceof api.ApiError && typeof e.body.invoiceId === "string") return go(store.invoiceUrl(e.body.invoiceId))
+    if (e instanceof api.ApiError && e.code === "order_exists") {
+      const own = await flow.ownOrderFor(record.ownerCode, record.request.labelHash).catch(() => null)
+      if (own && isOpen(gen)) return go(store.orderUrl(own))
+    }
     if (e instanceof api.ApiError && e.code === "catalog_changed" && typeof e.body.price === "number") return dispatch({ type: "price-changed", price: e.body.price })
     if (e instanceof api.ApiError && e.code === "provider_unavailable") {
       return dispatch({ type: "reorder-failed", note: { tone: "warn", icon: "alert", title: `${methodName(invoice.cryptoCurrency ?? "card")} is unavailable right now`,

@@ -13,7 +13,7 @@ export type Answer =
   | { kind: "checking" }
 
 export type Moved = { to: "code"; url: string } | { to: "name"; url: string; label: string; tld: string }
-type RegisterRefusal = { why: "taken" | "failed" } | { why: "other"; invoiceId: string }
+type RegisterRefusal = { why: "taken" | "failed" } | { why: "other"; url: string }
 
 export interface SearchState {
   opening: Opening
