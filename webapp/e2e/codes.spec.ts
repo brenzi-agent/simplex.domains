@@ -471,8 +471,9 @@ test("a name code whose order fails on the network to be read gives focus back t
 })
 
 const NAME_CODE = "SN-GE65A-H60EF-815JQ-DT70X-DH67M-Q7M9J"
-// the narrowest phone width at which a name code still fits the restore field whole, its letters at the legible floor or larger
-const FITS_FROM_PX = 390
+// the narrowest phone width at which a name code still fits the restore field whole beside its Check button, its letters at
+// the legible floor or larger: 38 monospace characters of 14 px, the button, the field's padding and the page's gutters
+const FITS_FROM_PX = 430
 const NARROWEST_PX = 320
 // the smallest letters a phone's code field draws; a code wider than its field at this size scrolls in it
 const LEGIBLE_PX = 14
@@ -501,7 +502,7 @@ test("a name code, the longest code, shows whole in Check your code's field on a
   expect(field.font, "the code's letter size").toBeGreaterThanOrEqual(LEGIBLE_PX)
 })
 
-for (const width of [FITS_FROM_PX, 360, NARROWEST_PX]) {
+for (const width of [FITS_FROM_PX, 390, NARROWEST_PX]) {
   test(`at ${width} px the code field keeps its letters at ${LEGIBLE_PX} px or larger, a field too narrow for a name code scrolling it`, async ({ browser, browserName }) => {
     const field = await codeFieldAt(browser, browserName, width)
     if (width >= FITS_FROM_PX) expect(field.overflow, "the code's width past the field").toBeLessThanOrEqual(0)

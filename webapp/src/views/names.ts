@@ -399,12 +399,14 @@ function checkAction({ verdict, restore }: typeof check): HTMLElement {
   return find
 }
 
+const checkLead = () => ["A prepaid code pays for a name.", el("br"), "A name code brings a name you own ", el("span", { class: "nowrap" }, "to this browser.")]
+
 function buildCheck(c: typeof check, signal: AbortSignal): HTMLElement {
   const refusal = c.restore.refusal && REFUSALS[c.restore.refusal]
   holdEnder(signal, () => dispatchRestore({ type: "hold-ended" }))(c.restore.hold !== null)
   const note = c.restore.hold ? holdNotice(c.restore.hold, signal) : refusal ? alertBox("danger", "alert", refusal.title, refusal.text)
     : c.verdict?.kind === "prepaid" ? el("p", { class: "note center" }, "Search for a name; its price shows as $0.") : null
-  return screen({ title: "Check your code", lead: "A prepaid code pays for a name. A name code brings a name you own to this browser.", back: HOME, action: checkAction(c) },
+  return screen({ title: "Check your code", lead: checkLead(), back: HOME, action: checkAction(c) },
     codeField(`${CHECK_CODE}-field`, "Code", heard), keptLive("check-note", undefined, note))
 }
 

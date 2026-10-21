@@ -458,9 +458,9 @@ svg.qr { display: block; width: 132px; height: auto; }
 .card.use h2 { font: 700 19px/1.3 var(--body); }
 .card.use p { color: var(--ink-soft); }
 
-/* The longest code, a name code of 38 characters, fits whole in the field: a monospace character is a little over .6em
-   wide, plus its letter spacing. Below 14px it reads poorly on a phone, so a narrower field scrolls. */
-.code-input { container-type: inline-size; }
+/* The longest code, a name code of 38 characters, fits whole beside the Check button in a laptop's field: a monospace
+   character is a little over .6em wide, plus its letter spacing. Below 14px it reads poorly, so a phone's field scrolls it. */
+.code-input { container-type: inline-size; padding-right: 5px; }
 .code-input input { font-family: var(--mono); letter-spacing: .02em; text-transform: uppercase; font-size: clamp(14px, 100cqi / 23.8, 15px); }
 
 .check { display: inline-flex; align-items: center; gap: 10px; justify-self: center; font-weight: 600; position: relative; cursor: pointer; }
@@ -559,8 +559,6 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .name { font-size: 19px; }
   .row.buy .name { flex-basis: 100%; }
   .row.buy .deal { margin-right: auto; }
-  .code-input { padding-inline: 14px; }
-  .code-input input { font-size: clamp(14px, 100cqi / 23.2, 16px); letter-spacing: 0; }
   .list-row { padding: 12px 16px; }
   .list > .note { padding-inline: 16px; }
   /* a name's line across the row, its chats and actions under it, the actions at the right */
@@ -570,6 +568,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .code-display { container-type: inline-size; flex-wrap: wrap; justify-content: center; padding: 12px 6px; letter-spacing: 0; }
   .code-display .code-text { flex-basis: 100%; text-align: center; white-space: nowrap; font-size: min(14px, 100cqi / 23); }
   .field-error { padding-inline: 0; font-size: 13px; }
+  .code-input input { font-size: 14px; letter-spacing: 0; }
   .order > .row { padding-inline: 16px 12px; }
   .table { padding: 2px 16px 4px; }
   .method { height: 72px; font-size: 14px; }

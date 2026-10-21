@@ -264,7 +264,7 @@ test("a step's lead breaks where the mockup does on a laptop: in two even lines,
   await page.getByRole("button", { name: "Register" }).click()
   await expect(lineStarts(onStep(page).locator(".lead"))).resolves.toEqual(["P", "o"])
   await page.goto("/#/code")
-  await expect(lineStarts(onStep(page).locator(".lead"))).resolves.toEqual(["A", "t"])
+  await expect(lineStarts(onStep(page).locator(".lead"))).resolves.toEqual(["A", "A"])
 })
 
 // the headline's distance under the header, a laptop's and a phone's, as the mockup draws it

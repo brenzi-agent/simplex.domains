@@ -83,8 +83,8 @@ const JUDGE_PAUSE_MS = 400
 
 // Each edit says nothing until its own verdict; a character no code has is refused at once, and a code long enough is
 // judged once typing pauses. One too short is refused once the reader is done: on Enter, or as focus leaves the field
-// for the page, not for another window. Nothing is judged once the signal ends.
-function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => void, signal: AbortSignal): void {
+// for the page, not for another window. Nothing is judged once the signal ends. The returned check judges the code at once.
+function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => void, signal: AbortSignal): () => void {
   let seq = 0
   let pause: ReturnType<typeof setTimeout> | undefined
   const forget = () => {
@@ -114,6 +114,11 @@ function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => voi
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") done() })
   // Chromium blurs the field as a redraw moves it, and the redraw gives focus back before the check
   input.addEventListener("blur", () => queueMicrotask(() => { if (document.activeElement !== input && document.hasFocus()) done() }))
+  return () => {
+    if (signal.aborted || codeProgress(input.value) !== "complete") return done()
+    forget()
+    void judge(seq)
+  }
 }
 
 const said = (v: CodeVerdict) => v.kind !== "refused" ? v.line : v.line ? `${v.title}. ${v.line}` : `${v.title}.`
@@ -125,19 +130,20 @@ export function codeField(key: string, label: string, heard: (v: CodeVerdict | n
   return kept(key, () => {
     const verdictId = `${key}-verdict`
     const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, spellcheck: "false", placeholder: "SN…", autocomplete: "off", value: typed.get(key) })
-    const box = el("label", { class: "field code-input" }, input)
+    const check = el("button", { class: "btn lens", type: "button", "aria-label": "Check" }, icon("search"))
+    const box = el("label", { class: "field code-input" }, input, check)
     const line = liveRegion("verdict")
     line.id = verdictId
     const show = (v: CodeVerdict | null) => {
       const tone = v === null ? "" : v.kind === "refused" ? " bad" : " ok"
       box.className = `field code-input${tone}`
       line.className = `verdict${tone}`
-      refill(line, tone === " bad" && icon("alert"), v && said(v), v?.kind === "refused" && v.link ? [" ", el("a", { href: v.link }, "Open that order")] : null)
+      refill(line, v && said(v), v?.kind === "refused" && v.link ? [" ", el("a", { href: v.link }, "Open that order")] : null)
       heard(v)
     }
     const life = new AbortController()
     whenDropped(() => life.abort())
-    watchCode(input, show, life.signal)
+    check.addEventListener("click", watchCode(input, show, life.signal))
     // a name code is never kept to show again, nor most of one mistyped or cut short, as anyone who sees it can take the name
     input.addEventListener("input", () => {
       if (mayBeOwnerCode(input.value)) typed.delete(key)
