@@ -540,7 +540,7 @@ function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {
     answer.dataset.focus = "save"
   }
   holdEnder(signal, () => dispatchEdit({ type: "hold-ended" }))(f.hold !== null)
-  return screen({ title: EDIT_TITLE, back: NAMES, lead: [nameText(s.record!.label, s.record!.tld, "."), " Saving is free: SimpleX pays the network fee."], action: save },
+  return screen({ title: EDIT_TITLE, back: NAMES, lead: [nameText(s.record!.label, s.record!.tld, "."), " Your name code signs the change; ", el("span", { class: "nowrap" }, "nothing to pay.")], action: save },
     el("span", { class: "label" }, "Link"), links.node, keptLive("edit-answer", undefined, answer))
 }
 
