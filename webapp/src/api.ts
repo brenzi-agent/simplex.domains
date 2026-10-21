@@ -203,7 +203,9 @@ const nullable = (v: unknown, test: (v: unknown) => boolean) => v === null || te
 // an image the page holds itself, as the service sends it: the page's CSP loads images from nowhere else
 const isImage = (v: unknown) => v === null || (typeof v === "string" && v.startsWith("data:image/"))
 const CHAT_KINDS: ChatKind[] = ["contact", "channel", "business", "bot"]
-const isPreview = (e: unknown) => isObject(e) && (e.type === "address" || e.type === "channel") && CHAT_KINDS.includes(e.kind as ChatKind) && isText(e.displayName)
+// a channel's record holds a channel; an address's, any other kind of chat
+const isPreview = (e: unknown) => isObject(e) && (e.type === "address" || e.type === "channel") && CHAT_KINDS.includes(e.kind as ChatKind)
+  && (e.type === "channel") === (e.kind === "channel") && isText(e.displayName)
   && isText(e.fullName) && isImage(e.image) && nullable(e.subscribers, isAmount)
 const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unknown>).link) && isText((e as Record<string, unknown>).deepLink)
 const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.sponsor) && typeof a.chainId === "number" && isText(a.tld)

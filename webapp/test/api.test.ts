@@ -77,9 +77,11 @@ describe("service errors", () => {
     expect(await searchName("ab".repeat(32), 8)).toMatchObject({ status: "registered", entities: [entity] })
   })
 
-  it("takes a linked chat without its kind, full name or subscriber count, or with a kind the app has not, as no answer", async () => {
+  it("takes a linked chat without its kind, full name or subscriber count, with a kind the app has not, or a kind its record cannot hold, as no answer", async () => {
     const link = { link: "https://simplex.chat/c#x", deepLink: "simplex:/c#x" }
-    for (const change of [{ kind: undefined }, { kind: "group" }, { fullName: undefined }, { subscribers: undefined }, { subscribers: -1 }, { subscribers: "many" }]) {
+    const changes = [{ kind: undefined }, { kind: "group" }, { fullName: undefined }, { subscribers: undefined }, { subscribers: -1 }, { subscribers: "many" },
+      { type: "address" }, { kind: "contact" }]
+    for (const change of changes) {
       answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [{ ...PROFILE, ...link, ...change }] }))
       expect((await errorOf()).code, JSON.stringify(change)).toBe("network")
     }
