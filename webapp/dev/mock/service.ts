@@ -13,6 +13,7 @@ import {
   baseRegistrar, chainNow, controller, deployment, holder, mined, NotSent, ownerOf, priceOracleAt, read, registry, resolver, Reverted, send, sponsor,
 } from "./chain.ts"
 import { TERM_START_S, untilChainTime } from "../chain-time.ts"
+import { addressFor } from "./addresses.ts"
 
 const YEARS = 2
 // SimplexPriceOracle's attoUSD to the cent
@@ -21,14 +22,6 @@ const ATTO_PER_CENT = 10n ** 16n
 const TERM_SLACK_S = 3600
 // rates for the crypto amounts, in dollars
 const RATES = { btc: 64000, xmr: 160 }
-// Each invoice its own address, as BTCPay gives one: shaped as a Bitcoin bech32 or a Monero address, payable by nobody.
-const BECH32 = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-function addressFor(method: "btc" | "xmr", invoiceId: string): string {
-  const [prefix, alphabet, length] = method === "btc" ? ["bc1q", BECH32, 38] : ["4", BASE58, 94]
-  const bytes = createHash("sha512").update(`${method} ${invoiceId}`).digest()
-  return prefix + Array.from({ length }, (_, i) => alphabet[bytes[i % bytes.length] % alphabet.length]).join("")
-}
 const INVOICE_MINUTES = 60
 
 function wholeEnv(name: string, fallback: number): number {
