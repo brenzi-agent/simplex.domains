@@ -2,9 +2,9 @@
 import * as api from "../api.ts"
 import { alertBox, btn, codeDisplay, el, line, link, nameText, nameTitle, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, dollars, freeDays, methodName, TERM_START_S, termEnd } from "../format.ts"
+import { dateOf, dollars, freeDays, methodName, termEnd } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
-import { type LinkKind, PRICED_YEARS } from "../names.ts"
+import type { LinkKind } from "../names.ts"
 import { changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, initialState, reduce, screenOf, stepFor, type WaitingOrder } from "../screens/checkout.ts"
 import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
@@ -25,7 +25,7 @@ const DAPP_URL = "https://app.simplex.domains"
 // the contract's maxCommitmentAge (dev/deploy.ts): a paid order not revealed within it has to commit again
 const REVEAL_HOURS = 24
 
-const years = (c: session.Checkout) => c.code?.years ?? PRICED_YEARS
+const years = (c: session.Checkout) => c.code?.years ?? c.years
 // a card order waiting for Stripe holds a second paid order; a code pays nothing, so it holds none
 const blockedBy = ({ checkout, waiting }: CheckoutState) => checkout.code ? null : waiting
 const payLabel = (c: session.Checkout) => c.code ? "Register with your code" : `Pay ${dollars(c.price)} with ${methodName(c.method)}`
@@ -140,16 +140,16 @@ const row = (what: string, value: Node | string, cls?: string) => el("div", { cl
 // before the term starts, its end, and a code that pays for it.
 function orderCard(c: session.Checkout): HTMLElement {
   const y = years(c)
-  const now = Date.now() / 1000
-  const free = freeDays(now)
+  const now = api.serviceNow() / 1000
+  const free = freeDays(c.termStart, now)
   const name = `${c.label}.${c.chain.tld}`
   const chats = api.LINK_KINDS.filter((kind) => c[kind]).map((kind) => linkChat(c[kind], kind, name, `chat-${kind}`))
   return el("section", { class: "card order" },
     el("div", { class: "row" }, nameTitle(c.label, "name", c.chain.tld), chats.length ? el("span", { class: "chats" }, chats) : null),
     el("div", { class: "table" },
       row("Term", `${y} years`),
-      free > 0 ? row(`Free until ${dateOf(TERM_START_S)}`, free === 1 ? "1 day" : `${free} days`) : null,
-      row("Registered until", dateOf(termEnd(y, now))),
+      free > 0 ? row(`Free until ${dateOf(c.termStart)}`, free === 1 ? "1 day" : `${free} days`) : null,
+      row("Registered until", dateOf(termEnd(y, c.termStart, now))),
       c.code ? row("Your code", `\u2212${dollars(c.price)}`, "ok") : null,
       row("Total", c.code ? "$0" : dollars(c.price), "total")))
 }
@@ -306,7 +306,7 @@ async function sendOrder(): Promise<void> {
   // a page left open while its order went through, in this tab or by Back and Forward, has nothing left to send
   if (!c) return go("/#/names")
   dispatch({ type: "send-started" })
-  const draft: flow.Draft = { label: c.label, links: { contact: c.contact, channel: c.channel }, chain: c.chain, years: years(c), ownerCode: c.ownerCode! }
+  const draft: flow.Draft = { label: c.label, links: { contact: c.contact, channel: c.channel }, chain: c.chain, years: years(c), termStart: c.termStart, ownerCode: c.ownerCode! }
   // The order is kept whatever the buyer did meanwhile. Its checkout ends, and the order opens, only while this checkout
   // is still the tab's: the buyer may have started another name, by Back and Forward too.
   const mine = currentRoute()

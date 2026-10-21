@@ -279,7 +279,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   expect(await step.locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["card order", "pay-with", "notes"])
   await expect(step.locator(".screen-body > .review + [role=status]")).toHaveCount(1)
   await expect(step.locator(".card.order .name")).toHaveText(`${label}.simplex`)
-  await expect(step.locator(".card.order .trow")).toHaveText([/^Term2 years$/, /^Free until 1\u00a0January 2027\d+ days?$/, /^Registered until1\u00a0January 2029$/, /^Total\$\d+$/])
+  await expect(step.locator(".card.order .trow")).toHaveText([/^Term2 years$/, /^Free until 1\u00a0January 2027\d+ days?$/, /^Registered until31\u00a0December 2028$/, /^Total\$\d+$/])
   // each link as the chat it opens, read only
   await expect(step.locator(".card.order .chat")).toHaveCount(2)
   await expect(step.getByRole("button", { name: "Contact F1Y8m3, contact address" })).toBeVisible()

@@ -1,6 +1,7 @@
 import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Locator, type Page } from "@playwright/test"
-import { mkdirSync } from "node:fs"
-import { labelHash } from "../src/crypto/registration.ts"
+import { mkdirSync, readFileSync } from "node:fs"
+import { createPublicClient, http, parseAbi, type Hex } from "viem"
+import { labelHash, YEAR_S } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import { newOwnerCode, walletOf } from "../src/flow.ts"
 import { mockUrl, pageUrl } from "./slots.ts"
@@ -38,6 +39,30 @@ export async function mockRegistration(request: APIRequestContext, invoiceId: st
   const res = await request.get(`${MOCK}/control/state`)
   const { registrations } = await res.json() as { registrations: MockRegistration[] }
   return registrations.find((r) => r.invoiceId === invoiceId)!
+}
+
+// The worker's chain, read directly: the expiry the registrar holds and the price the oracle quotes.
+const deployment = JSON.parse(readFileSync(new URL(`../dev/local-chain-${SLOT}.json`, import.meta.url), "utf8")) as { rpcUrl: string; controller: Hex; baseRegistrar: Hex }
+const chain = createPublicClient({ transport: http(deployment.rpcUrl) })
+const CHAIN_ABI = parseAbi([
+  "function nameExpires(uint256 id) view returns (uint256)",
+  "function rentPriceUSD(string label, uint256 duration) view returns ((uint256 base, uint256 premium))",
+])
+// SimplexPriceOracle's attoUSD to the cent
+const ATTO_PER_CENT = 10n ** 16n
+
+// the time of the block that mined a transaction
+export async function blockTimeOf(tx: string): Promise<number> {
+  const receipt = await chain.getTransactionReceipt({ hash: tx as Hex })
+  return Number((await chain.getBlock({ blockNumber: receipt.blockNumber })).timestamp)
+}
+
+export const chainExpiry = async (label: string) =>
+  Number(await chain.readContract({ address: deployment.baseRegistrar, abi: CHAIN_ABI, functionName: "nameExpires", args: [BigInt(hex(labelHash(label)))] }))
+
+export async function oracleQuote(label: string, years: number): Promise<number> {
+  const quote = await chain.readContract({ address: deployment.controller, abi: CHAIN_ABI, functionName: "rentPriceUSD", args: [label, BigInt(years * YEAR_S)] })
+  return Number(quote.base / ATTO_PER_CENT)
 }
 
 export async function searchName(request: APIRequestContext, label: string): Promise<Record<string, unknown>> {
@@ -260,7 +285,6 @@ export async function waitRegistered(page: Page, label: string): Promise<void> {
 }
 
 export const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
-const YEAR_S = 365 * 86_400
 
 export interface KeptOrder { registrationId: string; invoiceId: string | null; label: string; ownerCode: string; owner: string; request: { labelHash: string; commitment: string } }
 
@@ -268,7 +292,7 @@ export interface KeptOrder { registrationId: string; invoiceId: string | null; l
 export async function keepOrder(page: Page, registrationId: string, invoiceId: string | null, label: string, links = { contact: "", channel: "" }): Promise<KeptOrder> {
   const ownerCode = newOwnerCode()
   const owner = checksumAddress(walletOf(ownerCode)!.address)
-  const request = { labelHash: hex(labelHash(label)), length: label.length, owner, commitment: `0x${"01".repeat(32)}`, sealed: "sealed" }
+  const request = { labelHash: hex(labelHash(label)), length: label.length, duration: 2 * YEAR_S, owner, commitment: `0x${"01".repeat(32)}`, sealed: "sealed" }
   const record = { registrationId, invoiceId, label, ownerCode, owner, ...links, method: invoiceId ? "btc" : "code", paid: 10000, years: 2, tld: "simplex",
     createdAt: new Date().toISOString(), request }
   await page.goto("/#/trademarks")
@@ -279,7 +303,7 @@ export async function keepOrder(page: Page, registrationId: string, invoiceId: s
 // The service's view of a kept order's registration, as its API answers it.
 export const registrationView = (o: KeptOrder, change: Record<string, unknown> = {}) => ({
   ...CHAIN, id: o.registrationId, phase: "unpaid", labelHash: o.request.labelHash, label: o.label, owner: o.owner, commitment: o.request.commitment, sealed: "sealed",
-  years: 2, price: 10000, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, ...change,
+  years: 2, duration: 2 * YEAR_S, price: 10000, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, ...change,
 })
 
 // A registered name of this browser's code, as the service answers it, holding `links` until `records` answers otherwise.

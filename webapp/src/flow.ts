@@ -7,7 +7,6 @@ import {
 } from "./crypto/registration.ts"
 import { seal, unseal } from "./crypto/seal.ts"
 import { checksumAddress, fromHex, hex, personalDigest, signDigest, walletFromEntropy, type Wallet } from "./crypto/wallet.ts"
-import { PRICED_YEARS } from "./names.ts"
 import * as store from "./store.ts"
 
 const EDIT_DEADLINE_SECONDS = 3600
@@ -22,9 +21,9 @@ export function walletOf(code: string): Wallet | null {
   return parsed?.kind === "owner" ? walletFromEntropy(parsed.entropy) : null
 }
 
-function registrationOf(label: string, owner: Uint8Array, secret: Uint8Array, links: api.Links, chain: api.ChainInfo, years: number): Registration {
+function registrationOf(label: string, owner: Uint8Array, secret: Uint8Array, links: api.Links, chain: api.ChainInfo, duration: bigint): Registration {
   return {
-    label, tld: chain.tld, owner, duration: durationFor(years), secret, resolver: fromHex(chain.resolver),
+    label, tld: chain.tld, owner, duration, secret, resolver: fromHex(chain.resolver),
     contactLinks: links.contact ? [links.contact] : [], channelLinks: links.channel ? [links.channel] : [],
   }
 }
@@ -34,17 +33,32 @@ export interface Draft {
   links: api.Links
   chain: api.ChainInfo
   years: number
+  termStart: number
   ownerCode: string
 }
+
+type Quote = Extract<api.SearchAnswer, { status: "available" }>
+export const chainOf = (q: Quote): api.ChainInfo => ({ resolver: q.resolver, sponsor: q.sponsor, chainId: q.chainId, tld: q.tld })
+
+// The name's search answer as an order needs it, or null when it can no longer be ordered.
+export async function quoteOf(label: string): Promise<Quote | null> {
+  const answer = await api.searchName(hex(labelHash(label)), label.length)
+  return answer.status === "available" ? answer : null
+}
+
+// An order of a record's name and links again, as a new order of its code: a new commitment for the term from now.
+export const draftAgain = (record: store.OrderRecord, quote: Quote): Draft =>
+  ({ label: record.label, links: { contact: record.contact, channel: record.channel }, chain: chainOf(quote), years: record.years, termStart: quote.termStart, ownerCode: record.ownerCode })
 
 export type BuiltOrder = { request: api.OrderRequest; owner: string }
 
 export async function orderRequest(draft: Draft): Promise<BuiltOrder> {
   const wallet = walletOf(draft.ownerCode)!
-  const r = registrationOf(draft.label, wallet.address, commitmentSecret(wallet.seed, draft.label), draft.links, draft.chain, draft.years)
+  const duration = durationFor(draft.years, draft.termStart, now())
+  const r = registrationOf(draft.label, wallet.address, commitmentSecret(wallet.seed, draft.label), draft.links, draft.chain, duration)
   const sealed = await seal(wallet.seed, { label: draft.label, ...draft.links })
   const owner = checksumAddress(wallet.address)
-  return { request: { labelHash: hex(labelHash(draft.label)), length: draft.label.length, owner, commitment: hex(makeCommitment(r)), sealed }, owner }
+  return { request: { labelHash: hex(labelHash(draft.label)), length: draft.label.length, duration: Number(duration), owner, commitment: hex(makeCommitment(r)), sealed }, owner }
 }
 
 // An order can be answered with the commitment's existing order, paid another way or by code.
@@ -60,7 +74,7 @@ export function recordFor(draft: Draft, built: BuiltOrder, method: api.Method | 
 // The owner signs the registration once the commit has aged; the deadline is when the commitment lapses anyway.
 export async function revealOrder(view: api.RegistrationView, record: store.OrderRecord): Promise<void> {
   const wallet = walletOf(record.ownerCode)!
-  const r = registrationOf(record.label, wallet.address, commitmentSecret(wallet.seed, record.label), record, view, record.years)
+  const r = registrationOf(record.label, wallet.address, commitmentSecret(wallet.seed, record.label), record, view, BigInt(view.duration))
   const digest = registerIntentDigest(BigInt(view.chainId), fromHex(view.sponsor), r, BigInt(view.intentNonce!), BigInt(view.revealBefore!))
   await api.reveal(view.id, {
     label: record.label, secret: hex(r.secret),
@@ -75,13 +89,13 @@ async function sha256Hex(text: string): Promise<string> {
 }
 
 // Another name for a taken order, on the same wallet so the same code owns it, at the new name's price, which caps any later move.
-export async function retargetOrder(record: store.OrderRecord, label: string, links: api.Links, chain: api.ChainInfo): Promise<api.RegistrationView> {
-  const draft: Draft = { label, links, chain, years: record.years, ownerCode: record.ownerCode }
+export async function retargetOrder(record: store.OrderRecord, label: string, links: api.Links, quote: Quote): Promise<api.RegistrationView> {
+  const draft: Draft = { label, links, chain: chainOf(quote), years: record.years, termStart: quote.termStart, ownerCode: record.ownerCode }
   const built = await orderRequest(draft)
   const wallet = walletOf(record.ownerCode)!
   const timestamp = now()
-  const { labelHash: lh, length, commitment, sealed } = built.request
-  const message = `simplex.domains name ${record.registrationId} ${lh} ${length} ${commitment} ${await sha256Hex(sealed!)} ${timestamp}`
+  const { labelHash: lh, length, duration, commitment, sealed } = built.request
+  const message = `simplex.domains name ${record.registrationId} ${lh} ${length} ${duration} ${commitment} ${await sha256Hex(sealed)} ${timestamp}`
   const view = await api.retarget(record.registrationId, { ...built.request, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) })
   store.saveOrder({ ...record, label, ...links, paid: view.price, request: built.request })
   return view
@@ -96,7 +110,7 @@ export async function takeCodeFor(record: store.OrderRecord, view: api.Registrat
   const signature = hex(signDigest(wallet.privateKey, personalDigest(`simplex.domains code ${view.id} ${hash} ${timestamp}`)))
   await api.takeCode(view.id, { codeHash: hash, timestamp, signature })
   store.updateOrder(record.registrationId, { takenCode: code.display })
-  store.addCode({ code: code.display, minLength: code.minLength, years: PRICED_YEARS, addedAt: new Date().toISOString() })
+  store.addCode({ code: code.display, minLength: code.minLength, years: view.years, addedAt: new Date().toISOString() })
   return code.display
 }
 
@@ -111,9 +125,9 @@ type RestoreResult = { record: store.OrderRecord; view: api.RegistrationView }
 async function openOrder(wallet: Wallet, view: api.RegistrationView): Promise<Pick<store.OrderRecord, "label" | "contact" | "channel" | "request">> {
   const opened = await unseal(wallet.seed, view.sealed)
   if (!opened) throw new Error("the code does not open this order")
-  const r = registrationOf(opened.label, wallet.address, commitmentSecret(wallet.seed, opened.label), opened, view, view.years)
+  const r = registrationOf(opened.label, wallet.address, commitmentSecret(wallet.seed, opened.label), opened, view, BigInt(view.duration))
   if (hex(makeCommitment(r)) !== view.commitment) throw new Error("the order's commitment does not match the code")
-  const request = { labelHash: view.labelHash, length: opened.label.length, owner: checksumAddress(wallet.address), commitment: view.commitment, sealed: view.sealed }
+  const request = { labelHash: view.labelHash, length: opened.label.length, duration: view.duration, owner: checksumAddress(wallet.address), commitment: view.commitment, sealed: view.sealed }
   return { label: opened.label, contact: opened.contact, channel: opened.channel, request }
 }
 

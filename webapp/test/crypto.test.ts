@@ -7,7 +7,7 @@ import { mnemonicToAccount } from "viem/accounts"
 import { describe, expect, it } from "vitest"
 import { codeHash, codeProgress, codeTier, formatOwnerCode, LONGEST_TIER, parseNameCode, takenOrderCode } from "../src/crypto/code.ts"
 import {
-  BONUS_DURATION, clearRecordsDigest, commitmentSecret, durationFor, labelHash, makeCommitment, namehash, recordCalls,
+  clearRecordsDigest, commitmentSecret, durationFor, labelHash, makeCommitment, namehash, recordCalls,
   registerIntentDigest, setTextDigest, type Registration,
 } from "../src/crypto/registration.ts"
 import { seal, unseal } from "../src/crypto/seal.ts"
@@ -22,9 +22,11 @@ const CHAIN_ID = 31337n
 const SPONSOR = fromHex("9a676e781a523b5d0c0e43731313a708cb607508")
 const RESOLVER = fromHex("2279b7a0a67db372996a5fab50d91eaa73d2ebe6")
 const YEAR = 365n * 86400n
+const TERM_START = Date.UTC(2027, 0, 1) / 1000
+const BEFORE_START = Date.UTC(2026, 9, 21, 9, 15) / 1000
 
 function registration(owner: Uint8Array, contact: string[] = [], channel: string[] = []): Registration {
-  return { label: "dynamis", tld: "simplex", owner, duration: durationFor(2), secret: new Uint8Array(32).fill(0x11), resolver: RESOLVER, contactLinks: contact, channelLinks: channel }
+  return { label: "dynamis", tld: "simplex", owner, duration: durationFor(2, TERM_START, BEFORE_START), secret: new Uint8Array(32).fill(0x11), resolver: RESOLVER, contactLinks: contact, channelLinks: channel }
 }
 
 describe("owner code", () => {
@@ -110,9 +112,12 @@ describe("registration", () => {
     "function setText(bytes32 node, string key, string value)",
   ])
 
-  it("signs 2 years and 30 days", () => {
-    expect(durationFor(2)).toBe(2n * YEAR + BONUS_DURATION)
-    expect(BONUS_DURATION).toBe(30n * 86400n)
+  it("signs the paid years of 365 days and the free days until the term starts", () => {
+    expect(durationFor(2, TERM_START, BEFORE_START)).toBe(2n * YEAR + BigInt(TERM_START - BEFORE_START))
+    // from an order before the start, 2 years end on 31 December 2028, as the contract's example says
+    expect(BEFORE_START + Number(durationFor(2, TERM_START, BEFORE_START))).toBe(1861833600)
+    expect(durationFor(5, TERM_START, TERM_START)).toBe(5n * YEAR)
+    expect(durationFor(2, TERM_START, TERM_START + 1000)).toBe(2n * YEAR)
   })
 
   it("hashes the label and the node as viem does", () => {

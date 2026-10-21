@@ -10,7 +10,10 @@ export interface AppliedCode {
 
 export interface Checkout {
   label: string
+  // the search answer's price, for its years, and when the paid years start
   price: number
+  years: number
+  termStart: number
   chain: ChainInfo
   contact: string
   channel: string
@@ -70,10 +73,10 @@ export const setScrolled = (at: number, y: number) => write(SCROLLED, { ...scrol
 export const seen = <T>(): Record<string, T> => read<Record<string, T>>(SEEN) ?? {}
 export const setSeen = (rows: object) => write(SEEN, rows)
 
-// a checkout without its name or chain is a leftover, not one to continue; one kept without its step opens the review, which sends it on
+// a checkout without its name, chain or term is a leftover, not one to continue; one kept without its step opens the review, which sends it on
 export function checkout(): Checkout | null {
   const c = read<Checkout>(CHECKOUT)
-  return c?.label && c.chain ? { ...c, step: c.step ?? "review" } : null
+  return c?.label && c.chain && typeof c.termStart === "number" ? { ...c, step: c.step ?? "review" } : null
 }
 export const setCheckout = (c: Checkout | null) => write(CHECKOUT, c)
 

@@ -7,17 +7,18 @@ import {
 } from "viem"
 import type { ChatKind, Profile } from "../../src/api.ts"
 import { codeHash, parseNameCode } from "../../src/crypto/code.ts"
-import { CHANNEL_KEY, CONTACT_KEY, durationFor } from "../../src/crypto/registration.ts"
+import { CHANNEL_KEY, CONTACT_KEY, durationFor, YEAR_S } from "../../src/crypto/registration.ts"
 import { labelProblem, linkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
 import {
   baseRegistrar, chainNow, controller, deployment, holder, NotSent, ownerOf, read, registry, resolver, Reverted, send, sponsor,
 } from "./chain.ts"
-import { untilChainTime } from "../chain-time.ts"
+import { TERM_START_S, untilChainTime } from "../chain-time.ts"
 
 const YEARS = 2
-// SimplexPriceOracle.SECONDS_PER_YEAR and its attoUSD to the cent
-const YEAR_S = 365 * 86400
+// SimplexPriceOracle's attoUSD to the cent
 const ATTO_PER_CENT = 10n ** 16n
+// how far an order's free days may be from the service's own count: the page's clock is set from the service's Date header
+const TERM_SLACK_S = 3600
 // rates for the crypto amounts, in dollars
 const RATES = { btc: 64000, xmr: 160 }
 // Each invoice its own address, as BTCPay gives one: shaped as a Bitcoin bech32 or a Monero address, payable by nobody.
@@ -63,6 +64,7 @@ interface Registration {
   invoiceId: string | null
   labelHash: Hex
   length: number
+  duration: number
   owner: Address
   commitment: Hex
   sealed: string
@@ -268,7 +270,7 @@ export async function search(hash: string, lengthText: string | null): Promise<R
   if (found.type === "available") {
     if (registering(hash)) return { status: "registered", entities: [], tld: deployment.tld }
     const price = await priceOf(length, YEARS).catch(unavailable)
-    return { status: "available", price, currency: "usd", years: YEARS, resolver: deployment.resolver, sponsor: deployment.sponsor, ...chain }
+    return { status: "available", price, currency: "usd", years: YEARS, termStart: TERM_START_S, resolver: deployment.resolver, sponsor: deployment.sponsor, ...chain }
   }
   // Records are read only from the store's own resolver: calling whatever contract a name points at would let anyone
   // make the service run arbitrary code. A name pointed elsewhere is shown with its owner and no links.
@@ -304,7 +306,7 @@ async function registrationView(reg: Registration): Promise<Record<string, unkno
   const intentNonce = reg.phase === "committed" ? Number(await read<bigint>(sponsor, "nonces", [reg.owner]).catch(unavailable)) : null
   return {
     id: reg.id, phase: reg.phase, labelHash: reg.labelHash, label: reg.label, owner: reg.owner, commitment: reg.commitment, sealed: reg.sealed,
-    resolver: deployment.resolver, sponsor: deployment.sponsor, chainId: deployment.chainId, tld: deployment.tld, years: reg.years, price: reg.paid,
+    resolver: deployment.resolver, sponsor: deployment.sponsor, chainId: deployment.chainId, tld: deployment.tld, years: reg.years, duration: reg.duration, price: reg.paid,
     commitTx: reg.commitTx, registerTx: reg.registerTx, revealAfter: reg.revealAfter, revealBefore: reg.revealBefore,
     intentNonce, expiresAt: reg.expiresAt, error: reg.error,
   }
@@ -326,18 +328,25 @@ async function invoiceView(inv: Invoice): Promise<Record<string, unknown>> {
 interface OrderBody {
   labelHash: Hex
   length: number
+  duration: number
   owner: Address
   commitment: Hex
   sealed: string
 }
 
 function orderBody(body: Record<string, unknown>): OrderBody {
-  const { labelHash, length, owner, commitment, sealed } = body
-  if (!isHash(labelHash) || !isHash(commitment)) throw badRequest()
+  const { labelHash, length, duration, owner, commitment, sealed } = body
+  if (!isHash(labelHash) || !isHash(commitment) || !Number.isInteger(duration)) throw badRequest()
   if (typeof owner !== "string" || !isAddress(owner, { strict: true }) || getAddress(owner) !== owner) throw badRequest()
   if (typeof sealed !== "string" || sealed.length > SEALED_MAX) throw badRequest()
   if (typeof length !== "number" || !Number.isInteger(length) || length < MIN_LABEL_LENGTH || length > MAX_LABEL_LENGTH) throw new HttpError(400, "invalid_name")
-  return { labelHash, length, owner, commitment, sealed }
+  return { labelHash, length, duration: duration as number, owner, commitment, sealed }
+}
+
+// the paid years and the free days until the term starts, as the page counts them by the service's clock
+function checkDuration(duration: number, years: number): void {
+  const free = duration - years * YEAR_S
+  if (free < 0 || Math.abs(free - Math.max(0, TERM_START_S - nowSeconds())) > TERM_SLACK_S) throw badRequest()
 }
 
 // an order's own chain reads fail with their own tag, which the page tells from a payment method being unavailable
@@ -392,6 +401,7 @@ export async function createInvoice(body: Record<string, unknown>): Promise<Reco
     if (past.invoiceId) return invoiceView(invoices.get(past.invoiceId)!)
     return { invoiceId: null, kind: "name", registration: await registrationView(past) }
   }
+  checkDuration(order.duration, YEARS)
   await nameFree(order.labelHash)
   const price = await chainPrice(order.length, YEARS)
   if (body.price !== price) throw new HttpError(409, "catalog_changed", { price })
@@ -489,6 +499,7 @@ export async function registerWithCode(body: Record<string, unknown>): Promise<R
   const { open, past } = sameCommitment(order.commitment)
   if (open) throw badRequest({ invoiceId: open.id })
   if (past) return { registrationId: past.id, ...(past.invoiceId ? { invoiceId: past.invoiceId } : {}) }
+  checkDuration(order.duration, row.years)
   await nameFree(order.labelHash)
   const error = CODE_ERRORS[row.state]
   if (error) throw new HttpError(error === "code_invalid" ? 400 : 409, error)
@@ -607,7 +618,7 @@ function registrationTuple(reg: Registration) {
   const data = records.filter(([, links]) => links.length > 0)
     .map(([key, links]) => encodeFunctionData({ abi: resolver.abi, functionName: "setText", args: [node, key, links.join(";")] }))
   return {
-    label: reg.label!, owner: reg.owner, duration: durationFor(reg.years), secret: reg.secret!, resolver: deployment.resolver, data, reverseRecord: 0, referrer: zeroHash,
+    label: reg.label!, owner: reg.owner, duration: BigInt(reg.duration), secret: reg.secret!, resolver: deployment.resolver, data, reverseRecord: 0, referrer: zeroHash,
   }
 }
 
@@ -771,17 +782,18 @@ export async function retarget(registrationId: string, body: Record<string, unkn
   const reg = registrations.get(registrationId)
   if (!reg) throw new HttpError(404, "not_found")
   const order = orderBody({ ...body, owner: reg.owner })
-  await checkSigned(reg.owner, `simplex.domains name ${reg.id} ${order.labelHash} ${order.length} ${order.commitment} ${sha256Hex(order.sealed)} ${body.timestamp}`, body.timestamp, body.signature)
+  await checkSigned(reg.owner, `simplex.domains name ${reg.id} ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${sha256Hex(order.sealed)} ${body.timestamp}`, body.timestamp, body.signature)
   if (reg.phase !== "taken" || reg.method === "code") throw badRequest()
   // the order's own checks: a commitment that already has an order is paid for once
   const { open, past } = sameCommitment(order.commitment)
   if (open) throw badRequest({ invoiceId: open.id })
   if (past) throw badRequest()
+  checkDuration(order.duration, reg.years)
   await nameFree(order.labelHash)
   const price = await chainPrice(order.length, reg.years)
   if (price > reg.paid) throw badRequest()
   // the order now has the new name's price, which caps any later retarget
-  Object.assign(reg, { labelHash: order.labelHash, length: order.length, commitment: order.commitment, sealed: order.sealed, paid: price, phase: "queued", commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, error: null })
+  Object.assign(reg, { labelHash: order.labelHash, length: order.length, duration: order.duration, commitment: order.commitment, sealed: order.sealed, paid: price, phase: "queued", commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, error: null })
   clearReveal(reg)
   changed(reg)
   const view = await registrationView(reg)
@@ -932,7 +944,7 @@ export function controlRegistration(action: string, registrationId: string): Rec
 export function controlTake(label: unknown): Record<string, unknown> {
   if (typeof label !== "string" || labelProblem(label) !== null) throw badRequest()
   const done = (async () => {
-    const tuple = { label, owner: holder.address, duration: durationFor(YEARS), secret: toHex(randomBytes(32)), resolver: deployment.resolver, data: [] as Hex[], reverseRecord: 0, referrer: zeroHash }
+    const tuple = { label, owner: holder.address, duration: durationFor(YEARS, TERM_START_S, nowSeconds()), secret: toHex(randomBytes(32)), resolver: deployment.resolver, data: [] as Hex[], reverseRecord: 0, referrer: zeroHash }
     const commitment = await read<Hex>(controller, "makeCommitment", [tuple])
     await send(controller, "commit", [commitment])
     await untilChainTime(Number(await read<bigint>(controller, "commitments", [commitment])) + deployment.minCommitmentAge, chainNow)

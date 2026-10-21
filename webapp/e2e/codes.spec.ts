@@ -1,15 +1,12 @@
 import { type APIRequestContext, type Browser, expect, type Page } from "@playwright/test"
-import { durationFor } from "../src/crypto/registration.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  CHECKOUT_KEY, CODE_HEADING, codeField, control, LINKS_HEADING, MOCK, onStep, payButton, savedToReview, search, searchName, shot, startOrder, test, toCodeStep,
+  blockTimeOf, chainExpiry, CHECKOUT_KEY, CODE_HEADING, codeField, control, LINKS_HEADING, MOCK, onStep, payButton, savedToReview, search, searchName, shot, startOrder, test, toCodeStep,
   restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
 const WAIT_S = 200
-// how long after its wait a registration may reach the chain
-const REGISTER_SLACK_S = 600
 
 // Whether a page drawn after this ever said the code is kept, from its first frame on.
 const watchKept = () => {
@@ -94,11 +91,11 @@ test("a prepaid code from Check your code prices a name at $0 and registers it w
   const registered = await searchName(request, label)
   expect(registered.status).toBe("registered")
   await expect(page.locator("body > main .lead")).toHaveText(`Registered until ${dateOf(registered.expiresAt as number)}.`)
-  // the code's term, 5 years and its bonus days, from the end of the commit's wait to the name's expiry
-  const view = await (await request.get(`${MOCK}/api/registration/${new URL(page.url()).searchParams.get("registration")}`)).json() as { years: number; revealAfter: number }
+  // the code's term, its 5 years and the free days, sent as the duration, counted on chain from the register's block
+  const view = await (await request.get(`${MOCK}/api/registration/${new URL(page.url()).searchParams.get("registration")}`)).json() as { years: number; duration: number; registerTx: string }
   expect(view.years).toBe(5)
-  expect((registered.expiresAt as number) - view.revealAfter - Number(durationFor(5))).toBeGreaterThanOrEqual(0)
-  expect((registered.expiresAt as number) - view.revealAfter - Number(durationFor(5))).toBeLessThan(REGISTER_SLACK_S)
+  expect(await chainExpiry(label)).toBe(await blockTimeOf(view.registerTx) + view.duration)
+  expect(registered.expiresAt).toBe(await chainExpiry(label))
   await shot(page, "K8-registered-with-code")
   await page.goto("/#/names")
   const row = page.locator(".list-row", { hasText: `${label}.simplex` })

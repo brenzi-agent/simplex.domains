@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, TERM_START_S, termEnd, termText } from "../src/format.ts"
+import { clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, termEnd } from "../src/format.ts"
 import { foldLabel, labelProblem, linkKind, linkProblem, LINK_MAX_BYTES, linkTooLong, priceFor } from "../src/names.ts"
 
 describe("label rules", () => {
@@ -75,22 +75,20 @@ describe("formatting", () => {
     expect(dateOf(Date.UTC(2028, 10, 12) / 1000)).toBe("12\u00a0November 2028")
   })
 
-  it("writes the term with its 30 bonus days", () => {
-    expect(termText(5)).toBe("5 years + 30 days")
-  })
+  const TERM_START = Date.UTC(2027, 0, 1) / 1000
 
   it("counts the free days to the term's start, a part day as a whole one, and none once it has started", () => {
     const day = 86400
-    expect(TERM_START_S).toBe(Date.UTC(2027, 0, 1) / 1000)
-    expect(freeDays(Date.UTC(2026, 9, 21) / 1000)).toBe(72)
-    expect(freeDays(TERM_START_S - day / 2)).toBe(1)
-    expect([freeDays(TERM_START_S), freeDays(TERM_START_S + 5 * day)]).toEqual([0, 0])
+    expect(freeDays(TERM_START, Date.UTC(2026, 9, 21) / 1000)).toBe(72)
+    expect(freeDays(TERM_START, TERM_START - day / 2)).toBe(1)
+    expect([freeDays(TERM_START, TERM_START), freeDays(TERM_START, TERM_START + 5 * day)]).toEqual([0, 0])
   })
 
-  it("ends a term its years after its start, or after now once the start has passed", () => {
-    expect(dateOf(termEnd(2, Date.UTC(2026, 9, 21) / 1000))).toBe("1\u00a0January 2029")
-    expect(dateOf(termEnd(5, Date.UTC(2026, 9, 21) / 1000))).toBe("1\u00a0January 2032")
-    expect(dateOf(termEnd(2, Date.UTC(2027, 5, 15) / 1000))).toBe("15\u00a0June 2029")
+  it("ends a term its years of 365 days after its start, or after now once the start has passed", () => {
+    expect(termEnd(2, TERM_START, Date.UTC(2026, 9, 21) / 1000)).toBe(1861833600)
+    expect(dateOf(termEnd(2, TERM_START, Date.UTC(2026, 9, 21) / 1000))).toBe("31\u00a0December 2028")
+    expect(dateOf(termEnd(5, TERM_START, Date.UTC(2026, 9, 21) / 1000))).toBe("31\u00a0December 2031")
+    expect(dateOf(termEnd(2, TERM_START, Date.UTC(2027, 5, 15) / 1000))).toBe("14\u00a0June 2029")
   })
 
   it("writes seconds in the singular and the plural", () => {

@@ -9,7 +9,7 @@ import {
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts"
 import { foundry } from "viem/chains"
 import { durationFor } from "../src/crypto/registration.ts"
-import { BLOCK_POLL_MS, untilChainTime } from "./chain-time.ts"
+import { BLOCK_POLL_MS, TERM_START_S, untilChainTime } from "./chain-time.ts"
 
 const RPC_URL = process.env.RPC_URL ?? "http://127.0.0.1:8545"
 const ENS_CONTRACTS_DIR = process.env.ENS_CONTRACTS_DIR
@@ -27,7 +27,7 @@ const FEED_PRICE = 100_000_000n
 // the launch prices in cents a year (owner, 2026-10-21): $100, $200 and $400 for 2 years at 8 or more, 7 and 6 letters
 const PRICE_BASE = 5000n
 const PRICE_EXCEPTIONS = [{ labelLength: 7n, priceCentsPerYear: 10000n }, { labelLength: 6n, priceCentsPerYear: 20000n }]
-// the seeded names are registered as a paid order is, with the bonus days
+// the seeded names are registered as a paid order is, for paid years from the term start
 const SEED_YEARS = 2
 // the registrar's credit in USD with 18 decimals, more than any number of test runs spends
 const ALLOWANCE = 1_000_000n * 10n ** 18n
@@ -108,22 +108,23 @@ const REGISTER_TYPES = {
 } as const
 
 // A name registered to the holder through the sponsor, as the store's service registers names.
-function seedRegistration(label: string, records: Record<string, string>) {
+function seedRegistration(label: string, records: Record<string, string>, now: number) {
   const node = namehash(`${label}.${TLD}`)
   const data = Object.entries(records).map(([key, value]) =>
     encodeFunctionData({ abi: resolver.abi, functionName: "setText", args: [node, key, value] }))
   return {
-    label, owner: holder.address, duration: durationFor(SEED_YEARS), secret: toHex(crypto.getRandomValues(new Uint8Array(32))),
+    label, owner: holder.address, duration: durationFor(SEED_YEARS, TERM_START_S, now), secret: toHex(crypto.getRandomValues(new Uint8Array(32))),
     resolver: resolver.address, data, reverseRecord: 0, referrer: zeroHash,
   }
 }
 
+const seededAt = Number((await publicClient.getBlock()).timestamp)
 const seeds = [
   seedRegistration("bakery", {
     "simplex.contact": "https://smp8.simplex.im/a#Y8m3qT0vLw2Ab7cD9eF1gH3jK5mN7pQ9rS",
     "simplex.channel": "https://smp9.simplex.im/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm",
-  }),
-  seedRegistration("harbour", {}),
+  }, seededAt),
+  seedRegistration("harbour", {}, seededAt),
 ]
 // the controller makes every registration wait after its commit, by block time; the last commit is the latest
 let revealAfter = 0

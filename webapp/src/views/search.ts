@@ -154,26 +154,27 @@ function register(): void {
   const s = state
   if (s.answer?.kind !== "found" || s.answer.answer.status !== "available") return
   const { label, answer } = s.answer
-  const chain = { resolver: answer.resolver, sponsor: answer.sponsor, chainId: answer.chainId, tld: answer.tld }
-  if (s.retarget) return void retarget(s.retarget, label, chain)
+  const chain = flow.chainOf(answer)
+  if (s.retarget) return void retarget(s.retarget, label, answer)
   const code = codeFor(s, label)
   const started = session.checkout()
+  const quote = { price: answer.price, years: answer.years, termStart: answer.termStart, chain }
   if (started && started.label === label && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started)) {
-    session.updateCheckout(label, { chain, searchAt: historyPlace(), code, codeError: undefined })
+    session.updateCheckout(label, { ...quote, searchAt: historyPlace(), code, codeError: undefined })
     return go(checkoutUrl("links"))
   }
   session.setCheckout({
-    label, price: answer.price, chain, contact: "", channel: "", method: "btc", code, ownerCode: null, saved: false,
+    label, ...quote, contact: "", channel: "", method: "btc", code, ownerCode: null, saved: false,
     searchAt: historyPlace(), step: "links",
   })
   go(checkoutUrl("links"))
 }
 
-async function retarget(record: store.OrderRecord, label: string, chain: session.Checkout["chain"]): Promise<void> {
+async function retarget(record: store.OrderRecord, label: string, quote: Available): Promise<void> {
   const page = opens
   dispatch({ type: "register-started" })
   try {
-    await flow.retargetOrder(record, label, { contact: record.contact, channel: record.channel }, chain)
+    await flow.retargetOrder(record, label, { contact: record.contact, channel: record.channel }, quote)
     if (onPage(page)) go(store.orderUrl(record))
   } catch (e) {
     const read = await readOrder(record)

@@ -16,7 +16,7 @@ const WARN: Note = { tone: "warn", icon: "alert", title: null, text: "The invoic
 
 function registration(change: Partial<RegistrationView> = {}): RegistrationView {
   return {
-    ...CHAIN, id: "reg-1", phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box", years: 2,
+    ...CHAIN, id: "reg-1", phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box", years: 2, duration: 2 * 365 * 86400,
     price: 1500, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, ...change,
   }
 }
@@ -35,7 +35,7 @@ const card = (change: Partial<InvoiceView> = {}, reg: Partial<RegistrationView> 
 function record(change: Partial<OrderRecord> = {}): OrderRecord {
   return {
     registrationId: "reg-1", invoiceId: "inv-1", label: "alice", ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: OWNER, contact: "", channel: "",
-    method: "btc", paid: 1500, years: 2, request: { labelHash: "0x4f1b", length: 5, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box" },
+    method: "btc", paid: 1500, years: 2, request: { labelHash: "0x4f1b", length: 5, duration: 2 * 365 * 86400, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box" },
     tld: "simplex", createdAt: "2026-10-17T11:59:00Z", ...change,
   }
 }

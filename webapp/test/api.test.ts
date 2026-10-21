@@ -72,6 +72,9 @@ describe("service errors", () => {
   const PROFILE = { type: "channel", kind: "channel", displayName: "Alice", fullName: "Alice's news", image: null, subscribers: 12 }
 
   it("passes a search answer the page can draw", async () => {
+    const available = { status: "available", price: 10000, currency: "usd", years: 2, termStart: 1798761600, resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex" }
+    answerWith(200, JSON.stringify(available))
+    expect(await searchName("ab".repeat(32), 8)).toEqual(available)
     const entity = { ...PROFILE, link: "https://simplex.chat/c#x", deepLink: "simplex:/c#x" }
     answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [entity] }))
     expect(await searchName("ab".repeat(32), 8)).toMatchObject({ status: "registered", entities: [entity] })
@@ -109,7 +112,7 @@ describe("service errors", () => {
 
   const REGISTRATION = {
     id: "r1", phase: "unpaid", labelHash: `0x${"ab".repeat(32)}`, label: null, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`,
-    sealed: "sealed", years: 2, price: 10000, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null,
+    sealed: "sealed", years: 2, duration: 2 * 365 * 86400, price: 10000, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null,
     resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex",
   }
   const INVOICE = { invoiceId: "inv1", status: "open", amount: 10000, currency: "usd", expiresAt: "2026-10-16T12:00:00Z", kind: "name", registration: REGISTRATION, cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bc1q" }
@@ -140,7 +143,8 @@ describe("service errors", () => {
   it("takes a search or code answer with values that cannot be so as no answer", async () => {
     const chain = { resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex" }
     for (const body of [
-      { status: "available", price: -500, years: 2, currency: "usd", ...chain }, { status: "available", price: 500, years: 0, currency: "usd", ...chain },
+      { status: "available", price: -500, years: 2, termStart: 1798761600, currency: "usd", ...chain }, { status: "available", price: 500, years: 0, termStart: 1798761600, currency: "usd", ...chain },
+      { status: "available", price: 500, years: 2, currency: "usd", ...chain }, { status: "available", price: 500, years: 2, termStart: "2027", currency: "usd", ...chain },
       { status: "registered", tld: "simplex", entities: [], owner: 5 }, { status: "registered", tld: "simplex", entities: [], records: { contact: 1 } },
     ]) {
       answerWith(200, JSON.stringify(body))

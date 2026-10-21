@@ -1,7 +1,7 @@
 import { recoverAddress, recoverMessageAddress, type Hex } from "viem"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { codeHash, formatOwnerCode, parseNameCode } from "../src/crypto/code.ts"
-import { commitmentSecret, durationFor, labelHash, makeCommitment, namehash, registerIntentDigest, setTextDigest } from "../src/crypto/registration.ts"
+import { commitmentSecret, labelHash, makeCommitment, namehash, registerIntentDigest, setTextDigest, YEAR_S } from "../src/crypto/registration.ts"
 import { unseal } from "../src/crypto/seal.ts"
 import { checksumAddress, hex, walletFromEntropy } from "../src/crypto/wallet.ts"
 
@@ -11,6 +11,9 @@ const OWNER_CODE = formatOwnerCode(ENTROPY)
 const WALLET = walletFromEntropy(ENTROPY)
 const OWNER = checksumAddress(WALLET.address)
 const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
+// a term that starts in ten days, so an order carries free days
+const TERM_START = Math.floor(Date.now() / 1000) + 10 * 86400
+const QUOTE = { status: "available" as const, price: 20000, currency: "usd", years: 2, termStart: TERM_START, ...CHAIN }
 const LINKS = { contact: "https://smp8.simplex.im/a#Y8m3qT0vLw2Ab7cD9eF1gH3jK5mN7pQ9rS", channel: "" }
 
 type Call = { method: string; path: string; body: Record<string, unknown> }
@@ -53,12 +56,12 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-const draft = (label = "dynamis") => ({ label, links: LINKS, chain: CHAIN, years: 2, ownerCode: OWNER_CODE })
+const draft = (label = "dynamis") => ({ label, links: LINKS, chain: CHAIN, years: 2, termStart: TERM_START, ownerCode: OWNER_CODE })
 
-function view(request: { labelHash: string; commitment: string; sealed: string | null }, extra: Record<string, unknown> = {}) {
+function view(request: { labelHash: string; duration: number; commitment: string; sealed: string | null }, extra: Record<string, unknown> = {}) {
   return {
     id: "reg1", phase: "committed", labelHash: request.labelHash, label: null, owner: OWNER, commitment: request.commitment, sealed: request.sealed,
-    years: 2, price: 20000, commitTx: "0x01", registerTx: null, revealAfter: 1000, revealBefore: 87400, intentNonce: 3, expiresAt: null, error: null,
+    years: 2, duration: request.duration, price: 20000, commitTx: "0x01", registerTx: null, revealAfter: 1000, revealBefore: 87400, intentNonce: 3, expiresAt: null, error: null,
     ...CHAIN, ...extra,
   }
 }
@@ -70,8 +73,11 @@ describe("orderRequest", () => {
     expect(owner).toBe(OWNER)
     expect(request.labelHash).toBe(hex(labelHash("dynamis")))
     expect(request.length).toBe(7)
+    // the paid years and the free days left until the term starts, by the clock at the order
+    const free = request.duration - 2 * YEAR_S
+    expect(Math.abs(free - (TERM_START - Date.now() / 1000))).toBeLessThan(2)
     const expected = makeCommitment({
-      label: "dynamis", tld: "simplex", owner: WALLET.address, duration: durationFor(2), secret: commitmentSecret(WALLET.seed, "dynamis"),
+      label: "dynamis", tld: "simplex", owner: WALLET.address, duration: BigInt(request.duration), secret: commitmentSecret(WALLET.seed, "dynamis"),
       resolver: fromHex(CHAIN.resolver), contactLinks: [LINKS.contact], channelLinks: [],
     })
     expect(request.commitment).toBe(hex(expected))
@@ -89,7 +95,7 @@ describe("revealOrder", () => {
     const body = calls[0].body as { label: string; secret: string; records: unknown; nonce: number; deadline: number; signature: Hex }
     expect(body).toMatchObject({ label: "dynamis", secret: hex(commitmentSecret(WALLET.seed, "dynamis")), records: { contact: [LINKS.contact], channel: [] }, nonce: 3, deadline: 87400 })
     const r = {
-      label: "dynamis", tld: "simplex", owner: WALLET.address, duration: durationFor(2), secret: fromHex(body.secret),
+      label: "dynamis", tld: "simplex", owner: WALLET.address, duration: BigInt(built.request.duration), secret: fromHex(body.secret),
       resolver: fromHex(CHAIN.resolver), contactLinks: [LINKS.contact], channelLinks: [],
     }
     const digest = registerIntentDigest(31337n, fromHex(CHAIN.sponsor), r, 3n, 87400n)
@@ -104,11 +110,11 @@ describe("retargetOrder and takeCodeFor", () => {
     const record = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" })
     store.saveOrder(record)
     answers["POST /api/registration/reg1/name"] = view(built.request)
-    await flow.retargetOrder(record, "another", LINKS, CHAIN)
-    const body = calls[0].body as { labelHash: string; length: number; commitment: string; sealed: string; timestamp: number; signature: Hex }
+    await flow.retargetOrder(record, "another", LINKS, QUOTE)
+    const body = calls[0].body as { labelHash: string; length: number; duration: number; commitment: string; sealed: string; timestamp: number; signature: Hex }
     expect(body.labelHash).toBe(hex(labelHash("another")))
     const sealedHash = Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body.sealed))).toString("hex")
-    const message = `simplex.domains name reg1 ${body.labelHash} 7 ${body.commitment} 0x${sealedHash} ${body.timestamp}`
+    const message = `simplex.domains name reg1 ${body.labelHash} 7 ${body.duration} ${body.commitment} 0x${sealedHash} ${body.timestamp}`
     expect(await recoverMessageAddress({ message, signature: body.signature })).toBe(OWNER)
     expect(store.orderByRegistration("reg1")).toMatchObject({ label: "another", owner: OWNER, request: { labelHash: body.labelHash } })
   })
@@ -232,7 +238,7 @@ describe("store", () => {
   it("keeps orders newest first, updates by registration, and forgets everything", async () => {
     const { store } = await modules()
     const base = { invoiceId: null, label: "a", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, tld: "simplex",
-      request: { labelHash: "0x", length: 6, owner: OWNER, commitment: "0x", sealed: "sealed" } }
+      request: { labelHash: "0x", length: 6, duration: 2 * YEAR_S, owner: OWNER, commitment: "0x", sealed: "sealed" } }
     expect(store.saveOrder({ ...base, registrationId: "old", createdAt: "2026-01-01T00:00:00Z" })).toBe(true)
     store.saveOrder({ ...base, registrationId: "new", createdAt: "2026-02-01T00:00:00Z" })
     store.updateOrder("old", { cancelled: true })
@@ -259,7 +265,7 @@ describe("store", () => {
     const tabB = await import("../src/store.ts")
     expect(tabA.orders()).toEqual([])
     const base = { invoiceId: null, label: "b", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, tld: "simplex",
-      request: { labelHash: "0x", length: 6, owner: OWNER, commitment: "0x", sealed: "sealed" } }
+      request: { labelHash: "0x", length: 6, duration: 2 * YEAR_S, owner: OWNER, commitment: "0x", sealed: "sealed" } }
     tabB.saveOrder({ ...base, registrationId: "fromB", createdAt: "2026-01-01T00:00:00Z" })
     tabA.addCode({ code: "SN6-X", minLength: 6, years: 2, addedAt: "2026-01-01T00:00:00Z" })
     expect(tabB.orders().map((o) => o.registrationId)).toEqual(["fromB"])
@@ -273,7 +279,7 @@ describe("store", () => {
   it("keeps serving what a full storage holds, moves new writes to memory, and forgets both", async () => {
     const { store } = await modules()
     const base = { invoiceId: null, label: "a", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, tld: "simplex",
-      request: { labelHash: "0x", length: 6, owner: OWNER, commitment: "0x", sealed: "sealed" } }
+      request: { labelHash: "0x", length: 6, duration: 2 * YEAR_S, owner: OWNER, commitment: "0x", sealed: "sealed" } }
     store.saveOrder({ ...base, registrationId: "kept", createdAt: "2026-01-01T00:00:00Z" })
     const storage = (globalThis as unknown as { window: { localStorage: Storage } }).window.localStorage
     const setItem = storage.setItem

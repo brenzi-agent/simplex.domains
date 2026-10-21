@@ -41,7 +41,7 @@ export interface Links {
 }
 
 export type SearchAnswer =
-  | ({ status: "available"; price: number; currency: string; years: number } & ChainInfo)
+  | ({ status: "available"; price: number; currency: string; years: number; termStart: number } & ChainInfo)
   | { status: "registered"; entities: Entity[]; records?: Links | null; owner?: string; resolver?: string; recordsNonce?: number | null; expiresAt?: number; chainId?: number; tld: string }
   | { status: "reserved" }
 
@@ -69,6 +69,8 @@ export interface RegistrationView extends ChainInfo {
   commitment: string
   sealed: string
   years: number
+  // the term in seconds the commitment holds: the paid years and the free days until the term starts
+  duration: number
   // what the order is worth, in cents: what was paid, or the price of the name it moved to; it caps another move
   price: number
   commitTx: string | null
@@ -108,6 +110,7 @@ export const closedEmpty = (inv: InvoiceView | null) => inv?.status === "expired
 export interface OrderRequest {
   labelHash: string
   length: number
+  duration: number
   owner: string
   commitment: string
   sealed: string
@@ -211,7 +214,7 @@ const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unk
 const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.sponsor) && typeof a.chainId === "number" && isText(a.tld)
 const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registering", "registered", "taken", "failed", "code_issued"]
 const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
-  && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isAmount(v.price)
+  && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isCount(v.duration) && isAmount(v.price)
   && nullable(v.commitTx, isText) && nullable(v.registerTx, isText) && nullable(v.revealAfter, isAmount) && nullable(v.revealBefore, isAmount)
   && nullable(v.intentNonce, isAmount) && nullable(v.expiresAt, isAmount) && nullable(v.error, isText)
 const isInvoice = (v: unknown) => isObject(v) && isText(v.invoiceId) && ["open", "paid", "expired"].includes(v.status as string) && isAmount(v.amount)
@@ -223,7 +226,7 @@ const isRecords = (v: unknown) => isObject(v) && isText(v.contact) && isText(v.c
 
 export const searchName = (labelHash: string, length: number) => checked<SearchAnswer>(call("GET", `/api/name/${labelHash}?length=${length}`), (a) =>
   a.status === "reserved"
-  || (a.status === "available" && isAmount(a.price) && isCount(a.years) && isText(a.currency) && isChain(a))
+  || (a.status === "available" && isAmount(a.price) && isCount(a.years) && isAmount(a.termStart) && isText(a.currency) && isChain(a))
   || (a.status === "registered" && isText(a.tld) && Array.isArray(a.entities) && a.entities.every(isEntity) && optional(a.owner, isText)
     && optional(a.resolver, isText) && optional(a.records, (r) => nullable(r, isRecords)) && optional(a.recordsNonce, (n) => nullable(n, isAmount))
     && optional(a.expiresAt, isAmount) && optional(a.chainId, isAmount)))

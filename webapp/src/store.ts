@@ -15,7 +15,7 @@ export interface OrderRecord {
   paid: number
   years: number
   // the request, kept to ask for a new invoice for the same commitment
-  request: { labelHash: string; length: number; owner: string; commitment: string; sealed: string }
+  request: { labelHash: string; length: number; duration: number; owner: string; commitment: string; sealed: string }
   // when this browser submitted a card payment, kept until the invoice leaves open
   cardSubmittedAt?: string
   cancelled?: boolean

@@ -1,4 +1,5 @@
 // How amounts, dates and addresses read on the page.
+import { YEAR_S } from "./crypto/registration.ts"
 
 // cents only where an amount has them, as "$100" and "$100.50"
 export function dollars(cents: number): string {
@@ -23,23 +24,14 @@ export function dateOf(seconds: number): string {
 // a dot between parts of a line stays at the end of the part before it, never starting a line
 export const SEP = "\u00a0\u00b7 "
 
-// The names' term starts on 1 January 2027 (owner 2026-10-20); the days before it are free. A later wave takes this date
-// from the service's termStart.
-export const TERM_START_S = Date.UTC(2027, 0, 1) / 1000
 const DAY_S = 86400
 
-export const freeDays = (nowS: number) => Math.max(0, Math.ceil((TERM_START_S - nowS) / DAY_S))
+// the days before the paid years start, which cost nothing
+export const freeDays = (termStart: number, nowS: number) => Math.max(0, Math.ceil((termStart - nowS) / DAY_S))
 
-// where a term of these years ends, counted from its start, or from now once the start has passed
-export function termEnd(years: number, nowS: number): number {
-  const end = new Date(Math.max(nowS, TERM_START_S) * 1000)
-  end.setUTCFullYear(end.getUTCFullYear() + years)
-  return end.getTime() / 1000
-}
-
-export function termText(years: number): string {
-  return `${years} years + 30 days`
-}
+// Where a term ends before it is registered: its paid years of 365 days from its start, or from now once the start has
+// passed. These are not calendar years: 2 years from 1 January 2027 end on 31 December 2028.
+export const termEnd = (years: number, termStart: number, nowS: number) => Math.max(nowS, termStart) + years * YEAR_S
 
 export function seconds(n: number): string {
   return n === 1 ? "1 second" : `${n} seconds`

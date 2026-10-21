@@ -5,10 +5,8 @@ import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha2"
 import { keccak_256 } from "@noble/hashes/sha3"
 
-const DAY = 86400n
-const YEAR = 365n * DAY
-// every registration gets 30 days beyond its paid years
-export const BONUS_DURATION = 30n * DAY
+// SimplexPriceOracle.SECONDS_PER_YEAR: a paid year is 365 days, as the oracle prices it
+export const YEAR_S = 365 * 86400
 export const CONTACT_KEY = "simplex.contact"
 export const CHANNEL_KEY = "simplex.channel"
 
@@ -23,8 +21,9 @@ export interface Registration {
   channelLinks: string[]
 }
 
-export function durationFor(years: number): bigint {
-  return BigInt(years) * YEAR + BONUS_DURATION
+// The contract counts a duration from the block's time, so the free days until the term starts are added to the paid years.
+export function durationFor(years: number, termStart: number, now: number): bigint {
+  return BigInt(years * YEAR_S + Math.max(0, termStart - now))
 }
 
 // derived from the owner code, so the same code and name always give the same commitment

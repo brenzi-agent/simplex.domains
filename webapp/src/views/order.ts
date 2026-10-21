@@ -3,7 +3,7 @@ import * as api from "../api.ts"
 import { codeTier, LONGEST_TIER, parseNameCode } from "../crypto/code.ts"
 import { alertBox, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, setAction, type Tone } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { clock, dateOf, dollars, methodName, SEP, shortAddress, termText } from "../format.ts"
+import { clock, dateOf, dollars, methodName, SEP, shortAddress } from "../format.ts"
 import { PRICED_YEARS } from "../names.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
@@ -337,7 +337,7 @@ const labelOf = (view: api.RegistrationView, record: store.OrderRecord | null) =
 const UNKNOWN_NAME = "The name shows once it is registered"
 
 // what the order is for and what it cost, after its name where the screen has not said it already
-const termLine = ({ view, invoice }: OrderState): Kid[] => [el("span", { class: "nowrap" }, termText(view!.years)), SEP, invoice ? dollars(invoice.amount) : "With a code"]
+const termLine = ({ view, invoice }: OrderState): Kid[] => [el("span", { class: "nowrap" }, `${view!.years} years`), SEP, invoice ? dollars(invoice.amount) : "With a code"]
 
 // the order in one line, the lead of each screen that pays or registers it
 function orderLine(s: OrderState): Kid[] {
@@ -516,7 +516,7 @@ function closedWords(closed: ClosedCase, inv: api.InvoiceView): [Tone, Kid] {
   }
 }
 
-// a new invoice reuses this order's commitment, which only the browser holding its name code can rebuild
+// a new invoice is a new order of this order's name code, which only the browser holding it can make
 function closedAction(s: OrderState, closed: ClosedCase): HTMLButtonElement {
   const { record } = s
   if (record?.replacedBy) return btn("Open the new invoice", "quiet", () => go(record.replacedBy!))
@@ -657,10 +657,17 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
       if (isOpen(gen)) go(store.invoiceUrl(invoice.invoiceId))
       return
     }
-    const res = await api.createOrder(record.request, invoice.cryptoCurrency ?? "card", invoice.amount)
+    // a new invoice is a new order of the same name code, at the price this one was made for
+    const quote = await flow.quoteOf(record.label)
+    if (!quote) {
+      if (isOpen(gen)) go(searchLink(record.label))
+      return
+    }
+    const built = await flow.orderRequest(flow.draftAgain(record, quote))
+    const res = await api.createOrder(built.request, invoice.cryptoCurrency ?? "card", invoice.amount)
     const next = store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id })
     // the old record is the stored owner code until the new one is stored too
-    store.saveOrder({ ...record, registrationId: res.registration.id, invoiceId: res.invoiceId, ...flow.paidWith(res), cancelled: false, cardSubmittedAt: undefined, replacedBy: undefined, createdAt: new Date(api.serviceNow()).toISOString() })
+    store.saveOrder({ ...record, request: built.request, registrationId: res.registration.id, invoiceId: res.invoiceId, ...flow.paidWith(res), cancelled: false, cardSubmittedAt: undefined, replacedBy: undefined, createdAt: new Date(api.serviceNow()).toISOString() })
     // Your names lists the old order only while money it received needs its reference; its page leads to the new one
     if (res.registration.id !== record.registrationId) store.updateOrder(record.registrationId, { replacedBy: next })
     if (isOpen(gen)) go(next)
