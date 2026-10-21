@@ -113,7 +113,6 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
     const kind = takes.kind ?? (link === kept ? keptKind : null) ?? linkKind(link)
     const accept = () => {
       field.dataset.state = "ok"
-      box.className = "field ok"
       save(link, kind)
     }
     const known = previews.get(link)
