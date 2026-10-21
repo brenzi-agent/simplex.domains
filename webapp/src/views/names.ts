@@ -6,7 +6,7 @@ import { dateOf, dollars, methodName, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import { qrSvg } from "../qr.ts"
 import {
-  CODE_CHIPS, EDIT_RETRY_MS, editable, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
+  CODE_CHIPS, EDIT_RETRY_MS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
   againLine, initialRestore, lapsed, LINK_NAMES, ranOut, moneyReached, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
   reduceList, reduceRestore, REFUSALS, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
@@ -203,10 +203,17 @@ function forgetQuestion(s: ListState): HTMLElement | null {
   el("div", { class: "actions" }, btn("Forget everything", "danger", forgetEverything), keep))
 }
 
+// nothing kept yet: the ways to a first name, as a step
+const emptyNames = (s: ListState) => asStep(screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME,
+  action: btn("Find a name", "", () => go(HOME)), alt: el("a", { href: CODE_URL }, "Add a name code") },
+  el("div", { class: "card none" }, el("b", {}, "No names in this browser yet"),
+    el("p", { class: "note center" }, "A name you register here shows in this list. To see a name you registered in another browser, add its name code."))))
+
 function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
   const open = session.checkout()
   const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...listedOrders(s).map((o) => orderRow(o, s))]
+  if (!names.length && !s.codes.length) return emptyNames(s)
   return screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME },
     el("div", { class: "card list" }, names.length ? names : el("p", { class: "note" }, "No names in this browser yet.")),
     s.codes.length ? [el("h2", { class: "label" }, "Codes"), el("div", { class: "card list" }, s.codes.map((c) => codeRow(c, s)))] : null,
@@ -268,7 +275,7 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
   const shown = code !== null && s.shownCode === id
   const edits = registered && !lapsed(seen, s.now) && (!seen.answer || editable(seen.answer, o.owner))
   const acts = code === null ? [small("Open", `${id}-open`, () => go(store.orderUrl(o)))]
-    : [codeToggle(id, shown), edits ? small("Edit links", `${id}-edit`, () => go(`/#/edit/${id}`)) : null]
+    : [codeToggle(id, shown), edits ? small(hasLinks(o, seen.answer) ? "Edit links" : "Add links", `${id}-edit`, () => go(`/#/edit/${id}`)) : null]
   // a registered name shows the chats it opens, as the home's answer does
   const chats = registered && seen.answer?.status === "registered" ? seen.answer.entities.map(chatPicture) : []
   return row(id, nameTitle(label, "name", tld), seen ? subLine(o, seen, s.now) : recordedPaid(o), rowChip(s, o, seen),

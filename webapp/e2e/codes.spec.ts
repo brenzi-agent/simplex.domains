@@ -214,7 +214,7 @@ test("a code checked is listed in Your names, used again from there, and forgott
   await expect(row).toHaveCount(0)
   // the confirmed question is drawn away, so focus goes to the page's heading
   await expect(page.getByRole("heading", { name: "Your names" })).toBeFocused()
-  await expect(page.getByRole("link", { name: "Add a code" })).toHaveAttribute("href", "/#/code")
+  await expect(page.getByRole("link", { name: "Add a name code" })).toHaveAttribute("href", "/#/code")
 })
 
 test("an owner code made at checkout is kept in Your names until its order exists", async ({ page }) => {
@@ -268,7 +268,7 @@ test("an order refused at checkout for a name taken meanwhile leaves no unfinish
   await expect(onStep(page).getByRole("heading", { name: "This name is no longer available" })).toBeVisible()
   await page.getByRole("link", { name: "Your names" }).first().click()
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
-  await expect(page.getByText("No names in this browser yet.").or(page.locator(".list-row").first())).toBeVisible()
+  await expect(page.getByText(/^No names in this browser yet/).or(page.locator(".list-row").first())).toBeVisible()
   await expect(page.locator(".list-row", { hasText: `${label}.simplex` })).toHaveCount(0)
 })
 
@@ -448,7 +448,7 @@ test("Your names reads a revoked code as not valid, and has a codes section only
   await page.goto("/#/names")
   await expect(onStep(page).getByRole("heading", { name: "Your names" })).toBeVisible()
   await expect(onStep(page).getByRole("heading", { name: "Codes" })).toHaveCount(0)
-  await expect(onStep(page).getByRole("link", { name: "Add a code" })).toBeVisible()
+  await expect(onStep(page).getByRole("link", { name: "Add a name code" })).toBeVisible()
   await page.goto("/")
   await page.evaluate((c) => localStorage.setItem(`simplex-names:code:${c}`, JSON.stringify({ code: c, minLength: 6, years: 2, addedAt: new Date().toISOString() })), code)
   await page.goto("/#/names")

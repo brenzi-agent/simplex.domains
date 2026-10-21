@@ -997,7 +997,8 @@ test("once a name is registered, Back to its search never offers it again, and Y
   }, `${label}.simplex`)
   await page.getByRole("link", { name: "Your names" }).first().click()
   const row = page.locator(".list-row", { hasText: `${label}.simplex` })
-  await expect(row.getByRole("button", { name: "Edit links" })).toBeVisible()
+  // ordered without links, it offers to add them
+  await expect(row.getByRole("button", { name: "Add links" })).toBeVisible()
   expect(await page.evaluate(() => (window as unknown as { __chips: string[] }).__chips), "the row's chips from its first draw").toEqual([])
 })
 

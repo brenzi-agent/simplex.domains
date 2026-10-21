@@ -472,14 +472,15 @@ svg.qr { display: block; width: 132px; height: auto; }
 .check input:checked + .box::after { opacity: 1; }
 
 /* Your names: a card of names and one of codes, a row per name or code with its actions as text links */
-.card.list { padding: 0 22px; }
-.list > .note { padding-block: 14px; }
-.list-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-height: 72px; padding: 14px 0; }
+.card.list { padding: 0; }
+.list > .note { padding: 14px 22px; }
+.card.none { display: grid; gap: 6px; padding: 22px; text-align: center; }
+.card.none b { font-size: 17px; }
+.list-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-height: 72px; padding: 14px 22px; }
 .list-row + .list-row, .list > .note + .list-row { border-top: 1px solid var(--surface-line); }
 .list-row .main { flex: 1 1 240px; min-width: 0; display: grid; gap: 2px; }
-.list-row .main .name { font-size: 20px; }
 .list-row .sub { color: var(--ink-soft); font-size: var(--fs-small); }
-.list-row .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: var(--fs-small); }
+.list-row .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: var(--fs-small); white-space: nowrap; }
 .row-code { flex-basis: 100%; display: grid; gap: 12px; }
 .danger-link { font-size: var(--fs-small); }
 /* Forget's question comes into view with room below it; its answers are an equal pair, side by side when each gets the
@@ -558,9 +559,13 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .name { font-size: 19px; }
   .row.buy .name { flex-basis: 100%; }
   .row.buy .deal { margin-right: auto; }
-  .card.list { padding-inline: 16px; }
   .code-input { padding-inline: 14px; }
   .code-input input { font-size: clamp(14px, 100cqi / 23.2, 16px); letter-spacing: 0; }
+  .list-row { padding: 12px 16px; }
+  .list > .note { padding-inline: 16px; }
+  /* a name's line across the row, its chats and actions under it, the actions at the right */
+  .list-row .acts { flex: 1 1 auto; justify-content: flex-end; }
+  .list-row .acts > .chats { margin-right: auto; }
   /* a name code on one line over its buttons, its 38 characters 23 em wide at most */
   .code-display { container-type: inline-size; flex-wrap: wrap; justify-content: center; padding: 12px 6px; letter-spacing: 0; }
   .code-display .code-text { flex-basis: 100%; text-align: center; white-space: nowrap; font-size: min(14px, 100cqi / 23); }

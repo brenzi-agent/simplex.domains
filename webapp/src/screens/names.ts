@@ -138,6 +138,11 @@ export function editable(answer: SearchAnswer, owner: string): boolean {
   return answer.owner.toLowerCase() === owner.toLowerCase() && answer.records !== null
 }
 
+// whether a name opens any chat, by its records once read, else by the links it was ordered with
+export const hasLinks = (o: OrderRecord, answer: SearchAnswer | null | undefined): boolean =>
+  answer?.status === "registered" && answer.records !== undefined ? Boolean(answer.records?.contact || answer.records?.channel) || answer.entities.length > 0
+    : Boolean(o.contact || o.channel)
+
 type RefusalKind = "none" | "unasked" | "other"
 export interface Refusal { title: string; text: string; again: boolean }
 // why a name code found no order to add; only the service's not answering can change by asking again

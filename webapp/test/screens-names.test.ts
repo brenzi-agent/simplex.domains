@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView, SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
-  changesOf, CODE_CHIPS, editable, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
+  changesOf, CODE_CHIPS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
   initialList, initialRestore, lapsed, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
   againLine, ranOut, registrableAgain, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../src/screens/names.ts"
@@ -123,6 +123,14 @@ describe("list helpers", () => {
     expect(editable(registered(null), OWNER)).toBe(false)
     expect(editable(registered(undefined, { owner: undefined }), OWNER)).toBe(true)
     expect(editable(available, OWNER)).toBe(true)
+  })
+  it("hasLinks: a name's records once read, else the links it was ordered with", () => {
+    expect(hasLinks(record(), registered()), "a contact address on chain").toBe(true)
+    expect(hasLinks(record({ contact: CONTACT }), registered({ contact: "", channel: "" })), "links removed since the order").toBe(false)
+    expect(hasLinks(record(), registered(null)), "records another resolver holds").toBe(false)
+    expect(hasLinks(record({ channel: CONTACT }), undefined), "not read yet, ordered with a link").toBe(true)
+    expect(hasLinks(record(), null), "not read yet, ordered without links").toBe(false)
+    expect(hasLinks(record({ contact: CONTACT }), available), "an answer of no name").toBe(true)
   })
   it("listedOrders leaves out a replaced invoice until its read says money reached it", () => {
     const replaced = record({ registrationId: "reg-old", replacedBy: "/?order=inv-2" })

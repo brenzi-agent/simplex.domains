@@ -292,7 +292,7 @@ test("Forget everything also drops the tab's unfinished checkout", async ({ page
   await page.goto("/#/checkout/code")
   await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
   await page.goto("/#/names")
-  await expect(page.getByText("No names in this browser yet.")).toBeVisible()
+  await expect(page.getByText("No names in this browser yet", { exact: true })).toBeVisible()
 })
 
 test("a payment that arrives after expiry turns the open page into the refund page, and no new invoice is made", async ({ page, request }) => {
