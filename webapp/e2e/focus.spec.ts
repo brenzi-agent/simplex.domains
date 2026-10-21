@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test"
-import { codeField, control, onStep, payButton, search, startOrder, test, toCodeStep, toReview, uniqueLabel } from "./helpers.ts"
+import { codeField, control, onStep, payButton, REGISTRATION_MS, search, startOrder, test, toCodeStep, toReview, uniqueLabel, useCode } from "./helpers.ts"
 
 // the name code step makes a name code as it opens, which Your names lists as pending
 async function openCodeStep(page: Page, label: string): Promise<void> {
@@ -131,4 +131,39 @@ test("a well-formed code the service does not know is not called a typo", async 
   await codeField(page).fill(code)
   await expect(page.locator(".verdict.bad")).toHaveText("This code is not valid: SimpleX did not issue it.")
   await expect(page.getByRole("button", { name: "Find a name" })).toBeDisabled()
+})
+
+// every text the status region outside main says, from the page's first frame
+const watchStatus = () => {
+  const w = window as unknown as { __said: string[] }
+  w.__said = []
+  new MutationObserver(() => {
+    const region = document.querySelector("body > .sr-only[role=status]")
+    if (region?.textContent && w.__said.at(-1) !== region.textContent) w.__said.push(region.textContent)
+  }).observe(document, { childList: true, subtree: true, characterData: true })
+}
+const said = (page: Page) => page.evaluate(() => (window as unknown as { __said: string[] }).__said)
+
+test("a screen reached with focus left on the header is said in the status region outside main", async ({ page }) => {
+  await page.addInitScript(watchStatus)
+  await page.goto("/")
+  await page.locator("body > header").getByRole("link", { name: "Your names" }).focus()
+  await page.keyboard.press("Enter")
+  await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
+  await expect(page.locator("body > header").getByRole("link", { name: "Your names" })).toBeFocused()
+  await expect.poll(() => said(page)).toContain("Your names")
+  expect(await page.locator("body > main [role=status]", { hasText: "Your names" }).count(), "the region is outside main").toBe(0)
+})
+
+test("a registration's stages are said as each is reached, not each second of the wait", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  await page.addInitScript(watchStatus)
+  await useCode(page, code)
+  await search(page, uniqueLabel("stages"))
+  await toReview(page)
+  await onStep(page).getByRole("button", { name: "Register with your code" }).click()
+  await expect(page.getByRole("heading", { name: /is yours$/ })).toBeVisible({ timeout: REGISTRATION_MS })
+  const stages = (await said(page)).filter((t) => ["Committing", "Waiting", "Registering"].includes(t))
+  expect(stages.filter((t) => t === "Waiting"), "the wait said once").toHaveLength(1)
+  expect(stages).toContain("Committing")
 })

@@ -150,8 +150,9 @@ export function codeDisplay(code: string, testId?: string, hidden = false): HTML
   return el("div", { class: "code-display" }, text, buttons)
 }
 
+// one visually hidden status region outside main, for what a screen reader would not hear otherwise
 let announcer: HTMLElement | null = null
-function announce(text: string): void {
+export function announce(text: string): void {
   announcer ??= document.body.appendChild(el("div", { class: "sr-only", role: "status" }))
   announcer.textContent = ""
   // the text is set after the region is emptied, so the same words said again are read again

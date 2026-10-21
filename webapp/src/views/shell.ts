@@ -1,5 +1,5 @@
 // The page's frame: theme switch and navigation between views; index.html draws the header and footer.
-import { alertBox, btn, el, icon, type Kid, liveRegion, reducedMotion, refill, type Tone, waitOut } from "../dom.ts"
+import { alertBox, announce, btn, el, icon, type Kid, liveRegion, reducedMotion, refill, type Tone, waitOut } from "../dom.ts"
 import type { IconName } from "../icons.ts"
 import type { Hold } from "../screens/hold.ts"
 import * as session from "../session.ts"
@@ -199,6 +199,9 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement):
   drawnHooks.forEach((f) => f())
   lostKey = null
   if (!first) settleFocus(active, caret, toHeading, focusKey)
+  // a new screen whose heading did not take focus, as with focus on the header, is still said
+  const heading = next.querySelector("h1")
+  if (!redrawn && !first && heading && document.activeElement !== heading) announce(heading.textContent ?? "")
   // the place a page was left at is kept for the page itself, not for the loading line before it
   if (scrollTarget !== null && kind !== LOADING) {
     scrollTo(0, scrollTarget)

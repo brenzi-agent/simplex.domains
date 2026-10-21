@@ -1,7 +1,7 @@
 // An order's page (?order=<invoice>) or a code registration's (?registration=<id>): payment, registration, and every ending.
 import * as api from "../api.ts"
 import { parseNameCode } from "../crypto/code.ts"
-import { alertBox, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, setAction, type Tone } from "../dom.ts"
+import { alertBox, announce, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, setAction, type Tone } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
@@ -759,6 +759,16 @@ function stages(states: StageState[]): HTMLElement {
     el("b", {}, states[i] === "done" ? stage.done : stage.going))))
 }
 
+// the stage a registration is at, said once as it is reached, never each second of its wait
+let saidStage = ""
+function sayStage(view: api.RegistrationView, states: StageState[]): void {
+  const at = states.indexOf("active")
+  const stage = `${view.id} ${at}`
+  if (at < 0 || stage === saidStage) return
+  saidStage = stage
+  announce(STAGES[at].going)
+}
+
 const stagesOf = (view: api.RegistrationView): StageState[] => view.phase === "registering" ? ["done", "done", "active"] : view.phase === "committed" ? ["done", "active", ""] : ["active", "", ""]
 
 function headingOf({ view, record }: OrderState): Kid {
@@ -776,6 +786,7 @@ const REGISTERING_NOTE = "Registering the name. It is yours in a moment."
 function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
   const view = s.view!
   const states = stagesOf(view)
+  sayStage(view, states)
   const refused = refusalsOf(s) >= REVEAL_ATTEMPTS
   const steps = stages(states)
   const clockNode = el("b", {})
