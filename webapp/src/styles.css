@@ -455,7 +455,8 @@ svg.qr { display: block; width: 132px; height: auto; }
 .code-buttons { display: flex; gap: 6px; }
 .screen-body > .ref { text-align: center; }
 .card.use { display: grid; gap: 12px; }
-.card.use p:not(.note) { color: var(--ink-soft); }
+.card.use h2 { font: 700 19px/1.3 var(--body); }
+.card.use p { color: var(--ink-soft); }
 
 /* The longest code, a name code of 38 characters, fits whole in the field: a monospace character is a little over .6em
    wide, plus its letter spacing. Below 14px it reads poorly on a phone, so a narrower field scrolls. */
@@ -486,7 +487,7 @@ svg.qr { display: block; width: 132px; height: auto; }
 .forget { scroll-margin-bottom: 24px; }
 .forget .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .mt-14 { margin-top: 14px; }
-.center { display: flex; justify-content: center; text-align: center; }
+.center { text-align: center; text-wrap: balance; }
 .left { text-align: left; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .actions .btn { min-width: 0; }
@@ -557,11 +558,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .name { font-size: 19px; }
   .row.buy .name { flex-basis: 100%; }
   .row.buy .deal { margin-right: auto; }
-  .card { padding: 16px 18px; }
   .card.list { padding-inline: 16px; }
-  /* the steps for the app, tighter, so the card holds a name of 63 wide letters in its frame */
-  .card.use { gap: 8px; }
-  .card.use p:not(.note) { font-size: 15px; line-height: 1.4; }
   .code-input { padding-inline: 14px; }
   .code-input input { font-size: clamp(14px, 100cqi / 23.2, 16px); letter-spacing: 0; }
   /* a name code on one line over its buttons, its 38 characters 23 em wide at most */

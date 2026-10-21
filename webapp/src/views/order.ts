@@ -898,10 +898,10 @@ function buildRegistered(s: OrderState): HTMLElement {
   const label = labelOf(view, s.record)
   const code = s.record?.ownerCode ?? null
   return screen({ title: [label ? gradName(label, view.tld) : "The name", " is\u00a0yours"], lead: registeredLead(view, s.record), action: registeredAction(s.record) },
-    code ? el("div", { class: "card use" }, el("h2", {}, "Use in the app"),
-      el("p", {}, "In SimpleX, open Your SimpleX address, tap Set SimpleX name and enter ", nameText(label ?? "", view.tld, "."), " For a channel, set it in the channel's profile."),
-      el("p", { class: "note" }, "Keep your name code: it owns the name and edits its links."),
-      codeDisplay(code, "owner-code", true)) : null)
+    code ? [el("div", { class: "card use" }, el("h2", {}, "Use in the app"),
+      el("p", {}, "In SimpleX, open Your SimpleX address, tap Set SimpleX name and enter ", nameText(label ?? "", view.tld, "."), " For a channel, set it in the channel's profile.")),
+    el("p", { class: "note center" }, "Keep your name code: it owns the name and edits its links."),
+    codeDisplay(code, "owner-code", true)] : null)
 }
 
 function registeredLead(view: api.RegistrationView, record: store.OrderRecord | null): string {

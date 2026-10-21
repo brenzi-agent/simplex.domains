@@ -321,7 +321,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   // how to use the name in the app, with its code, and no buttons to go elsewhere
   await expect(main.locator(".card.use").getByRole("heading", { name: "Use in the app" })).toBeVisible()
   await expect(await shownCode(page)).toHaveText(ownerCode)
-  await expect(main.locator(".card.use").getByRole("button", { name: "Copy code" })).toBeVisible()
+  await expect(main.getByRole("button", { name: "Copy code" })).toBeVisible()
   await expect(main.getByRole("checkbox")).toHaveCount(0)
   await expect(main.getByRole("link", { name: "Your names" })).toHaveCount(0)
   await expect(main.getByRole("link", { name: "Edit links" })).toHaveCount(0)
