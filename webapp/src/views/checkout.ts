@@ -94,7 +94,7 @@ const setLink = (kind: LinkKind, link: string) => {
 async function follow(invoiceId: string, signal: AbortSignal, followed: (seen: api.InvoiceView | null) => boolean, seen?: api.InvoiceView): Promise<void> {
   while (!signal.aborted) {
     try {
-      seen = await api.readInvoice(invoiceId, seen && { status: seen.status, phase: seen.registration.phase, paid: seen.cryptoAmountPaid ?? "", full: seen.paidInFull === true }, signal)
+      seen = await api.readInvoice(invoiceId, seen && api.seenOf(seen), signal)
     } catch (e) {
       // the service forgets an unpaid invoice some time after it closes; other errors are waited out
       if (e instanceof api.ApiError && e.code === "not_found") return void followed(null)

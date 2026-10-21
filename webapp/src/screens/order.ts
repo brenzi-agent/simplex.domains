@@ -7,6 +7,10 @@ import { type Hold, NO_LEAD } from "./hold.ts"
 export const CARD_SLOW_MS = 10 * 60 * 1000
 // refusals of the signed registration after which the page stops signing and says so
 export const REVEAL_ATTEMPTS = 3
+// A view whose chain reads failed is read again after these pauses, the last repeated while they fail: a held poll would
+// wait for a change that a failed read never makes.
+const UNREAD_PACING_MS = [5_000, 15_000, 30_000]
+export const unreadDelay = (reads: number) => UNREAD_PACING_MS[Math.min(reads, UNREAD_PACING_MS.length - 1)]
 
 export type OrderKind = "pay-crypto" | "pay-card" | "confirming" | "registering" | "registered" | "taken" | "code-issued" | "failed" | "not-on-device"
   | "status:closed" | "status:card-unconfirmed" | "status:paid-by-invoice" | "status:unreadable" | "status:unknown-link" | "status:price-changed"
@@ -182,7 +186,7 @@ export function refusalsOf({ view, reveal }: OrderState): number {
 
 export function revealDue(s: OrderState): boolean {
   const { view, record, reveal } = s
-  if (view?.phase !== "committed" || view.label !== null || !record) return false
+  if (view?.phase !== "committed" || view.label !== null || view.intentNonce === null || !record) return false
   if ((view.revealAfter ?? 0) * 1000 > s.now) return false
   return !(reveal?.key === revealKey(view) && reveal.sending) && refusalsOf(s) < REVEAL_ATTEMPTS
 }

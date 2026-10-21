@@ -528,3 +528,29 @@ test("Check your code says nothing of a code being typed, and refuses one too sh
   await expect(page.locator(".verdict.bad")).toHaveText("This is not a SimpleX names code. Check it and try again.")
   await expect(onStep(page).getByRole("button", { name: "Find a name" })).toBeDisabled()
 })
+
+test("a view whose sponsor nonce could not be read is read again after 5 then 15 seconds, without holding, and then signed", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  const label = uniqueLabel("unread")
+  const reads: { at: number; held: boolean; unread: string[] }[] = []
+  page.on("response", async (r) => {
+    const url = new URL(r.url())
+    if (!/^\/api\/registration\/[^/]+$/.test(url.pathname) || r.request().method() !== "GET") return
+    const view = await r.json().catch(() => null) as { unread: string[] } | null
+    if (view) reads.push({ at: Date.now(), held: url.searchParams.has("seenVersion"), unread: view.unread })
+  })
+  // the service's reads of the sponsor's nonce fail for a while from the commit on
+  await control(request, "search", { unreadSeconds: 12 })
+  try {
+    await payWithCode(page, label, code)
+    await waitRegistered(page, label)
+  } finally {
+    await control(request, "search", { unreadSeconds: 0 })
+  }
+  const first = reads.findIndex((r) => r.unread.includes("intentNonce"))
+  expect(first, "a view answered with the nonce unread").toBeGreaterThanOrEqual(0)
+  const [again, third] = [reads[first + 1], reads[first + 2]]
+  expect(again.held, "read again without holding on the version").toBe(false)
+  expect(again.at - reads[first].at).toBeGreaterThanOrEqual(4500)
+  if (again.unread.length) expect(third.at - again.at).toBeGreaterThanOrEqual(14500)
+})

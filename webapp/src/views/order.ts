@@ -8,7 +8,7 @@ import { PRICED_YEARS } from "../names.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
   type ClosedCase, closedCase, coinOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
-  retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, wakeAt,
+  retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../screens/order.ts"
 import { CODE_FROM_ORDER_URL } from "../screens/routes.ts"
 import * as store from "../store.ts"
@@ -112,16 +112,21 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
   // siblings that could not be read are asked again even when the order's own answer has not changed
   let again = false
   let codeChecked = false
+  let unreadReads = 0
+  // forgetting the last answer makes the next read answer at once
+  const forget = () => {
+    invoice = null
+    view = null
+  }
   while (isRoute(mine)) {
     const asked = Date.now()
     const seq = ++reads
     try {
       if (invoiceId) {
-        const seen = invoice && { status: invoice.status, phase: invoice.registration.phase, paid: invoice.cryptoAmountPaid ?? "", full: invoice.paidInFull === true }
-        invoice = await api.readInvoice(invoiceId, seen ?? undefined, signal)
+        invoice = await api.readInvoice(invoiceId, invoice ? api.seenOf(invoice) : undefined, signal)
         view = invoice.registration
       } else {
-        view = await api.readRegistration(registrationId!, view?.phase, signal)
+        view = await api.readRegistration(registrationId!, view?.version, signal)
       }
     } catch (e) {
       if (!isRoute(mine)) return
@@ -150,10 +155,18 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
       continue
     }
     if (!isRoute(mine)) return
+    const pause = view.unread.length ? unreadDelay(unreadReads++) : null
+    if (pause === null) unreadReads = 0
+    const paced = async () => {
+      if (pause === null) return false
+      await sleep(pause)
+      forget()
+      return true
+    }
     const answered = JSON.stringify(invoice ?? view)
     if (answered === drawn && !again) {
       // one answered unchanged at once would otherwise poll in a tight loop
-      if (Date.now() - asked < RETRY_MS) await sleep(RETRY_MS)
+      if (!await paced() && Date.now() - asked < RETRY_MS) await sleep(RETRY_MS)
       continue
     }
     again = false
@@ -211,11 +224,10 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
     }
     // a finished order whose siblings could not be read is read once more before the page stops following it
     if (finished(invoice, view) && unread === null) return
+    if (await paced()) continue
     if (unread !== null && invoice?.status !== "open") {
       await sleep(unread)
-      // forgetting the last answer makes the next read answer at once
-      invoice = null
-      view = null
+      forget()
       again = true
     }
   }

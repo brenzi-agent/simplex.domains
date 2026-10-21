@@ -62,6 +62,8 @@ export interface Entity extends Profile {
 
 export interface RegistrationView extends ChainInfo {
   id: string
+  // counts the service's changes to the registration, which a long poll holds on
+  version: number
   phase: Phase
   labelHash: string
   label: string | null
@@ -78,6 +80,8 @@ export interface RegistrationView extends ChainInfo {
   revealAfter: number | null
   revealBefore: number | null
   intentNonce: number | null
+  // the fields left null because the service's chain read failed; reading the view again may fill them
+  unread: string[]
   expiresAt: number | null
   error: string | null
 }
@@ -215,10 +219,10 @@ const isPreview = (e: unknown) => isObject(e) && (e.type === "address" || e.type
 const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unknown>).link) && isText((e as Record<string, unknown>).deepLink)
 const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.sponsor) && typeof a.chainId === "number" && isText(a.tld)
 const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registering", "registered", "taken", "failed", "code_issued"]
-const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
+const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && Number.isInteger(v.version) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
   && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isCount(v.duration) && isAmount(v.price)
   && nullable(v.commitTx, isText) && nullable(v.registerTx, isText) && nullable(v.revealAfter, isAmount) && nullable(v.revealBefore, isAmount)
-  && nullable(v.intentNonce, isAmount) && nullable(v.expiresAt, isAmount) && nullable(v.error, isText)
+  && nullable(v.intentNonce, isAmount) && Array.isArray(v.unread) && v.unread.every(isText) && nullable(v.expiresAt, isAmount) && nullable(v.error, isText)
 const isInvoice = (v: unknown) => isObject(v) && isText(v.invoiceId) && ["open", "paid", "expired"].includes(v.status as string) && isAmount(v.amount)
   && isText(v.currency) && isText(v.expiresAt) && isRegistration(v.registration) && optional(v.amountPaid, isAmount)
   && optional(v.cryptoAmountPaid, isDecimal) && optional(v.cryptoAmountDue, isDecimal) && optional(v.cryptoAmount, isDecimal)
@@ -250,14 +254,19 @@ export const registerWithCode = (order: SignedOrder, code: string) =>
   checked<{ registrationId: string }>(call("POST", "/api/name/register", { ...order, code }), (a) => isText(a.registrationId))
 export const cancelInvoice = (invoiceId: string) => checked<InvoiceView>(call("POST", `/api/invoice/${encodeURIComponent(invoiceId)}/cancel`), isInvoice)
 
-// the seen payment marks are the paid amount and paidInFull: Monero can report a full payment with no amount yet
-export function readInvoice(invoiceId: string, seen?: { status: string; phase: string; paid: string; full: boolean }, signal?: AbortSignal): Promise<InvoiceView> {
-  const query = seen ? `?wait=${seen.status}&seenPhase=${seen.phase}&seenPaid=${encodeURIComponent(seen.paid)}&seenFull=${seen.full ? "1" : "0"}` : ""
+// what a long poll on an invoice has seen: its status, its registration's version, and the payment marks, the paid amount
+// and paidInFull, as Monero can report a full payment with no amount yet
+export interface SeenInvoice { status: string; version: number; paid: string; full: boolean }
+export const seenOf = (inv: InvoiceView): SeenInvoice => ({ status: inv.status, version: inv.registration.version, paid: inv.cryptoAmountPaid ?? "", full: inv.paidInFull === true })
+
+export function readInvoice(invoiceId: string, seen?: SeenInvoice, signal?: AbortSignal): Promise<InvoiceView> {
+  const query = seen ? `?wait=${seen.status}&seenVersion=${seen.version}&seenPaid=${encodeURIComponent(seen.paid)}&seenFull=${seen.full ? "1" : "0"}` : ""
   return checked<InvoiceView>(call("GET", `/api/invoice/${encodeURIComponent(invoiceId)}${query}`, undefined, signal, seen ? null : REQUEST_TIMEOUT_MS), isInvoice)
 }
 
-export function readRegistration(registrationId: string, seenPhase?: string, signal?: AbortSignal): Promise<RegistrationView> {
-  return checked<RegistrationView>(call("GET", `/api/registration/${encodeURIComponent(registrationId)}${seenPhase ? `?seenPhase=${seenPhase}` : ""}`, undefined, signal, seenPhase ? null : REQUEST_TIMEOUT_MS), isRegistration)
+export function readRegistration(registrationId: string, seenVersion?: number, signal?: AbortSignal): Promise<RegistrationView> {
+  const held = seenVersion !== undefined
+  return checked<RegistrationView>(call("GET", `/api/registration/${encodeURIComponent(registrationId)}${held ? `?seenVersion=${seenVersion}` : ""}`, undefined, signal, held ? null : REQUEST_TIMEOUT_MS), isRegistration)
 }
 
 export const reveal = (registrationId: string, body: { label: string; secret: string; records: { contact: string[]; channel: string[] }; nonce: number; deadline: number; signature: string }) =>

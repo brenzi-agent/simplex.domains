@@ -76,6 +76,8 @@ interface Registration {
   // the hash of the prepaid code that pays for it; a code issued for a taken order is known only by its hash
   prepaidCode: string | null
   phase: Phase
+  // counts every change to what the view shows; long polls hold on it
+  version: number
   label: string | null
   secret: Hex | null
   records: { contact: string[]; channel: string[] } | null
@@ -127,9 +129,10 @@ const taking = new Map<string, Promise<void>>()
 // the next createInvoice answers with this error once, to show the checkout's refusals
 // and the next cancel answers with the invoice still open, as the real service may when the provider took the cancel late;
 // find has a rate limit of its own
-// until unsentUntil, no transaction goes out, as a chain that fails before the send
-const control: { chainDown: boolean; limitedUntil: number; invoiceError: string | null; cancelStillOpen: boolean; findLimitedUntil: number; unsentUntil: number } =
-  { chainDown: false, limitedUntil: 0, invoiceError: null, cancelStillOpen: false, findLimitedUntil: 0, unsentUntil: 0 }
+// until unsentUntil, no transaction goes out, as a chain that fails before the send; until unreadUntil, the view's own chain
+// reads fail
+const control: { chainDown: boolean; limitedUntil: number; invoiceError: string | null; cancelStillOpen: boolean; findLimitedUntil: number; unsentUntil: number; unreadUntil: number } =
+  { chainDown: false, limitedUntil: 0, invoiceError: null, cancelStillOpen: false, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0 }
 
 const sendTx: typeof send = (...args) => Date.now() < control.unsentUntil ? Promise.reject(new NotSent()) : send(...args)
 const INVOICE_ERRORS: Record<string, number> = { provider_unavailable: 503, rate_limited: 429, catalog_changed: 409, internal: 500 }
@@ -174,9 +177,13 @@ function publish(...keys: (string | null)[]): void {
   }
 }
 
+// the registration changed; an invoice changing alone only wakes its polls
 function changed(reg: Registration): void {
-  publish(reg.id, reg.invoiceId)
+  reg.version += 1
+  wake(reg)
 }
+
+const wake = (reg: Registration) => publish(reg.id, reg.invoiceId)
 
 async function hold(key: string, unchanged: () => boolean): Promise<void> {
   if (!unchanged()) return
@@ -306,13 +313,25 @@ function nodeOf(labelHash: Hex): Hex {
 // a failed chain read is the provider's, not the request's
 const unavailable = (): never => { throw new HttpError(503, "provider_unavailable") }
 
+// a chain read the view needs, or null when it fails: the view still answers, naming the field in unread
+async function viewRead<T>(field: string, unread: string[], f: () => Promise<T>): Promise<T | null> {
+  try {
+    if (Date.now() < control.unreadUntil) throw new Error("the chain is not answering")
+    return await f()
+  } catch {
+    unread.push(field)
+    return null
+  }
+}
+
 async function registrationView(reg: Registration): Promise<Record<string, unknown>> {
-  const intentNonce = reg.phase === "committed" ? Number(await read<bigint>(sponsor, "nonces", [reg.owner]).catch(unavailable)) : null
+  const unread: string[] = []
+  const intentNonce = reg.phase === "committed" ? await viewRead("intentNonce", unread, async () => Number(await read<bigint>(sponsor, "nonces", [reg.owner]))) : null
   return {
-    id: reg.id, phase: reg.phase, labelHash: reg.labelHash, label: reg.label, owner: reg.owner, commitment: reg.commitment, sealed: reg.sealed,
+    id: reg.id, version: reg.version, phase: reg.phase, labelHash: reg.labelHash, label: reg.label, owner: reg.owner, commitment: reg.commitment, sealed: reg.sealed,
     resolver: deployment.resolver, sponsor: deployment.sponsor, chainId: deployment.chainId, tld: deployment.tld, years: reg.years, duration: reg.duration, price: reg.paid,
     commitTx: reg.commitTx, registerTx: reg.registerTx, revealAfter: reg.revealAfter, revealBefore: reg.revealBefore,
-    intentNonce, expiresAt: reg.expiresAt, error: reg.error,
+    intentNonce, unread, expiresAt: reg.expiresAt, error: reg.error,
   }
 }
 
@@ -442,13 +461,13 @@ export async function createInvoice(body: Record<string, unknown>): Promise<Reco
 function newRegistration(order: OrderBody, extra: Pick<Registration, "years" | "paid" | "method" | "prepaidCode" | "phase" | "orderHash">): Registration {
   const reg: Registration = {
     id: id(), invoiceId: null, ...order, ...extra, label: null, secret: null, records: null, intent: null, commitTx: null, registerTx: null,
-    revealAfter: null, revealBefore: null, expiresAt: null, error: null, createdAt: iso(nowSeconds()), failNext: false, issuedCodeHash: null, resends: 0,
+    revealAfter: null, revealBefore: null, expiresAt: null, error: null, createdAt: iso(nowSeconds()), failNext: false, issuedCodeHash: null, resends: 0, version: 1,
   }
   registrations.set(reg.id, reg)
   return reg
 }
 
-export async function readInvoice(invoiceId: string, wait: string | null, seenPhase: string | null, seenPaid: string | null, seenFull: boolean): Promise<Record<string, unknown>> {
+export async function readInvoice(invoiceId: string, wait: string | null, seenVersion: number | null, seenPaid: string | null, seenFull: boolean): Promise<Record<string, unknown>> {
   const inv = invoices.get(invoiceId)
   if (!inv) throw new HttpError(404, "not_found")
   expireIfDue(inv)
@@ -457,17 +476,17 @@ export async function readInvoice(invoiceId: string, wait: string | null, seenPh
   // a name invoice paid after it closed has nothing more to wait for
   const lateAndUnpaid = inv.status === "paid" && reg.phase === "unpaid"
   if (wait !== null && !lateAndUnpaid) {
-    await hold(inv.id, () => inv.status === wait && (seenPhase === null || reg.phase === seenPhase) && (seenPaid === null || ((inv.cryptoAmountPaid ?? "") === seenPaid && (inv.paidInFull === true) === seenFull)))
+    await hold(inv.id, () => inv.status === wait && (seenVersion === null || reg.version === seenVersion) && (seenPaid === null || ((inv.cryptoAmountPaid ?? "") === seenPaid && (inv.paidInFull === true) === seenFull)))
     expireIfDue(inv)
   }
   return invoiceView(inv)
 }
 
-export async function readRegistration(registrationId: string, seenPhase: string | null): Promise<Record<string, unknown>> {
+export async function readRegistration(registrationId: string, seenVersion: number | null): Promise<Record<string, unknown>> {
   const reg = registrations.get(registrationId)
   if (!reg) throw new HttpError(404, "not_found")
   lapse(reg)
-  if (seenPhase !== null) await hold(reg.id, () => reg.phase === seenPhase)
+  if (seenVersion !== null) await hold(reg.id, () => reg.version === seenVersion)
   return registrationView(reg)
 }
 
@@ -475,7 +494,7 @@ export async function readRegistration(registrationId: string, seenPhase: string
 function expireIfDue(inv: Invoice): void {
   if (inv.status === "open" && Date.parse(inv.expiresAt) <= Date.now()) {
     inv.status = "expired"
-    changed(registrations.get(inv.registrationId)!)
+    wake(registrations.get(inv.registrationId)!)
   }
 }
 
@@ -490,7 +509,7 @@ export async function cancelInvoice(invoiceId: string): Promise<Record<string, u
     return invoiceView(inv)
   }
   inv.status = "expired"
-  changed(registrations.get(inv.registrationId)!)
+  wake(registrations.get(inv.registrationId)!)
   return invoiceView(inv)
 }
 
@@ -842,7 +861,7 @@ export async function retry(registrationId: string): Promise<Record<string, unkn
   lapse(reg)
   if (reg.phase !== "failed") throw badRequest()
   if ((await ownerOf(reg.labelHash).catch(unavailable)) === reg.owner) {
-    await registered(reg).catch(unavailable)
+      await registered(reg).catch(unavailable)
     return registrationView(reg)
   }
   const nonce = reg.intent ? await read<bigint>(sponsor, "nonces", [reg.owner]).catch(unavailable) : null
@@ -935,6 +954,7 @@ export function controlInvoice(action: string, invoiceId: string): Record<string
     if (inv.method !== "card") Object.assign(inv, { cryptoAmountPaid: inv.cryptoAmount, cryptoAmountDue: "0" })
     if (wasOpen && reg.phase === "unpaid") {
       reg.phase = "queued"
+      changed(reg)
       void advance(reg)
     }
   } else if (action === "partial") {
@@ -946,7 +966,7 @@ export function controlInvoice(action: string, invoiceId: string): Record<string
   } else if (action === "expire") {
     inv.status = "expired"
   } else throw badRequest()
-  changed(reg)
+  wake(reg)
   return { ok: true, status: inv.status }
 }
 
@@ -999,6 +1019,7 @@ export function controlSearch(body: Record<string, unknown>): Record<string, unk
   if (typeof body.cancelStillOpen === "boolean") control.cancelStillOpen = body.cancelStillOpen
   if (typeof body.findLimitSeconds === "number") control.findLimitedUntil = Date.now() + body.findLimitSeconds * 1000
   if (typeof body.unsentSeconds === "number") control.unsentUntil = Date.now() + body.unsentSeconds * 1000
+  if (typeof body.unreadSeconds === "number") control.unreadUntil = Date.now() + body.unreadSeconds * 1000
   return { ok: true }
 }
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ApiError, checkCode, previewLink, readInvoice, retryDelay, searchName } from "../src/api.ts"
+import { ApiError, checkCode, previewLink, readInvoice, readRegistration, retryDelay, searchName, seenOf } from "../src/api.ts"
 
 const HASH = "ab".repeat(32)
 
@@ -111,7 +111,7 @@ describe("service errors", () => {
   })
 
   const REGISTRATION = {
-    id: "r1", phase: "unpaid", labelHash: `0x${"ab".repeat(32)}`, label: null, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`,
+    id: "r1", version: 4, unread: [], phase: "unpaid", labelHash: `0x${"ab".repeat(32)}`, label: null, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`,
     sealed: "sealed", years: 2, duration: 2 * 365 * 86400, price: 10000, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null,
     resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex",
   }
@@ -123,11 +123,25 @@ describe("service errors", () => {
     for (const body of [
       {}, { ...INVOICE, registration: undefined }, { ...INVOICE, registration: { ...REGISTRATION, phase: "lost" } }, { ...INVOICE, status: "weird" },
       { ...INVOICE, amount: "lots" }, { ...INVOICE, amount: -1 }, { ...INVOICE, cryptoAmount: "a lot" }, { ...INVOICE, registration: { ...REGISTRATION, years: 0 } },
+      { ...INVOICE, registration: { ...REGISTRATION, version: "4" } }, { ...INVOICE, registration: { ...REGISTRATION, unread: undefined } },
+      { ...INVOICE, registration: { ...REGISTRATION, unread: [4] } },
     ]) {
       answerWith(200, JSON.stringify(body))
       const e = await readInvoice("inv1").then(() => null, (e: unknown) => e)
       expect((e as ApiError).code, JSON.stringify(body).slice(0, 120)).toBe("network")
     }
+  })
+
+  it("holds a poll on the registration's version and the payment marks it has seen", async () => {
+    const fetched = vi.fn(async () => new Response(JSON.stringify(INVOICE), { status: 200 }))
+    vi.stubGlobal("fetch", fetched)
+    const invoice = await readInvoice("inv1")
+    await readInvoice("inv1", seenOf({ ...invoice, cryptoAmountPaid: "0.5", paidInFull: true }))
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(REGISTRATION), { status: 200 })))
+    await readRegistration("r1", 4)
+    await readRegistration("r1", 0)
+    const urls = [...fetched.mock.calls, ...(fetch as unknown as typeof fetched).mock.calls].map((c) => (c as unknown as [string])[0])
+    expect(urls).toEqual(["/api/invoice/inv1", "/api/invoice/inv1?wait=open&seenVersion=4&seenPaid=0.5&seenFull=1", "/api/registration/r1?seenVersion=4", "/api/registration/r1?seenVersion=0"])
   })
 
   it("takes a link preview whose image is no image the page can show as no answer", async () => {

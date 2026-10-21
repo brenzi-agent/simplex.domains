@@ -10,6 +10,9 @@ const PORT = Number(process.env.MOCK_PORT ?? "8099")
 const HOST = process.env.MOCK_HOST ?? "127.0.0.1"
 const MAX_BODY = 16384
 
+// a seenVersion that is not a whole number is no version, so the poll answers at once
+const versionOf = (q: URLSearchParams) => /^\d+$/.test(q.get("seenVersion") ?? "") ? Number(q.get("seenVersion")) : null
+
 type Handler = (match: RegExpMatchArray, body: Record<string, unknown>, query: URLSearchParams) => Promise<unknown> | unknown
 
 const routes: [string, RegExp, Handler][] = [
@@ -17,12 +20,12 @@ const routes: [string, RegExp, Handler][] = [
   ["POST", /^\/api\/link\/preview$/, (_, b) => previewLink(b)],
   ["POST", /^\/api\/code\/check$/, (_, b) => checkCode(b)],
   ["POST", /^\/api\/invoice$/, (_, b) => oneOrderAtATime(() => createInvoice(b))],
-  ["GET", /^\/api\/invoice\/([^/]+)$/, (m, _, q) => readInvoice(m[1], q.get("wait"), q.get("seenPhase"), q.get("seenPaid"), q.get("seenFull") === "1")],
+  ["GET", /^\/api\/invoice\/([^/]+)$/, (m, _, q) => readInvoice(m[1], q.get("wait"), versionOf(q), q.get("seenPaid"), q.get("seenFull") === "1")],
   ["POST", /^\/api\/invoice\/([^/]+)\/cancel$/, (m) => cancelInvoice(m[1])],
   ["POST", /^\/api\/name\/register$/, (_, b) => oneOrderAtATime(() => registerWithCode(b))],
   ["POST", /^\/api\/name\/records$/, (_, b) => editRecords(b)],
   ["POST", /^\/api\/registration\/find$/, (_, b) => find(b)],
-  ["GET", /^\/api\/registration\/([^/]+)$/, (m, _, q) => readRegistration(m[1], q.get("seenPhase"))],
+  ["GET", /^\/api\/registration\/([^/]+)$/, (m, _, q) => readRegistration(m[1], versionOf(q))],
   ["POST", /^\/api\/registration\/([^/]+)\/reveal$/, (m, b) => reveal(m[1], b)],
   ["POST", /^\/api\/registration\/([^/]+)\/name$/, (m, b) => oneOrderAtATime(() => retarget(m[1], b))],
   ["POST", /^\/api\/registration\/([^/]+)\/code$/, (m, b) => oneOrderAtATime(() => takenCode(m[1], b))],

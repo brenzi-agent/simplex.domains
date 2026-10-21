@@ -3,7 +3,7 @@ import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
   CARD_SLOW_MS, type ClosedCase, closedCase, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
-  reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, wakeAt,
+  reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
 
@@ -16,8 +16,8 @@ const WARN: Note = { tone: "warn", icon: "alert", title: null, text: "The invoic
 
 function registration(change: Partial<RegistrationView> = {}): RegistrationView {
   return {
-    ...CHAIN, id: "reg-1", phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box", years: 2, duration: 2 * 365 * 86400,
-    price: 1500, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, ...change,
+    ...CHAIN, id: "reg-1", version: 1, phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box", years: 2, duration: 2 * 365 * 86400,
+    price: 1500, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, unread: [], expiresAt: null, error: null, ...change,
   }
 }
 
@@ -354,6 +354,11 @@ describe("reveal helpers", () => {
     expect(revealDue({ ...waiting, record: null })).toBe(false)
     expect(revealDue(read(null, registration({ ...committed, label: "alice" })))).toBe(false)
     expect(revealDue(read(null, registration({ ...committed, phase: "registering" })))).toBe(false)
+    // the sponsor's nonce the service could not read leaves nothing to sign with
+    expect(revealDue(read(null, registration({ ...committed, intentNonce: null, unread: ["intentNonce"] })))).toBe(false)
+  })
+  it("unreadDelay reads a view with unread fields again after 5 s, 15 s, then every 30 s", () => {
+    expect([0, 1, 2, 3, 10].map(unreadDelay)).toEqual([5000, 15000, 30000, 30000, 30000])
   })
   it("revealDue not while a reveal is on its way, nor once refused as often as the page tries", () => {
     const key = revealKey(view)
