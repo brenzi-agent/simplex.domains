@@ -996,3 +996,12 @@ test("once a name is registered, Back to its search never offers it again, and Y
   await expect(row.getByRole("button", { name: "Edit links" })).toBeVisible()
   expect(await page.evaluate(() => (window as unknown as { __chips: string[] }).__chips), "the row's chips from its first draw").toEqual([])
 })
+
+test("on a phone, a long name's chats wrap under it on Check your order and start where it does", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await toFullReview(page, `${uniqueLabel("wrap")}${"w".repeat(63)}`.slice(0, 63))
+  const row = onStep(page).locator(".card.order > .row")
+  const [name, chats] = [(await row.locator(".name").boundingBox())!, (await row.locator(".chats").boundingBox())!]
+  expect(chats.y, "the chats on a line of their own").toBeGreaterThanOrEqual(name.y + name.height - 1)
+  expect(Math.abs(chats.x - name.x), "the chats start where the name does").toBeLessThanOrEqual(6)
+})

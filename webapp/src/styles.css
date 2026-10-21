@@ -551,6 +551,8 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .row .name { flex: 1 1 auto; }
   .row .name:not(.long) { font-size: 19px; }
   .row > :last-child { margin-left: auto; }
+  /* the order's chats, wrapped under a long name, start where the name does, as under the home's rows */
+  .order > .row > .chats { margin-left: 0; }
   .chats { gap: 0; }
   .row.buy .name { flex-basis: 100%; }
   .row.buy .deal { margin-right: auto; }
