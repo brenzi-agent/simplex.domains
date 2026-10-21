@@ -96,10 +96,13 @@ test("a phone's header is the symbol and a menu button, whose menu over the page
   await expect(page.getByRole("heading", { name: "Check your code" })).toBeVisible()
   await expect(menu).toBeHidden()
 
-  // a laptop's header has the links themselves, and no menu
+  // a laptop's header has the links themselves, and no menu, even one left open on a phone turned or a window widened
+  await header.getByRole("button", { name: "Menu" }).click()
+  await expect(menu).toBeVisible()
   await page.setViewportSize(LAPTOP)
   await expect(header.getByRole("link", { name: "Check your code" })).toBeVisible()
   await expect(header.getByRole("button", { name: "Menu" })).toBeHidden()
+  await expect(menu).toBeHidden()
 })
 
 test("an empty link field pastes the link copied in the app, and its chat then shows with its kind", async ({ page, context, browserName }) => {

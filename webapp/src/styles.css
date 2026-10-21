@@ -144,7 +144,7 @@ h2 { font: 700 var(--fs-h2)/1.2 var(--display); letter-spacing: -.01em; }
 .topbar { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 96px; padding-inline: clamp(16px, 3.4vw, 44px); }
 .brand { display: inline-flex; }
 .brand img { width: 168px; height: auto; display: block; }
-.brand .logo-dark, html.dark .brand .logo-light, .brand svg.sym, .menu-button { display: none; }
+.brand .logo-dark, html.dark .brand .logo-light, .brand svg.sym, .menu-button, .menu { display: none; }
 html.dark .brand .logo-dark { display: block; }
 .top-links { display: flex; align-items: center; gap: 22px; font-size: 15px; }
 .top-links a { white-space: nowrap; }
