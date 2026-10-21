@@ -524,8 +524,12 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   await expect(onStep(page).locator(".screen-head .lead")).toContainText(/\u00b7 \$\d+$/)
   await expect(onStep(page).getByRole("button", { name: /^Pay \$\d+$/ })).toBeVisible()
   await expect(onStep(page).getByText("The card form is Stripe's. Nothing is charged until you pay.")).toBeVisible()
+  // the development stand-in says what it is, and the invoice can be cancelled from the form as from a crypto invoice
+  await expect(onStep(page).getByText("Development: no card is checked.")).toBeVisible()
+  await expect(onStep(page).getByRole("button", { name: "Cancel this invoice" })).toBeVisible()
   await onStep(page).getByRole("button", { name: /^Pay \$/ }).click()
   await expect(page.getByText("Waiting for Stripe to confirm")).toBeVisible()
+  await expect(onStep(page).getByRole("button", { name: "Cancel this invoice" })).toBeVisible()
   await shot(page, "N10b-card-confirming")
 
   await page.goto("/")
@@ -539,6 +543,15 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
 
   await control(request, `settle/${invoiceId}`)
   await waitRegistered(page, label)
+})
+
+test("a card payment Stripe has not confirmed, with nothing paid, can still be cancelled", async ({ page }) => {
+  await startOrder(page, uniqueLabel("cardcx"), { method: "card" })
+  await onStep(page).getByRole("button", { name: /^Pay \$/ }).click()
+  await expect(page.getByText("Waiting for Stripe to confirm")).toBeVisible()
+  await onStep(page).getByRole("button", { name: "Cancel this invoice" }).click()
+  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
+  await expect(page.getByText("This invoice was cancelled and nothing was received.")).toBeVisible()
 })
 
 // The Stripe frame reloads whenever its form is taken out of the page, so the card screen takes another tab's writes in place.

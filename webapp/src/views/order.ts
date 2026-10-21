@@ -465,6 +465,7 @@ const cardStays = (before: OrderState, kind: OrderKind) =>
 function showCard(): void {
   if (!payButton) return
   setAction(payButton, state.busy === "card", card === null)
+  document.querySelector('body > main [data-focus="cancel"]')?.replaceWith(cancelLink(state))
   actionNote(state, null)
 }
 
@@ -492,13 +493,13 @@ function buildPayCard(s: OrderState): HTMLElement {
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
   const forgetful = store.canPersist() ? null : alertBox("warn", "alert", "This browser cannot remember a card payment",
     "After paying, keep this page open until it moves on. Reloading would show the card form again.")
-  return screen({ title: "Pay by card", lead: orderLine(s), action: payButton }, insteadLine(invoice), forgetful, form,
+  return screen({ title: "Pay by card", lead: orderLine(s), action: payButton, alt: cancelLink(s) }, insteadLine(invoice), forgetful, form,
     el("p", { class: "note center" }, "The card form is Stripe's. Nothing is charged until you pay."), actionNote(s, null))
 }
 
 function cardStandIn(form: HTMLElement): void {
   const f = (text: string, value: string) => el("label", { class: "f" }, el("span", {}, text), el("div", { class: "box" }, value))
-  form.append(el("div", { class: "label" }, el("span", {}, "Stripe's payment form"), el("span", {}, "Development stand-in")),
+  form.append(el("div", { class: "label" }, el("span", {}, "Stripe's payment form"), el("span", {}, "Development: no card is checked.")),
     f("Card number", "4242 4242 4242 4242"), el("div", { class: "cols" }, f("Expiry", "12 / 30"), f("CVC", "123"), f("Country", "Portugal")))
 }
 
@@ -641,7 +642,9 @@ function buildConfirming(s: OrderState): HTMLElement {
     ? alertBox("info", "clock", confirmations(invoice.requiredConfirmations ?? 1),
       `${invoice.cryptoAmount} ${TICKER[coin]} arrived. Registration starts once it confirms; this page moves on by itself.`)
     : alertBox("info", "clock", "Waiting for Stripe to\u00a0confirm", "Stripe usually confirms within a minute. Registration starts by itself; this page moves on.")
-  return screen({ title: coin ? "Confirming your payment" : "Paying by card", lead: orderLine(s) }, notice, referenceLine(invoice.invoiceId))
+  // a card Stripe has not confirmed can still be cancelled while nothing is paid, as an unpaid crypto invoice can
+  const cancel = !coin && !invoice.amountPaid ? cancelLink(s) : null
+  return screen({ title: coin ? "Confirming your payment" : "Paying by card", lead: orderLine(s), alt: cancel }, notice, referenceLine(invoice.invoiceId), actionNote(s, null))
 }
 
 function enterCardAgain(): void {
