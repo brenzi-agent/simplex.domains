@@ -14,8 +14,9 @@ const KIND_TEXT: Record<LinkKind, { name: string; noun: string; placeholder: str
 }
 const ANY_LINK = { name: "Link", placeholder: "Paste a contact address or channel link", short: "Contact or channel link" }
 const ANY_LINK_SCANNED = "Paste or scan a link"
-// styles.css's phone layout
+// styles.css's phone layout, and a touch screen's pointer: the camera is asked about on a phone only
 const PHONE = "(max-width: 520px)"
+const TOUCH = "(pointer: coarse)"
 const NO_CAMERA = "Allow the camera, or paste the link."
 const linkName = (kind: LinkKind) => KIND_TEXT[kind].name
 const otherKind = (kind: LinkKind): LinkKind => kind === "contact" ? "channel" : "contact"
@@ -82,10 +83,12 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
   } }, "Paste") : null
   // a phone with a camera reads the link from its QR code, as the app shows it
   const scan = el("button", { class: "scan", type: "button", "aria-label": "Scan QR code", hidden: true, onclick: () => void scanned() }, icon("scan"))
-  void hasCamera().then((camera) => {
-    scan.hidden = !camera
-    if (camera && phone && !takes.kind) input.placeholder = ANY_LINK_SCANNED
-  })
+  if (matchMedia(TOUCH).matches) {
+    void hasCamera().then((camera) => {
+      scan.hidden = !camera
+      if (camera && phone && !takes.kind) input.placeholder = ANY_LINK_SCANNED
+    })
+  }
   const box = el("label", { class: "field" }, icon("link"), input, preview, paste, scan, unlink)
   const card = el("div", {})
   const field = el("div", { class: "link-field" }, box, card)

@@ -26,7 +26,7 @@ function y4mOf(pgm: Buffer): Buffer {
 }
 
 async function linksStep(browser: Browser, baseURL: string, grant: boolean) {
-  const context = await browser.newContext({ baseURL, viewport: PHONE, reducedMotion: "reduce" })
+  const context = await browser.newContext({ baseURL, viewport: PHONE, hasTouch: true, reducedMotion: "reduce" })
   if (grant) await context.grantPermissions(["camera"])
   const page = await context.newPage()
   await search(page, uniqueLabel("scan"))
