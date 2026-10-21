@@ -32,6 +32,7 @@ export interface Checkout {
 }
 
 const CHECKOUT = "simplex-names-checkout"
+const ACTIVE_CODE = "simplex-names-code"
 const SCROLLED = "simplex-names-scrolled"
 const SEEN = "simplex-names-seen"
 const memory = new Map<string, string>()
@@ -78,6 +79,10 @@ export function checkout(): Checkout | null {
   return c?.label && c.chain ? { ...c, step: c.step ?? "review" } : null
 }
 export const setCheckout = (c: Checkout | null) => write(CHECKOUT, c)
+
+// the prepaid code this tab pays with, chosen in Check your code or Your names, until it is taken off
+export const activeCode = () => read<AppliedCode>(ACTIVE_CODE)
+export const setActiveCode = (code: AppliedCode | null) => write(ACTIVE_CODE, code)
 
 // a page changes only its own name's checkout; once the order took it, a stale page writes nothing
 export function updateCheckout(label: string, change: Partial<Checkout>): boolean {

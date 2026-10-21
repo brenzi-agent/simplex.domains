@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { checkout as tabCheckout, isSending, scrolled, seen, setCheckout, setScrolled, setSeen, startSending, stopSending, type Checkout } from "../src/session.ts"
+import {
+  activeCode, checkout as tabCheckout, isSending, scrolled, seen, setActiveCode, setCheckout, setScrolled, setSeen, startSending, stopSending, type Checkout,
+} from "../src/session.ts"
 
 const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
 
@@ -56,5 +58,16 @@ describe("rows seen", () => {
     expect(seen()).toEqual({})
     setSeen({ "reg-1": { view: { phase: "registered" }, invoice: null } })
     expect(seen<{ view: { phase: string } }>()["reg-1"].view.phase).toBe("registered")
+  })
+})
+
+describe("the tab's active code", () => {
+  it("is none until one is chosen, keeps the one chosen last, and is none again once taken off", () => {
+    expect(activeCode()).toBeNull()
+    setActiveCode({ display: "SN8-AAAAA", minLength: 8, years: 5 })
+    setActiveCode({ display: "SN6-BBBBB", minLength: 6, years: 2 })
+    expect(activeCode()).toEqual({ display: "SN6-BBBBB", minLength: 6, years: 2 })
+    setActiveCode(null)
+    expect(activeCode()).toBeNull()
   })
 })
