@@ -371,7 +371,7 @@ h1:has(.grad) { text-wrap: pretty; }
 .screen-body > [role="status"] > .verdict { margin-top: -6px; }
 .verdict.ok { color: var(--ok-fg); }
 /* Check your code says what a code is in a box under its field */
-.code-entry > .verdict:not(:empty) { margin-top: 0; padding: 12px 16px; border: 1px solid var(--ok-line); border-radius: 14px; background: var(--ok-bg); }
+.code-entry > .verdict:not(:empty) { margin-top: 0; padding: 12px 16px; font-size: var(--fs-body); border: 1px solid var(--ok-line); border-radius: 14px; background: var(--ok-bg); }
 .code-entry > .verdict.bad { border-color: var(--danger-line); background: var(--danger-bg); }
 .verdict.bad, .field-error { color: var(--danger-fg); }
 .notice svg.i, .field-error svg.i, .verdict svg.i { margin-top: 1px; }

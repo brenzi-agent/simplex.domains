@@ -522,6 +522,7 @@ test("Check your code says nothing of a code being typed, and refuses one too sh
   await expect(verdict).toBeEmpty()
   await codeField(page).press("Enter")
   await expect(page.locator(".verdict.bad")).toHaveText("This is not a SimpleX names code. Check it and try again.")
+  await expect(page.locator(".verdict.bad"), "a verdict reads at the body's size").toHaveCSS("font-size", "16px")
   await shot(page, "N7c-check-unfinished")
   await codeField(page).press("End")
   await codeField(page).press("Backspace")
