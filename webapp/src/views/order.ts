@@ -475,7 +475,8 @@ function buildPayCard(s: OrderState): HTMLElement {
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
   const forgetful = store.canPersist() ? null : alertBox("warn", "alert", "This browser cannot remember a card payment",
     "After paying, keep this page open until it moves on. Reloading would show the card form again.")
-  return screen({ title: "Pay by card", lead: orderLine(s), action: payButton }, insteadLine(invoice), forgetful, form, actionNote(s, null))
+  return screen({ title: "Pay by card", lead: orderLine(s), action: payButton }, insteadLine(invoice), forgetful, form,
+    el("p", { class: "note center" }, "The card form is Stripe's. Nothing is charged until you pay."), actionNote(s, null))
 }
 
 function cardStandIn(form: HTMLElement): void {
