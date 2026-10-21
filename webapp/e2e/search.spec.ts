@@ -209,24 +209,22 @@ test("a double click acts once, whatever the redrawn page puts under the pointer
   await expect(onStep(page).getByRole("button", { name: "Skip for now" })).toBeEnabled()
 })
 
-test("restore waits out a rate limit on finding a code's orders", async ({ page, request }) => {
+test("a name code's lookup refused for a rate limit says how long to wait, and the code is judged again once it is over", async ({ page, request }) => {
   const { ownerCode } = await startOrder(page, uniqueLabel("rlim"), { method: "btc" })
   await control(request, "search", { findLimitSeconds: 6 })
   await page.goto("/#/code")
   await codeField(page).fill(ownerCode)
-  await page.getByRole("button", { name: "Add to Your names" }).click()
-  await expect(page.getByText("Too many attempts")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Add to Your names" })).toBeDisabled()
-  // a screen reader hears the wait once, from a still copy; the countdown itself is hidden from it
-  // the code is judged before Add shows, so the wait has run a second or so by the time it is asked
-  await expect(page.locator(".sr-only", { hasText: /^Your code is fine\. Try again in \d seconds\.$/ })).toHaveCount(1)
-  await expect(page.locator(".notice span[aria-hidden=true]")).toBeVisible()
-  // typing meanwhile does not shorten the wait
-  await codeField(page).press("End")
-  await codeField(page).press("Space")
-  await expect(page.getByRole("button", { name: "Add to Your names" })).toBeDisabled()
-  await expect(page.getByRole("button", { name: "Add to Your names" })).toBeEnabled({ timeout: 10_000 })
-  await page.getByRole("button", { name: "Add to Your names" }).click()
+  const verdict = page.locator(".code-entry .verdict")
+  await expect(verdict).toHaveText(/^Too many checks just now\. Your code may be fine\. Try again in \d seconds\.$/)
+  await expect(page.getByRole("button", { name: "Add to Your names" })).toHaveCount(0)
+  // once the wait is over, the code is judged again as it is entered
+  const add = page.getByRole("button", { name: "Add to Your names" })
+  await expect(async () => {
+    await codeField(page).fill("")
+    await codeField(page).fill(ownerCode)
+    await expect(add).toBeVisible({ timeout: 2000 })
+  }).toPass({ timeout: 15_000 })
+  await add.click()
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
 })
 
