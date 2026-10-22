@@ -73,18 +73,20 @@ Tests and manual checks move orders along with `POST` requests to the mock:
 
 | Request | Effect |
 |---|---|
-| `/control/settle/<invoice>` | the invoice is paid; registration starts |
+| `/control/settle/<invoice>` | the invoice is paid; registration starts and a balance it held is spent. On a closed invoice the payment is late: the order stays unpaid and its confirmed money is credited to its balance once |
 | `/control/partial/<invoice>` | half the crypto amount arrives |
 | `/control/confirming/<invoice>` | the full amount is seen, not yet confirmed |
 | `/control/expire/<invoice>` | the invoice expires |
 | `/control/overdue/<invoice>` | the invoice's rate window ends now; the next request that meets it expires it, unless money reached it |
 | `/control/fail/<registration>` | the next commit fails |
-| `/control/take` `{"label"}` | a rival registers the name before the waiting order |
-| `/control/search` `{"chainDown", "limitSeconds", "invoiceError", "findLimitSeconds", "unsentSeconds", "unreadSeconds", "writeDelayMs", "refuseLinks"}` | the chain cannot be read, search is rate limited, the next order is refused (`provider_unavailable`, `rate_limited` with a wait of `MOCK_RETRY_AFTER_SECONDS`, 30 s, `catalog_changed`, `internal`; `null` clears it), finding a code's orders is rate limited, no transaction goes out for that many seconds (each is tried again every `MOCK_RESEND_MS`, 5 s, up to `MOCK_RESENDS`, 12 times), the registration view's own chain reads fail for that many seconds (the view names them in `unread`), every write to a registration waits that long before its version check (to race two requests), or the next reveal finds its links refused |
+| `/control/take` `{"label"}` | a rival registers the name before the waiting order; a paid order taken keeps its price as its balance |
+| `/control/refund/<invoice or registration>` `{"cents"}` | support refunds the order's whole balance, the cents given or all of it, answering the refund and the orders whose balances paid it, or why not: `no_balance`, `balance_held` (with the holder and its invoice's expiry, overdue or not) or `balance_changed` |
+| `/control/rate` `{"btc", "xmr"}` | the coin's current rate in whole dollars; a late payment is credited at the lower of it and its invoice's rate (`null` goes back to the invoice's) |
+| `/control/search` `{"chainDown", "limitSeconds", "invoiceError", "findLimitSeconds", "unsentSeconds", "unreadSeconds", "writeDelayMs", "refuseLinks"}` | the chain cannot be read, search is rate limited, the next paid order, or the next spend from a balance at its invoice for the difference, is refused (`provider_unavailable`, `rate_limited` with a wait of `MOCK_RETRY_AFTER_SECONDS`, 30 s, `catalog_changed`, `internal`; `null` clears it), finding a code's orders is rate limited, no transaction goes out for that many seconds (each is tried again every `MOCK_RESEND_MS`, 5 s, up to `MOCK_RESENDS`, 12 times), the registration view's own chain reads fail for that many seconds (the view names them in `unread`), every write to a registration waits that long before its version check (to race two requests), or the next reveal finds its links refused |
 | `/control/code` `{"minLength", "years", "state"}` | issues a prepaid code |
 | `/control/code/state` `{"code", "state"}` | sets a prepaid code's state, as an order elsewhere taking it or letting it go |
 
-`GET /control/state` dumps the mock's registrations and invoices.
+`GET /control/state` dumps the mock's registrations, invoices and balances.
 
 ## Test
 

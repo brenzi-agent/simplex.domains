@@ -1,8 +1,8 @@
 // The mock names service's HTTP server: the API under /api, and controls for tests under /control.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import {
-  cancelInvoice, checkCode, controlInvoice, controlRegistration, controlSearch, controlTake, createInvoice, dump, editRecords, find,
-  HttpError, issueCode, oneOrderAtATime, setCodeState, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retry, reveal, search,
+  cancelInvoice, checkCode, controlInvoice, controlRate, controlRefund, controlRegistration, controlSearch, controlTake, createInvoice, dump, editRecords, find,
+  HttpError, issueCode, oneOrderAtATime, setCodeState, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retry, reveal, search, spend,
 } from "./mock/service.ts"
 
 const PORT = Number(process.env.MOCK_PORT ?? "8099")
@@ -30,9 +30,12 @@ const routes: [string, RegExp, Handler][] = [
   ["POST", /^\/api\/registration\/([^/]+)\/reveal$/, (m, b) => reveal(m[1], b)],
   ["POST", /^\/api\/registration\/([^/]+)\/name$/, (m, b) => oneOrderAtATime(() => retarget(m[1], b))],
   ["POST", /^\/api\/registration\/([^/]+)\/retry$/, (m) => retry(m[1])],
+  ["POST", /^\/api\/registration\/([^/]+)\/spend$/, (m, b) => oneOrderAtATime(() => spend(m[1], b))],
   ["POST", /^\/control\/(settle|partial|confirming|expire|overdue)\/([^/]+)$/, (m) => controlInvoice(m[1], m[2])],
   ["POST", /^\/control\/(fail)\/([^/]+)$/, (m) => controlRegistration(m[1], m[2])],
   ["POST", /^\/control\/take$/, (_, b) => controlTake(b.label)],
+  ["POST", /^\/control\/refund\/([^/]+)$/, (m, b) => controlRefund(m[1], b.cents)],
+  ["POST", /^\/control\/rate$/, (_, b) => controlRate(b)],
   ["POST", /^\/control\/search$/, (_, b) => controlSearch(b)],
   ["POST", /^\/control\/code\/state$/, (_, b) => setCodeState(b.code, b.state)],
   ["POST", /^\/control\/code$/, (_, b) => ({ code: issueCode(Number(b.minLength), Number(b.years ?? 2), (b.state ?? "unused") as never) })],
