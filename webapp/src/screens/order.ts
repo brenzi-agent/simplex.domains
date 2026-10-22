@@ -111,7 +111,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "retry-started": return start(s, "retry")
     case "retry-failed": return end(s, "retry", { note: e.note, codeRefused: e.codeRefused })
     case "code-checked": return { ...s, codeKept: true }
-    case "source-read": return { ...s, sourceBalance: e.balance }
+    case "source-read": return s.busy === "reorder" ? end(s, "reorder", { sourceBalance: e.balance }) : { ...s, sourceBalance: e.balance }
     case "hold-started": return { ...s, busy: null, note: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: e.lead } }
     case "hold-ended": return { ...s, hold: null }
   }
@@ -160,10 +160,10 @@ export function newInvoiceBy(record: OrderRecord, invoice: InvoiceView): "spend"
   return invoice.registration.fromBalance > 0 ? "find" : "order"
 }
 
-// A new invoice of an order that a balance paid part of spends that balance again; once it has grown to cover the price,
-// the spend registers the name with nothing to pay, which its button says.
-export const spendCovers = ({ record, view, sourceBalance }: OrderState) =>
-  Boolean(record?.balanceSource) && view !== null && sourceBalance !== null && !sourceBalance.held && sourceBalance.amount >= view.price
+// A new invoice of an order that a balance paid part of spends that balance again, which is read only for such an order;
+// once it has grown to cover the price, the spend registers the name with nothing to pay, which its button says.
+export const spendCovers = ({ view, sourceBalance }: OrderState) =>
+  view !== null && sourceBalance !== null && !sourceBalance.held && sourceBalance.amount >= view.price
 
 // What the order's name costs, which a move to a cheaper name lowers, and what another order's balance paid of it, the
 // rest of that payment kept as this order's balance after such a move; null for a code, which costs nothing.

@@ -383,8 +383,13 @@ describe("spendCovers", () => {
     expect(spendCovers(expired(balance(4000, true)))).toBe(false)
     expect(spendCovers(expired(null))).toBe(false)
   })
-  it("is never for an order no balance paid", () => {
-    expect(spendCovers(expired(balance(4000), { record: record() }))).toBe(false)
+  it("takes a balance read for an order this browser learned its source of from find, which its record did not name", () => {
+    expect(spendCovers(expired(balance(4000), { record: record() }))).toBe(true)
+  })
+  it("ends Get a new invoice's work when it finds the balance grown to the price, so the button can say so and be pressed again", () => {
+    const pressed = reduce(expired(null), { type: "reorder-started" })
+    const grown = reduce(pressed, { type: "source-read", balance: balance(1500) })
+    expect([grown.busy, spendCovers(grown)]).toEqual([null, true])
   })
 })
 

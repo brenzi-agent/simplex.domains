@@ -880,9 +880,12 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
 // An invoice for the rest of a price that a balance paid part of is made again by a new spend of that balance as it is
 // now; once the balance is spent or refunded, the name's search opens instead, with the name's price.
 async function spendAgain(record: store.OrderRecord, source: string, quote: flow.Priced, gen: number, method: api.Method): Promise<void> {
-  const balance = await balanceOf(source)
+  const read = (await api.readRegistration(source)).balance
+  const balance = session.appliedBalance(source, read)
   if (!isOpen(gen)) return
   if (!balance) return go(searchLink(record.label))
+  // a balance grown to the price since the button was labelled registers the name: the button says so first, for a second press
+  if (!balance.held && balance.amount >= quote.price && !spendCovers(state)) return dispatch({ type: "source-read", balance: read })
   // the balance's order has the same name code as this one, which signs the spend
   const paying = { registrationId: source, ownerCode: record.ownerCode }
   if (balance.held) {
