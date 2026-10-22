@@ -67,9 +67,10 @@ export interface Profile {
   subscribers: number | null
   profile: typeof PROFILE_STATES[number]
 }
+// the chat core's own form of the link, null for a link the core cannot parse, which is opened as it is
 export interface Entity extends Profile {
   link: string
-  deepLink: string
+  deepLink: string | null
 }
 
 // An order's balance, in cents: what is left to spend, whether an invoice of another order holds it and until when (null
@@ -249,7 +250,7 @@ const CHAT_KINDS: ChatKind[] = ["contact", "channel", "business", "bot"]
 const isPreview = (e: unknown) => isObject(e) && (e.type === "address" || e.type === "channel") && CHAT_KINDS.includes(e.kind as ChatKind)
   && (e.type === "channel") === (e.kind === "channel") && isText(e.displayName)
   && isText(e.fullName) && isImage(e.image) && nullable(e.subscribers, isAmount) && PROFILE_STATES.includes(e.profile as Profile["profile"])
-const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unknown>).link) && isText((e as Record<string, unknown>).deepLink)
+const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unknown>).link) && nullable((e as Record<string, unknown>).deepLink, isText)
 const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.sponsor) && typeof a.chainId === "number" && isText(a.tld)
 const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registering", "registered", "taken", "failed"]
 const isBalance = (v: unknown) => isObject(v) && isAmount(v.amount) && typeof v.held === "boolean" && nullable(v.heldUntil, isText) && isAmount(v.refunded)

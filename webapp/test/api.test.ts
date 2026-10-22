@@ -83,7 +83,7 @@ describe("service errors", () => {
   it("takes a linked chat without its kind, full name or subscriber count, with a kind the app has not, or a kind its record cannot hold, as no answer", async () => {
     const link = { link: "https://simplex.chat/c#x", deepLink: "simplex:/c#x" }
     const changes = [{ kind: undefined }, { kind: "group" }, { fullName: undefined }, { subscribers: undefined }, { subscribers: -1 }, { subscribers: "many" },
-      { type: "address" }, { kind: "contact" }, { profile: undefined }, { profile: "lost" }]
+      { type: "address" }, { kind: "contact" }, { profile: undefined }, { profile: "lost" }, { deepLink: undefined }, { deepLink: 5 }]
     for (const change of changes) {
       answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [{ ...PROFILE, ...link, ...change }] }))
       expect((await errorOf()).code, JSON.stringify(change)).toBe("network")
@@ -94,6 +94,10 @@ describe("service errors", () => {
       answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [entity] }))
       expect(await searchName("ab".repeat(32), 8), profile).toMatchObject({ entities: [entity] })
     }
+    // a link the chat core cannot parse has no deep link, and its own text is opened
+    const unparsed = { ...PROFILE, ...link, deepLink: null, displayName: "", fullName: "", subscribers: null, profile: "unavailable" }
+    answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [unparsed] }))
+    expect(await searchName("ab".repeat(32), 8)).toMatchObject({ entities: [unparsed] })
     for (const kind of ["contact", "business", "bot"]) {
       const entity = { ...PROFILE, ...link, type: "address", kind, subscribers: null }
       answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [entity] }))
