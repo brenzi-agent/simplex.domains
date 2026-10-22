@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ApiError, checkCode, previewLink, readInvoice, readRegistration, retryDelay, searchName, seenOf } from "../src/api.ts"
+import { ApiError, BalanceChanged, checkCode, previewLink, readInvoice, readRegistration, retryDelay, searchName, seenOf, spend } from "../src/api.ts"
 
 const HASH = "ab".repeat(32)
 
@@ -118,7 +118,7 @@ describe("service errors", () => {
 
   const REGISTRATION = {
     id: "r1", version: 4, unread: [], moves: 0, phase: "unpaid", labelHash: `0x${"ab".repeat(32)}`, label: null, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`,
-    sealed: "sealed", years: 2, duration: 2 * 365 * 86400, price: 10000, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null,
+    sealed: "sealed", years: 2, duration: 2 * 365 * 86400, price: 10000, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null,
     resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex",
   }
   const INVOICE = { invoiceId: "inv1", status: "open", amount: 10000, currency: "usd", expiresAt: "2026-10-16T12:00:00Z", kind: "name", registration: REGISTRATION, cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bc1q" }
@@ -136,6 +136,57 @@ describe("service errors", () => {
       const e = await readInvoice("inv1").then(() => null, (e: unknown) => e)
       expect((e as ApiError).code, JSON.stringify(body).slice(0, 120)).toBe("network")
     }
+  })
+
+  const BALANCE = { amount: 10000, held: true, heldUntil: "2026-10-16T12:00:00Z", refunded: 2500 }
+
+  it("passes an order's balance and what a balance paid of it, and takes either malformed as no answer", async () => {
+    answerWith(200, JSON.stringify({ ...REGISTRATION, fromBalance: 4000, balance: BALANCE }))
+    expect(await readRegistration("r1")).toMatchObject({ fromBalance: 4000, balance: BALANCE })
+    for (const change of [
+      { fromBalance: undefined }, { fromBalance: -1 }, { balance: undefined }, { balance: {} }, { balance: { ...BALANCE, amount: -5 } },
+      { balance: { ...BALANCE, held: "yes" } }, { balance: { ...BALANCE, heldUntil: 5 } }, { balance: { ...BALANCE, refunded: null } },
+    ]) {
+      answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
+      const e = await readRegistration("r1").then(() => null, (e: unknown) => e)
+      expect((e as ApiError).code, JSON.stringify(change)).toBe("network")
+    }
+  })
+
+  const SPEND = { labelHash: `0x${"ab".repeat(32)}`, length: 8, duration: 2 * 365 * 86400, commitment: `0x${"cd".repeat(32)}`, sealed: "sealed", price: 20000, balance: 10000, method: "btc" as const, timestamp: 1, signature: "0x" }
+
+  it("posts a spend for the paying order and answers the new order, without an invoice or with the difference's", async () => {
+    const fetched = vi.fn(async () => new Response(JSON.stringify({ registrationId: "r2" }), { status: 200 }))
+    vi.stubGlobal("fetch", fetched)
+    expect(await spend("r/1", SPEND)).toEqual({ registrationId: "r2" })
+    const [path, init] = fetched.mock.calls[0] as unknown as [string, RequestInit]
+    expect([path, init.method, JSON.parse(String(init.body))]).toEqual(["/api/registration/r%2F1/spend", "POST", SPEND])
+    const invoice = { ...INVOICE, amount: 10000, registration: { ...REGISTRATION, price: 20000, fromBalance: 10000 } }
+    answerWith(200, JSON.stringify(invoice))
+    expect(await spend("r1", SPEND)).toEqual(invoice)
+    for (const body of [{}, { registrationId: 5 }, { ...invoice, registration: undefined }, { registrationId: "r2", invoiceId: "inv1" }]) {
+      answerWith(200, JSON.stringify(body))
+      const e = await spend("r1", SPEND).then(() => null, (e: unknown) => e)
+      expect((e as ApiError).code, JSON.stringify(body).slice(0, 80)).toBe("network")
+    }
+  })
+
+  it("gives a refusal for a changed balance the balance as it is now, or null, and takes one it cannot read as no answer", async () => {
+    for (const balance of [BALANCE, null]) {
+      answerWith(409, JSON.stringify({ error: "balance_changed", balance }))
+      const e = await spend("r1", SPEND).then(() => null, (e: unknown) => e)
+      expect(e, JSON.stringify(balance)).toBeInstanceOf(BalanceChanged)
+      expect(e).toMatchObject({ code: "balance_changed", status: 409, balance })
+    }
+    for (const body of [{ error: "balance_changed" }, { error: "balance_changed", balance: { amount: "lots" } }]) {
+      answerWith(409, JSON.stringify(body))
+      const e = await spend("r1", SPEND).then(() => null, (e: unknown) => e)
+      expect((e as ApiError).code, JSON.stringify(body)).toBe("network")
+    }
+    answerWith(409, JSON.stringify({ error: "order_exists" }))
+    const other = await spend("r1", SPEND).then(() => null, (e: unknown) => e)
+    expect(other).not.toBeInstanceOf(BalanceChanged)
+    expect((other as ApiError).code).toBe("order_exists")
   })
 
   it("holds a poll on the registration's version and the payment marks it has seen", async () => {

@@ -15,6 +15,15 @@ export class ApiError extends Error {
   }
 }
 
+// a spend refused because the balance is not as the page read it: the balance now, or null when the order has none
+export class BalanceChanged extends ApiError {
+  readonly balance: Balance | null
+  constructor(e: ApiError, balance: Balance | null) {
+    super(e.code, e.status, e.retryAfter, e.body)
+    this.balance = balance
+  }
+}
+
 // How long to wait before asking again: what a rate limit asks for, or the usual pause. Null for a refusal that asking
 // again cannot change, such as a request this device's clock signed outside the service's window.
 export function retryDelay(e: unknown, usual: number): number | null {
@@ -63,6 +72,15 @@ export interface Entity extends Profile {
   deepLink: string
 }
 
+// An order's balance, in cents: what is left to spend, whether an open invoice of another order holds it and until when,
+// and what support has refunded from it
+export interface Balance {
+  amount: number
+  held: boolean
+  heldUntil: string | null
+  refunded: number
+}
+
 export interface RegistrationView extends ChainInfo {
   id: string
   // counts the service's changes to the registration, which a long poll holds on
@@ -78,6 +96,9 @@ export interface RegistrationView extends ChainInfo {
   duration: number
   // what the order is worth, in cents: what was paid, or the price of the name it moved to; it caps another move
   price: number
+  // the cents another order's balance paid when this order was made
+  fromBalance: number
+  balance: Balance | null
   // how often the order moved to another name or other links, which the service bounds
   moves: number
   commitTx: string | null
@@ -224,8 +245,10 @@ const isPreview = (e: unknown) => isObject(e) && (e.type === "address" || e.type
 const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unknown>).link) && isText((e as Record<string, unknown>).deepLink)
 const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.sponsor) && typeof a.chainId === "number" && isText(a.tld)
 const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registering", "registered", "taken", "failed"]
+const isBalance = (v: unknown) => isObject(v) && isAmount(v.amount) && typeof v.held === "boolean" && nullable(v.heldUntil, isText) && isAmount(v.refunded)
 const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && Number.isInteger(v.version) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
   && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isCount(v.duration) && isAmount(v.price) && Number.isInteger(v.moves)
+  && isAmount(v.fromBalance) && nullable(v.balance, isBalance)
   && nullable(v.commitTx, isText) && nullable(v.registerTx, isText) && nullable(v.revealAfter, isAmount) && nullable(v.revealBefore, isAmount)
   && nullable(v.intentNonce, isAmount) && Array.isArray(v.unread) && v.unread.every(isText) && nullable(v.expiresAt, isAmount) && nullable(v.error, isText)
 const isInvoice = (v: unknown) => isObject(v) && isText(v.invoiceId) && ["open", "paid", "expired"].includes(v.status as string) && isAmount(v.amount)
@@ -278,6 +301,18 @@ export const reveal = (registrationId: string, body: { label: string; secret: st
   call<Record<string, never>>("POST", `/api/registration/${encodeURIComponent(registrationId)}/reveal`, body)
 export const retarget = (registrationId: string, body: Omit<SignedOrder, "owner">) =>
   checked<RegistrationView>(call("POST", `/api/registration/${encodeURIComponent(registrationId)}/name`, body), isRegistration)
+// another name paid from an order's balance: the balance the page read, and a method for the difference when it does not cover the price
+export type SpendRequest = Omit<SignedOrder, "owner"> & { price: number; balance: number; method?: Method }
+
+// The new order, without an invoice when the balance covered it, or with the invoice for the difference.
+export async function spend(registrationId: string, body: SpendRequest): Promise<{ registrationId: string } | InvoiceView> {
+  const sent = call("POST", `/api/registration/${encodeURIComponent(registrationId)}/spend`, body).catch((e: unknown) => {
+    if (!(e instanceof ApiError && e.code === "balance_changed")) throw e
+    if (!nullable(e.body.balance, isBalance)) throw noAnswer()
+    throw new BalanceChanged(e, e.body.balance as Balance | null)
+  })
+  return checked(sent, (a) => isInvoice(a) || (isText(a.registrationId) && a.invoiceId === undefined))
+}
 export const retry = (registrationId: string) => checked<RegistrationView>(call("POST", `/api/registration/${encodeURIComponent(registrationId)}/retry`), isRegistration)
 const isFound = (r: unknown) => isObject(r) && isText(r.registrationId) && nullable(r.invoiceId, isText) && PHASES.includes(r.phase as Phase) && isText(r.createdAt)
   && isText(r.labelHash) && isText(r.sealed)

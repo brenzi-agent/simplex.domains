@@ -1,4 +1,4 @@
-// The order flows, between the views and the crypto: build an order, reveal it, retarget it, restore, edit links.
+// The order flows, between the views and the crypto: build an order, reveal it, retarget it, spend a balance, restore, edit links.
 import * as api from "./api.ts"
 import { formatOwnerCode, parseNameCode } from "./crypto/code.ts"
 import {
@@ -65,9 +65,10 @@ export async function orderRequest(draft: Draft): Promise<BuiltOrder> {
   return { request: { ...order, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) }, owner }
 }
 
-export const paidWith = (res: api.InvoiceView): { method: api.Method; paid: number } => ({ method: res.cryptoCurrency ?? "card", paid: res.amount })
+// what the order is worth, which for an invoice of a difference is more than the invoice
+export const paidWith = (res: api.InvoiceView): { method: api.Method; paid: number } => ({ method: res.cryptoCurrency ?? "card", paid: res.registration.price })
 
-export function recordFor(draft: Draft, built: BuiltOrder, method: api.Method | "code", paid: number, ids: { registrationId: string; invoiceId: string | null }): store.OrderRecord {
+export function recordFor(draft: Draft, built: BuiltOrder, method: store.OrderRecord["method"], paid: number, ids: { registrationId: string; invoiceId: string | null }): store.OrderRecord {
   return {
     ...ids, label: draft.label, ownerCode: draft.ownerCode, owner: built.owner, ...draft.links, method, paid, years: draft.years,
     request: built.request, tld: draft.chain.tld, createdAt: new Date(api.serviceNow()).toISOString(),
@@ -102,6 +103,28 @@ export async function retargetOrder(record: store.OrderRecord, label: string, li
   const view = await api.retarget(record.registrationId, { labelHash: lh, length, duration, commitment, sealed, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) })
   store.saveOrder({ ...record, label, ...links, paid: view.price, request: built.request, linksRefused: undefined })
   return view
+}
+
+// Another name paid from the record's balance, as the page read it, owned by the record's code. When the balance does not
+// cover the price, all of it pays and an invoice in `method` is made for the difference; a changed balance throws BalanceChanged.
+export async function spendBalance(record: store.OrderRecord, label: string, links: api.Links, quote: Quote, balance: number, method: api.Method): Promise<store.OrderRecord> {
+  const draft: Draft = { label, links, chain: chainOf(quote), years: quote.years, termStart: quote.termStart, ownerCode: record.ownerCode }
+  const built = await orderRequest(draft)
+  const wallet = walletOf(record.ownerCode)!
+  const timestamp = now()
+  const { labelHash: lh, length, duration, commitment, sealed } = built.request
+  const message = `simplex.domains spend ${record.registrationId} ${lh} ${length} ${duration} ${commitment} ${await sha256Hex(sealed)} ${timestamp}`
+  const covered = quote.price <= balance
+  const res = await api.spend(record.registrationId, {
+    labelHash: lh, length, duration, commitment, sealed, price: quote.price, balance, ...covered ? {} : { method }, timestamp,
+    signature: hex(signDigest(wallet.privateKey, personalDigest(message))),
+  })
+  const paidBy = "invoiceId" in res
+    ? { ...paidWith(res), ids: { registrationId: res.registration.id, invoiceId: res.invoiceId } }
+    : { method: "balance" as const, paid: quote.price, ids: { registrationId: res.registrationId, invoiceId: null } }
+  const next = { ...recordFor(draft, built, paidBy.method, paidBy.paid, paidBy.ids), balanceSource: record.registrationId }
+  store.saveOrder(next)
+  return next
 }
 
 type RestoreResult = { record: store.OrderRecord; view: api.RegistrationView }
@@ -232,7 +255,7 @@ async function reopen(wallet: Wallet, code: string, chosen: Found): Promise<Rest
   const known = store.orderByRegistration(view.id)
   const record: store.OrderRecord = {
     ...known, registrationId: view.id, invoiceId: chosen.invoiceId, ownerCode: code, owner, ...opened,
-    method: invoice ? invoice.cryptoCurrency ?? "card" : "code", paid: view.price, years: view.years,
+    method: invoice ? invoice.cryptoCurrency ?? "card" : view.fromBalance > 0 ? "balance" : "code", paid: view.price, years: view.years,
     tld: view.tld, createdAt: chosen.createdAt,
   }
   store.saveOrder(record)

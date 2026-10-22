@@ -660,7 +660,7 @@ async function orderAgain(record: store.OrderRecord): Promise<void> {
   if (!quote) return go(searchLink(record.label))
   session.setCheckout({
     label: record.label, price: quote.price, years: quote.years, termStart: quote.termStart, chain: flow.chainOf(quote), contact: record.contact, channel: record.channel,
-    method: record.method === "code" ? "btc" : record.method, code: null, ownerCode: record.ownerCode, saved: true, agreed: false, searchAt: historyPlace(), step: "review",
+    method: record.method === "code" || record.method === "balance" ? "btc" : record.method, code: null, ownerCode: record.ownerCode, saved: true, agreed: false, searchAt: historyPlace(), step: "review",
   })
   go(checkoutUrl("review"))
 }
