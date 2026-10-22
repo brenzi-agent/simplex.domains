@@ -1,4 +1,5 @@
 import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Locator, type Page } from "@playwright/test"
+import { randomInt } from "node:crypto"
 import { mkdirSync, readFileSync } from "node:fs"
 import { createPublicClient, createTestClient, createWalletClient, encodeFunctionData, http, namehash, parseAbi, type Hex } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
@@ -290,10 +291,16 @@ export async function startOrder(page: Page, label: string, opts: OrderOptions =
 
 const CSP_REPORT = "reportCspViolation"
 
+// The mock counts its rate limits per client, by X-Forwarded-For as the service behind a proxy does, so each test is a
+// client of its own, and so is each browser it opens.
+const OCTET = 256
+export const newClient = () => ({ "x-forwarded-for": `10.${randomInt(OCTET)}.${randomInt(OCTET)}.${randomInt(OCTET)}` })
+
 // Every page's CSP refusals fail its test, in the test's own context and in every context it opens; only a server that
 // sends the policy, as `vite preview` does, makes any.
 export const test = base.extend<{ cspViolations: void }>({
   baseURL: async ({ baseURL }, use) => use(baseURL ?? pageUrl(SLOT)),
+  extraHTTPHeaders: async ({ extraHTTPHeaders }, use) => use({ ...extraHTTPHeaders, ...newClient() }),
   cspViolations: [async ({ context, browser }, use) => {
     const refused: string[] = []
     const watch = async (watched: BrowserContext) => {
@@ -307,7 +314,7 @@ export const test = base.extend<{ cspViolations: void }>({
     // the browser is the worker's: the maker set on it is deleted after the test, so its class's own shows again
     const newContext = browser.newContext.bind(browser)
     browser.newContext = async (options?: BrowserContextOptions) => {
-      const made = await newContext(options)
+      const made = await newContext({ ...options, extraHTTPHeaders: { ...newClient(), ...options?.extraHTTPHeaders } })
       await watch(made)
       return made
     }

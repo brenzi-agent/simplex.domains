@@ -2,26 +2,36 @@
 // the worker's mock directly. The page's own flows build and sign the requests.
 import { expect, type APIRequestContext } from "@playwright/test"
 import type { Hex } from "viem"
+import { CODE_LIMIT } from "../dev/mock/limits.ts"
 import type * as api from "../src/api.ts"
 import { CHANNEL_KEY, CONTACT_KEY, labelHash, namehash, setTextDigest, YEAR_S } from "../src/crypto/registration.ts"
 import { checksumAddress, fromHex, hex, personalDigest, signDigest } from "../src/crypto/wallet.ts"
 import * as flow from "../src/flow.ts"
 import * as store from "../src/store.ts"
-import { channelLink, contactLink, control, MOCK, oracleQuote, ownerSetsResolver, ownerSetsText, test, uniqueLabel } from "./helpers.ts"
+import { channelLink, contactLink, control, MOCK, newClient, oracleQuote, ownerSetsResolver, ownerSetsText, test, uniqueLabel } from "./helpers.ts"
 
 type Json = Record<string, unknown>
+
+// each case is a client of its own, as the page's tests are
+let client = newClient()
+test.beforeEach(() => { client = newClient() })
+const asClient = (init?: RequestInit): RequestInit => ({ ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), ...client } })
 
 // the flows' requests, made from this worker, go to its slot's mock
 const ownFetch = globalThis.fetch
 test.beforeAll(() => {
-  globalThis.fetch = (input, init) => ownFetch(typeof input === "string" && input.startsWith("/") ? `${MOCK}${input}` : input, init)
+  globalThis.fetch = (input, init) => typeof input === "string" && input.startsWith("/") ? ownFetch(`${MOCK}${input}`, asClient(init)) : ownFetch(input, init)
 })
 test.afterAll(() => { globalThis.fetch = ownFetch })
 // the cases speak to the service alone, so one browser's run of them is enough
 test.skip(({ browserName }) => browserName !== "chromium", "API cases run once")
 
+async function send(method: string, path: string, body?: unknown): Promise<Response> {
+  return ownFetch(`${MOCK}${path}`, asClient({ method, headers: body === undefined ? {} : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }))
+}
+
 async function call(method: string, path: string, body?: unknown): Promise<{ status: number; json: Json }> {
-  const res = await ownFetch(`${MOCK}${path}`, { method, headers: body === undefined ? {} : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })
+  const res = await send(method, path, body)
   return { status: res.status, json: await res.json() as Json }
 }
 
@@ -224,7 +234,7 @@ test("search quotes the oracle with the term's start, and a registered name carr
   expect([bakery.json.status, bakery.json.gracePeriod]).toEqual(["registered", 90 * 86400])
 })
 
-test("a code check answers every state, revoked included, an unknown code is code_invalid, and a body without a text code is bad_request", async ({ request }) => {
+test("a code check answers every state, revoked included, and an unknown code is code_invalid", async ({ request }) => {
   for (const state of ["unused", "reserved", "used", "revoked", "expired", "unpaid"]) {
     const { code } = await control(request, "code", { minLength: 7, years: 3, state }) as { code: string }
     expect((await call("POST", "/api/code/check", { code })).json, state).toEqual({ minLength: 7, years: 3, state })
@@ -232,12 +242,15 @@ test("a code check answers every state, revoked included, an unknown code is cod
   for (const code of ["SN7-BJTBP-29596-R3HJ8-25YM7", "SN-8M7X0-8Z533-AG8DP-RBN5T-BPQ6D-YH09G", "nonsense"]) {
     expect(await call("POST", "/api/code/check", { code }), code).toEqual({ status: 400, json: { error: "code_invalid" } })
   }
+})
+
+test("a code check whose body has no text code is bad_request", async () => {
   for (const body of [{}, { code: null }, { code: 6 }, { code: ["SN7-BJTBP-29596-R3HJ8-25YM7"] }]) {
     expect(await call("POST", "/api/code/check", body), JSON.stringify(body)).toEqual({ status: 400, json: { error: "bad_request" } })
   }
 })
 
-test("a code order without a text code is bad_request, even for a name too short, and a text that is no issued code is code_invalid", async () => {
+test("a code order without a text code is bad_request, even for a name too short", async () => {
   const { request } = await flow.orderRequest(await draftOf(uniqueLabel("ck")))
   for (const code of [undefined, null, 6, ["SN7-BJTBP-29596-R3HJ8-25YM7"]]) {
     for (const length of [request.length, 5]) {
@@ -245,9 +258,27 @@ test("a code order without a text code is bad_request, even for a name too short
       expect(res, `code ${JSON.stringify(code)}, length ${length}`).toEqual({ status: 400, json: { error: "bad_request" } })
     }
   }
+})
+
+test("a code order whose text is no issued code is code_invalid", async () => {
+  const { request } = await flow.orderRequest(await draftOf(uniqueLabel("ci")))
   for (const code of ["SN7-BJTBP-29596-R3HJ8-25YM7", "SN-8M7X0-8Z533-AG8DP-RBN5T-BPQ6D-YH09G", "nonsense", ""]) {
     expect(await call("POST", "/api/name/register", { ...request, code }), code).toEqual({ status: 400, json: { error: "code_invalid" } })
   }
+})
+
+test("a client's code checks and code orders past the code limit in a minute are rate_limited with the wait, whatever each answered, and another client's are not", async () => {
+  for (let i = 0; i < CODE_LIMIT; i++) {
+    const path = i % 2 ? "/api/code/check" : "/api/name/register"
+    expect((await call("POST", path, {})).status, `${path}, request ${i + 1}`).toBe(400)
+  }
+  for (const path of ["/api/code/check", "/api/name/register"]) {
+    const res = await send("POST", path, { code: "SN7-BJTBP-29596-R3HJ8-25YM7" })
+    expect({ status: res.status, json: await res.json() }, path).toEqual({ status: 429, json: { error: "rate_limited" } })
+    expect(Number(res.headers.get("retry-after")), `${path}: the seconds left of the minute`).toBeGreaterThan(50)
+  }
+  client = newClient()
+  expect((await call("POST", "/api/code/check", {})).status, "another client").toBe(400)
 })
 
 test("find lists an owner's orders newest first, each with its label hash and sealed", async ({ request }) => {

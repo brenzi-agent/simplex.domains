@@ -1,5 +1,7 @@
 // The mock names service's HTTP server: the API under /api, and controls for tests under /control.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+import { isIP } from "node:net"
+import { takeCodeToken } from "./mock/limits.ts"
 import {
   cancelInvoice, checkCode, controlCredit, controlInvoice, controlLate, controlRate, controlRefund, controlRegistration, controlSearch, controlTake, createInvoice, dump, editRecords, find,
   HttpError, issueCode, oneOrderAtATime, setCodeState, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retry, reveal, search, spend,
@@ -14,16 +16,29 @@ const KEEP_ALIVE_MS = 75_000
 // a seenVersion that is not a whole number is no version, so the poll answers at once
 const versionOf = (q: URLSearchParams) => /^\d+$/.test(q.get("seenVersion") ?? "") ? Number(q.get("seenVersion")) : null
 
-type Handler = (match: RegExpMatchArray, body: Record<string, unknown>, query: URLSearchParams) => Promise<unknown> | unknown
+// A client is the last address in X-Forwarded-For, as the service with trust_forwarded_for takes it, else the peer.
+function clientOf(req: IncomingMessage): string {
+  const forwarded = req.headers["x-forwarded-for"]?.toString().split(",").map((a) => a.trim()).at(-1)
+  return forwarded && isIP(forwarded) ? forwarded : req.socket.remoteAddress ?? ""
+}
 
-const routes: [string, RegExp, Handler][] = [
+function codeLimited(client: string): void {
+  const wait = takeCodeToken(client)
+  if (wait !== null) throw new HttpError(429, "rate_limited", {}, wait)
+}
+
+type Handler = (match: RegExpMatchArray, body: Record<string, unknown>, query: URLSearchParams) => Promise<unknown> | unknown
+// a route's limit is taken once its method and path match, before its body is read
+type Limit = (client: string) => void
+
+const routes: [string, RegExp, Handler, Limit?][] = [
   ["GET", /^\/api\/name\/([^/]+)$/, (m, _, q) => search(m[1], q.get("length"))],
   ["POST", /^\/api\/link\/preview$/, (_, b) => previewLink(b)],
-  ["POST", /^\/api\/code\/check$/, (_, b) => checkCode(b)],
+  ["POST", /^\/api\/code\/check$/, (_, b) => checkCode(b), codeLimited],
   ["POST", /^\/api\/invoice$/, (_, b) => oneOrderAtATime(() => createInvoice(b))],
   ["GET", /^\/api\/invoice\/([^/]+)$/, (m, _, q) => readInvoice(m[1], q.get("wait"), versionOf(q), q.get("seenPaid"), q.get("seenFull") === "1")],
   ["POST", /^\/api\/invoice\/([^/]+)\/cancel$/, (m) => cancelInvoice(m[1])],
-  ["POST", /^\/api\/name\/register$/, (_, b) => oneOrderAtATime(() => registerWithCode(b))],
+  ["POST", /^\/api\/name\/register$/, (_, b) => oneOrderAtATime(() => registerWithCode(b)), codeLimited],
   ["POST", /^\/api\/name\/records$/, (_, b) => editRecords(b)],
   ["POST", /^\/api\/registration\/find$/, (_, b) => find(b)],
   ["GET", /^\/api\/registration\/([^/]+)$/, (m, _, q) => readRegistration(m[1], versionOf(q))],
@@ -72,6 +87,7 @@ const server = createServer(async (req, res) => {
   const route = routes.find(([method, path]) => method === req.method && path.test(url.pathname))
   if (!route) return reply(res, 404, { error: "not_found" })
   try {
+    route[3]?.(clientOf(req))
     const body = req.method === "POST" ? await readBody(req) : {}
     reply(res, 200, await route[2](url.pathname.match(route[1])!, body, url.searchParams))
   } catch (e) {
