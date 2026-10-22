@@ -1098,6 +1098,7 @@ function balanceActions({ view, invoice, record }: OrderState): { action: HTMLBu
   const action = setAction(btn("Choose another name", "", () => balance ? useBalance(balance) : go(searchLink(""))), false, record === null)
   const alt = record && balance && !balance.held ? link("Get a refund", () => showRefund(invoice?.invoiceId ?? view!.id, REFUND)) : null
   alt?.setAttribute("data-focus", REFUND)
+  alt?.setAttribute("aria-haspopup", "dialog")
   return { action, alt }
 }
 

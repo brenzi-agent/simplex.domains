@@ -32,6 +32,7 @@ test("a paid order taken first keeps its price as its balance, which a cheaper n
   await shot(page, "B1-names-balance")
 
   // support refunds by hand, on a message quoting the reference
+  await expect(balanceRow(page).getByRole("button", { name: "Refund" })).toHaveAttribute("aria-haspopup", "dialog")
   await balanceRow(page).getByRole("button", { name: "Refund" }).click()
   const popup = page.getByRole("dialog", { name: "Refund" })
   await expect(popup).toContainText("Write to chat@simplex.chat with your order reference. Support refunds what is left of your balance.")
@@ -186,6 +187,10 @@ test("a review whose balance another order's open invoice holds turns its button
   const held = onStep(page).locator(".line", { hasText: "Your balance is in use by" })
   await expect(held).toHaveText(new RegExp(`^Your balance is in use by ${dearer}\\.simplex until \\d\\d:\\d\\d\\.$`))
   await expect(register).toBeDisabled()
+  // the line is said as it comes, describes the button it turned off, and takes the focus the button had
+  await expect(onStep(page).locator(".balance-note[role='status'] .line")).toHaveCount(1)
+  await expect(register).toHaveAttribute("aria-describedby", "balance-line")
+  await expect(held).toBeFocused()
   await shot(page, "B10-review-balance-held")
   await held.getByRole("link").click()
   await page.waitForURL((url) => url.searchParams.get("order") === new URL(other.url()).searchParams.get("order"))

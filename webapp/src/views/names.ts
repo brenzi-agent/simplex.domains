@@ -29,9 +29,9 @@ const UNREAD_RETRY_MS = 5_000
 const HOME = "/#/"
 const NAMES = "/#/names"
 
-// a row's action keeps focus over a redraw by its row's key and its own
-const small = (text: string, key: string, onclick: () => void) =>
-  el("a", { href: "#", role: "button", "data-focus": key, onclick: (e: Event) => { e.preventDefault(); onclick() } }, text)
+// a row's action keeps focus over a redraw by its row's key and its own; one that opens a popup says so
+const small = (text: string, key: string, onclick: () => void, popup = false) =>
+  el("a", { href: "#", role: "button", "data-focus": key, "aria-haspopup": popup ? "dialog" : undefined, onclick: (e: Event) => { e.preventDefault(); onclick() } }, text)
 
 function row(key: string, title: Node, sub: Kid, state: Node | null, acts: Kid[], ...below: Kid[]): HTMLElement {
   return el("div", { class: "list-row", "data-key": key },
@@ -323,7 +323,7 @@ function balanceRow(b: BalanceRow, s: ListState): HTMLElement {
   const holder = b.held ? holderOf(s, b.id) : undefined
   const acts = b.held ? [holder ? small("Open that order", `${b.id}-holder`, () => go(store.orderUrl(holder))) : null]
     : b.amount > 0 ? [small("Use", `${b.id}-use`, () => useBalance({ source: b.id, amount: b.amount, held: false, heldUntil: null })),
-      small("Refund", `${b.id}-refund`, () => showRefund(o.invoiceId ?? o.registrationId, `${b.id}-refund`))] : []
+      small("Refund", `${b.id}-refund`, () => showRefund(o.invoiceId ?? o.registrationId, `${b.id}-refund`), true)] : []
   const sub = ["From ", nameText(view.label ?? o.label, view.tld), `, ${BALANCE_FROM[b.from]}`,
     b.refunded ? `${SEP}refunded ${dollars(b.refunded)} by support` : null,
     b.held ? `${SEP}in use by another order ${heldWords(b.heldUntil)}` : null]

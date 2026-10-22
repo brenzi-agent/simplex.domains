@@ -376,6 +376,9 @@ html:has(.modal[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .review:has(.line) .trow { padding-block: 4px; }
 .review:has(.line) .method { height: 56px; }
 .screen-body:has(> .review .line) { gap: 8px; }
+/* the balance's live region keeps its place in the review empty, taking no gap */
+.review > .balance-note:empty { margin-top: -14px; }
+.review:has(.line) > .balance-note:empty { margin-top: -8px; }
 .screen-body:has(> .review .line) > [role="status"]:empty { margin-top: -8px; }
 .notes { display: grid; gap: 4px; font-size: var(--fs-small); color: var(--ink-soft); text-align: center; text-wrap: balance; }
 /* the payment methods as the badges checkout's cards: the mark over the name, the chosen one ringed */

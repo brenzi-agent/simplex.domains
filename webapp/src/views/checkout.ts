@@ -200,6 +200,22 @@ function orderCard(c: session.Checkout): HTMLElement {
         : row("Total", dollars(c.price), "total")))
 }
 
+const BALANCE_NOTE = "balance-note"
+const BALANCE_LINE = "balance-line"
+
+// The balance's line is said as it comes and goes, in a review paid from a balance. Pay, turned off by a hold, hands focus
+// to the line, which shares its key.
+function balanceNote(s: CheckoutState): HTMLElement | null {
+  if (!s.checkout.balance && !s.checkout.balanceChange) return null
+  const line = balanceChangeLine(s)
+  if (line) line.id = BALANCE_LINE
+  if (line && payWaits(s)) {
+    line.tabIndex = -1
+    line.dataset.focus = "pay"
+  }
+  return keptLive(BALANCE_NOTE, BALANCE_NOTE, line)
+}
+
 // The order whose invoice holds the balance, named and linked once find names it, and how long it holds it; else how the
 // balance changed since the search showed it.
 function balanceChangeLine(s: CheckoutState): HTMLElement | null {
@@ -262,6 +278,7 @@ const actionLabel = (text: string, s: CheckoutState) => s.sending && !s.busy ? "
 function payButton(s: CheckoutState, blocked: boolean): HTMLButtonElement {
   const pay = btn(actionLabel(payLabel(s.checkout), s), "", () => void submitOrder())
   pay.dataset.focus = "pay"
+  if (s.checkout.balance?.held || s.checkout.balanceChange) pay.setAttribute("aria-describedby", BALANCE_LINE)
   return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !s.checkout.agreed || payWaits(s))
 }
 
@@ -323,7 +340,7 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null) },
     el("div", { class: "review" }, orderCard(c),
       c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or check another code.`) : null,
-      balanceChangeLine(s),
+      balanceNote(s),
       c.code || covered(c) ? null : blocked ? waitingNotice(blocked) : methodsBlock(s),
       c.code || covered(c) || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours. `, eth))),
     payNote(s, blocked !== null, signal),
