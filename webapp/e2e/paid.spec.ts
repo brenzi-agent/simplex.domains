@@ -715,16 +715,58 @@ test("an invoice that closed while its payment was confirming says a payment rea
   await shot(page, "N12f-history-expired-paid")
 })
 
-test("an invoice past its rate window that part of the payment reached stays open for the rest, and registers once paid", async ({ page, request }) => {
+const RATE_EXPIRED = "The rate expired before the full amount arrived. Don't send more; what you sent is refunded."
+
+test("an invoice past its rate window that part of the payment reached stays open, asks for no more, and registers once paid", async ({ page, request }) => {
   const label = uniqueLabel("due")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await control(request, `partial/${invoiceId}`)
   await control(request, `overdue/${invoiceId}`)
   await page.reload()
   await expect(onStep(page).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-  await expect(page.getByText(/^Part of the payment arrived/)).toBeVisible()
+  await expect(page.getByText(/^Part of the payment arrived: [\d.]+ of [\d.]+ BTC is seen\.$/)).toBeVisible()
+  await expect(page.getByText(RATE_EXPIRED)).toBeVisible()
+  await expect(page.getByText(/Rate held|Send the remaining/), "no countdown and no ask for the rest").toHaveCount(0)
+  await shot(page, "N4f-partial-rate-expired")
   await control(request, `settle/${invoiceId}`)
   await waitRegistered(page, label)
+})
+
+// the rate window of the invoice ends this long after the page first reads it
+const RATE_LEFT_MS = 6000
+// each part of the pay screen and of its notice and rate line: where it is and how tall, on a laptop and on a phone
+async function payLayout(page: Page): Promise<Record<string, string[]>> {
+  const layout: Record<string, string[]> = {}
+  for (const [device, width] of [["desktop", 1280], ["phone", 390]] as const) {
+    await page.setViewportSize({ width, height: 900 })
+    layout[device] = await page.evaluate(() => [...document.querySelectorAll("body > main :is(.screen-body, .notice > div, .waiting) > *")]
+      .map((n) => { const b = n.getBoundingClientRect(); return `${n.tagName} ${Math.round(b.top)} ${Math.round(b.height)}` }))
+  }
+  return layout
+}
+
+test("a part-paid invoice whose rate window ends in view swaps the countdown for the expired line in the same room", async ({ page, request }) => {
+  const { invoiceId } = await startOrder(page, uniqueLabel("due"), { method: "btc" })
+  await control(request, `partial/${invoiceId}`)
+  let expiresAt: string | null = null
+  await page.route(`**/api/invoice/${invoiceId}*`, async (route) => {
+    const response = await route.fetch()
+    expiresAt ??= new Date(Date.now() + RATE_LEFT_MS).toISOString()
+    await route.fulfill({ response, json: { ...await response.json(), expiresAt } })
+  })
+  await page.reload()
+  const held = page.getByText(/Rate held \d+:\d\d/)
+  const rest = page.getByText(/^Send the remaining/)
+  await expect(held).toBeVisible()
+  await expect(rest).toBeVisible()
+  const before = await payLayout(page)
+  await expect(held, "the layout was read while the rate was held").toBeVisible()
+  await expect(page.getByText(RATE_EXPIRED)).toBeVisible()
+  await expect(held).toBeHidden()
+  await expect(rest).toBeHidden()
+  expect(await payLayout(page)).toEqual(before)
+  // the page's read held open meanwhile answers nothing this test needs
+  await page.unrouteAll({ behavior: "ignoreErrors" })
 })
 
 test("a browser restored before another browser made a new invoice carries on with that invoice", async ({ page, browser, request }) => {

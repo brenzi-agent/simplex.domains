@@ -386,8 +386,29 @@ function rateLine(invoice: api.InvoiceView, signal: AbortSignal): HTMLElement {
   return el("span", {}, "Rate held ", time)
 }
 
-const partSentence = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Part of the payment arrived: ${invoice.cryptoAmountPaid} of ${invoice.cryptoAmount} ${TICKER[coin]} is seen. `
-  + `Send the remaining ${invoice.cryptoAmountDue} ${TICKER[coin]} to the same address.`
+const partSeen = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Part of the payment arrived: ${invoice.cryptoAmountPaid} of ${invoice.cryptoAmount} ${TICKER[coin]} is seen.`
+const restAsked = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Send the remaining ${invoice.cryptoAmountDue} ${TICKER[coin]} to the same address.`
+const RATE_EXPIRED = "The rate expired before the full amount arrived. Don't send more; what you sent is refunded."
+
+// A part-paid invoice stays open past its rate window until it closes, and past the window asks for no more. When the
+// window ends in view, the words it ends are hidden in place, so the notice and the rate line keep their height.
+function partLines(invoice: api.InvoiceView, coin: "btc" | "xmr", signal: AbortSignal): { notice: Kid; rate: HTMLElement } {
+  const left = () => (Date.parse(invoice.expiresAt) - api.serviceNow()) / 1000
+  if (left() <= 0) return { notice: partSeen(invoice, coin), rate: el("span", {}, RATE_EXPIRED) }
+  const rest = el("span", {}, restAsked(invoice, coin))
+  const time = el("span", {})
+  const held = el("span", {}, "Waiting for the rest of the payment", SEP, "Rate held ", time)
+  const expired = el("span", { class: "sizer" }, RATE_EXPIRED)
+  onTheSecond(left, () => {
+    if (left() > 0) time.textContent = clock(left())
+    else if (expired.classList.contains("sizer")) {
+      rest.classList.add("sizer")
+      held.classList.add("sizer")
+      expired.classList.remove("sizer")
+    }
+  }, signal)
+  return { notice: [partSeen(invoice, coin), " ", rest], rate: el("span", { class: "sized" }, held, expired) }
+}
 
 function cancelLink(s: OrderState): HTMLAnchorElement {
   const working = s.busy === "cancel"
@@ -405,10 +426,11 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
   const due = partial ? inv.cryptoAmountDue! : inv.cryptoAmount!
   const uri = paymentUri(coin, inv.address!, due)
   holdEnds(signal)(s.hold !== null)
+  const part = partial ? partLines(inv, coin, signal) : null
   // a part paid takes the bookmark's sentence with its notice; a phone opens its wallet from the link under the address, a laptop from the QR's card
   return screen({ title: `Pay with ${methodName(coin)}`, lead: [...orderLine(s), partial ? null : [". ", el("span", { class: "nowrap" }, "Bookmark this page to come back to it.")]],
     alt: partial ? null : cancelLink(s) },
-    partial ? alertBox("warn", "alert", null, partSentence(inv, coin)) : null,
+    part ? alertBox("warn", "alert", null, part.notice) : null,
     insteadLine(inv),
     el("div", { class: "qr-grid" },
       uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`), el("a", { href: uri }, WALLET)) : null,
@@ -416,7 +438,7 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
       copyField(`${partial ? "rest to send" : "amount"} in ${TICKER[coin]}`, due),
       copyField(`${methodName(coin)} address`, inv.address!)),
     uri ? el("a", { class: "wallet", href: uri }, WALLET) : null,
-    el("div", { class: "note waiting" }, el("span", {}, partial ? "Waiting for the rest of the payment" : "Waiting for payment", SEP, rateLine(inv, signal)), referenceLine(inv.invoiceId)),
+    el("div", { class: "note waiting" }, part ? part.rate : el("span", {}, "Waiting for payment", SEP, rateLine(inv, signal)), referenceLine(inv.invoiceId)),
     // a wait the tab is in shows why the link does nothing until it is over
     actionNote(s, partial ? null : signal))
 }

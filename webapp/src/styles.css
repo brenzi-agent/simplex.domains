@@ -448,8 +448,9 @@ svg.qr { display: block; width: 132px; height: auto; }
 .countdown b svg.i { width: .8em; height: .8em; }
 .countdown p { display: grid; color: var(--ink-soft); font-size: var(--fs-small); }
 /* the words in view and the longest ones, hidden, share one cell */
-.countdown p > * { grid-area: 1 / 1; }
-.countdown .sizer { visibility: hidden; }
+.countdown p > *, .sized > * { grid-area: 1 / 1; }
+.sized { display: grid; }
+.sizer { visibility: hidden; }
 
 .code-display { display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 20px; border-radius: 16px; background: var(--chip); border: 1px solid var(--surface-line);
   font: 600 16px var(--mono); letter-spacing: .02em; }
