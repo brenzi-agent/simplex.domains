@@ -110,15 +110,17 @@ export async function retargetOrder(record: store.OrderRecord, label: string, li
 export type Priced = Pick<Quote, "price" | "years" | "termStart"> & api.ChainInfo
 
 export type BuiltSpend = BuiltOrder & { spend: api.SpendRequest }
+// the order whose balance pays, and its name code, which signs the spend
+export type BalanceSource = Pick<store.OrderRecord, "registrationId" | "ownerCode">
 
 // the order of another name under the record's code, as the service makes the paying order's owner the new order's
-export const spendDraft = (record: store.OrderRecord, label: string, links: api.Links, quote: Priced): Draft =>
+export const spendDraft = (record: BalanceSource, label: string, links: api.Links, quote: Priced): Draft =>
   ({ label, links, chain: chainOf(quote), years: quote.years, termStart: quote.termStart, ownerCode: record.ownerCode })
 
 // Another name paid from the record's balance as the page read it, `draft` being spendDraft's: the order and the spend,
 // signed by the record's code. When the balance does not cover the price, all of it pays and an invoice in `method` is
 // made for the rest.
-export async function spendRequest(record: store.OrderRecord, draft: Draft, price: number, balance: number, method: api.Method): Promise<BuiltSpend> {
+export async function spendRequest(record: BalanceSource, draft: Draft, price: number, balance: number, method: api.Method): Promise<BuiltSpend> {
   const built = await orderRequest(draft)
   const wallet = walletOf(record.ownerCode)!
   const timestamp = now()
@@ -133,7 +135,7 @@ export async function spendRequest(record: store.OrderRecord, draft: Draft, pric
 
 // The spend sent as it was built, so a resend after a lost answer is the same order; the new order is kept with the
 // record's code. A balance changed since it was read throws BalanceChanged.
-export async function sendSpend(record: store.OrderRecord, draft: Draft, built: BuiltSpend): Promise<store.OrderRecord> {
+export async function sendSpend(record: BalanceSource, draft: Draft, built: BuiltSpend): Promise<store.OrderRecord> {
   const res = await api.spend(record.registrationId, built.spend)
   const paidBy = "invoiceId" in res
     ? { ...paidWith(res), ids: { registrationId: res.registration.id, invoiceId: res.invoiceId } }
@@ -143,7 +145,7 @@ export async function sendSpend(record: store.OrderRecord, draft: Draft, built: 
   return next
 }
 
-export async function spendBalance(record: store.OrderRecord, label: string, links: api.Links, quote: Priced, balance: number, method: api.Method): Promise<store.OrderRecord> {
+export async function spendBalance(record: BalanceSource, label: string, links: api.Links, quote: Priced, balance: number, method: api.Method): Promise<store.OrderRecord> {
   const draft = spendDraft(record, label, links, quote)
   return sendSpend(record, draft, await spendRequest(record, draft, quote.price, balance, method))
 }

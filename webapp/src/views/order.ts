@@ -654,22 +654,31 @@ function closedAction(s: OrderState, closed: ClosedCase): HTMLButtonElement {
   return newInvoiceButton(s, closed === "received" && !record.cancelled ? "quiet" : "", reorder)
 }
 
-// A cancelled order is ordered again on Check your order, with the same name code, saved already, and the same links.
+// The balance that paid part of an order, as its own order reads now; null when none is left.
+async function balanceOf(source: string): Promise<session.AppliedBalance | null> {
+  return session.appliedBalance(source, (await api.readRegistration(source)).balance)
+}
+
+// A cancelled order is ordered again on Check your order, with the same name code, saved already, the same links, and
+// the balance that paid part of it, if any is left.
 async function orderAgain(record: store.OrderRecord): Promise<void> {
   const gen = opened
   dispatch({ type: "reorder-started" })
   let quote: Awaited<ReturnType<typeof flow.quoteOf>>
+  let balance: session.AppliedBalance | null
   try {
     quote = await flow.quoteOf(record.label)
+    balance = record.balanceSource ? await balanceOf(record.balanceSource) : null
   } catch (e) {
     if (holdOn(e, "Nothing was charged. ", gen)) return
     return answer(gen, { type: "reorder-failed", note: warning("The name could not be checked now. Try again in a moment.") })
   }
   if (!isOpen(gen)) return
   if (!quote) return go(searchLink(record.label))
+  if (balance) session.setActiveBalance(balance)
   session.setCheckout({
     label: record.label, price: quote.price, years: quote.years, termStart: quote.termStart, chain: flow.chainOf(quote), contact: record.contact, channel: record.channel,
-    method: record.method === "code" || record.method === "balance" ? "btc" : record.method, code: null, balance: null, ownerCode: record.ownerCode, saved: true, agreed: false, searchAt: historyPlace(), step: "review",
+    method: record.method === "code" || record.method === "balance" ? "btc" : record.method, code: null, balance, ownerCode: record.ownerCode, saved: true, agreed: false, searchAt: historyPlace(), step: "review",
   })
   go(checkoutUrl("review"))
 }
@@ -817,6 +826,7 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
       if (isOpen(gen)) go(searchLink(record.label))
       return
     }
+    if (record.balanceSource) return await spendAgain(record, record.balanceSource, quote, gen, method)
     const built = await flow.orderRequest(flow.draftAgain(record, quote))
     const res = await api.createOrder(built.request, method, invoice.amount)
     const next = store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id })
@@ -836,6 +846,7 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
       if (own && isOpen(gen)) return go(store.orderUrl(own))
     }
     if (e instanceof api.ApiError && e.code === "catalog_changed" && typeof e.body.price === "number") return dispatch({ type: "price-changed", price: e.body.price })
+    if (e instanceof api.BalanceChanged) return dispatch({ type: "reorder-failed", note: warning("Your balance changed meanwhile. Nothing was charged. Try again.") })
     if (e instanceof api.ApiError && e.code === "provider_unavailable") {
       return dispatch({ type: "reorder-failed", note: { tone: "warn", icon: "alert", title: `${methodName(method)} is unavailable right now`,
         text: "Nothing was charged. Try again later, or ", link: { text: "order the name again", href: searchLink(record.label), after: " to pay another way." } } })
@@ -843,6 +854,22 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
     if (holdOn(e, "Nothing was charged. ", gen)) return
     dispatch({ type: "reorder-failed", note: { tone: "warn", icon: "alert", title: "That did not go through", text: "Nothing was charged. Try again in a moment." } })
   }
+}
+
+// An invoice for the rest of a price that a balance paid part of is made again by a new spend of that balance as it is
+// now; once the balance is spent or refunded, the name's search opens instead, with the name's price.
+async function spendAgain(record: store.OrderRecord, source: string, quote: flow.Priced, gen: number, method: api.Method): Promise<void> {
+  const balance = await balanceOf(source)
+  if (!isOpen(gen)) return
+  if (!balance) return go(searchLink(record.label))
+  if (balance.heldUntil) {
+    return dispatch({ type: "reorder-failed", note: warning(`Your balance is in use by another open invoice until ${timeOf(Date.parse(balance.heldUntil))}. Nothing was charged.`) })
+  }
+  // the balance's order has the same name code as this one, which signs the spend
+  const next = await flow.spendBalance({ registrationId: source, ownerCode: record.ownerCode }, record.label, { contact: record.contact, channel: record.channel }, quote, balance.amount, method)
+  const url = store.orderUrl(next)
+  store.updateOrder(record.registrationId, { replacedBy: url })
+  if (isOpen(gen)) go(url)
 }
 
 type StageState = "done" | "active" | "failed" | ""
