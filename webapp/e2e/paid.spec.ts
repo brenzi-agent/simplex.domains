@@ -716,6 +716,12 @@ test("an invoice that closed while its payment was confirming says a payment rea
 })
 
 const RATE_EXPIRED = "The rate expired before the full amount arrived. Don't send more; what you sent is refunded."
+// the controls that ask for more of the payment, which go once the rate expires; the address and the reference stay
+const payMore = (page: Page) => [
+  onStep(page).getByRole("img", { name: "Bitcoin payment" }),
+  onStep(page).getByRole("button", { name: "Copy rest to send in BTC" }),
+  onStep(page).getByRole("link", { name: "Open in wallet" }),
+]
 
 test("an invoice past its rate window that part of the payment reached stays open, asks for no more, and registers once paid", async ({ page, request }) => {
   const label = uniqueLabel("due")
@@ -727,6 +733,10 @@ test("an invoice past its rate window that part of the payment reached stays ope
   await expect(page.getByText(/^Part of the payment arrived: [\d.]+ of [\d.]+ BTC is seen\.$/)).toBeVisible()
   await expect(page.getByText(RATE_EXPIRED)).toBeVisible()
   await expect(page.getByText(/Rate held|Send the remaining/), "no countdown and no ask for the rest").toHaveCount(0)
+  for (const control of payMore(page)) await expect(control).toHaveCount(0)
+  await expect(onStep(page).getByText(/rest to send|Open in wallet/i), "nothing that asks for more is drawn, hidden or not").toHaveCount(0)
+  await expect(onStep(page).getByRole("button", { name: "Copy Bitcoin address" })).toBeVisible()
+  await expect(onStep(page).getByText(`Reference ${invoiceId}`)).toBeVisible()
   await shot(page, "N4f-partial-rate-expired")
   await control(request, `settle/${invoiceId}`)
   await waitRegistered(page, label)
@@ -739,13 +749,13 @@ async function payLayout(page: Page): Promise<Record<string, string[]>> {
   const layout: Record<string, string[]> = {}
   for (const [device, width] of [["desktop", 1280], ["phone", 390]] as const) {
     await page.setViewportSize({ width, height: 900 })
-    layout[device] = await page.evaluate(() => [...document.querySelectorAll("body > main :is(.screen-body, .notice > div, .waiting) > *")]
+    layout[device] = await page.evaluate(() => [...document.querySelectorAll("body > main :is(.screen-body, .notice > div, .qr-grid, .waiting) > *")]
       .map((n) => { const b = n.getBoundingClientRect(); return `${n.tagName} ${Math.round(b.top)} ${Math.round(b.height)}` }))
   }
   return layout
 }
 
-test("a part-paid invoice whose rate window ends in view swaps the countdown for the expired line in the same room", async ({ page, request }) => {
+test("a part-paid invoice whose rate window ends in view swaps the countdown for the expired line and hides what asks for more, in the same room", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("due"), { method: "btc" })
   await control(request, `partial/${invoiceId}`)
   let expiresAt: string | null = null
@@ -759,11 +769,17 @@ test("a part-paid invoice whose rate window ends in view swaps the countdown for
   const rest = page.getByText(/^Send the remaining/)
   await expect(held).toBeVisible()
   await expect(rest).toBeVisible()
+  for (const control of payMore(page)) await expect(control).toBeVisible()
   const before = await payLayout(page)
   await expect(held, "the layout was read while the rate was held").toBeVisible()
   await expect(page.getByText(RATE_EXPIRED)).toBeVisible()
   await expect(held).toBeHidden()
   await expect(rest).toBeHidden()
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 })
+    for (const control of payMore(page)) await expect(control, `${width}px`).toBeHidden()
+    await expect(onStep(page).getByRole("button", { name: "Copy Bitcoin address" }), `${width}px`).toBeVisible()
+  }
   expect(await payLayout(page)).toEqual(before)
   // the page's read held open meanwhile answers nothing this test needs
   await page.unrouteAll({ behavior: "ignoreErrors" })
