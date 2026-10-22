@@ -276,7 +276,7 @@ test("a payment that arrives after expiry turns the open page into the refund pa
   const label = uniqueLabel("late")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await control(request, `expire/${invoiceId}`)
-  await expect(page.getByText("Nothing was received before its rate window closed.")).toBeVisible()
+  await expect(page.getByText("Nothing was received before it closed.")).toBeVisible()
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByText("The payment arrived after this invoice had closed")).toBeVisible()
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()

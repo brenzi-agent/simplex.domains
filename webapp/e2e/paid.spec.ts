@@ -636,7 +636,7 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   expect(await checkoutOwnerCode(page).catch(() => null), "the checkout ended").toBeNull()
   expect(await ownerCodeOf(second), "the new order's name code").toBe(ownerCode)
   await control(request, `expire/${second}`)
-  await expect(page.getByText("Nothing was received before its rate window closed.")).toBeVisible()
+  await expect(page.getByText("Nothing was received before it closed.")).toBeVisible()
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await shot(page, "N4c-expired")
 
@@ -729,7 +729,7 @@ test("an invoice that closed while its payment was confirming says a payment rea
   await shot(page, "N12f-history-expired-paid")
 })
 
-const RATE_EXPIRED = "The rate expired before the full amount arrived. Don't send more; what you sent is refunded."
+const INVOICE_EXPIRED = "The invoice expired before the full amount arrived. Don't send more; what you sent is refunded."
 // the controls that ask for more of the payment, which go once the rate expires; the address and the reference stay
 const payMore = (page: Page) => [
   onStep(page).getByRole("img", { name: "Bitcoin payment" }),
@@ -745,7 +745,7 @@ test("an invoice past its rate window that part of the payment reached stays ope
   await page.reload()
   await expect(onStep(page).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   await expect(page.getByText(/^Part of the payment arrived: [\d.]+ of [\d.]+ BTC is seen\.$/)).toBeVisible()
-  await expect(page.getByText(RATE_EXPIRED)).toBeVisible()
+  await expect(page.getByText(INVOICE_EXPIRED)).toBeVisible()
   await expect(page.getByText(/Invoice valid for|Send the remaining/), "no countdown and no ask for the rest").toHaveCount(0)
   for (const control of payMore(page)) await expect(control).toHaveCount(0)
   await expect(onStep(page).getByText(/rest to send|Open in wallet/i), "nothing that asks for more is drawn, hidden or not").toHaveCount(0)
@@ -794,7 +794,7 @@ test("a part-paid invoice whose rate window ends in view swaps the countdown for
   for (const control of payMore(page)) await expect(control).toBeVisible()
   const before = await payLayout(page)
   await expect(held, "the layout was read while the rate was held").toBeVisible()
-  await expect(page.getByText(RATE_EXPIRED)).toBeVisible()
+  await expect(page.getByText(INVOICE_EXPIRED)).toBeVisible()
   await expect(held).toBeHidden()
   await expect(rest).toBeHidden()
   const times = await page.evaluate(() => (window as unknown as { __times: string[] }).__times)

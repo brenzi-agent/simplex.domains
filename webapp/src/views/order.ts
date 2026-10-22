@@ -460,18 +460,18 @@ function turnOff<T extends HTMLElement>(details: T, off: boolean): T {
 
 const partSeen = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Part of the payment arrived: ${invoice.cryptoAmountPaid} of ${invoice.cryptoAmount} ${TICKER[coin]} is seen.`
 const restAsked = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Send the remaining ${invoice.cryptoAmountDue} ${TICKER[coin]} to the same address.`
-const RATE_EXPIRED = "The rate expired before the full amount arrived. Don't send more; what you sent is refunded."
+const INVOICE_EXPIRED = "The invoice expired before the full amount arrived. Don't send more; what you sent is refunded."
 
 // A part-paid invoice stays open past its rate window until it closes, and past the window asks for no more: of its
 // payment controls only the address stays. When the window ends in view, the words and controls that ask for more are
 // hidden in place, so nothing on the screen moves.
 function partLines(invoice: api.InvoiceView, coin: "btc" | "xmr", payMore: (HTMLElement | null)[], signal: AbortSignal): { notice: Kid; rate: HTMLElement; ended: boolean } {
   const left = () => (Date.parse(invoice.expiresAt) - api.serviceNow()) / 1000
-  if (left() <= 0) return { notice: partSeen(invoice, coin), rate: el("span", {}, RATE_EXPIRED), ended: true }
+  if (left() <= 0) return { notice: partSeen(invoice, coin), rate: el("span", {}, INVOICE_EXPIRED), ended: true }
   const rest = el("span", {}, restAsked(invoice, coin))
   const time = el("span", {})
   const held = el("span", {}, "Waiting for the rest of the payment", SEP, "Invoice valid for ", time)
-  const expired = el("span", { class: "sizer" }, RATE_EXPIRED)
+  const expired = el("span", { class: "sizer" }, INVOICE_EXPIRED)
   onTheSecond(left, () => {
     if (left() > 0) time.textContent = clock(left())
     else if (expired.classList.contains("sizer")) {
@@ -627,7 +627,7 @@ function closedWords(closed: ClosedCase, inv: api.InvoiceView): [Tone, Kid] {
       const arrived = coin && partlyPaid(inv) && !inv.paidInFull ? `${inv.cryptoAmountPaid} ${TICKER[coin]} arrived, which is not the full amount.` : "A payment did not complete before the invoice closed."
       return ["warn", [`${arrived} Write to `, el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with the reference below and we will sort it out."]]
     }
-    case "expired": return ["info", inv.cryptoCurrency ? "Nothing was received before its rate window closed." : "Nothing was paid before it closed."]
+    case "expired": return ["info", inv.cryptoCurrency ? "Nothing was received before it closed." : "Nothing was paid before it closed."]
   }
 }
 
