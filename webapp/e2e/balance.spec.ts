@@ -390,3 +390,32 @@ test("a review following the order that holds its balance says the hold has no t
   await control(request, `partial/${holder}`)
   await expect(held).toHaveText(`Your balance is in use by ${dearer}.simplex while its payment is being confirmed.`, { timeout: 10_000 })
 })
+
+test("a held balance is waited for on the service's clock, however far the device's runs ahead, and find refused for its limit is asked again only after the wait it names", async ({ page, request }) => {
+  // the device's clock two hours ahead, past the end of any hold the service gives
+  await page.clock.install({ time: Date.now() + 2 * 3600_000 })
+  await takenOrder(page, request, uniqueLabel("bskew"))
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  await search(page, uniqueLabel("bskewc"))
+  await toReview(page)
+  const other = await page.context().newPage()
+  await yourNames(other)
+  await balanceRow(other).getByRole("button", { name: "Use" }).click()
+  await search(other, sevenLetters())
+  await toReview(other)
+  await payButton(other).click()
+  await other.waitForURL(/\?order=/)
+  await other.close()
+
+  let finds = 0
+  await page.route("**/api/registration/find", (route) => {
+    finds++
+    return route.fulfill({ status: 429, headers: { "retry-after": "60" }, json: { error: "rate_limited" } })
+  })
+  const reads: string[] = []
+  page.on("request", (r) => { if (r.method() === "GET" && /\/api\/registration\/[^/?]+$/.test(new URL(r.url()).pathname)) reads.push(r.url()) })
+  await onStep(page).getByRole("button", { name: "Register with your balance" }).click()
+  await expect(onStep(page).locator(".line", { hasText: "Your balance is in use by another order until" })).toBeVisible()
+  await page.waitForTimeout(9_000)
+  expect([reads.length, finds], "reads of the balance and asks of find in 9 s").toEqual([1, 1])
+})

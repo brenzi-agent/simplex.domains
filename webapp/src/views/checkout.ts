@@ -5,7 +5,7 @@ import * as flow from "../flow.ts"
 import { dateOf, dollars, freeDays, methodName, termEnd, termOf } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
 import type { LinkKind } from "../names.ts"
-import { heldWords, holderStill, holdWait } from "../screens/balance.ts"
+import { CONFIRMING_READ_MS, heldWords, holderStill, holdWait } from "../screens/balance.ts"
 import { REVEAL_HOURS } from "../screens/order.ts"
 import {
   balanceHeld, changeOf, heldForThisName, payWaits, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
@@ -78,11 +78,13 @@ const pause = (ms: number, signal: AbortSignal) => new Promise<void>((done) => {
 
 // The balance as its order reads now, in the tab and on the review. While an invoice holds it, Pay waits: the holder,
 // as the code's find names it, is followed until its invoice closes; else the balance is read again when the hold can
-// end, or after a pause while the holder's payment is confirming. Reads are never closer than the minimum.
+// end, or after a pause while the holder's payment is confirming. Reads are never closer than the minimum, on the
+// service's clock, and find, which has a tight limit of its own, is asked again only after the wait a refusal names.
 async function watchBalance(source: string, signal: AbortSignal): Promise<void> {
   let holder: store.OrderRecord | null = null
+  let findAfter = 0
   while (!signal.aborted) {
-    const readAt = Date.now()
+    const readAt = api.serviceNow()
     let balance: api.Balance | null
     try {
       balance = (await api.readRegistration(source, undefined, signal)).balance
@@ -94,7 +96,13 @@ async function watchBalance(source: string, signal: AbortSignal): Promise<void> 
     session.updateActiveBalance(source, session.appliedBalance(source, balance))
     if (!act({ type: "balance-read", balance }) || !balanceHeld(state.checkout)) return
     const paying = store.orderByRegistration(source)
-    holder ??= paying ? await flow.balanceHolder(paying).catch(() => null) : null
+    if (!holder && paying && api.serviceNow() >= findAfter) {
+      try {
+        holder = await flow.balanceHolder(paying)
+      } catch (e) {
+        findAfter = api.serviceNow() + (api.retryDelay(e, RETRY_MS) ?? CONFIRMING_READ_MS)
+      }
+    }
     if (signal.aborted) return
     const seen = holder && { label: holder.label, tld: holder.tld, url: store.orderUrl(holder) }
     if (JSON.stringify(seen) !== JSON.stringify(state.holder)) dispatch({ type: "holder-seen", holder: seen })
@@ -102,7 +110,7 @@ async function watchBalance(source: string, signal: AbortSignal): Promise<void> 
     if (followed) await follow(holder!.invoiceId!, signal, (read) => holderStill(read, state.checkout.balance?.heldUntil ?? null))
     // a holder whose invoice closed may be followed by another, which find names on the next turn
     if (followed) holder = null
-    await pause(holdWait(state.checkout.balance?.heldUntil ?? null, followed, readAt, Date.now()), signal)
+    await pause(holdWait(state.checkout.balance?.heldUntil ?? null, followed, readAt, api.serviceNow()), signal)
   }
 }
 
