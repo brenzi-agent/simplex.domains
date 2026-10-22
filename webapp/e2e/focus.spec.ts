@@ -62,7 +62,8 @@ test("a checkout drawn again for the tab's open order keeps focus on its heading
   await startOrder(page, uniqueLabel("headopen"), { method: "btc" })
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   await search(page, uniqueLabel("headnext"))
-  await toReview(page)
+  // the terms left unticked, so focus stays where the review put it
+  await toReview(page, false)
   await expect(page.getByText(/is waiting for its payment/)).toBeVisible()
   await expect(page.getByRole("heading", { name: "Check your order" })).toBeFocused()
 })

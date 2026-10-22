@@ -27,6 +27,7 @@ export type CheckoutEvent =
   | { type: "opened"; step: CheckoutStep; checkout: Checkout; sending: boolean; waiting: WaitingOrder | null; hold: Hold | null }
   | { type: "link-set"; kind: LinkKind; link: string }
   | { type: "saved"; saved: boolean }
+  | { type: "agreed"; agreed: boolean }
   | { type: "method-chosen"; method: Method }
   | { type: "waiting-settled" }
   | { type: "open-order-seen"; order: OpenOrder | null }
@@ -45,6 +46,7 @@ export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial
   switch (e.type) {
     case "link-set": return e.kind === "contact" ? { contact: e.link } : { channel: e.link }
     case "saved": return { saved: e.saved }
+    case "agreed": return { agreed: e.agreed }
     case "method-chosen": return e.method === checkout.method || e.method === checkout.unavailable ? null : { method: e.method }
     case "order-refused":
       if (e.reason === "code") return { code: null, codeError: e.error }
@@ -63,6 +65,7 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
     case "opened": return { ...s, step: e.step, checkout: e.checkout, sending: e.sending, busy: false, waiting: e.waiting, hold: e.hold, refusal: null }
     case "link-set":
     case "saved":
+    case "agreed":
     case "method-chosen": return change ? { ...s, checkout } : s
     case "waiting-settled": return { ...s, waiting: null }
     case "open-order-seen": return { ...s, openOrder: e.order }

@@ -44,8 +44,8 @@ async function focusStops(page: Page): Promise<string[]> {
 
 // The controls in view whose look stays the same under the pointer.
 async function stillOnHover(page: Page): Promise<string[]> {
-  // a chosen method and a field whose colour says its verdict keep their look
-  const controls = page.locator("body a[href]:visible, body button:visible:enabled, body [role=radio][aria-checked=false]:visible, body .check:visible, body .field:not(.ok, .bad):visible")
+  // a chosen method, a ticked box and a field whose colour says its verdict keep their look
+  const controls = page.locator("body a[href]:visible, body button:visible:enabled, body [role=radio][aria-checked=false]:visible, body .check:not(:has(input:checked)):visible, body .field:not(.ok, .bad):visible")
   const style = (i: number) => controls.nth(i).evaluate((e) => {
     const cs = getComputedStyle(e)
     const box = e.querySelector(".box")

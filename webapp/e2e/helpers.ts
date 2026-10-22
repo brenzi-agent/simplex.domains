@@ -183,6 +183,7 @@ export const checkoutOwnerCode = (page: Page) => page.evaluate((key) => JSON.par
 export const LINKS_HEADING = "What should your name open?"
 export const CODE_HEADING = "Save your name code"
 export const SAVED = "I have saved my name code"
+export const AGREE = /^I agree to SimpleX name terms/
 
 // An available name's Register, then Skip for now, up to the name code step, which makes the code.
 export async function toCodeStep(page: Page): Promise<void> {
@@ -192,20 +193,29 @@ export async function toCodeStep(page: Page): Promise<void> {
   await expect(onStep(page).getByRole("heading", { name: CODE_HEADING })).toBeVisible()
 }
 
-// On from the name code step, its box ticked, to Check your order.
-export async function savedToReview(page: Page): Promise<void> {
+// On from the name code step, its box ticked, to Check your order, its terms agreed to unless `agree` is false.
+export async function savedToReview(page: Page, agree = true): Promise<void> {
   const box = onStep(page).getByRole("checkbox", { name: SAVED })
   // a code step gone back to keeps its box ticked
   if (!await box.isChecked()) await onStep(page).getByText(SAVED).click()
   await expect(box).toBeChecked()
   await onStep(page).getByRole("button", { name: "Continue" }).click()
   await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
+  if (agree) await agreeToTerms(page)
+}
+
+// Check your order's terms ticked, which every order waits for; the box is pressed, as its words hold the terms' link.
+export async function agreeToTerms(page: Page): Promise<void> {
+  const box = onStep(page).getByRole("checkbox", { name: AGREE })
+  // a review gone back to keeps its box ticked
+  if (!await box.isChecked()) await onStep(page).locator(".check.terms .box").click()
+  await expect(box).toBeChecked()
 }
 
 // An available name's Register, through the links skipped and the name code saved, to Check your order.
-export async function toReview(page: Page): Promise<void> {
+export async function toReview(page: Page, agree = true): Promise<void> {
   await toCodeStep(page)
-  await savedToReview(page)
+  await savedToReview(page, agree)
 }
 
 // Each link field's profile, shown once focus has left the field, which shows its link alone while focused.

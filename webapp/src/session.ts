@@ -22,6 +22,8 @@ export interface Checkout {
   ownerCode: string | null
   // the buyer ticked that they keep a copy of the name code, which the review waits for
   saved: boolean
+  // the buyer ticked that they agree to the name terms, which the order waits for
+  agreed: boolean
   // the history entry of the search the checkout started from
   searchAt: number
   // the step last opened, where Your names continues the checkout

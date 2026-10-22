@@ -14,7 +14,7 @@ const OPEN_ORDER = { invoiceId: "inv-9", confirming: false }
 function checkout(change: Partial<Checkout> = {}): Checkout {
   return {
     label: "alice1", price: 1500, years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, chain: CHAIN, contact: "", channel: "", method: "btc", code: null, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF",
-    saved: true, searchAt: 0, step: "review", ...change,
+    saved: true, agreed: false, searchAt: 0, step: "review", ...change,
   }
 }
 
@@ -72,6 +72,7 @@ describe("changeOf", () => {
     expect(changeOf(s, { type: "link-set", kind: "contact", link: CONTACT })).toEqual({ contact: CONTACT })
     expect(changeOf(s, { type: "link-set", kind: "channel", link: CHANNEL })).toEqual({ channel: CHANNEL })
     expect(changeOf(s, { type: "saved", saved: false })).toEqual({ saved: false })
+    expect(changeOf(s, { type: "agreed", agreed: true })).toEqual({ agreed: true })
     expect(changeOf(s, { type: "method-chosen", method: "xmr" })).toEqual({ method: "xmr" })
     expect(changeOf(s, { type: "order-refused", reason: "code", error: "This code was already used." })).toEqual({ code: null, codeError: "This code was already used." })
     expect(changeOf(s, { type: "price-changed", price: 2500 })).toEqual({ price: 2500 })
@@ -120,6 +121,12 @@ describe("reduce", () => {
     const ticked = reduce(code, { type: "saved", saved: true })
     expect(ticked).toEqual({ ...code, checkout: { ...code.checkout, saved: true } })
     expect(reduce(ticked, { type: "saved", saved: false })).toEqual(code)
+  })
+  it("agreed ticks and unticks the terms box that lets the buyer send the order", () => {
+    const review = STATES.review
+    const ticked = reduce(review, { type: "agreed", agreed: true })
+    expect(ticked).toEqual({ ...review, checkout: { ...review.checkout, agreed: true } })
+    expect(reduce(ticked, { type: "agreed", agreed: false })).toEqual(review)
   })
   it("opened keeps the code the tab's checkout carries, as Back and Register for the same name give it", () => {
     expect(reduce(s, opened(s, { checkout: checkout({ code: CODE }) }))).toEqual({ ...s, checkout: checkout({ code: CODE }) })

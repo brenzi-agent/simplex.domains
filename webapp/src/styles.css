@@ -368,6 +368,9 @@ html:has(.modal[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .review:has(.line) { gap: 8px; }
 .review:has(.line) .pay-with { --block-gap: 8px; }
 .review:has(.line) .trow { padding-block: 4px; }
+.review:has(.line) .method { height: 56px; }
+.screen-body:has(> .review .line) { gap: 8px; }
+.screen-body:has(> .review .line) > [role="status"]:empty { margin-top: -8px; }
 .notes { display: grid; gap: 4px; font-size: var(--fs-small); color: var(--ink-soft); text-align: center; text-wrap: balance; }
 /* the payment methods as the badges checkout's cards: the mark over the name, the chosen one ringed */
 .methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
@@ -471,6 +474,11 @@ svg.qr { display: block; width: 132px; height: auto; }
 .check .box::after { content: ""; display: block; width: 5px; height: 10px; margin: 1px auto 0; border: solid var(--primary-ink); border-width: 0 2px 2px 0; rotate: 45deg; opacity: 0; }
 .check .box { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--line-strong); background: var(--surface); flex: none; }
 .check input:checked + .box::after { opacity: 1; }
+/* Check your order's terms, centred in the room between the order and the main button */
+.screen-body:has(> .mid) { display: flex; flex-direction: column; }
+.mid { flex: 1; display: grid; place-items: center; }
+.check.terms { align-items: flex-start; font-size: var(--fs-small); font-weight: 500; line-height: 1.45; }
+.check.terms .box { margin-top: 1px; }
 
 /* Your names: a card of names and one of codes, a row per name or code with its actions as text links */
 .card.list { padding: 0; }

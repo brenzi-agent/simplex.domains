@@ -7,7 +7,7 @@ import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
   blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, LINKS_HEADING, MOCK, mockRegistration, onStep, oracleQuote, payButton, previewsShown, REGISTRATION_MS,
-  registrationOf, restoreOrder, SAVED, savedToReview, search, searchName, shot, shownCode, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered,
+  registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
@@ -277,7 +277,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await expect(step.getByRole("heading", { name: "Check your order" })).toBeFocused()
   // the order, then how it pays and what to know before paying, in one column, and under it the line a wait would say
   expect(await step.locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["card order", "pay-with", "notes"])
-  await expect(step.locator(".screen-body > .review + [role=status]")).toHaveCount(1)
+  await expect(step.locator(".screen-body > .review + [role=status] + .mid")).toHaveCount(1)
   await expect(step.locator(".card.order .name")).toHaveText(`${label}.simplex`)
   // the term holds the free days until the paid years start, which are folded into it
   await expect(step.locator(".card.order .trow")).toHaveText([/^Term2 years and (\d{2,} days|1 day)$/, /^Registered until31\u00a0December 2028$/, /^Total\$\d+$/])
@@ -286,12 +286,20 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await expect(step.getByRole("button", { name: "Contact F1Y8m3, contact address" })).toBeVisible()
   await expect(step.getByRole("button", { name: /^Change/ })).toHaveCount(0)
   await expect(step.getByRole("radio")).toHaveText(["Card", "Bitcoin", "Monero"])
-  await expect(step.getByRole("checkbox")).toHaveCount(0)
   // the ETH link ends the note under the methods, and nothing sits under Pay
   const dapp = step.locator(".notes").getByRole("link", { name: "Pay with ETH" })
   await expect(dapp).toHaveAttribute("href", "https://app.simplex.domains")
   await expect(step.locator(".notes")).toHaveText("After paying, keep this page open, or reopen its link within 24 hours. Pay with ETH")
   await expect(step.locator(".actions-row .alt")).toHaveCount(0)
+  // the one box to tick, the terms, holds Pay until it is ticked; its link opens the terms beside the order
+  await expect(step.getByRole("checkbox")).toHaveCount(1)
+  const terms = step.getByRole("checkbox", { name: AGREE })
+  await expect(terms).not.toBeChecked()
+  await expect(payButton(page), "Pay waits for the terms").toBeDisabled()
+  await expect(step.getByRole("link", { name: "SimpleX name terms" })).toHaveAttribute("href", "https://simplex.chat/")
+  await expect(step.getByRole("link", { name: "SimpleX name terms" })).toHaveAttribute("target", "_blank")
+  await agreeToTerms(page)
+  await expect(payButton(page)).toBeEnabled()
 
   // Back walks the steps in reverse, the box still ticked and the links kept
   await step.getByRole("link", { name: "Back" }).click()
@@ -303,6 +311,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await expect(step.getByRole("textbox", { name: "Channel" })).toHaveValue(channel)
   await step.getByRole("button", { name: "Continue" }).click()
   await expect(step.getByRole("heading", { name: "Check your order" })).toBeFocused()
+  await expect(step.getByRole("checkbox", { name: AGREE }), "the terms stay agreed to").toBeChecked()
 
   await payButton(page).click()
   await page.waitForURL(/\?order=/)
@@ -618,6 +627,9 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   await expect(page.locator(".list-row", { hasText: "Checkout not finished" }), "no second entry for the same code").toHaveCount(0)
   await page.goBack()
   await page.getByRole("radio", { name: "Bitcoin" }).click()
+  // an order made again is agreed to again
+  await expect(payButton(page)).toBeDisabled()
+  await agreeToTerms(page)
   await payButton(page).click()
   await page.waitForURL((url) => (url.searchParams.get("order") ?? invoiceId) !== invoiceId)
   const second = new URL(page.url()).searchParams.get("order")!

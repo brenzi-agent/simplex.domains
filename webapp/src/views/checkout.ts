@@ -23,6 +23,8 @@ const CHECKOUT_NOTE = "checkout-note"
 const SAVED_LABEL = "I have saved my name code"
 // the dApp that registers a name paid for in ETH
 const DAPP_URL = "https://app.simplex.domains"
+// the placeholder for the name terms, until their own page exists
+const TERMS_URL = "https://simplex.chat/"
 // the service takes a signed order's timestamp within this many seconds; an older one is signed anew
 const SIGNED_WINDOW_S = 600
 
@@ -196,7 +198,16 @@ const actionLabel = (text: string, s: CheckoutState) => s.sending && !s.busy ? "
 function payButton(s: CheckoutState, blocked: boolean): HTMLButtonElement {
   const pay = btn(actionLabel(payLabel(s.checkout), s), "", () => void submitOrder())
   pay.dataset.focus = "pay"
-  return setAction(pay, s.busy, blocked || s.sending || s.hold !== null)
+  return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !s.checkout.agreed)
+}
+
+// every order waits for the buyer to agree to the name terms; the terms open beside the order
+function termsBox(s: CheckoutState): HTMLElement {
+  const box = el("input", { type: "checkbox", checked: s.checkout.agreed, disabled: s.sending, "data-focus": "agreed" })
+  box.addEventListener("change", () => { if (!state.sending && !act({ type: "agreed", agreed: box.checked })) refresh() })
+  return el("div", { class: "mid" }, el("label", { class: "check terms" }, box, el("span", { class: "box" }),
+    el("span", {}, "I agree to ", el("a", { class: "nowrap", href: TERMS_URL, target: "_blank", rel: "noopener" }, "SimpleX name terms"),
+      " and do not knowingly violate any trademarks.")))
 }
 
 function payNote(s: CheckoutState, blocked: boolean, signal: AbortSignal): HTMLElement {
@@ -250,7 +261,8 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
       c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or check another code.`) : null,
       c.code ? null : blocked ? waitingNotice(blocked) : methodsBlock(s),
       c.code || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours. `, eth))),
-    payNote(s, blocked !== null, signal))
+    payNote(s, blocked !== null, signal),
+    termsBox(s))
 }
 
 function buildPriceChanged({ checkout: c }: CheckoutState): HTMLElement {

@@ -111,7 +111,8 @@ test("an unpaid invoice is pointed at from checkout without blocking a new order
 test("the line on another order follows it, saying when it is confirming and going once it is paid", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("follow"), { method: "btc" })
   await search(page, uniqueLabel("after"))
-  await toReview(page)
+  // the terms left unticked, so focus stays where the review put it
+  await toReview(page, false)
   const line = onStep(page).locator(".pay-with > .note")
   await expect(line).toHaveText("Another order is waiting for its payment. Open that order")
   await control(request, `confirming/${invoiceId}`)

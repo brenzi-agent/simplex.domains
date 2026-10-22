@@ -168,7 +168,7 @@ function register(): void {
     return go(checkoutUrl("links"))
   }
   session.setCheckout({
-    label, ...quote, contact: "", channel: "", method: "btc", code, ownerCode: null, saved: false,
+    label, ...quote, contact: "", channel: "", method: "btc", code, ownerCode: null, saved: false, agreed: false,
     searchAt: historyPlace(), step: "links",
   })
   go(checkoutUrl("links"))

@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown,
+  CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
   lineStarts, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, savedToReview, search, shot, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel,
   useCode, waitRegistered,
 } from "./helpers.ts"
@@ -12,7 +12,11 @@ test("the purchase steps swap the whole page, one screen at a time rising in, an
   const steps: [string, () => Promise<unknown>][] = [
     [LINKS_HEADING, () => page.getByRole("button", { name: "Register" }).click()],
     [CODE_HEADING, () => onStep(page).getByRole("button", { name: "Skip for now" }).click()],
-    ["Check your order", () => savedToReview(page)],
+    // the box ticked with a click on its words, which leaves focus where the new step puts it
+    ["Check your order", async () => {
+      await onStep(page).getByText(SAVED).click()
+      await onStep(page).getByRole("button", { name: "Continue" }).click()
+    }],
   ]
   for (const [heading, move] of steps) {
     await move()

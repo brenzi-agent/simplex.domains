@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, SAVED, search, test,
+  agreeToTerms, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, SAVED, search, test,
   toFullReview, uniqueLabel,
 } from "./helpers.ts"
 
@@ -101,6 +101,7 @@ test("the purchase steps and other screens swap without a near-empty frame", asy
     await page.goForward()
     await heading(page, "Check your order")
   })
+  await agreeToTerms(page)
   await expectNoEmptyFrame(page, "review to payment", async () => {
     await payButton(page).click()
     await heading(page, "Pay with Bitcoin")
