@@ -45,6 +45,9 @@ export function clock(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 }
 
+// a time of day on the reader's clock, as "09:05"
+export const timeOf = (ms: number) => new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+
 export function methodName(method: string): string {
   return ({ card: "Card", btc: "Bitcoin", xmr: "Monero", code: "Code" } as Record<string, string>)[method] ?? method
 }

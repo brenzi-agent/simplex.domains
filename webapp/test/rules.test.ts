@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, termEnd, termOf } from "../src/format.ts"
+import { clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, termEnd, termOf, timeOf } from "../src/format.ts"
 import { deepLinkOf } from "../dev/mock/links.ts"
 import { foldLabel, labelProblem, linkKind, linkProblem, LINK_MAX_BYTES, linkTooLong } from "../src/names.ts"
 
@@ -106,6 +106,12 @@ describe("formatting", () => {
     expect(termOf(2, 72)).toBe("2 years and 72 days")
     expect(termOf(5, 1)).toBe("5 years and 1 day")
     expect(termOf(2, 0)).toBe("2 years")
+  })
+
+  it("writes a time of day in 24 hours, its hour and minute in two digits", () => {
+    const at = new Date(2026, 9, 22, 9, 5, 59).getTime()
+    expect(timeOf(at)).toBe("09:05")
+    expect(timeOf(new Date(2026, 9, 22, 22, 47).getTime())).toBe("22:47")
   })
 
   it("ends a term its years of 365 days after its start, or after now once the start has passed", () => {

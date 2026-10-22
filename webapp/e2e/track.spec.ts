@@ -145,6 +145,7 @@ test("every purchase step fits a laptop's and a phone's window, its heading and 
   oneFrame(frames)
   await startOrder(page, uniqueLabel("fitcard"), { method: "card" })
   await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
+  await expect(page.locator(".name-check:not(.unchecked)")).toBeVisible()
   await fitsWindow(page, "5b-pay-card")
 })
 
@@ -413,18 +414,18 @@ for (const length of [15, 25, MAX_LABEL_LENGTH]) {
   })
 }
 
-test("a part paid takes the waiting line's place with its own, the payment keeping its heading still and fitting both windows", async ({ page, request }) => {
+test("a part paid takes the name's note with its notice, the payment keeping its heading still and fitting both windows", async ({ page, request }) => {
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
     const { invoiceId } = await startOrder(page, uniqueLabel("part"), { method: "btc" })
-    await expect(onStep(page).locator(".pay-status .waiting")).toBeVisible()
+    await expect(onStep(page).getByText("The name is available")).toBeVisible()
     const before = await headingAt(page)
     await control(request, `partial/${invoiceId}`)
     await expect(onStep(page).locator(".notice.warn", { hasText: "Part of the payment arrived" })).toBeVisible()
     expect(await headingAt(page), `the heading at ${size.width}x${size.height}`).toEqual(before)
     expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
     await expect(onStep(page).getByText(/^Part of the payment arrived: [\d.]+ of [\d.]+ BTC is seen\./)).toBeVisible()
-    await expect(onStep(page).locator(".pay-status .waiting")).toHaveCount(0)
+    await expect(onStep(page).locator(".name-check")).toHaveCount(0)
   }
   await shot(page, "names-u1-part-paid")
 })

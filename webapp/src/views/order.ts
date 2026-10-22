@@ -1,9 +1,9 @@
 // An order's page (?order=<invoice>) or a code registration's (?registration=<id>): payment, registration, and every ending.
 import * as api from "../api.ts"
 import { parseNameCode } from "../crypto/code.ts"
-import { alertBox, announce, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, setAction, type Tone } from "../dom.ts"
+import { alertBox, announce, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, refill, setAction, type Tone } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { clock, dateOf, dollars, methodName, SEP, shortAddress } from "../format.ts"
+import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
   type ClosedCase, closedCase, coinOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
@@ -53,7 +53,7 @@ export function orderPage(invoiceId: string | null, registrationId: string | nul
   }
   window.addEventListener("storage", onStorage)
   whenLeaving(() => { polls.abort(); clearTimeout(wakes); window.removeEventListener("storage", onStorage) })
-  if (!redraw) whenDropped(() => { dropCard(); instead = null })
+  if (!redraw) whenDropped(() => { dropCard(); stopWatchingName(); instead = null })
   // the same order drawn again stays on screen until it is read, rather than blanking to a loading line
   if (redraw) document.querySelector("main")?.setAttribute("aria-busy", "true")
   else drawLoading("Opening the order…", asStep)
@@ -69,6 +69,7 @@ function dispatch(event: OrderEvent): void {
   if (cardStays(before, kind)) showCard()
   else draw(kind, (signal) => asStep(BUILDERS[kind](state, signal)))
   if (kind !== "pay-card") dropCard()
+  if (!checksName(state)) stopWatchingName()
   if (kind === "registered") seenRegistered(state.view!, state.invoice)
   if (revealDue(state)) reveal(state.view!, state.record!)
   if (kind !== screenOf(before) || state.record !== before.record) keepCodes(state)
@@ -375,6 +376,88 @@ function validLine(invoice: api.InvoiceView, signal: AbortSignal): HTMLElement {
   return el("span", {}, "Invoice valid for ", time)
 }
 
+// Someone may register the name before an unpaid invoice is paid, so its pay page checks the name as it opens and
+// every few minutes. A browser without the order's record does not know the name's length, which the search needs.
+const NAME_CHECK_MS = 5 * 60_000
+const NAME_NOTE = "name-note"
+let nameCheck: { invoiceId: string; taken: boolean; at: number } | null = null
+let nameWatch: { invoiceId: string; timer?: ReturnType<typeof setTimeout> } | null = null
+// the payment's details on the pay page in view, which a name taken meanwhile turns off
+let payDetails: HTMLElement | null = null
+
+const checksName = (s: OrderState) => (screenOf(s) === "pay-crypto" || screenOf(s) === "pay-card") && !partlyPaid(s.invoice!) && labelOf(s.view!, s.record) !== null
+const nameTaken = () => nameCheck !== null && nameCheck.invoiceId === state.invoice?.invoiceId && nameCheck.taken
+
+function watchName(s: OrderState): void {
+  const invoiceId = s.invoice!.invoiceId
+  if (nameWatch?.invoiceId === invoiceId) return
+  stopWatchingName()
+  const { labelHash } = s.view!
+  const { length } = labelOf(s.view!, s.record)!
+  const watch: NonNullable<typeof nameWatch> = { invoiceId }
+  nameWatch = watch
+  const check = async () => {
+    let next = NAME_CHECK_MS
+    try {
+      const answer = await api.searchName(labelHash, length)
+      if (nameWatch !== watch) return
+      nameCheck = { invoiceId, taken: answer.status === "registered", at: Date.now() }
+      showNameCheck()
+    } catch (e) {
+      next = api.retryDelay(e, RETRY_MS) ?? NAME_CHECK_MS
+    }
+    if (nameWatch === watch) watch.timer = setTimeout(check, next)
+  }
+  void check()
+}
+
+function stopWatchingName(): void {
+  clearTimeout(nameWatch?.timer)
+  nameWatch = null
+  nameCheck = null
+  payDetails = null
+}
+
+// The note holds both sentences in one cell, the one not in force hidden, so it keeps its height as one replaces the
+// other; it is hidden until the first check answers.
+function nameNote(s: OrderState): HTMLElement {
+  watchName(s)
+  const note = kept(NAME_NOTE, () => el("div", { class: "notice name-check unchecked", role: "status" }, el("span", {}), el("span", {})))
+  fillNameNote(note)
+  return note
+}
+
+function fillNameNote(note: HTMLElement): void {
+  const shown = JSON.stringify(nameCheck)
+  if (note.dataset.shown === shown) return
+  note.dataset.shown = shown
+  const taken = nameTaken()
+  const at = ` (checked at ${timeOf(nameCheck?.at ?? Date.now())}). `
+  const [free, gone] = note.children
+  refill(free, el("b", {}, "The name is available"), at,
+    "If someone registers it before you pay and the registration succeeds, what you paid is kept as your balance for another name, or refunded on request.")
+  refill(gone, el("b", {}, "Someone has registered this name"), at, "Don't pay this invoice: cancel it and choose another name.")
+  free.classList.toggle("sizer", taken)
+  gone.classList.toggle("sizer", !taken)
+  note.classList.toggle("danger", taken)
+  note.classList.toggle("unchecked", nameCheck === null)
+}
+
+// what a check answered shows in place, so the card form keeps what was typed
+function showNameCheck(): void {
+  if (!isRoute(pageRoute) || !checksName(state)) return
+  const note = document.querySelector<HTMLElement>("body > main .name-check")
+  if (note) fillNameNote(note)
+  if (payDetails) turnOff(payDetails, nameTaken())
+  if (payButton) setAction(payButton, state.busy === "card", card === null || nameTaken())
+}
+
+function turnOff<T extends HTMLElement>(details: T, off: boolean): T {
+  details.classList.toggle("off", off)
+  details.inert = off
+  return details
+}
+
 const partSeen = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Part of the payment arrived: ${invoice.cryptoAmountPaid} of ${invoice.cryptoAmount} ${TICKER[coin]} is seen.`
 const restAsked = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Send the remaining ${invoice.cryptoAmountDue} ${TICKER[coin]} to the same address.`
 const RATE_EXPIRED = "The rate expired before the full amount arrived. Don't send more; what you sent is refunded."
@@ -422,15 +505,16 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
   const wallet = uri ? el("a", { class: "wallet", href: uri }, WALLET) : null
   const part = partial ? partLines(inv, coin, [qr, amount, wallet], signal) : null
   const waiting = el("span", { class: "waiting" }, el("i", { class: "dot", "aria-hidden": "true" }), "Waiting for payment")
+  const note = part ? alertBox("warn", "alert", null, part.notice) : checksName(s) ? nameNote(s) : null
   // a phone opens its wallet from the link under the address, a laptop from the QR's
-  const details = el("div", { class: "card pay" },
+  payDetails = el("div", { class: "card pay" },
     part?.ended ? address : el("div", { class: "qr-grid" }, qr, el("div", { class: "copy-fields" }, amount, address)),
     part?.ended ? null : wallet,
     el("div", { class: "pay-status" }, part ? part.rate : waiting, part ? null : validLine(inv, signal), el("span", { class: "ref" }, "Reference ", el("span", { class: "mono" }, inv.invoiceId))))
   return screen({ title: `Pay with ${methodName(coin)}`, lead: orderLine(s), alt: partial ? null : cancelLink(s) },
-    part ? alertBox("warn", "alert", null, part.notice) : null,
+    note,
     insteadLine(inv),
-    details,
+    turnOff(payDetails, nameTaken()),
     // a wait the tab is in shows why the link does nothing until it is over
     actionNote(s, partial ? null : signal))
 }
@@ -476,7 +560,7 @@ const cardStays = (before: OrderState, kind: OrderKind) =>
 
 function showCard(): void {
   if (!payButton) return
-  setAction(payButton, state.busy === "card", card === null)
+  setAction(payButton, state.busy === "card", card === null || nameTaken())
   document.querySelector('body > main [data-focus="cancel"]')?.replaceWith(cancelLink(state))
   actionNote(state, null)
 }
@@ -500,12 +584,14 @@ function buildPayCard(s: OrderState): HTMLElement {
   const invoice = s.invoice!
   const form = kept("stripe-form", () => el("div", { class: "stripe" }))
   if (cardIn !== form) mountInto(form, invoice)
-  payButton = setAction(btn(`Pay ${dollars(invoice.amount)}`, "", () => void payByCard()), s.busy === "card", card === null)
+  const note = checksName(s) ? nameNote(s) : null
+  payDetails = turnOff(form, nameTaken())
+  payButton = setAction(btn(`Pay ${dollars(invoice.amount)}`, "", () => void payByCard()), s.busy === "card", card === null || nameTaken())
   payButton.dataset.focus = "pay"
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
   const forgetful = store.canPersist() ? null : alertBox("warn", "alert", "This browser cannot remember a card payment",
     "After paying, keep this page open until it moves on. Reloading would show the card form again.")
-  return screen({ title: "Pay by card", lead: orderLine(s), action: payButton, alt: cancelLink(s) }, insteadLine(invoice), forgetful, form,
+  return screen({ title: "Pay by card", lead: orderLine(s), action: payButton, alt: cancelLink(s) }, note, insteadLine(invoice), forgetful, form,
     el("p", { class: "note center" }, "The card form is Stripe's. Nothing is charged until you pay."), actionNote(s, null))
 }
 

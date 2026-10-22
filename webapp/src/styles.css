@@ -413,6 +413,17 @@ svg.qr { display: block; width: 132px; height: auto; }
 .pay-status .time { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .pay-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
+/* A pay page's note on the name: its two sentences share one cell, so it keeps its height as one replaces the other.
+   It shows once the first check answers, and a name taken meanwhile turns the payment off. */
+.notice.name-check { display: grid; padding: 10px 16px; line-height: 1.45; }
+.notice.name-check:not(.danger) { color: var(--ink-soft); background: var(--chip); border-color: var(--chip-line); }
+.notice.name-check > * { grid-area: 1 / 1; }
+.notice.name-check b { display: inline; font-weight: 600; color: var(--ink); }
+.notice.name-check.danger b { color: inherit; }
+.notice.name-check.unchecked { visibility: hidden; opacity: 0; }
+html:not(.theming) .notice.name-check { transition: background-color 200ms, border-color 200ms, color 200ms, opacity 200ms, visibility 200ms; }
+.card.pay, .stripe { transition: opacity 200ms; }
+:is(.card.pay, .stripe).off { opacity: .45; }
 .copy-field .label { display: block; margin-bottom: 6px; }
 .copy-field .val { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line);
   font: 500 14px var(--mono); overflow-wrap: anywhere; text-wrap: balance; }
@@ -429,6 +440,8 @@ svg.qr { display: block; width: 132px; height: auto; }
 .field-copy.copied { color: var(--ok-fg); border-color: var(--ok-line); }
 .danger-link { color: var(--danger-fg); }
 .stripe { border-radius: 16px; }
+/* the card page is drawn tighter, so the name's note, Stripe's form and its note fit above Pay */
+.screen-body:has(> .stripe) { gap: 10px; }
 /* Stripe's card form mounts after its step is drawn, so its box holds the form's height from the start: card only, with
    Stripe.js dahlia, 221-230 px tall on the 600 px column and 306-320 px on a phone's, in Chromium and Firefox. The
    column is whole from 632 px: 600 px and its 16 px gutters. */

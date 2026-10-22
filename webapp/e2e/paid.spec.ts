@@ -1093,3 +1093,69 @@ test("on a phone, a long name wraps beside its chats on Check your order, the ch
   expect(Math.round(chats.x + chats.width), "the chats at the row's right").toBe(Math.round(box.x + box.width - padding))
   expect(name.height, "the name on more than one line").toBeGreaterThan(40)
 })
+
+// how often a pay page checks its name again (NAME_CHECK_MS in src/views/order.ts)
+const NAME_CHECK_MINUTES = 5
+const AVAILABLE = /^The name is available \(checked at \d\d:\d\d\)\. If someone registers it before you pay and the registration succeeds, what you paid is kept as your balance for another name, or refunded on request\.$/
+const TAKEN = /^Someone has registered this name \(checked at \d\d:\d\d\)\. Don't pay this invoice: cancel it and choose another name\.$/
+const takenAnswer = (route: Route) => route.fulfill({ json: { status: "registered", entities: [], tld: "simplex" } })
+// the heading, the note, the payment's details and the link under them: where each is and how tall
+const payPlaces = (page: Page) => page.evaluate(() => ["h1", ".name-check", ":is(.card.pay, .stripe)", ".actions-row .alt"]
+  .map((s) => { const b = document.querySelector(`body > main ${s}`)!.getBoundingClientRect(); return `${s} ${Math.round(b.top)} ${Math.round(b.height)}` }))
+
+test("a Bitcoin page checks its name as it opens and every 5 minutes; taken meanwhile, the note turns red and the payment is turned off in place", async ({ page }) => {
+  await page.clock.install()
+  const checks: string[] = []
+  page.on("request", (r) => { if (/\/api\/name\/0x/.test(r.url())) checks.push(r.url()) })
+  await startOrder(page, uniqueLabel("chk"), { method: "btc" })
+  const note = onStep(page).locator(".name-check")
+  // the sentence not in force is in the note too, hidden, to hold its height
+  await expect(note.locator(":scope > :not(.sizer)")).toHaveText(AVAILABLE)
+  await expect(note).toHaveAttribute("role", "status")
+  const opened = checks.length
+  expect(opened, "the name was checked as the page opened").toBeGreaterThan(0)
+  const before = { desktop: await payPlaces(page), phone: [] as string[] }
+  await page.setViewportSize({ width: 390, height: 844 })
+  before.phone = await payPlaces(page)
+  await page.setViewportSize({ width: 1280, height: 900 })
+
+  await page.route("**/api/name/**", takenAnswer)
+  await page.clock.fastForward(`0${NAME_CHECK_MINUTES - 1}:50`)
+  await expect(note.locator(":scope > :not(.sizer)"), "no check before the minutes are up").toHaveText(AVAILABLE)
+  expect(checks.length).toBe(opened)
+  await page.clock.fastForward("00:15")
+  await expect(note.locator(":scope > :not(.sizer)")).toHaveText(TAKEN)
+  await expect(note).toHaveClass(/\bdanger\b/)
+  expect(checks.length, "one check after the minutes").toBe(opened + 1)
+  // the payment's details fade and take no input; Cancel stays
+  const details = onStep(page).locator(".card.pay")
+  await expect(details).toHaveClass(/\boff\b/)
+  await expect(details).toHaveJSProperty("inert", true)
+  expect(await details.evaluate((d) => getComputedStyle(d).opacity)).toBe("0.45")
+  const copy = onStep(page).getByRole("button", { name: "Copy Bitcoin address" })
+  await copy.focus()
+  await expect(copy, "a control of the payment takes no focus").not.toBeFocused()
+  await expect(onStep(page).getByRole("button", { name: "Cancel this invoice" })).toBeEnabled()
+  expect(await payPlaces(page), "nothing moves on a laptop").toEqual(before.desktop)
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await payPlaces(page), "nothing moves on a phone").toEqual(before.phone)
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await shot(page, "N4t-bitcoin-name-taken")
+
+  // the page opened again says so from its first check
+  await page.reload()
+  await expect(onStep(page).locator(".name-check:not(.unchecked) > :not(.sizer)")).toHaveText(TAKEN)
+  await expect(onStep(page).locator(".card.pay")).toHaveJSProperty("inert", true)
+})
+
+test("a card page whose name was taken meanwhile turns its form and Pay off", async ({ page }) => {
+  await startOrder(page, uniqueLabel("chkcard"), { method: "card" })
+  await expect(onStep(page).locator(".name-check:not(.unchecked) > :not(.sizer)")).toHaveText(AVAILABLE)
+  await expect(onStep(page).getByRole("button", { name: /^Pay \$/ })).toBeEnabled()
+  await page.route("**/api/name/**", takenAnswer)
+  await page.reload()
+  await expect(onStep(page).locator(".name-check:not(.unchecked) > :not(.sizer)")).toHaveText(TAKEN)
+  await expect(onStep(page).locator(".stripe")).toHaveJSProperty("inert", true)
+  await expect(onStep(page).getByRole("button", { name: /^Pay \$/ })).toBeDisabled()
+  await expect(onStep(page).getByRole("button", { name: "Cancel this invoice" })).toBeEnabled()
+})
