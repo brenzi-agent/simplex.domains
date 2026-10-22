@@ -606,7 +606,7 @@ test("support's refund takes the whole balance by invoice id or registration id,
   expect(await balanceOf(id)).toEqual(free(0, PRICE.six - PRICE.long))
 })
 
-test("a paid order taken first keeps its whole price as a balance of its own, also when a balance paid it, and its refund names what paid it", async ({ request }) => {
+test("a paid order taken first keeps its whole price as a balance of its own, also when a balance paid it, moves no more, and its refund names what paid it", async ({ request }) => {
   const src = await lateBalance(request)
   const label = uniqueLabel("st")
   const next = await flow.spendBalance(src.record, label, NO_LINKS, await quote(label), PRICE.long, "btc")
@@ -614,6 +614,8 @@ test("a paid order taken first keeps its whole price as a balance of its own, al
   await flow.revealOrder(await untilRevealable(next.registrationId), next)
   const view = await untilPhase(next.registrationId, ["taken"])
   expect([view.fromBalance, view.balance]).toEqual([PRICE.long, free(PRICE.long)])
+  const other = uniqueLabel("st2")
+  await expect(flow.retargetOrder(next, other, NO_LINKS, await quote(other)), "a taken order keeps its balance and moves no more").rejects.toMatchObject({ code: "bad_request" })
   expect(await balanceOf(src.id), "the paying order's balance untouched").toEqual(free(0))
   expect((await call("POST", `/control/refund/${next.registrationId}`, {})).json).toEqual({ registrationId: next.registrationId, cents: PRICE.long, chain: [
     { registrationId: next.registrationId, invoiceId: null, method: "balance", fromBalance: PRICE.long, invoiced: 0, late: 0 },

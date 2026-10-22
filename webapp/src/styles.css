@@ -421,6 +421,9 @@ svg.qr { display: block; width: 132px; height: auto; }
 @keyframes pulse { 50% { opacity: .35; } }
 /* A pay page's note on the name: its two sentences share one cell, so it keeps its height as one replaces the other,
    the shorter one centred in it. It shows once the first check answers, and a name taken meanwhile turns the payment off. */
+/* a notice as the mockup draws its plain one: no icon, its title inline */
+.notice.plain { display: block; padding: 10px 16px; line-height: 1.45; color: var(--ink-soft); background: var(--chip); border-color: var(--chip-line); }
+.notice.plain b { display: inline; font-weight: 600; color: var(--ink); }
 .notice.name-check { display: grid; align-items: center; padding: 10px 16px; line-height: 1.45; }
 .notice.name-check:not(.danger) { color: var(--ink-soft); background: var(--chip); border-color: var(--chip-line); }
 .notice.name-check > * { grid-area: 1 / 1; }

@@ -126,9 +126,9 @@ async function readOrder(record: store.OrderRecord): Promise<{ view: api.Registr
   return { view, synced: { ...(await flow.syncRecord(record, view) ?? record), paid: view.price } }
 }
 
-// an order moves from a name taken first, from a failed registration, or from links the service refused
+// an order moves from a failed registration, or from links the service refused; a name taken first keeps its payment as a balance
 const movable = (view: api.RegistrationView, record: store.OrderRecord) =>
-  view.phase === "taken" || view.phase === "failed" || (view.phase === "committed" && record.linksRefused === true)
+  view.phase === "failed" || (view.phase === "committed" && record.linksRefused === true)
 
 function movedOf(view: api.RegistrationView, record: store.OrderRecord): Moved | null {
   if (movable(view, record)) return null
@@ -310,8 +310,8 @@ const codeFor = (s: SearchState, label: string) => {
 function availableAnswer(s: SearchState, label: string, answer: Available, signal: AbortSignal): Kid[] {
   const retarget = s.retarget
   const unpayable = unaffordable(s, answer)
-  // a cheaper name refunds nothing, which is said before the buyer chooses it
-  const cheaper = retarget && answer.price < retarget.paid ? `Uses ${dollars(answer.price)} of your ${dollars(retarget.paid)}; the rest is not refunded.` : null
+  // a cheaper name keeps the rest as the order's balance, which is said before the buyer chooses it
+  const cheaper = retarget && answer.price < retarget.paid ? `Uses ${dollars(answer.price)} of your ${dollars(retarget.paid)}; the rest stays as your balance.` : null
   const covers = retarget && (unpayable ? `This name costs more than the ${dollars(retarget.paid)} your order is worth.` : cheaper ?? "Covered by your payment")
   const own = ownOrderOf(s)
   const code = codeFor(s, label)

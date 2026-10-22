@@ -314,6 +314,28 @@ export const test = base.extend<{ cspViolations: void }>({
   }, { auto: true }],
 })
 
+// a paid order's page once someone registered its name first, which keeps the payment as the order's balance
+export const takenHeading = (label: string) => `${label}.simplex was taken`
+
+// An order paid in Bitcoin whose name a rival registers first, up to its taken page.
+export async function takenOrder(page: Page, request: APIRequestContext, label: string): Promise<{ invoiceId: string; ownerCode: string }> {
+  const order = await startOrder(page, label, { method: "btc" })
+  await control(request, "take", { label })
+  await control(request, `settle/${order.invoiceId}`)
+  await expect(page.getByRole("heading", { name: takenHeading(label) })).toBeVisible({ timeout: REGISTRATION_MS })
+  return order
+}
+
+// An order paid in Bitcoin whose registration fails, up to its page.
+export async function failedOrder(page: Page, request: APIRequestContext, label: string): Promise<{ invoiceId: string; registrationId: string; ownerCode: string }> {
+  const order = await startOrder(page, label, { method: "btc" })
+  const registrationId = await registrationOf(request, order.invoiceId)
+  await control(request, `fail/${registrationId}`)
+  await control(request, `settle/${order.invoiceId}`)
+  await expect(page.getByRole("heading", { name: "Paid, not registered" })).toBeVisible({ timeout: REGISTRATION_MS })
+  return { ...order, registrationId }
+}
+
 export async function waitRegistered(page: Page, label: string): Promise<void> {
   await expect(page.getByRole("heading", { name: `${label}.simplex is yours` })).toBeVisible({ timeout: REGISTRATION_MS })
 }

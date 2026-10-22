@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, savedToReview, search, shot,
+  CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, failedOrder, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, savedToReview, search, shot,
   shownCode, startOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
@@ -177,12 +177,8 @@ test("a registered order opened in a browser without its code offers restore", a
 })
 
 test("a failed retarget shows one message below the result, however often it is tried", async ({ page, request }) => {
-  const label = uniqueLabel("rtf")
-  const { invoiceId } = await startOrder(page, label, { method: "btc" })
-  await control(request, "take", { label })
-  await control(request, `settle/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: 120_000 })
-  await page.getByRole("button", { name: "Choose another name" }).click()
+  const { registrationId } = await failedOrder(page, request, uniqueLabel("rtf"))
+  await page.goto(`/#/?retarget=${registrationId}`)
   await page.route("**/api/registration/*/name", (route) => route.fulfill({ status: 503, json: { error: "provider_unavailable" } }))
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("rtf2"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
@@ -195,12 +191,8 @@ test("a failed retarget shows one message below the result, however often it is 
 })
 
 test("a retarget refused for a name taken meanwhile says the name is no longer available", async ({ page, request }) => {
-  const label = uniqueLabel("rtt")
-  const { invoiceId } = await startOrder(page, label, { method: "btc" })
-  await control(request, "take", { label })
-  await control(request, `settle/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
-  await page.getByRole("button", { name: "Choose another name" }).click()
+  const { registrationId } = await failedOrder(page, request, uniqueLabel("rtt"))
+  await page.goto(`/#/?retarget=${registrationId}`)
   await page.route("**/api/registration/*/name", (route) => route.fulfill({ status: 409, json: { error: "name_taken" } }))
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("rtt2"))
   await page.getByLabel("Name", { exact: true }).press("Enter")

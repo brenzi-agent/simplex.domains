@@ -3,48 +3,43 @@ import { walletOf } from "../src/flow.ts"
 import { labelHash } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import {
-  codeField, contactLink, control, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, savedToReview, search, searchName, shot,
-  startOrder, test, uniqueLabel, waitRegistered,
+  addNameCode, checkoutOwnerCode, contactLink, control, failedOrder, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, savedToReview,
+  search, searchName, shot, startOrder, takenHeading, takenOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
-test("a name taken first moves the paid order to another name, owned by the same code", async ({ page, request }) => {
+test("a name taken first keeps its payment as its balance, which pays for another name owned by the same code", async ({ page, request }) => {
   const label = uniqueLabel("tk")
-  const { invoiceId, ownerCode } = await startOrder(page, label, { method: "btc" })
-  await control(request, "take", { label })
-  await control(request, `settle/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
-  await expect(page.getByText("Choose another name of up to $100, registered to the same wallet so your code owns it.", { exact: true })).toBeVisible()
+  const { invoiceId, ownerCode } = await takenOrder(page, request, label)
+  await expect(onStep(page).locator(".notice", { hasText: "What you paid is kept as your balance." })).toBeVisible()
+  await expect(onStep(page).locator(".stage.failed")).toHaveText("Taken")
   await expect(page.getByText(`Reference ${invoiceId}`)).toBeVisible()
   await shot(page, "N8-taken")
-  // a browser without the order's code says where to add it
+  // a browser without the order's code says where to add it, and offers neither the balance nor its refund
   const elsewhere = await page.context().browser()!.newContext()
   const stranger = await elsewhere.newPage()
   await stranger.goto(`/?order=${invoiceId}`)
-  await expect(stranger.getByText("Add it in Check your code to choose another name.")).toBeVisible()
+  await expect(stranger.getByText("Add it in Check your code to use the balance.")).toBeVisible()
+  await expect(onStep(stranger).getByRole("button", { name: "Choose another name" })).toBeDisabled()
+  await expect(onStep(stranger).getByText("Get a refund")).toHaveCount(0)
   await elsewhere.close()
 
   await page.getByRole("button", { name: "Choose another name" }).click()
-  await expect(page.getByText(/Your payment is kept: \$100\./)).toBeVisible()
-  await expect(page.getByRole("button", { name: "Invest to claim your name" })).toHaveCount(0)
+  await expect(page.locator(".code-chip")).toContainText("Balance: $100")
+  await expect(page.getByRole("button", { name: "Stop using the balance" })).toBeVisible()
   const next = uniqueLabel("tk2")
   await page.getByLabel("Name", { exact: true }).fill(next)
   await page.getByLabel("Name", { exact: true }).press("Enter")
-  await expect(page.getByText("Covered by your payment")).toBeVisible()
+  await expect(page.locator(".answer .hint")).toHaveText("Paid from your balance.")
   await shot(page, "N8a-another-name")
-  // a rate-limited move holds its button for the wait
-  await page.route("**/name", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": "2" }, json: { error: "rate_limited" } }) : route.continue())
-  await page.getByRole("button", { name: "Register with your payment" }).click()
-  await expect(page.getByText("Too many attempts")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Register with your payment" })).toBeDisabled()
-  // searching again during the wait says searching is paused, rather than sending anything
-  await page.getByLabel("Name", { exact: true }).press("Enter")
-  const paused = page.locator(".answer .line", { hasText: "Searching is paused" })
-  await expect(paused).toBeVisible()
-  await page.unroute("**/name")
-  await expect(paused).toHaveCount(0, { timeout: 10_000 })
-  await page.getByLabel("Name", { exact: true }).press("Enter")
-  await page.getByRole("button", { name: "Register with your payment" }).click()
-  await page.waitForURL(/\?order=/)
+  await toCodeStep(page)
+  expect(await checkoutOwnerCode(page), "the balance's name code owns the new name too").toBe(ownerCode)
+  await savedToReview(page)
+  await expect(onStep(page).locator(".trow", { hasText: "From your balance" })).toContainText("\u2212$100")
+  await expect(onStep(page).locator(".trow.total")).toHaveText(/^To pay\s*\$0$/)
+  await expect(page.getByRole("radio", { name: "Bitcoin" }), "nothing is left to pay with a method").toHaveCount(0)
+  await onStep(page).getByRole("button", { name: "Register with your balance" }).click()
+  await page.waitForURL(/\?registration=/)
+  await expect(page.locator(".code-chip"), "a spent balance pays for nothing more").toBeHidden()
   await waitRegistered(page, next)
   const answer = await searchName(request, next)
   expect(answer.owner).toBe(checksumAddress(walletOf(ownerCode)!.address))
@@ -55,12 +50,8 @@ const MOVE_WAIT_S = 3
 const SEARCH_RTT_MS = 5_000
 
 test("a wait on moving the payment that ends while Back checks the name again sends no second search", async ({ page, request }) => {
-  const label = uniqueLabel("tw")
-  const { invoiceId } = await startOrder(page, label, { method: "btc" })
-  await control(request, "take", { label })
-  await control(request, `settle/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
-  await page.getByRole("button", { name: "Choose another name" }).click()
+  const { registrationId } = await failedOrder(page, request, uniqueLabel("tw"))
+  await page.goto(`/#/?retarget=${registrationId}`)
   const next = uniqueLabel("tw2")
   // an order this browser made for the name before, which has Back check the name again
   await page.evaluate(({ label, hash }) => localStorage.setItem("simplex-names:order:reg-before", JSON.stringify({
@@ -151,7 +142,7 @@ test("a chain that sends nothing for longer than its resends fails the order in 
   await waitRegistered(page, label)
 })
 
-test("a late payment to a replaced invoice is kept by a restored browser after the order moved to another name", async ({ page, browser, request }) => {
+test("a late payment to a replaced invoice is kept by a restored browser after the order's balance paid for another name", async ({ page, browser, request }) => {
   const label = `${uniqueLabel("adopt")}-${"long-name".repeat(4)}`
   const { invoiceId, ownerCode } = await startOrder(page, label, { method: "btc" })
   await control(request, `expire/${invoiceId}`)
@@ -160,31 +151,29 @@ test("a late payment to a replaced invoice is kept by a restored browser after t
   const second = new URL(page.url()).searchParams.get("order")!
   await control(request, "take", { label })
   await control(request, `settle/${second}`)
-  await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
+  await expect(page.getByRole("heading", { name: takenHeading(label) })).toBeVisible({ timeout: REGISTRATION_MS })
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   await page.getByRole("button", { name: "Choose another name" }).click()
   const next = uniqueLabel("adopt2")
-  await page.getByLabel("Name", { exact: true }).fill(next)
-  await page.getByLabel("Name", { exact: true }).press("Enter")
-  await page.getByRole("button", { name: "Register with your payment" }).click()
-  await page.waitForURL(/\?order=/)
+  await search(page, next)
+  await toReview(page)
+  await onStep(page).getByRole("button", { name: "Register with your balance" }).click()
+  await page.waitForURL(/\?registration=/)
   await waitRegistered(page, next)
 
+  // another browser restores the code, which finds the name it registered, and opens the taken order
   const other = await browser.newContext()
   const restored = await other.newPage()
-  // the order moved to the other name and registered it; its page takes the name code and comes back to it
+  await addNameCode(restored, ownerCode)
   await restored.goto(`/?order=${second}`)
-  await restored.getByRole("button", { name: "Restore with your name code" }).click()
-  await codeField(restored).fill(ownerCode)
-  await onStep(restored).getByRole("button", { name: "Add to Your names" }).click()
-  await restored.waitForURL((url) => url.searchParams.get("order") === second)
-  await waitRegistered(restored, next)
+  await expect(restored.getByRole("heading", { name: takenHeading(label) })).toBeVisible()
   await control(request, `partial/${invoiceId}`)
   await restored.goto(`/?order=${invoiceId}`)
   await expect(restored.getByText(/BTC arrived, which is not the full amount/)).toBeVisible()
   await restored.goto("/#/names")
-  await expect(restored.locator(".list-row:visible", { hasText: `${label}.simplex` })).toContainText("Part of the payment arrived")
+  // the taken order and the replaced one that the money reached each have a row of the name
+  await expect(restored.locator(".list-row:visible", { hasText: `${label}.simplex` }).filter({ hasText: "Part of the payment arrived; kept as your balance" })).toHaveCount(1)
   await restored.goto(`/?order=${invoiceId}`)
   await restored.getByRole("button", { name: "Open the new invoice" }).click()
   await restored.waitForURL((url) => url.searchParams.get("order") === second)
@@ -230,14 +219,12 @@ test("an order whose links the service refuses at its reveal registers without t
   expect(answer.records).toEqual({ contact: "", channel: "" })
 })
 
-test("a move to a cheaper name says the rest is not refunded", async ({ page, request }) => {
+test("a failed order's move to a cheaper name says the rest stays as its balance", async ({ page, request }) => {
   const label = `t${Math.random().toString(36).slice(2).replace(/[^a-z]/g, "").padEnd(6, "t")}`.slice(0, 7)
-  const { invoiceId } = await startOrder(page, label, { method: "btc" })
-  await control(request, "take", { label })
-  await control(request, `settle/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
-  await page.getByRole("button", { name: "Choose another name" }).click()
+  const { registrationId } = await failedOrder(page, request, label)
+  await page.goto(`/#/?retarget=${registrationId}`)
+  await expect(page.getByText(/Your payment is kept: \$200\./)).toBeVisible()
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("cheap"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
-  await expect(page.locator(".answer .line", { hasText: "Uses" })).toHaveText("Uses $100 of your $200; the rest is not refunded.")
+  await expect(page.locator(".answer .line", { hasText: "Uses" })).toHaveText("Uses $100 of your $200; the rest stays as your balance.")
 })

@@ -15,7 +15,10 @@ import * as store from "../store.ts"
 import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
 import { seenRegistered } from "./names.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
-import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, historyPlace, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
+import {
+  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, historyPlace, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen,
+  searchLink, showRefund, useBalance, whenDropped, whenLeaving,
+} from "./shell.ts"
 
 export const RETRY_MS = 3000
 
@@ -849,9 +852,10 @@ const STAGES = [
   { going: "Registering", done: "Registered" },
 ]
 
-function stages(states: StageState[]): HTMLElement {
+// `ended` names the last stage in place of its own word, as "Taken" for a name registered by someone else first
+function stages(states: StageState[], ended?: string): HTMLElement {
   return el("ol", { class: "stages", role: "list" }, ...STAGES.map((stage, i) => el("li", { class: `stage ${states[i]}`.trim() },
-    el("b", {}, states[i] === "done" ? stage.done : stage.going))))
+    el("b", {}, i === STAGES.length - 1 && ended ? ended : states[i] === "done" ? stage.done : stage.going))))
 }
 
 // the stage a registration is at, said once as it is reached, never each second of its wait
@@ -1013,26 +1017,31 @@ function buildTakenWithCode({ view: taken, record }: OrderState): HTMLElement {
     reference: view.id })
 }
 
-function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
+// A paid order taken first keeps what it is worth as its balance, which pays for another name of its code, or which
+// support refunds; only the browser holding the code spends it. One spent or refunded since says so.
+function buildTaken(s: OrderState): HTMLElement {
   const { view: taken, record, invoice } = s
-  if (!invoice) return buildTakenWithCode(s)
   const view = taken!
+  if (!invoice && view.fromBalance === 0) return buildTakenWithCode(s)
   const label = labelOf(view, record)
-  // the order's worth caps another name; after a move to a cheaper name it is lower than what was paid
-  const worth = dollars(view.price)
-  const canAct = record !== null
-  const other = setAction(btn("Choose another name", "", () => go(`/#/?retarget=${view.id}`)), false, !canAct)
-  holdEnds(signal)(s.hold !== null)
-  const cannot = canAct ? null : alertBox("info", "key", "The name code is not in this browser", "Add it in Check your code to choose another name.")
-  return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."],
-    action: other },
-    el("p", { class: "note" }, ...termLine(s)),
-    stages(["done", "done", "failed"]),
-    el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it.`),
-    cannot,
-    actionNote(s, canAct ? signal : null),
-    referenceLine(invoice.invoiceId))
+  const balance = session.appliedBalance(view.id, view.balance)
+  const other = setAction(btn("Choose another name", "", () => balance ? useBalance(balance) : go(searchLink(""))), false, record === null)
+  const reference = invoice?.invoiceId ?? view.id
+  const refund = record && balance && !balance.heldUntil ? link("Get a refund", () => showRefund(reference, REFUND)) : null
+  refund?.setAttribute("data-focus", REFUND)
+  const note = balance || view.balance === null
+    ? el("div", { class: "notice plain" }, el("b", {}, "What you paid is kept as your balance."),
+      " Choose another name and pay only the difference, or ask for a refund. Your names shows the balance.")
+    : el("div", { class: "notice plain" }, el("b", {}, "What you paid went to your balance."), " It has been spent or refunded since; Your names shows it.")
+  return screen({ title: label ? [gradName(label, view.tld), " was\u00a0taken"] : "The name was taken", lead: "Someone registered it before your order could.",
+    action: other, alt: refund },
+    stages(["done", "done", "failed"], "Taken"),
+    note,
+    record ? null : alertBox("info", "key", "The name code is not in this browser", "Add it in Check your code to use the balance."),
+    referenceLine(reference))
 }
+
+const REFUND = "refund"
 
 function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   const { view: failed, invoice } = s

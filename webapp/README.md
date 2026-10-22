@@ -7,7 +7,7 @@ The page talks only to the names service under `/api`. In development that servi
 ## Layout
 
 - `src/crypto/`: owner and prepaid codes, the wallet, the commitment and the signed messages, the sealed order.
-- `src/flow.ts`: building an order, revealing it, another name after `taken`, another name paid from an order's balance, finding a name code's order, link edits.
+- `src/flow.ts`: building an order, revealing it, another name or links after a failure, another name paid from an order's balance, finding a name code's order, link edits.
 - `src/api.ts`, `src/store.ts`, `src/session.ts`: the service's API, what this browser keeps, and the tab's checkout and active prepaid code.
 - `src/screens/`: each view's state and the reducer that moves it, with no clock, DOM, storage or network.
 - `src/views/`: `shell.ts`, the frame between `index.html`'s header and its invest note and footer (`draw` puts a screen in, `kept` keeps a node a reader types into across redraws, `screen` and `outcome` build the two kinds of screen, `asStep` gives a screen the steps' frame); `chrome.ts`, the phone's menu and the header's active code; and the views: `search.ts` (the home), `checkout.ts` (the Links, name code and Check your order steps), `order.ts` (payment, registration and every ending) and `names.ts` (Your names, Check your code and Edit links). `chats.ts` draws the chats a name opens, as the app's default pictures, and their popup after the app's connection alert; `links.ts` holds the link field that the Links step and Edit links share; `codes.ts` the code field of Check your code.

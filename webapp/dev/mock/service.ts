@@ -954,8 +954,8 @@ export async function retarget(registrationId: string, body: Record<string, unkn
   const current = reg.labelHash === order.labelHash && reg.length === order.length && reg.duration === order.duration && reg.commitment === order.commitment && reg.sealed === order.sealed
   if (current) return registrationView(reg)
   lapse(reg)
-  // a paid order taken first, any failed order, or one whose reveal was refused for its links
-  const movable = (reg.phase === "taken" && reg.method !== "code") || reg.phase === "failed" || (reg.phase === "committed" && reg.linksRefused)
+  // a failed order, or one whose reveal was refused for its links; a paid order taken first keeps its price as its balance
+  const movable = reg.phase === "failed" || (reg.phase === "committed" && reg.linksRefused)
   if (!movable) throw badRequest()
   if (reg.moves >= MAX_ORDER_MOVES) throw new HttpError(409, "move_limit", { registration: await registrationView(reg) })
   const version = reg.version
