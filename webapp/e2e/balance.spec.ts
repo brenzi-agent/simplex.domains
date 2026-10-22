@@ -105,7 +105,7 @@ test("a difference invoice cancelled frees its balance, which Order the name aga
   // held by the open invoice, the balance offers neither Use nor Refund, and leads to the order holding it
   await yourNames(page)
   await expect(balanceRow(page).locator(".chip")).toHaveText("In use")
-  await expect(balanceRow(page).locator(".sub")).toContainText("in use by an open invoice until")
+  await expect(balanceRow(page).locator(".sub")).toContainText("in use by another order until")
   await expect(balanceRow(page).getByRole("button", { name: "Use" })).toHaveCount(0)
   await shot(page, "B8-names-balance-held")
   await balanceRow(page).getByRole("button", { name: "Open that order" }).click()
@@ -196,4 +196,47 @@ test("a review whose balance another order's open invoice holds turns its button
   await expect(held).toHaveCount(0)
   await expect(register).toBeEnabled()
   await other.close()
+})
+
+test("a balance held by another browser's invoice whose payment is confirming past its expiry names that order, says so without a time, and is read at a pause", async ({ page, browser, request }) => {
+  const { ownerCode } = await takenOrder(page, request, uniqueLabel("bconf"))
+  // this browser's own invoice for the difference, expired since: an order of the balance that holds nothing
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  await search(page, sevenLetters())
+  await toReview(page)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  await control(request, `expire/${new URL(page.url()).searchParams.get("order")}`)
+  await yourNames(page)
+  await balanceRow(page).getByRole("button", { name: "Use" }).click()
+  await search(page, uniqueLabel("bconfc"))
+  await toReview(page)
+
+  // another browser holding the code spends the balance on a dearer name; money reaches its invoice and confirms past its expiry
+  const other = await browser.newContext()
+  const away = await other.newPage()
+  await addNameCode(away, ownerCode)
+  await balanceRow(away).getByRole("button", { name: "Use" }).click()
+  const dearer = sevenLetters()
+  await search(away, dearer)
+  await toReview(away)
+  await payButton(away).click()
+  await away.waitForURL(/\?order=/)
+  const holder = new URL(away.url()).searchParams.get("order")!
+  await control(request, `partial/${holder}`)
+  await control(request, `overdue/${holder}`)
+  await other.close()
+
+  const reads: number[] = []
+  page.on("request", (r) => { if (r.method() === "GET" && /\/api\/registration\/[^/?]+$/.test(new URL(r.url()).pathname)) reads.push(Date.now()) })
+  await onStep(page).getByRole("button", { name: "Register with your balance" }).click()
+  const held = onStep(page).locator(".line", { hasText: "Your balance is in use by" })
+  await expect(held).toHaveText(`Your balance is in use by ${dearer}.simplex while its payment is being confirmed.`)
+  await expect(onStep(page).getByRole("button", { name: "Register with your balance" })).toBeDisabled()
+  await page.waitForTimeout(8_000)
+  expect(reads.length, `reads of the balance in ${reads.length ? reads[reads.length - 1] - reads[0] : 0} ms`).toBeLessThanOrEqual(3)
+
+  // the holder's payment settles, which spends the balance; the review says so
+  await control(request, `settle/${holder}`)
+  await expect(onStep(page).getByText("Your balance was spent or refunded meanwhile")).toBeVisible({ timeout: 20_000 })
 })

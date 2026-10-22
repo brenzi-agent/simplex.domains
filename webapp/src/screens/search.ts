@@ -1,5 +1,6 @@
 import type { SearchAnswer } from "../api.ts"
-import { dollars, timeOf } from "../format.ts"
+import { dollars } from "../format.ts"
+import { heldWords } from "./balance.ts"
 import { foldLabel, type LabelProblem, labelProblem } from "../names.ts"
 import type { AppliedBalance } from "../session.ts"
 import type { OrderRecord } from "../store.ts"
@@ -121,8 +122,8 @@ export function screenOf(s: SearchState): SearchKind {
 
 // What the tab's balance pays of an available name's price, in two sentences, the second kept on one line; a balance an
 // open invoice holds pays nothing until that invoice closes.
-export function balanceHint({ amount, heldUntil }: AppliedBalance, price: number): [string, string | null] {
-  if (heldUntil) return [`Your balance is in use by an open invoice until ${timeOf(Date.parse(heldUntil))}.`, null]
+export function balanceHint({ amount, held, heldUntil }: AppliedBalance, price: number): [string, string | null] {
+  if (held) return [`Your balance is in use by another order ${heldWords(heldUntil)}.`, null]
   if (price > amount) return [`Your balance covers ${dollars(amount)}.`, `You pay ${dollars(price - amount)}.`]
   return ["Paid from your balance.", price < amount ? `${dollars(amount - price)} stays in it.` : null]
 }

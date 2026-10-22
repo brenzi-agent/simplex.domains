@@ -8,16 +8,18 @@ export interface AppliedCode {
   years: number
 }
 
-// an order's balance as last read: the order it belongs to, the cents left, and until when an open invoice holds them
+// an order's balance as last read: the order it belongs to, the cents left, whether an invoice holds them, and until when
+// (null while money that reached that invoice is being confirmed)
 export interface AppliedBalance {
   source: string
   amount: number
+  held: boolean
   heldUntil: string | null
 }
 
 // a balance pays only while something is left of it
 export const appliedBalance = (source: string, balance: Balance | null): AppliedBalance | null =>
-  balance && balance.amount > 0 ? { source, amount: balance.amount, heldUntil: balance.held ? balance.heldUntil : null } : null
+  balance && balance.amount > 0 ? { source, amount: balance.amount, held: balance.held, heldUntil: balance.held ? balance.heldUntil : null } : null
 
 // how the balance changed since the page took it: another amount left, or none
 export type BalanceChange = "changed" | "gone"

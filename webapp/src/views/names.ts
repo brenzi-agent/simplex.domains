@@ -2,14 +2,15 @@
 import * as api from "../api.ts"
 import { alertBox, btn, chip, codeDisplay, copyButton, el, type Kid, nameText, nameTitle, reducedMotion, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, dollars, SEP, timeOf } from "../format.ts"
+import { dateOf, dollars, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import { qrSvg } from "../qr.ts"
 import {
-  balanceRows, type BalanceRow, CODE_CHIPS, EDIT_RETRY_MS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
+  balanceRows, type BalanceRow, CODE_CHIPS, holderOf, EDIT_RETRY_MS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
   againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, nameRows, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
   reduceList, reduceRestore, REFUSALS, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
+import { heldWords } from "../screens/balance.ts"
 import { checkoutUrl, CODE_URL } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import type { AppliedCode } from "../session.ts"
@@ -319,14 +320,14 @@ const BALANCE_FROM: Record<BalanceRow["from"], string> = {
 function balanceRow(b: BalanceRow, s: ListState): HTMLElement {
   const o = s.orders.find((r) => r.registrationId === b.id)!
   const { view } = s.seen[b.id]
-  const holder = b.heldUntil ? store.balanceHolder(b.id) : undefined
-  const acts = b.heldUntil ? [holder ? small("Open that order", `${b.id}-holder`, () => go(store.orderUrl(holder))) : null]
-    : b.amount > 0 ? [small("Use", `${b.id}-use`, () => useBalance({ source: b.id, amount: b.amount, heldUntil: null })),
+  const holder = b.held ? holderOf(s, b.id) : undefined
+  const acts = b.held ? [holder ? small("Open that order", `${b.id}-holder`, () => go(store.orderUrl(holder))) : null]
+    : b.amount > 0 ? [small("Use", `${b.id}-use`, () => useBalance({ source: b.id, amount: b.amount, held: false, heldUntil: null })),
       small("Refund", `${b.id}-refund`, () => showRefund(o.invoiceId ?? o.registrationId, `${b.id}-refund`))] : []
   const sub = ["From ", nameText(view.label ?? o.label, view.tld), `, ${BALANCE_FROM[b.from]}`,
     b.refunded ? `${SEP}refunded ${dollars(b.refunded)} by support` : null,
-    b.heldUntil ? `${SEP}in use by an open invoice until ${timeOf(Date.parse(b.heldUntil))}` : null]
-  return row(`balance-${b.id}`, el("b", { class: "price" }, dollars(b.amount)), sub, b.heldUntil ? chip("In use", "brand", true) : null, acts)
+    b.held ? `${SEP}in use by another order ${heldWords(b.heldUntil)}` : null]
+  return row(`balance-${b.id}`, el("b", { class: "price" }, dollars(b.amount)), sub, b.held ? chip("In use", "brand", true) : null, acts)
 }
 
 function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {

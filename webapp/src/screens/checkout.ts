@@ -21,7 +21,11 @@ export interface CheckoutState {
   openOrder: OpenOrder | null
   hold: Hold | null
   refusal: Refusal | null
+  // the order whose invoice holds the checkout's balance, as the service's find names it
+  holder: Holder | null
 }
+
+export interface Holder { label: string; tld: string; url: string }
 
 export type CheckoutEvent =
   | { type: "opened"; step: CheckoutStep; checkout: Checkout; sending: boolean; waiting: WaitingOrder | null; hold: Hold | null }
@@ -37,11 +41,12 @@ export type CheckoutEvent =
   | { type: "price-changed"; price: number }
   | { type: "balance-changed"; balance: Balance | null }
   | { type: "balance-read"; balance: Balance | null }
+  | { type: "holder-seen"; holder: Holder | null }
   | { type: "hold-started"; until: number }
   | { type: "hold-ended" }
 
 export function initialState(checkout: Checkout, step: CheckoutStep): CheckoutState {
-  return { step, checkout, sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null }
+  return { step, checkout, sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null, holder: null }
 }
 
 export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial<Checkout> | null {
@@ -86,7 +91,8 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
     case "order-refused": return unsent(s, { checkout, refusal: e.reason === "failed" || e.reason === "taken" ? e.reason : null })
     case "price-changed": return unsent(s, { checkout, refusal: "price-changed" })
     case "balance-changed": return unsent(s, { checkout })
-    case "balance-read": return change ? { ...s, checkout } : s
+    case "balance-read": return change ? { ...s, checkout, holder: balanceHeld(checkout) ? s.holder : null } : s
+    case "holder-seen": return { ...s, holder: e.holder }
     case "hold-started": return unsent(s, { hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: NO_LEAD }, refusal: "too-many" })
     case "hold-ended": return { ...s, hold: null }
   }
@@ -100,7 +106,7 @@ export function split(c: Checkout): { fromBalance: number; rest: number } {
 }
 
 // a balance an open invoice holds pays for nothing until that invoice closes
-export const balanceHeld = (c: Checkout) => Boolean(c.balance?.heldUntil)
+export const balanceHeld = (c: Checkout) => c.balance?.held === true
 
 // an order its balance covers is paid by nothing else
 export const covered = (c: Checkout) => c.balance !== null && split(c).rest === 0

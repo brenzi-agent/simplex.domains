@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView, SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
-  balanceRows, changesOf, CODE_CHIPS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
+  balanceRows, changesOf, CODE_CHIPS, holderOf, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
   initialList, initialRestore, lapsed, lateLine, listedOrders, nameRows, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
   againLine, ranOut, registrableAgain, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../src/screens/names.ts"
@@ -190,22 +190,35 @@ describe("balances", () => {
   }
   it("lists each order's balance with what made it, what support refunded, and the open invoice that holds it", () => {
     expect(balanceRows(all())).toEqual([
-      { id: "reg-taken", amount: 10000, refunded: 0, heldUntil: null, from: "taken" },
-      { id: "reg-late", amount: 2500, refunded: 7500, heldUntil: null, from: "late" },
-      { id: "reg-moved", amount: 5000, refunded: 0, heldUntil: "2026-10-17T12:30:00Z", from: "rest" },
+      { id: "reg-taken", amount: 10000, refunded: 0, held: false, heldUntil: null, from: "taken" },
+      { id: "reg-late", amount: 2500, refunded: 7500, held: false, heldUntil: null, from: "late" },
+      { id: "reg-moved", amount: 5000, refunded: 0, held: true, heldUntil: "2026-10-17T12:30:00Z", from: "rest" },
     ])
   })
   it("lists a balance support refunded whole, with nothing left, and no balance spent whole or not read yet", () => {
     let s = list({ orders })
     s = read(s, "reg-taken", registration({ id: "reg-taken", phase: "taken", balance: { ...BALANCE, amount: 0, refunded: 10000 } }))
     s = read(s, "reg-moved", registration({ id: "reg-moved", phase: "registered", balance: { ...BALANCE, amount: 0 } }))
-    expect(balanceRows(s)).toEqual([{ id: "reg-taken", amount: 0, refunded: 10000, heldUntil: null, from: "taken" }])
+    expect(balanceRows(s)).toEqual([{ id: "reg-taken", amount: 0, refunded: 10000, held: false, heldUntil: null, from: "taken" }])
   })
   it("lists a name registered by someone else first by its balance alone, and every other order as a name", () => {
     expect(nameRows(all()).map((o) => o.registrationId)).toEqual(["reg-late", "reg-moved", "reg-plain"])
     let spent = list({ orders })
     spent = read(spent, "reg-taken", registration({ id: "reg-taken", phase: "taken", balance: { ...BALANCE, amount: 0 } }))
     expect(nameRows(spent).map((o) => o.registrationId), "a taken order whose balance is spent stays a name").toContain("reg-taken")
+  })
+})
+
+describe("holderOf", () => {
+  const orders = [record({ registrationId: "expired", invoiceId: "inv-e", balanceSource: "src" }), record({ registrationId: "paid", invoiceId: "inv-p", balanceSource: "src" }),
+    record({ registrationId: "open", invoiceId: "inv-o", balanceSource: "src" }), record({ registrationId: "other", invoiceId: "inv-x", balanceSource: "src2" })]
+  const read = (s: ListState, id: string, status: InvoiceView["status"], phase: RegistrationView["phase"] = "unpaid") =>
+    reduceList(s, { type: "row-read", id, view: registration({ id, phase }), invoice: invoice({ invoiceId: `inv-${id}`, status }), now: NOW })
+  it("is the order whose invoice is open and holds the balance, never one that expired or was paid", () => {
+    let s = read(read(list({ orders }), "expired", "expired"), "paid", "paid", "queued")
+    expect(holderOf(s, "src"), "none open").toBeUndefined()
+    s = read(read(s, "open", "open"), "other", "open")
+    expect(holderOf(s, "src")?.registrationId).toBe("open")
   })
 })
 

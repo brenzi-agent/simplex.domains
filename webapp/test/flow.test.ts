@@ -296,17 +296,30 @@ describe("spendBalance", () => {
 })
 
 describe("balanceHolder", () => {
-  it("names this browser's order whose invoice holds a balance, passing over a covered order, a cancelled one and another balance's", async () => {
+  const entry = (registrationId: string, request: { labelHash: string; sealed: string }, change: Record<string, unknown> = {}) =>
+    ({ registrationId, invoiceId: null, phase: "unpaid", createdAt: "2026-10-14T10:00:00Z", labelHash: request.labelHash, sealed: request.sealed, balanceSource: null, heldBy: null, ...change })
+
+  it("names the order find says holds the balance, never this browser's own order of that balance whose invoice closed", async () => {
     const { flow, store } = await modules()
     const built = await flow.orderRequest(draft())
-    const keep = (registrationId: string, change: Partial<import("../src/store.ts").OrderRecord>) =>
-      store.saveOrder({ ...flow.recordFor(draft(), built, "btc", 20000, { registrationId, invoiceId: `inv-${registrationId}` }), ...change })
-    keep("covered", { invoiceId: null, method: "balance", balanceSource: "src" })
-    keep("cancelled", { balanceSource: "src", cancelled: true })
-    keep("other", { balanceSource: "src2" })
-    expect(store.balanceHolder("src")).toBeUndefined()
-    keep("holder", { balanceSource: "src" })
-    expect(store.balanceHolder("src")?.registrationId).toBe("holder")
+    const keep = (registrationId: string) => store.saveOrder({ ...flow.recordFor(draft(), built, "btc", 20000, { registrationId, invoiceId: `inv-${registrationId}` }), balanceSource: "src" })
+    keep("expired")
+    keep("holder")
+    const source = { registrationId: "src", ownerCode: OWNER_CODE }
+    answers["POST /api/registration/find"] = { registrations: [entry("holder", built.request, { balanceSource: "src" }), entry("expired", built.request, { balanceSource: "src" }), entry("src", built.request)] }
+    expect(await flow.balanceHolder(source), "find names no holder").toBeNull()
+    answers["POST /api/registration/find"] = { registrations: [entry("holder", built.request, { balanceSource: "src" }), entry("expired", built.request), entry("src", built.request, { heldBy: "holder" })] }
+    expect((await flow.balanceHolder(source))?.registrationId).toBe("holder")
+  })
+
+  it("keeps a holder made in another browser, which find names, in this browser's records", async () => {
+    const { flow, store } = await modules()
+    const built = await flow.orderRequest(draft())
+    answers["POST /api/registration/find"] = { registrations: [entry("away", built.request, { balanceSource: "src" }), entry("src", built.request, { heldBy: "away" })] }
+    answers["GET /api/registration/away"] = view(built.request, { id: "away", phase: "queued", fromBalance: 10000 })
+    const holder = await flow.balanceHolder({ registrationId: "src", ownerCode: OWNER_CODE })
+    expect(holder).toMatchObject({ registrationId: "away", balanceSource: "src", label: "dynamis" })
+    expect(store.orderByRegistration("away")).toEqual(holder)
   })
 })
 

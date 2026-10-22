@@ -161,9 +161,6 @@ export function orderByInvoice(invoiceId: string): OrderRecord | undefined {
   return all<OrderRecord>("order").find((o) => o.invoiceId === invoiceId)
 }
 
-// the order of this browser whose open invoice holds another order's balance, which the service's views do not name
-export const balanceHolder = (source: string) => orders().find((o) => o.balanceSource === source && o.invoiceId && !o.cancelled)
-
 export function saveOrder(order: OrderRecord): boolean {
   const saved = put("order", order.registrationId, order)
   // The pending code is the stored copy of the owner code until the order holding it is stored too; an order kept

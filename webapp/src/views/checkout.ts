@@ -2,9 +2,10 @@
 import * as api from "../api.ts"
 import { alertBox, btn, codeDisplay, el, line, link, nameText, nameTitle, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, dollars, freeDays, methodName, termEnd, termOf, timeOf } from "../format.ts"
+import { dateOf, dollars, freeDays, methodName, termEnd, termOf } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
 import type { LinkKind } from "../names.ts"
+import { heldWords, holdWait } from "../screens/balance.ts"
 import { REVEAL_HOURS } from "../screens/order.ts"
 import {
   balanceHeld, changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
@@ -75,10 +76,13 @@ const pause = (ms: number, signal: AbortSignal) => new Promise<void>((done) => {
   signal.addEventListener("abort", () => done(), { once: true })
 })
 
-// The balance as its order reads now, in the tab and on the review. While an open invoice holds it, Pay waits for that
-// invoice to close: followed when this browser made it, else until it expires, when the service lets an unpaid one go.
+// The balance as its order reads now, in the tab and on the review. While an invoice holds it, Pay waits: the holder,
+// as the code's find names it, is followed until its invoice closes; else the balance is read again when the hold can
+// end, or after a pause while the holder's payment is confirming. Reads are never closer than the minimum.
 async function watchBalance(source: string, signal: AbortSignal): Promise<void> {
+  let holder: store.OrderRecord | null = null
   while (!signal.aborted) {
+    const readAt = Date.now()
     let balance: api.Balance | null
     try {
       balance = (await api.readRegistration(source, undefined, signal)).balance
@@ -89,9 +93,16 @@ async function watchBalance(source: string, signal: AbortSignal): Promise<void> 
     if (signal.aborted) return
     session.updateActiveBalance(source, session.appliedBalance(source, balance))
     if (!act({ type: "balance-read", balance }) || !balanceHeld(state.checkout)) return
-    const holder = store.balanceHolder(source)
-    if (holder?.invoiceId) await follow(holder.invoiceId, signal, (seen) => seen?.status === "open")
-    else await pause(Date.parse(state.checkout.balance!.heldUntil!) - api.serviceNow(), signal)
+    const paying = store.orderByRegistration(source)
+    holder ??= paying ? await flow.balanceHolder(paying).catch(() => null) : null
+    if (signal.aborted) return
+    const seen = holder && { label: holder.label, tld: holder.tld, url: store.orderUrl(holder) }
+    if (JSON.stringify(seen) !== JSON.stringify(state.holder)) dispatch({ type: "holder-seen", holder: seen })
+    const followed = holder?.invoiceId != null
+    if (followed) await follow(holder!.invoiceId!, signal, (read) => read?.status === "open")
+    // a holder whose invoice closed may be followed by another, which find names on the next turn
+    if (followed) holder = null
+    await pause(holdWait(state.checkout.balance?.heldUntil ?? null, followed, readAt, Date.now()), signal)
   }
 }
 
@@ -189,13 +200,12 @@ function orderCard(c: session.Checkout): HTMLElement {
         : row("Total", dollars(c.price), "total")))
 }
 
-// An open invoice holding the balance, named by its order where this browser made it; else how the balance changed
-// since the search showed it.
-function balanceChangeLine(c: session.Checkout): HTMLElement | null {
-  if (c.balance?.heldUntil) {
-    const holder = store.balanceHolder(c.balance.source)
-    return line("warn", "wallet", "Your balance is in use by ", holder ? el("a", { href: store.orderUrl(holder) }, nameText(holder.label, holder.tld)) : "an open invoice",
-      ` until ${timeOf(Date.parse(c.balance.heldUntil))}.`)
+// The order whose invoice holds the balance, named and linked once find names it, and how long it holds it; else how the
+// balance changed since the search showed it.
+function balanceChangeLine({ checkout: c, holder }: CheckoutState): HTMLElement | null {
+  if (c.balance?.held) {
+    return line("warn", "wallet", "Your balance is in use by ", holder ? el("a", { href: holder.url }, nameText(holder.label, holder.tld)) : "another order",
+      ` ${heldWords(c.balance.heldUntil)}.`)
   }
   switch (c.balanceChange) {
     case undefined: return null
@@ -308,7 +318,7 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null) },
     el("div", { class: "review" }, orderCard(c),
       c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or check another code.`) : null,
-      balanceChangeLine(c),
+      balanceChangeLine(s),
       c.code || covered(c) ? null : blocked ? waitingNotice(blocked) : methodsBlock(s),
       c.code || covered(c) || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours. `, eth))),
     payNote(s, blocked !== null, signal),

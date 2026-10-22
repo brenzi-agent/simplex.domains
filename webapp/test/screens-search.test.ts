@@ -307,7 +307,7 @@ describe("returnedTo", () => {
 })
 
 describe("a balance", () => {
-  const BALANCE = { source: "reg-taken", amount: 10000, heldUntil: null }
+  const BALANCE = { source: "reg-taken", amount: 10000, held: false, heldUntil: null }
   it("is the tab's as the page opens, and as its order reads now", () => {
     const s = open({ balance: BALANCE })
     expect(s.balance).toEqual(BALANCE)
@@ -323,8 +323,9 @@ describe("a balance", () => {
     expect(balanceHint(BALANCE, 20000)).toEqual(["Your balance covers $100.", "You pay $100."])
     expect(balanceHint({ ...BALANCE, amount: 2550 }, 10000)).toEqual(["Your balance covers $25.50.", "You pay $74.50."])
   })
-  it("held by an open invoice says until when, whatever the price", () => {
+  it("held by another order's invoice says until when, or that its payment is being confirmed, whatever the price", () => {
     const until = "2026-10-17T12:30:00Z"
-    expect(balanceHint({ ...BALANCE, heldUntil: until }, 4000)).toEqual([`Your balance is in use by an open invoice until ${timeOf(Date.parse(until))}.`, null])
+    expect(balanceHint({ ...BALANCE, held: true, heldUntil: until }, 4000)).toEqual([`Your balance is in use by another order until ${timeOf(Date.parse(until))}.`, null])
+    expect(balanceHint({ ...BALANCE, held: true, heldUntil: null }, 4000)).toEqual(["Your balance is in use by another order while its payment is being confirmed.", null])
   })
 })

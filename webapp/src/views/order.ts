@@ -9,6 +9,7 @@ import {
   type ClosedCase, closedCase, coinOf, costOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../screens/order.ts"
+import { heldWords } from "../screens/balance.ts"
 import { checkoutUrl, CODE_FROM_ORDER_URL } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
@@ -870,8 +871,8 @@ async function spendAgain(record: store.OrderRecord, source: string, quote: flow
   const balance = await balanceOf(source)
   if (!isOpen(gen)) return
   if (!balance) return go(searchLink(record.label))
-  if (balance.heldUntil) {
-    return dispatch({ type: "reorder-failed", note: warning(`Your balance is in use by another open invoice until ${timeOf(Date.parse(balance.heldUntil))}. Nothing was charged.`) })
+  if (balance.held) {
+    return dispatch({ type: "reorder-failed", note: warning(`Your balance is in use by another order ${heldWords(balance.heldUntil)}. Nothing was charged.`) })
   }
   // the balance's order has the same name code as this one, which signs the spend
   const next = await flow.spendBalance({ registrationId: source, ownerCode: record.ownerCode }, record.label, { contact: record.contact, channel: record.channel }, quote, balance.amount, method)
@@ -1081,7 +1082,7 @@ const REFUND = "refund"
 function balanceActions({ view, invoice, record }: OrderState): { action: HTMLButtonElement; alt: HTMLAnchorElement | null } {
   const balance = session.appliedBalance(view!.id, view!.balance)
   const action = setAction(btn("Choose another name", "", () => balance ? useBalance(balance) : go(searchLink(""))), false, record === null)
-  const alt = record && balance && !balance.heldUntil ? link("Get a refund", () => showRefund(invoice?.invoiceId ?? view!.id, REFUND)) : null
+  const alt = record && balance && !balance.held ? link("Get a refund", () => showRefund(invoice?.invoiceId ?? view!.id, REFUND)) : null
   alt?.setAttribute("data-focus", REFUND)
   return { action, alt }
 }

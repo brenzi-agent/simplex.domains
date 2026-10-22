@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 import {
   balanceHeld, changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, FALLBACK_METHOD, initialState, reduce, screenOf, split, stepFor,
 } from "../src/screens/checkout.ts"
+import { timeOf } from "../src/format.ts"
+import { BALANCE_READ_MS, CONFIRMING_READ_MS, heldWords, holdWait } from "../src/screens/balance.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import type { Checkout } from "../src/session.ts"
 
@@ -206,13 +208,13 @@ describe("stepFor", () => {
 describe("initialState", () => {
   it("starts on its step with the checkout as stored and nothing else known", () => {
     expect(initialState(checkout(), "links")).toEqual({
-      step: "links", checkout: checkout(), sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null,
+      step: "links", checkout: checkout(), sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null, holder: null,
     })
   })
 })
 
 describe("a balance", () => {
-  const BALANCE = { source: "reg-taken", amount: 1000, heldUntil: null }
+  const BALANCE = { source: "reg-taken", amount: 1000, held: false, heldUntil: null }
   const read = (amount: number, held = false) => ({ amount, held, heldUntil: held ? "2026-10-17T12:30:00Z" : null, refunded: 0 })
   it("pays what it holds of the price, and the rest is left to pay", () => {
     expect(split(checkout({ balance: BALANCE }))).toEqual({ fromBalance: 1000, rest: 500 })
@@ -234,7 +236,7 @@ describe("a balance", () => {
     expect([changed.checkout.balance, changed.checkout.balanceChange]).toEqual([{ ...BALANCE, amount: 1500 }, "changed"])
     expect(covered(changed.checkout), "the balance now covers the price").toBe(true)
     const held = reduce(sending, { type: "balance-changed", balance: read(1000, true) })
-    expect([held.checkout.balance, held.checkout.balanceChange], "the same amount, held").toEqual([{ ...BALANCE, heldUntil: "2026-10-17T12:30:00Z" }, undefined])
+    expect([held.checkout.balance, held.checkout.balanceChange], "the same amount, held").toEqual([{ ...BALANCE, held: true, heldUntil: "2026-10-17T12:30:00Z" }, undefined])
     expect([balanceHeld(held.checkout), held.sending]).toEqual([true, false])
   })
   it("refused as gone, spent, refunded or not there, leaves the order to be paid in full", () => {
@@ -255,5 +257,24 @@ describe("a balance", () => {
     expect(reduce(s, { type: "balance-read", balance: read(600) }).checkout).toMatchObject({ balance: { ...BALANCE, amount: 600 }, balanceChange: "changed" })
     const removed = open({ checkout: checkout() })
     expect(reduce(removed, { type: "balance-read", balance: read(1000, true) }), "a balance taken off meanwhile").toBe(removed)
+  })
+})
+
+describe("holdWait", () => {
+  const AT = Date.parse("2026-10-17T12:00:00Z")
+  it("reads a hold again as it can end, by its holder's expiry", () => {
+    expect(holdWait("2026-10-17T12:10:00Z", false, AT, AT + 1000)).toBe(10 * 60_000 - 1000)
+  })
+  it("never reads sooner than the minimum: a hold past its end, a holder followed until it closed at once", () => {
+    expect(holdWait("2026-10-17T11:00:00Z", false, AT, AT)).toBe(BALANCE_READ_MS)
+    expect(holdWait("2026-10-17T12:10:00Z", true, AT, AT + 200)).toBe(BALANCE_READ_MS - 200)
+    expect(holdWait(null, true, AT, AT + 60_000), "a holder followed for a minute").toBe(0)
+  })
+  it("reads at a pause while the holder's payment is being confirmed, which has no end", () => {
+    expect(holdWait(null, false, AT, AT)).toBe(CONFIRMING_READ_MS)
+  })
+  it("says until when a hold lasts, or that the holder's payment is being confirmed", () => {
+    expect(heldWords("2026-10-17T12:10:00Z")).toBe(`until ${timeOf(Date.parse("2026-10-17T12:10:00Z"))}`)
+    expect(heldWords(null)).toBe("while its payment is being confirmed")
   })
 })

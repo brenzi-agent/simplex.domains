@@ -106,7 +106,7 @@ export function listedOrders(s: ListState): OrderRecord[] {
 // An order's balance as Your names lists it: what is left, what support refunded from it, until when an open invoice
 // holds it, and what made it: its name registered by someone else first, money after its invoice closed, or the rest
 // after a move to a cheaper name.
-export interface BalanceRow { id: string; amount: number; refunded: number; heldUntil: string | null; from: "taken" | "late" | "rest" }
+export interface BalanceRow { id: string; amount: number; refunded: number; held: boolean; heldUntil: string | null; from: "taken" | "late" | "rest" }
 
 export function balanceRows(s: ListState): BalanceRow[] {
   return listedOrders(s).flatMap((o) => {
@@ -114,9 +114,16 @@ export function balanceRows(s: ListState): BalanceRow[] {
     const b = view?.balance
     if (!b || (b.amount === 0 && b.refunded === 0)) return []
     const from = view.phase === "taken" ? "taken" : view.phase === "unpaid" ? "late" : "rest"
-    return [{ id: o.registrationId, amount: b.amount, refunded: b.refunded, heldUntil: b.held ? b.heldUntil : null, from }]
+    return [{ id: o.registrationId, amount: b.amount, refunded: b.refunded, held: b.held, heldUntil: b.held ? b.heldUntil : null, from }]
   })
 }
+
+// The order of this browser whose invoice, as last read, is open and holds the balance of order `source`: never one
+// that expired, was cancelled or was paid since; undefined when this browser holds none such.
+export const holderOf = (s: ListState, source: string) => s.orders.find((o) => {
+  const seen = s.seen[o.registrationId]
+  return o.balanceSource === source && seen?.invoice?.status === "open" && seen.view.phase === "unpaid"
+})
 
 // the orders listed as names: a name registered by someone else first is listed by its balance alone
 export function nameRows(s: ListState): OrderRecord[] {

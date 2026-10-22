@@ -150,6 +150,17 @@ export async function spendBalance(record: BalanceSource, label: string, links: 
   return sendSpend(record, draft, await spendRequest(record, draft, quote.price, balance, method))
 }
 
+// The order whose invoice holds a balance now, as the code's find names it, kept in this browser's records; null when
+// none holds it. A record of this browser is never taken for the holder on its own: its invoice may have closed.
+export async function balanceHolder(source: BalanceSource): Promise<store.OrderRecord | null> {
+  const wallet = walletOf(source.ownerCode)!
+  const found = await findOrders(wallet)
+  const heldBy = found.find((r) => r.registrationId === source.registrationId)?.heldBy
+  const entry = heldBy ? found.find((r) => r.registrationId === heldBy) : undefined
+  if (!entry) return null
+  return store.orderByRegistration(entry.registrationId) ?? (await reopen(wallet, source.ownerCode, entry)).record
+}
+
 type RestoreResult = { record: store.OrderRecord; view: api.RegistrationView }
 
 // The order's name and links, unsealed with the code, after checking that they rebuild the order's commitment.
