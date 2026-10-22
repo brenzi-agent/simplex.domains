@@ -339,3 +339,27 @@ test("Try again after a spend whose answer was lost sends the same body, and the
   const { registrations } = await (await request.get(`${MOCK}/control/state`)).json() as { registrations: { labelHash: string }[] }
   expect(registrations.filter((r) => r.labelHash === JSON.parse(bodies[0]).labelHash), "one order for the name").toHaveLength(1)
 })
+
+test("a difference order whose balance has grown to cover the price offers to register with it, which registers the name with nothing to pay", async ({ page, request }) => {
+  await takenOrder(page, request, uniqueLabel("bgrow"))
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  // the taken order whose balance the tab now pays with
+  const balanceSource = await page.evaluate(() => JSON.parse(sessionStorage.getItem("simplex-names-balance")!).source as string)
+  const dearer = sevenLetters()
+  await search(page, dearer)
+  await toReview(page)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  const first = new URL(page.url()).searchParams.get("order")!
+  await control(request, `expire/${first}`)
+  await expect(onStep(page).getByRole("button", { name: "Get a new invoice" })).toBeVisible()
+  // the balance grows to the whole price while the invoice is closed
+  await control(request, `credit/${balanceSource}`, { cents: 10000 })
+  await page.reload()
+  const register = onStep(page).getByRole("button", { name: "Register with your balance" })
+  await expect(register).toBeVisible()
+  await expect(onStep(page).getByRole("button", { name: "Get a new invoice" })).toHaveCount(0)
+  await register.click()
+  await page.waitForURL(/\?registration=/)
+  await waitRegistered(page, dearer)
+})

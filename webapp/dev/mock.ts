@@ -1,7 +1,7 @@
 // The mock names service's HTTP server: the API under /api, and controls for tests under /control.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import {
-  cancelInvoice, checkCode, controlInvoice, controlLate, controlRate, controlRefund, controlRegistration, controlSearch, controlTake, createInvoice, dump, editRecords, find,
+  cancelInvoice, checkCode, controlCredit, controlInvoice, controlLate, controlRate, controlRefund, controlRegistration, controlSearch, controlTake, createInvoice, dump, editRecords, find,
   HttpError, issueCode, oneOrderAtATime, setCodeState, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retry, reveal, search, spend,
 } from "./mock/service.ts"
 
@@ -34,6 +34,7 @@ const routes: [string, RegExp, Handler][] = [
   ["POST", /^\/control\/(settle|partial|confirming|expire|overdue)\/([^/]+)$/, (m) => controlInvoice(m[1], m[2])],
   ["POST", /^\/control\/(fail|lapse)\/([^/]+)$/, (m) => controlRegistration(m[1], m[2])],
   ["POST", /^\/control\/late\/([^/]+)$/, (m, b) => controlLate(m[1], b.waiting ?? null)],
+  ["POST", /^\/control\/credit\/([^/]+)$/, (m, b) => controlCredit(m[1], b.cents)],
   ["POST", /^\/control\/take$/, (_, b) => controlTake(b.label)],
   ["POST", /^\/control\/refund\/([^/]+)$/, (m, b) => controlRefund(m[1], b.cents)],
   ["POST", /^\/control\/rate$/, (_, b) => controlRate(b)],

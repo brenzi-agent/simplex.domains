@@ -3,7 +3,7 @@ import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
   CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
-  reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
+  reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, spendCovers, unreadDelay, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
 
@@ -370,6 +370,24 @@ describe("closedBalance", () => {
   })
 })
 
+describe("spendCovers", () => {
+  const expired = (sourceBalance: OrderState["sourceBalance"], change: Partial<OrderState> = {}) =>
+    read(crypto({ status: "expired", amount: 500 }, { price: 1500, fromBalance: 1000 }), undefined, { record: record({ balanceSource: "reg-0" }), sourceBalance, ...change })
+  const balance = (amount: number, held = false) => ({ amount, held, heldUntil: null, refunded: 0 })
+  it("registers with the balance once it has grown to the price", () => {
+    expect(spendCovers(expired(balance(1500)))).toBe(true)
+    expect(spendCovers(expired(balance(4000)))).toBe(true)
+  })
+  it("gets a new invoice for the rest while the balance is short of the price, held, or not read", () => {
+    expect(spendCovers(expired(balance(1000)))).toBe(false)
+    expect(spendCovers(expired(balance(4000, true)))).toBe(false)
+    expect(spendCovers(expired(null))).toBe(false)
+  })
+  it("is never for an order no balance paid", () => {
+    expect(spendCovers(expired(balance(4000), { record: record() }))).toBe(false)
+  })
+})
+
 describe("newInvoiceBy", () => {
   it("spends again the balance that paid part of the order, as the record names it", () => {
     expect(newInvoiceBy(record({ balanceSource: "reg-0" }), crypto({ status: "expired" }, { fromBalance: 1000 }))).toBe("spend")
@@ -484,7 +502,7 @@ describe("initialState", () => {
     const reveal = { key: "reg-1 0x9c 4 1", sending: true, refusals: 1 }
     expect(initialState("inv-1", { until: NOW + 1000, lead: NO_LEAD }, reveal)).toEqual({
       reference: "inv-1", seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false,
-      reveal, busy: null, note: null, hold: { until: NOW + 1000, lead: NO_LEAD }, price: null, gone: false, codeRefused: false, codeKept: false,
+      reveal, busy: null, note: null, hold: { until: NOW + 1000, lead: NO_LEAD }, price: null, gone: false, codeRefused: false, codeKept: false, sourceBalance: null,
     })
   })
 })

@@ -6,7 +6,7 @@ import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
-  closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
+  closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedLead, finished, newInvoiceBy, spendCovers, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
@@ -110,6 +110,7 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
   // siblings that could not be read are asked again even when the order's own answer has not changed
   let again = false
   let codeChecked = false
+  let sourceRead = false
   let unreadReads = 0
   // forgetting the last answer makes the next read answer at once
   const forget = () => {
@@ -212,6 +213,13 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
       drawn = answered
       drawnRecord = recorded
       dispatch({ type: "answered", seq, now: api.serviceNow(), invoice, view, record: record ?? null, cardSubmittedAt: cardSubmittedAt(invoice, record) })
+    }
+    // a closed order that a balance paid part of reads that balance once, for what its new invoice will pay
+    if (!sourceRead && closedCase(state) !== null && record?.balanceSource) {
+      sourceRead = true
+      const balance = await api.readRegistration(record.balanceSource).then((v) => v.balance, () => null)
+      if (!isRoute(mine)) return
+      dispatch({ type: "source-read", balance })
     }
     // A failed order is drawn before its code is checked, saying nothing of the code until the check answers.
     if (view.phase === "failed" && !codeChecked && !invoice && record?.prepaidCode && !record.codeRefusal) {
@@ -690,7 +698,7 @@ async function orderAgain(record: store.OrderRecord): Promise<void> {
 }
 
 function newInvoiceButton(s: OrderState, cls: string, get: () => void): HTMLButtonElement {
-  const again = setAction(btn("Get a new invoice", cls, get), s.busy === "reorder", s.hold !== null)
+  const again = setAction(btn(spendCovers(s) ? "Register with your balance" : "Get a new invoice", cls, get), s.busy === "reorder", s.hold !== null)
   again.dataset.focus = "reorder"
   return again
 }

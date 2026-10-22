@@ -1219,6 +1219,16 @@ export function controlInvoice(action: string, invoiceId: string): Record<string
   return { ok: true, status: inv.status }
 }
 
+// A balance grown by money from elsewhere, as a later credit to the order (a late payment or a cheaper move) grows it.
+export function controlCredit(registrationId: string, cents: unknown): Record<string, unknown> {
+  const reg = registrations.get(registrationId)
+  if (!reg) throw new HttpError(404, "not_found")
+  if (!Number.isInteger(cents) || (cents as number) <= 0) throw badRequest()
+  credit(reg.id, cents as number)
+  wake(reg)
+  return { ok: true, balance: balanceView(reg.id) }
+}
+
 // A credit of late money held back as the service's would wait, or let go: what is confirmed then is credited.
 export function controlLate(invoiceId: string, waiting: unknown): Record<string, unknown> {
   const inv = invoices.get(invoiceId)

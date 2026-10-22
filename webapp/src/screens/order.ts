@@ -1,4 +1,4 @@
-import { holdsPayment, type InvoiceView, type RegistrationView } from "../api.ts"
+import { type Balance, holdsPayment, type InvoiceView, type RegistrationView } from "../api.ts"
 import type { IconName } from "../icons.ts"
 import type { CodeRefusal, OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
@@ -43,6 +43,8 @@ export interface OrderState {
   codeRefused: boolean
   // the service said the order's code is unspent, which the failed page waits for before saying so
   codeKept: boolean
+  // the balance that paid part of the order, as its own order reads now, which a new invoice spends again
+  sourceBalance: Balance | null
 }
 
 export type OrderEvent =
@@ -70,11 +72,12 @@ export type OrderEvent =
   | { type: "retry-started" }
   | { type: "retry-failed"; note: Note; codeRefused: boolean }
   | { type: "code-checked" }
+  | { type: "source-read"; balance: Balance | null }
   | { type: "hold-started"; until: number; lead: string }
   | { type: "hold-ended" }
 
 export function initialState(reference: string, hold: Hold | null, reveal: Reveal | null = null): OrderState {
-  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false }
+  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, sourceBalance: null }
 }
 
 const start = (s: OrderState, action: Action): OrderState => ({ ...s, busy: action, note: null })
@@ -108,6 +111,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "retry-started": return start(s, "retry")
     case "retry-failed": return end(s, "retry", { note: e.note, codeRefused: e.codeRefused })
     case "code-checked": return { ...s, codeKept: true }
+    case "source-read": return { ...s, sourceBalance: e.balance }
     case "hold-started": return { ...s, busy: null, note: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: e.lead } }
     case "hold-ended": return { ...s, hold: null }
   }
@@ -155,6 +159,11 @@ export function newInvoiceBy(record: OrderRecord, invoice: InvoiceView): "spend"
   if (record.balanceSource) return "spend"
   return invoice.registration.fromBalance > 0 ? "find" : "order"
 }
+
+// A new invoice of an order that a balance paid part of spends that balance again; once it has grown to cover the price,
+// the spend registers the name with nothing to pay, which its button says.
+export const spendCovers = ({ record, view, sourceBalance }: OrderState) =>
+  Boolean(record?.balanceSource) && view !== null && sourceBalance !== null && !sourceBalance.held && sourceBalance.amount >= view.price
 
 // What the order's name costs, which a move to a cheaper name lowers, and what another order's balance paid of it, the
 // rest of that payment kept as this order's balance after such a move; null for a code, which costs nothing.
