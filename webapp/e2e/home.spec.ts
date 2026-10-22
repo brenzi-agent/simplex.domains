@@ -11,6 +11,11 @@ const chat = (kind: string, displayName: string, extra: Record<string, unknown> 
   link: `https://smp8.simplex.im/${kind === "channel" ? "c" : "a"}#${kind}`, deepLink: `simplex:/${kind === "channel" ? "c" : "a"}#${kind}?h=smp8.simplex.im`, ...extra,
 })
 const EVERY_KIND = [chat("contact", "Ann", { image: PICTURE }), chat("channel", "News"), chat("business", "Shop"), chat("bot", "Helper")]
+// a name's two chats whose profiles the service read, with the channel's link and the chat core's form of it
+const CHANNEL_LINK = "https://smp9.simplex.im/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm"
+const CHANNEL_DEEP_LINK = "simplex:/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm?h=smp9.simplex.im"
+const BAKERY = [chat("contact", "Alice's Bakery", { fullName: "Sourdough and pastries, Lisbon" }),
+  chat("channel", "Bakery news", { fullName: "Daily bakes and opening hours", subscribers: 1204, link: CHANNEL_LINK, deepLink: CHANNEL_DEEP_LINK })]
 
 async function answerWith(page: Page, entities: unknown[]): Promise<void> {
   await page.route("**/api/name/**", (route) => route.fulfill({ json: { status: "registered", entities, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", tld: "simplex" } }))
@@ -34,6 +39,7 @@ test("a taken name shows each chat it opens as the app's default picture for its
 
 test("a chat's picture opens its profile as the app's connection alert, which Escape and a click outside close", async ({ page, context, browserName }) => {
   await page.setViewportSize(LAPTOP)
+  await answerWith(page, BAKERY)
   await search(page, "bakery")
   const news = page.locator(".answer").getByRole("button", { name: "Bakery news, channel" })
   const headline = () => page.locator(".home h1").evaluate((h) => h.getBoundingClientRect().left)
@@ -52,12 +58,12 @@ test("a chat's picture opens its profile as the app's connection alert, which Es
   const open = dialog.getByRole("link", { name: "Open channel in SimpleX" })
   await expect(open).toBeFocused()
   // the chat core's form, which keeps the server, so the app can open it
-  await expect(open).toHaveAttribute("href", "simplex:/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm?h=smp9.simplex.im")
+  await expect(open).toHaveAttribute("href", CHANNEL_DEEP_LINK)
   await shot(page, "N2g-chat-popup")
   if (browserName === "chromium") {
     await context.grantPermissions(["clipboard-read", "clipboard-write"])
     await dialog.getByRole("button", { name: "Copy link" }).click()
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^https:\/\/smp9\.simplex\.im\/c#/)
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(CHANNEL_LINK)
   }
   await page.keyboard.press("Escape")
   await expect(dialog).toHaveCount(0)

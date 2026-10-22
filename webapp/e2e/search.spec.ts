@@ -29,8 +29,12 @@ test("search answers every kind of name", async ({ page, request }) => {
   // the chats the name opens, as the app's own pictures in its row, and whose it is
   await expect(page.locator(".answer .row .chat")).toHaveCount(2)
   await expect(page.locator(".answer .row")).toContainText("Taken")
-  await expect(page.locator(".answer").getByRole("button", { name: /^Alice.s Bakery, contact address$/ })).toBeVisible()
-  await expect(page.locator(".answer").getByRole("button", { name: "Bakery news, channel" })).toBeVisible()
+  // the seeded links are no short links the chat core parses, so no chat's profile is read and each opens its own text
+  await expect(page.locator(".answer").getByRole("button", { name: "Contact address", exact: true })).toBeVisible()
+  await page.locator(".answer").getByRole("button", { name: "Channel", exact: true }).click()
+  const { records } = await searchName(request, "bakery") as { records: { channel: string } }
+  await expect(page.getByRole("dialog", { name: "Channel" }).getByRole("link", { name: "Open channel in SimpleX" })).toHaveAttribute("href", records.channel)
+  await page.keyboard.press("Escape")
   await shot(page, "N2a-taken")
   await search(page, "harbour")
   await expect(page.locator(".answer .row")).toHaveText("harbour.simplexTaken")

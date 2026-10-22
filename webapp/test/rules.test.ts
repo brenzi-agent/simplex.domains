@@ -63,7 +63,7 @@ describe("link rules", () => {
 })
 
 describe("the mock's deep link", () => {
-  const key = "Y8m3qT0vLw2Ab7cD9eF1gH3jK5mN7pQ9rS"
+  const key = "wg3qTYdrW4-woYFLQwFwMM6m1KwwstmucbQE0vq6SbU"
   const onion = "o5vmywmrnaxalvz6wi3zicyftgio6psuvyniis6gco6bp6ekl4cqj4id.onion"
 
   it("keeps the server as the chat core writes it, so the app can open the link", () => {
@@ -72,10 +72,17 @@ describe("the mock's deep link", () => {
   })
 
   it("puts the link's host before its other hosts, then its port and key hash, and passes a page-accepted link", () => {
-    const deep = deepLinkOf(`https://smp4.simplex.im/a#${key}?c=1234-w&h=${onion}&p=5223`)
-    expect(deep).toBe(`simplex:/a#${key}?h=smp4.simplex.im%2C${onion}&p=5223&c=1234-w`)
+    const deep = `simplex:/a#${key}?h=smp4.simplex.im%2C${onion}&p=5223&c=1234-w`
+    expect(deepLinkOf(`https://smp4.simplex.im/a#${key}?c=1234-w&h=${onion}&p=5223`)).toBe(deep)
     expect(linkKind(deep)).toBe("contact")
     expect(deepLinkOf(deep), "a simplex:/ link is in that form already").toBe(deep)
+  })
+
+  it("is null for a link the chat core cannot parse", () => {
+    expect(deepLinkOf("https://smp8.simplex.im/a#Y8m3qT0vLw2Ab7cD9eF1gH3jK5mN7pQ9rS"), "a stray last character").toBeNull()
+    expect(deepLinkOf(`https://smp8.simplex.im/a#${key.slice(0, 41)}`), "a length no bytes encode to").toBeNull()
+    expect(deepLinkOf(`simplex:/a#${key}`), "a simplex:/ link without its server").toBeNull()
+    expect(deepLinkOf(`https://smp8.simplex.im/x#${key}`), "neither a contact address nor a channel").toBeNull()
   })
 })
 
