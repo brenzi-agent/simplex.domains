@@ -2,8 +2,8 @@ import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
   CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
-  lineStarts, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, savedToReview, search, shot, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel,
-  useCode, waitRegistered,
+  lineStarts, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, test, toCodeStep,
+  toFullReview, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
 test("the purchase steps swap the whole page, one screen at a time rising in, and Back walks them in reverse", async ({ page }) => {
@@ -166,6 +166,27 @@ test("every purchase step fits a laptop's and a phone's window, its heading and 
   oneFrame(frames)
 })
 
+test("the balance's steps fit both windows, their heading, main button and link where every step's are", async ({ page, request }) => {
+  const frames: Record<string, Frame[]> = {}
+  await takenOrder(page, request, uniqueLabel("fitbal"))
+  await fitsWindow(page, "b1-taken", frames)
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  await search(page, uniqueLabel("fitbal2"))
+  await toReview(page)
+  await expect(onStep(page).getByRole("button", { name: "Register with your balance" })).toBeVisible()
+  await fitsWindow(page, "b2-review-balance", frames)
+  await search(page, sevenLetters())
+  await toReview(page)
+  await expect(payButton(page)).toHaveText("Pay $100 with Bitcoin")
+  await fitsWindow(page, "b3-review-balance-more", frames)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await expect(page.locator(".name-check:not(.unchecked)")).toBeVisible()
+  await fitsWindow(page, "b4-pay-difference", frames)
+  oneFrame(frames)
+})
+
 const FIT_INVOICE = "inv-fitall"
 // an invoice of a kept order, as the service answers it, for a page to draw
 const invoiceOf = (o: KeptOrder, status: string, reg: Record<string, unknown>, change: Record<string, unknown> = {}) => ({
@@ -200,6 +221,8 @@ test.describe(() => {
     await onStep(page).getByRole("button", { name: "Try again" }).click()
     await expect(onStep(page).getByText("That did not go through")).toBeVisible()
     await fitsWindow(page, "o3b-not-registered-retry-refused", frames)
+    await shown("o4-taken", invoiceOf(order, "paid", { phase: "taken", commitTx: "0x02", balance: { amount: 10000, held: false, heldUntil: null, refunded: 0 } }), /was taken$/)
+    await expect(onStep(page).getByRole("button", { name: "Get a refund" })).toBeVisible()
     // a taken order seen in a browser without its code, which says where to add the code
     const elsewhere = await browser.newContext()
     const stranger = await elsewhere.newPage()

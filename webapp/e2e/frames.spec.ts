@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  agreeToTerms, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, SAVED, search, test,
-  toFullReview, uniqueLabel,
+  agreeToTerms, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, REGISTRATION_MS, SAVED, search, startOrder,
+  takenHeading, test, toFullReview, uniqueLabel,
 } from "./helpers.ts"
 
 // the swaps run at full length, as for a reader who has not asked for less movement
@@ -119,6 +119,24 @@ test("the purchase steps and other screens swap without a near-empty frame", asy
   await expectNoEmptyFrame(page, "Your names back to the order", async () => {
     await page.goBack()
     await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible()
+  })
+})
+
+test("a name taken first, its balance's search and Your names swap without a near-empty frame", async ({ page, request }) => {
+  const label = uniqueLabel("frbal")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await control(request, "take", { label })
+  await expectNoEmptyFrame(page, "payment to taken", async () => {
+    await control(request, `settle/${invoiceId}`)
+    await expect(page.getByRole("heading", { name: takenHeading(label) })).toBeVisible({ timeout: REGISTRATION_MS })
+  })
+  await expectNoEmptyFrame(page, "taken to the search with the balance", async () => {
+    await onStep(page).getByRole("button", { name: "Choose another name" }).click()
+    await heading(page, "Your SimpleX domain")
+  })
+  await expectNoEmptyFrame(page, "search to Your names with the balance", async () => {
+    await page.locator("body > header").getByRole("link", { name: "Your names" }).click()
+    await expect(onStep(page).locator(".list-row[data-key^='balance-']")).toBeVisible()
   })
 })
 
