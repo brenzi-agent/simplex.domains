@@ -413,18 +413,18 @@ for (const length of [15, 25, MAX_LABEL_LENGTH]) {
   })
 }
 
-test("a part paid takes the bookmark's line with its notice, the payment keeping its heading still and fitting both windows", async ({ page, request }) => {
+test("a part paid takes the waiting line's place with its own, the payment keeping its heading still and fitting both windows", async ({ page, request }) => {
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)
     const { invoiceId } = await startOrder(page, uniqueLabel("part"), { method: "btc" })
-    await expect(onStep(page).getByText("Bookmark this page to come back to it.")).toBeVisible()
+    await expect(onStep(page).locator(".pay-status .waiting")).toBeVisible()
     const before = await headingAt(page)
     await control(request, `partial/${invoiceId}`)
     await expect(onStep(page).locator(".notice.warn", { hasText: "Part of the payment arrived" })).toBeVisible()
     expect(await headingAt(page), `the heading at ${size.width}x${size.height}`).toEqual(before)
     expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
     await expect(onStep(page).getByText(/^Part of the payment arrived: [\d.]+ of [\d.]+ BTC is seen\./)).toBeVisible()
-    await expect(onStep(page).getByText("Bookmark this page to come back to it.")).toHaveCount(0)
+    await expect(onStep(page).locator(".pay-status .waiting")).toHaveCount(0)
   }
   await shot(page, "names-u1-part-paid")
 })

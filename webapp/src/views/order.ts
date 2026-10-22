@@ -368,11 +368,11 @@ function copyField(label: string, value: string): HTMLElement {
     el("div", { class: "val" }, el("span", { class: "word" }, ...shown), copyButton(value, "field-copy", `Copy ${label}`)))
 }
 
-function rateLine(invoice: api.InvoiceView, signal: AbortSignal): HTMLElement {
+function validLine(invoice: api.InvoiceView, signal: AbortSignal): HTMLElement {
   const left = () => (Date.parse(invoice.expiresAt) - api.serviceNow()) / 1000
-  const time = el("span", {})
+  const time = el("span", { class: "time" })
   onTheSecond(left, () => { time.textContent = clock(left()) }, signal)
-  return el("span", {}, "Rate held ", time)
+  return el("span", {}, "Invoice valid for ", time)
 }
 
 const partSeen = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Part of the payment arrived: ${invoice.cryptoAmountPaid} of ${invoice.cryptoAmount} ${TICKER[coin]} is seen.`
@@ -415,20 +415,22 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
   const due = partial ? inv.cryptoAmountDue! : inv.cryptoAmount!
   const uri = paymentUri(coin, inv.address!, due)
   holdEnds(signal)(s.hold !== null)
-  const qr = uri ? el("div", { class: "card qr" }, qrSvg(uri, `${methodName(coin)} payment`), el("a", { href: uri }, WALLET)) : null
+  const qr = uri ? el("div", { class: "qr" }, qrSvg(uri, `${methodName(coin)} payment`), el("a", { href: uri }, WALLET)) : null
   // labels in sentence case, as their copy buttons say them; the label style draws them in capitals
   const amount = copyField(`${partial ? "rest to send" : "amount"} in ${TICKER[coin]}`, due)
   const address = copyField(`${methodName(coin)} address`, inv.address!)
   const wallet = uri ? el("a", { class: "wallet", href: uri }, WALLET) : null
   const part = partial ? partLines(inv, coin, [qr, amount, wallet], signal) : null
-  // a part paid takes the bookmark's sentence with its notice; a phone opens its wallet from the link under the address, a laptop from the QR's card
-  return screen({ title: `Pay with ${methodName(coin)}`, lead: [...orderLine(s), partial ? null : [". ", el("span", { class: "nowrap" }, "Bookmark this page to come back to it.")]],
-    alt: partial ? null : cancelLink(s) },
+  const waiting = el("span", { class: "waiting" }, el("i", { class: "dot", "aria-hidden": "true" }), "Waiting for payment")
+  // a phone opens its wallet from the link under the address, a laptop from the QR's
+  const details = el("div", { class: "card pay" },
+    part?.ended ? address : el("div", { class: "qr-grid" }, qr, el("div", { class: "copy-fields" }, amount, address)),
+    part?.ended ? null : wallet,
+    el("div", { class: "pay-status" }, part ? part.rate : waiting, part ? null : validLine(inv, signal), el("span", { class: "ref" }, "Reference ", el("span", { class: "mono" }, inv.invoiceId))))
+  return screen({ title: `Pay with ${methodName(coin)}`, lead: orderLine(s), alt: partial ? null : cancelLink(s) },
     part ? alertBox("warn", "alert", null, part.notice) : null,
     insteadLine(inv),
-    part?.ended ? address : el("div", { class: "qr-grid" }, qr, amount, address),
-    part?.ended ? null : wallet,
-    el("div", { class: "note waiting" }, part ? part.rate : el("span", {}, "Waiting for payment", SEP, rateLine(inv, signal)), referenceLine(inv.invoiceId)),
+    details,
     // a wait the tab is in shows why the link does nothing until it is over
     actionNote(s, partial ? null : signal))
 }

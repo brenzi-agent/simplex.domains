@@ -56,9 +56,9 @@ async function startRecording(page: Page): Promise<void> {
 }
 
 // A swap is a CSS animation, which the document lists among its animations until it ends; a check that the new screen
-// is visible has already made the browser start it.
+// is visible has already made the browser start it. An animation that repeats for ever, as the waiting payment's dot, never ends.
 async function stopRecording(page: Page): Promise<number[]> {
-  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))))
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => undefined))))
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
   return page.evaluate(() => (window as unknown as Recorder).stopRecording())
 }

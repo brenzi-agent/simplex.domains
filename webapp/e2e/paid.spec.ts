@@ -75,8 +75,8 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   expect(ownerCode).toMatch(/^SN-/)
 
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-  await expect(onStep(page).locator(".card.qr svg")).toBeVisible()
-  await expect(page.getByText(/Rate held \d+:\d\d/)).toBeVisible()
+  await expect(onStep(page).locator(".card.pay .qr svg")).toBeVisible()
+  await expect(onStep(page).locator(".pay-status")).toHaveText(new RegExp(`^Waiting for paymentInvoice valid for \\d+:\\d\\dReference ${invoiceId}$`))
   await shot(page, "N4-bitcoin")
   // the wallet link is a BIP21 URI for what is left to send, and each copy button says what it copies
   const invoice = async () => (await request.get(`${MOCK}/api/invoice/${invoiceId}`)).json() as Promise<{ address: string; cryptoAmount: string; cryptoAmountDue: string }>
@@ -88,7 +88,7 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   // a laptop opens the wallet from the QR's card; a phone, without the QR, from the link under the address
   await expect(wallet.locator("xpath=..")).toHaveClass(/\bqr\b/)
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(onStep(page).locator(".card.qr")).toBeHidden()
+  await expect(onStep(page).locator(".qr-grid > .qr")).toBeHidden()
   await expect(wallet).toHaveClass(/\bwallet\b/)
   await expect(wallet).toHaveAttribute("href", `bitcoin:${address}?amount=${cryptoAmount}`)
   const [walletBox, addressBox] = [(await wallet.boundingBox())!, (await onStep(page).locator(".copy-field").last().boundingBox())!]
@@ -763,7 +763,7 @@ async function payLayout(page: Page): Promise<Record<string, string[]>> {
   const layout: Record<string, string[]> = {}
   for (const [device, width] of [["desktop", 1280], ["phone", 390]] as const) {
     await page.setViewportSize({ width, height: 900 })
-    layout[device] = await page.evaluate(() => [...document.querySelectorAll("body > main :is(.screen-body, .notice > div, .qr-grid, .waiting) > *")]
+    layout[device] = await page.evaluate(() => [...document.querySelectorAll("body > main :is(.screen-body, .notice > div, .card.pay, .qr-grid, .copy-fields, .pay-status) > *")]
       .map((n) => { const b = n.getBoundingClientRect(); return `${n.tagName} ${Math.round(b.top)} ${Math.round(b.height)}` }))
   }
   return layout
@@ -783,7 +783,7 @@ test("a part-paid invoice whose rate window ends in view swaps the countdown for
     const w = window as unknown as { __times: string[] }
     w.__times = []
     new MutationObserver((changes) => {
-      for (const { target } of changes) if (target instanceof Element && target.closest(".waiting") && /^\d+:\d\d$/.test(target.textContent ?? "")) w.__times.push(target.textContent!)
+      for (const { target } of changes) if (target instanceof Element && target.closest(".pay-status") && /^\d+:\d\d$/.test(target.textContent ?? "")) w.__times.push(target.textContent!)
     }).observe(document, { childList: true, subtree: true })
   })
   await page.reload()

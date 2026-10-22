@@ -394,15 +394,25 @@ html:has(.modal[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .notice.info svg.i { color: var(--primary); }
 .notice b { display: block; overflow-wrap: anywhere; }
 
-/* payment: the QR, with its wallet link, beside the amount and the address; the name code: its QR beside the words */
+/* payment: one card, the QR with its wallet link beside the amount and the address, over a line of the payment's state;
+   the name code: its QR beside the words */
 /* qrSvg draws its own white frame */
 svg.qr { display: block; width: 132px; height: auto; }
+.card.pay { display: grid; gap: 10px; padding: 12px 16px; }
 /* a phone puts the address, or the code, under the QR, across the column */
-.qr-grid { display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 12px 16px; align-items: start; }
-.qr-grid > .qr { grid-row: span 2; }
-.card.qr { display: grid; place-items: center; gap: 8px; padding: 12px; font-size: var(--fs-small); }
-.card.qr svg.qr { width: 150px; }
-.screen-body > .wallet { display: none; justify-self: center; font-size: 15px; }
+.qr-grid { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px 18px; align-items: center; }
+.qr-grid > .qr { display: grid; justify-items: center; gap: 8px; font-size: var(--fs-small); }
+.qr-grid > .qr svg.qr { width: 132px; border-radius: 8px; }
+.copy-fields { display: grid; gap: 10px; }
+.card.pay > .wallet { display: none; justify-self: center; font-size: 15px; }
+.pay-status { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; padding-top: 10px; border-top: 1px solid var(--surface-line);
+  font-size: var(--fs-small); color: var(--ink-soft); }
+.pay-status .waiting { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 600; }
+/* a whole reference is longer than the mockup's, so it takes its own line under the state and the time */
+.pay-status .ref { flex-basis: 100%; }
+.pay-status .time { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pay-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
 .copy-field .label { display: block; margin-bottom: 6px; }
 .copy-field .val { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line);
   font: 500 14px var(--mono); overflow-wrap: anywhere; text-wrap: balance; }
@@ -417,7 +427,6 @@ svg.qr { display: block; width: 132px; height: auto; }
   font: 600 14px var(--body); cursor: pointer; }
 .field-copy:hover { background: var(--chip); border-color: var(--chip-line); }
 .field-copy.copied { color: var(--ok-fg); border-color: var(--ok-line); }
-.waiting { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; }
 .danger-link { color: var(--danger-fg); }
 .stripe { border-radius: 16px; }
 /* Stripe's card form mounts after its step is drawn, so its box holds the form's height from the start: card only, with
@@ -589,9 +598,9 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .review:has(.line) .order .name { font-size: 16px; }
   /* a QR is for another device; a phone opens its wallet from the link under the address */
   .qr-grid { grid-template-columns: minmax(0, 1fr); }
-  .qr-grid > .card.qr { display: none; }
+  .qr-grid > .qr { display: none; }
   .scan { display: grid; }
-  .screen-body > .wallet { display: block; }
+  .card.pay > .wallet { display: block; }
 }
 
 /* Motion: a screen swapped in, a purchase step as any other, rises into place; what a step adds comes in. Nothing goes out
