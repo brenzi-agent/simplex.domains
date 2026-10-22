@@ -1,4 +1,5 @@
 import { type APIRequestContext, type Browser, expect, type Page } from "@playwright/test"
+import { CODE_LIMIT } from "../dev/mock/limits.ts"
 import { dateOf } from "../src/format.ts"
 import {
   blockTimeOf, chainExpiry, CHECKOUT_KEY, CODE_HEADING, codeField, control, LINKS_HEADING, MOCK, onStep, payButton, savedToReview, search, searchName, shot, startOrder, test, toCodeStep,
@@ -45,6 +46,7 @@ const keptRefusal = (page: Page, registrationId: string) =>
 const total = (page: Page) => page.locator(".card.order .trow.total")
 const chip = (page: Page) => page.locator("body > header .code-chip")
 const REGISTER_WITH_CODE = "Register with your code"
+const TOO_MANY = 429
 // a review's last row with a code, which costs nothing
 const FREE_TOTAL = "Free SimpleX name"
 
@@ -436,13 +438,26 @@ test("a name code added on a fresh page works at once with the device clock 15 m
   await other.close()
 })
 
-test("a rate-limited code check says how long to wait", async ({ page, request }) => {
+test("a code check past the service's limit counts down its wait, then checks the code again by itself", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
-  await page.route("**/api/code/check", (route) => route.fulfill({ status: 429, headers: { "retry-after": "40" }, json: { error: "rate_limited" } }))
+  // this client's checks until the limit refuses one, which other cases this minute may have spent part of
+  const statuses: number[] = []
+  while (statuses.at(-1) !== TOO_MANY && statuses.length <= CODE_LIMIT) statuses.push((await request.post(`${MOCK}/api/code/check`, { data: { code } })).status())
+  expect(statuses.at(-1), `the limit refuses a check within ${CODE_LIMIT + 1}: ${statuses}`).toBe(TOO_MANY)
+  let checks = 0
+  page.on("request", (r) => { if (r.url().endsWith("/api/code/check")) checks++ })
   await page.goto("/#/code")
   await codeField(page).fill(code)
-  await expect(page.locator(".verdict.bad")).toContainText("Too many checks just now")
-  await expect(page.locator(".verdict.bad")).toContainText("Try again in 40 seconds")
+  const count = page.locator(".code-entry .verdict.bad [aria-hidden=true]")
+  await expect(count).toHaveText(/^Too many checks just now\. Your code may be fine\. Checking again in \d+ seconds\.$/)
+  const find = onStep(page).getByRole("button", { name: "Find a name" })
+  await expect(find).toBeDisabled()
+  const left = async () => Number((await count.textContent())!.match(/(\d+) seconds?/)![1])
+  const first = await left()
+  await expect.poll(left, "the wait counts down").toBeLessThan(first)
+  await expect(page.locator(".code-entry .verdict.ok")).toHaveText(/^This code allows you to register a free name of 6 or more letters/, { timeout: (first + 5) * 1000 })
+  await expect(find).toBeEnabled()
+  expect(checks, "the refused check and the one after the wait").toBe(2)
 })
 
 test("Your names reads a revoked code as not valid, and has a codes section only once it has codes", async ({ page, request }) => {

@@ -1,8 +1,7 @@
 // The code field of Check your code, judged as it is typed: a prepaid code that registers a free name, or a name code that owns one.
 import * as api from "../api.ts"
 import { codeProgress, mayBeOwnerCode, parseNameCode } from "../crypto/code.ts"
-import { seconds } from "../format.ts"
-import { el, icon, liveRegion, refill } from "../dom.ts"
+import { el, icon, liveRegion, refill, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import type * as session from "../session.ts"
 import * as store from "../store.ts"
@@ -12,7 +11,7 @@ import { kept, whenDropped } from "./shell.ts"
 export type CodeVerdict =
   | { kind: "prepaid"; code: session.AppliedCode; line: string }
   | { kind: "owner"; found: flow.CodeOrder; line: string }
-  | { kind: "refused"; title: string; line: string; link?: string }
+  | { kind: "refused"; title: string; line: string; link?: string; checkAgainIn?: number }
 
 const STATE_LINES: Record<Exclude<api.CodeState, "unused">, [string, string]> = {
   reserved: ["This code is being used for a name now", "Each code registers one name; this one is held by an unfinished registration."],
@@ -40,9 +39,11 @@ const UNFINISHED: CodeVerdict = { kind: "refused", title: "This is not a SimpleX
 
 const ownerLine = (name: string) => `Name code of ${name}.simplex. Adding it shows the name in Your names, where you can edit its links.`
 
-// A refusal that asking again can change: a rate limit, or a service that did not answer.
+// A refusal that asking again can change: a rate limit, after whose wait the code is checked again, or a service that did not answer.
 function notChecked(e: unknown): CodeVerdict {
-  if (e instanceof api.ApiError && e.code === "rate_limited") return { kind: "refused", title: "Too many checks just now", line: `Your code may be fine. Try again in ${seconds(e.retryAfter ?? api.LIMITED_WAIT_S)}.` }
+  if (e instanceof api.ApiError && e.code === "rate_limited") {
+    return { kind: "refused", title: "Too many checks just now", line: "Your code may be fine.", checkAgainIn: e.retryAfter ?? api.LIMITED_WAIT_S }
+  }
   return { kind: "refused", title: "The code could not be checked", line: "Try again in a moment." }
 }
 
@@ -82,8 +83,9 @@ async function judgeCode(text: string, signal: AbortSignal): Promise<CodeVerdict
 const JUDGE_PAUSE_MS = 400
 
 // Each edit says nothing until its own verdict; a character no code has is refused at once, and a code long enough is
-// judged once typing pauses. One too short is refused once the reader is done: on Enter, or as focus leaves the field
-// for the page, not for another window. Nothing is judged once the signal ends. The returned check judges the code at once.
+// judged once typing pauses, and again once a wait the service asked for is over. One too short is refused once the
+// reader is done: on Enter, or as focus leaves the field for the page, not for another window. Nothing is judged once the
+// signal ends. The returned check judges the code at once.
 function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => void, signal: AbortSignal): () => void {
   let seq = 0
   let pause: ReturnType<typeof setTimeout> | undefined
@@ -94,7 +96,9 @@ function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => voi
   signal.addEventListener("abort", forget, { once: true })
   const judge = async (mine: number) => {
     const v = await judgeCode(input.value.trim(), signal)
-    if (mine === seq && !signal.aborted) show(v)
+    if (mine !== seq || signal.aborted) return
+    show(v)
+    if (v.kind === "refused" && v.checkAgainIn) pause = setTimeout(() => void judge(mine), v.checkAgainIn * 1000)
   }
   input.addEventListener("input", (e) => {
     forget()
@@ -134,15 +138,24 @@ export function codeField(key: string, label: string, heard: (v: CodeVerdict | n
     const box = el("label", { class: "field code-input" }, input, check)
     const line = liveRegion("verdict")
     line.id = verdictId
+    const life = new AbortController()
+    whenDropped(() => life.abort())
+    // the count of the verdict shown, which the next one ends
+    let counting = new AbortController()
+    life.signal.addEventListener("abort", () => counting.abort(), { once: true })
     const show = (v: CodeVerdict | null) => {
       const tone = v === null ? "" : v.kind === "refused" ? " bad" : " ok"
       box.className = `field code-input${tone}`
       line.className = `verdict${tone}`
-      refill(line, v && said(v), v?.kind === "refused" && v.link ? [" ", el("a", { href: v.link }, "Open that order")] : null)
+      counting.abort()
+      counting = new AbortController()
+      if (v?.kind === "refused" && v.checkAgainIn) {
+        const count = el("span", {})
+        refill(line, count)
+        waitOut(count, v.checkAgainIn, (left) => `${said(v)} Checking again in ${left}.`, () => undefined, counting.signal)
+      } else refill(line, v && said(v), v?.kind === "refused" && v.link ? [" ", el("a", { href: v.link }, "Open that order")] : null)
       heard(v)
     }
-    const life = new AbortController()
-    whenDropped(() => life.abort())
     check.addEventListener("click", watchCode(input, show, life.signal))
     // a name code is never kept to show again, nor most of one mistyped or cut short, as anyone who sees it can take the name
     input.addEventListener("input", () => {

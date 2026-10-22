@@ -213,21 +213,17 @@ test("a double click acts once, whatever the redrawn page puts under the pointer
   await expect(onStep(page).getByRole("button", { name: "Skip for now" })).toBeEnabled()
 })
 
-test("a name code's lookup refused for a rate limit says how long to wait, and the code is judged again once it is over", async ({ page, request }) => {
+test("a name code's lookup refused for a rate limit counts down its wait, and the code is judged again once it is over", async ({ page, request }) => {
   const { ownerCode } = await startOrder(page, uniqueLabel("rlim"), { method: "btc" })
   await control(request, "search", { findLimitSeconds: 6 })
   await page.goto("/#/code")
   await codeField(page).fill(ownerCode)
-  const verdict = page.locator(".code-entry .verdict")
-  await expect(verdict).toHaveText(/^Too many checks just now\. Your code may be fine\. Try again in \d seconds\.$/)
-  await expect(page.getByRole("button", { name: "Add to Your names" })).toHaveCount(0)
-  // once the wait is over, the code is judged again as it is entered
+  const count = page.locator(".code-entry .verdict [aria-hidden=true]")
+  await expect(count).toHaveText(/^Too many checks just now\. Your code may be fine\. Checking again in \d seconds\.$/)
   const add = page.getByRole("button", { name: "Add to Your names" })
-  await expect(async () => {
-    await codeField(page).fill("")
-    await codeField(page).fill(ownerCode)
-    await expect(add).toBeVisible({ timeout: 2000 })
-  }).toPass({ timeout: 15_000 })
+  await expect(add).toHaveCount(0)
+  // once the wait is over, the code is judged again by itself
+  await expect(add).toBeVisible({ timeout: 15_000 })
   await add.click()
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
 })
