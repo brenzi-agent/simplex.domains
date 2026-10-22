@@ -764,6 +764,14 @@ test("a part-paid invoice whose rate window ends in view swaps the countdown for
     expiresAt ??= new Date(Date.now() + RATE_LEFT_MS).toISOString()
     await route.fulfill({ response, json: { ...await response.json(), expiresAt } })
   })
+  // each time the rate line's countdown shows, as it changes
+  await page.addInitScript(() => {
+    const w = window as unknown as { __times: string[] }
+    w.__times = []
+    new MutationObserver((changes) => {
+      for (const { target } of changes) if (target instanceof Element && target.closest(".waiting") && /^\d+:\d\d$/.test(target.textContent ?? "")) w.__times.push(target.textContent!)
+    }).observe(document, { childList: true, subtree: true })
+  })
   await page.reload()
   const held = page.getByText(/Rate held \d+:\d\d/)
   const rest = page.getByText(/^Send the remaining/)
@@ -775,6 +783,9 @@ test("a part-paid invoice whose rate window ends in view swaps the countdown for
   await expect(page.getByText(RATE_EXPIRED)).toBeVisible()
   await expect(held).toBeHidden()
   await expect(rest).toBeHidden()
+  const times = await page.evaluate(() => (window as unknown as { __times: string[] }).__times)
+  expect(times, "the countdown reads 0:01 to the end, and never 0:00 while the rate is held").toContain("0:01")
+  expect(times).not.toContain("0:00")
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 })
     for (const control of payMore(page)) await expect(control, `${width}px`).toBeHidden()

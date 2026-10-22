@@ -114,8 +114,11 @@ describe("formatting", () => {
     expect(seconds(30)).toBe("30 seconds")
   })
 
-  it("writes a countdown that never goes negative, and method names", () => {
-    expect(clock(65.9)).toBe("1:05")
+  it("writes a countdown that rounds up, so it reads 0:00 only once the time is over, never negative, and method names", () => {
+    expect(clock(65.1)).toBe("1:06")
+    expect(clock(60)).toBe("1:00")
+    expect(clock(0.02)).toBe("0:01")
+    expect(clock(0)).toBe("0:00")
     expect(clock(-3)).toBe("0:00")
     expect(methodName("xmr")).toBe("Monero")
     expect(methodName("code")).toBe("Code")

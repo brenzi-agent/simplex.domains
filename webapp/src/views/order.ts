@@ -13,7 +13,6 @@ import { checkoutUrl, CODE_FROM_ORDER_URL } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
-import { every } from "./effects.ts"
 import { seenRegistered } from "./names.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
 import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, historyPlace, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
@@ -378,11 +377,9 @@ function copyField(label: string, value: string): HTMLElement {
 }
 
 function rateLine(invoice: api.InvoiceView, signal: AbortSignal): HTMLElement {
-  const end = Date.parse(invoice.expiresAt)
+  const left = () => (Date.parse(invoice.expiresAt) - api.serviceNow()) / 1000
   const time = el("span", {})
-  const turn = () => { time.textContent = clock((end - api.serviceNow()) / 1000) }
-  turn()
-  every(1000, turn, signal)
+  onTheSecond(left, () => { time.textContent = clock(left()) }, signal)
   return el("span", {}, "Rate held ", time)
 }
 
