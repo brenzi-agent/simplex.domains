@@ -279,7 +279,8 @@ async function replaceOlder(view: api.RegistrationView, invoice: api.InvoiceView
 // A taken or failed order is followed too, since another tab or browser can move or retry it.
 function finished(invoice: api.InvoiceView | null, view: api.RegistrationView): boolean {
   if (view.phase === "registered") return true
-  return view.phase === "unpaid" && invoice?.status === "paid"
+  // money paid after the close is credited to the order's balance a little later, which the page waits for
+  return view.phase === "unpaid" && invoice?.status === "paid" && view.balance !== null
 }
 
 function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
@@ -623,8 +624,10 @@ function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
   // only a new invoice is held for the tab's wait
   const reorders = (closed === "received" || closed === "expired") && s.record !== null && !s.record.replacedBy
   holdEnds(signal)(s.hold !== null)
+  // money that came after the close, once credited, is a balance like a taken order's
+  const late = closed === "paid-late" && s.record !== null && !s.record.replacedBy && session.appliedBalance(s.view!.id, s.view!.balance) !== null
   return outcome({ tone, icon: "alert", title: CLOSED_TITLE, text, reference: inv.invoiceId,
-    extra: actionNote(s, reorders ? signal : null), action: closedAction(s, closed) })
+    extra: actionNote(s, reorders ? signal : null), ...late ? balanceActions(s) : { action: closedAction(s, closed) } })
 }
 
 function closedWords(closed: ClosedCase, inv: api.InvoiceView): [Tone, Kid] {
@@ -1052,23 +1055,29 @@ function buildTaken(s: OrderState): HTMLElement {
   if (!invoice && view.fromBalance === 0) return buildTakenWithCode(s)
   const label = labelOf(view, record)
   const balance = session.appliedBalance(view.id, view.balance)
-  const other = setAction(btn("Choose another name", "", () => balance ? useBalance(balance) : go(searchLink(""))), false, record === null)
-  const reference = invoice?.invoiceId ?? view.id
-  const refund = record && balance && !balance.heldUntil ? link("Get a refund", () => showRefund(reference, REFUND)) : null
-  refund?.setAttribute("data-focus", REFUND)
   const note = balance || view.balance === null
     ? el("div", { class: "notice plain" }, el("b", {}, "What you paid is kept as your balance."),
       " Choose another name and pay only the difference, or ask for a refund. Your names shows the balance.")
     : el("div", { class: "notice plain" }, el("b", {}, "What you paid went to your balance."), " It has been spent or refunded since; Your names shows it.")
   return screen({ title: label ? [gradName(label, view.tld), " was\u00a0taken"] : "The name was taken", lead: "Someone registered it before your order could.",
-    action: other, alt: refund },
+    ...balanceActions(s) },
     stages(["done", "done", "failed"], "Taken"),
     note,
     record ? null : alertBox("info", "key", "The name code is not in this browser", "Add it in Check your code to use the balance."),
-    referenceLine(reference))
+    referenceLine(invoice?.invoiceId ?? view.id))
 }
 
 const REFUND = "refund"
+
+// An order's balance pays for another name of its code, or support refunds it while no open invoice holds it; only the
+// browser holding the code does either. Without a balance left, another name is searched as usual.
+function balanceActions({ view, invoice, record }: OrderState): { action: HTMLButtonElement; alt: HTMLAnchorElement | null } {
+  const balance = session.appliedBalance(view!.id, view!.balance)
+  const action = setAction(btn("Choose another name", "", () => balance ? useBalance(balance) : go(searchLink(""))), false, record === null)
+  const alt = record && balance && !balance.heldUntil ? link("Get a refund", () => showRefund(invoice?.invoiceId ?? view!.id, REFUND)) : null
+  alt?.setAttribute("data-focus", REFUND)
+  return { action, alt }
+}
 
 function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   const { view: failed, invoice } = s

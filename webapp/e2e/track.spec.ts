@@ -216,6 +216,8 @@ test.describe(() => {
     }
     await shown("o1-partial-bitcoin", invoice, "Pay with Bitcoin")
     await shown("o2-closed-part-paid", invoiceOf(order, "expired", {}, PART), "Invoice closed")
+    await shown("o2b-paid-late", invoiceOf(order, "paid", { balance: { amount: 10000, held: false, heldUntil: null, refunded: 0 } }), "Invoice closed")
+    await expect(onStep(page).getByRole("button", { name: "Get a refund" })).toBeVisible()
     await shown("o3-paid-not-registered", invoiceOf(order, "paid", { phase: "failed", commitTx: "0x02", error: "The registration transaction reverted on chain" }), "Paid, not registered")
     await page.route("**/api/registration/reg-fitall/retry", (route) => route.fulfill({ status: 500, json: { error: "internal" } }))
     await onStep(page).getByRole("button", { name: "Try again" }).click()
