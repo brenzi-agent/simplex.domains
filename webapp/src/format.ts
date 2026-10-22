@@ -29,6 +29,9 @@ const DAY_S = 86400
 // the days before the paid years start, which cost nothing
 export const freeDays = (termStart: number, nowS: number) => Math.max(0, Math.ceil((termStart - nowS) / DAY_S))
 
+// the paid years with the free days before them, as one term: "2 years and 72 days"
+export const termOf = (years: number, free: number) => free === 0 ? `${years} years` : `${years} years and ${free === 1 ? "1 day" : `${free} days`}`
+
 // Where a term ends before it is registered: its paid years of 365 days from its start, or from now once the start has
 // passed. These are not calendar years: 2 years from 1 January 2027 end on 31 December 2028.
 export const termEnd = (years: number, termStart: number, nowS: number) => Math.max(nowS, termStart) + years * YEAR_S

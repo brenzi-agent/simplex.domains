@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, termEnd } from "../src/format.ts"
+import { clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, termEnd, termOf } from "../src/format.ts"
 import { deepLinkOf } from "../dev/mock/links.ts"
 import { foldLabel, labelProblem, linkKind, linkProblem, LINK_MAX_BYTES, linkTooLong } from "../src/names.ts"
 
@@ -100,6 +100,12 @@ describe("formatting", () => {
     expect(freeDays(TERM_START, Date.UTC(2026, 9, 21) / 1000)).toBe(72)
     expect(freeDays(TERM_START, TERM_START - day / 2)).toBe(1)
     expect([freeDays(TERM_START, TERM_START), freeDays(TERM_START, TERM_START + 5 * day)]).toEqual([0, 0])
+  })
+
+  it("writes the term as its years and the free days before them, a single day in the singular, and the years alone once none are left", () => {
+    expect(termOf(2, 72)).toBe("2 years and 72 days")
+    expect(termOf(5, 1)).toBe("5 years and 1 day")
+    expect(termOf(2, 0)).toBe("2 years")
   })
 
   it("ends a term its years of 365 days after its start, or after now once the start has passed", () => {

@@ -2,7 +2,7 @@
 import * as api from "../api.ts"
 import { alertBox, btn, codeDisplay, el, line, link, nameText, nameTitle, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, dollars, freeDays, methodName, termEnd } from "../format.ts"
+import { dateOf, dollars, freeDays, methodName, termEnd, termOf } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
 import type { LinkKind } from "../names.ts"
 import { REVEAL_HOURS } from "../screens/order.ts"
@@ -138,19 +138,17 @@ async function showOpenOrder(signal: AbortSignal): Promise<void> {
 
 const row = (what: string, value: Node | string, cls?: string) => el("div", { class: `trow${cls ? ` ${cls}` : ""}` }, el("span", {}, what), el("span", {}, value))
 
-// The order as the search answered it, with the chats its links open, over what it costs: its term, the free days
-// before the term starts, its end; a name registered with a code costs nothing.
+// The order as the search answered it, with the chats its links open, over its term, with the free days before it
+// starts, its end, and what it costs; a name registered with a code costs nothing.
 function orderCard(c: session.Checkout): HTMLElement {
   const y = years(c)
   const now = api.serviceNow() / 1000
-  const free = freeDays(c.termStart, now)
   const name = `${c.label}.${c.chain.tld}`
   const chats = api.LINK_KINDS.filter((kind) => c[kind]).map((kind) => linkChat(c[kind], kind, name, `chat-${kind}`))
   return el("section", { class: "card order" },
     el("div", { class: "row" }, nameTitle(c.label, "name", c.chain.tld), chats.length ? el("span", { class: "chats" }, chats) : null),
     el("div", { class: "table" },
-      row("Term", `${y} years`),
-      free > 0 ? row(`Free until ${dateOf(c.termStart)}`, free === 1 ? "1 day" : `${free} days`) : null,
+      row("Term", termOf(y, freeDays(c.termStart, now))),
       row("Registered until", dateOf(termEnd(y, c.termStart, now))),
       c.code ? el("div", { class: "trow total" }, el("span", {}, "Free SimpleX name")) : row("Total", dollars(c.price), "total")))
 }
