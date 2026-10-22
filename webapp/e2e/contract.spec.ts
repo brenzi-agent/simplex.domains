@@ -168,6 +168,48 @@ test("a cancelled or expired order gives way to a new one of the same wallet, an
   expect((await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(draft)).request, "card", q.price))).status).toBe(200)
 })
 
+// an invoice's status as the mock holds it, which a read of the invoice would mark expired once due
+async function heldStatus(invoiceId: string): Promise<string> {
+  const { invoices } = (await call("GET", "/control/state")).json as { invoices: { id: string; status: string }[] }
+  return invoices.find((i) => i.id === invoiceId)!.status
+}
+
+test("an order past its invoice's expiry is closed by the next order of its wallet and name only while nothing has reached it", async ({ request }) => {
+  const label = uniqueLabel("co")
+  const draft = await draftOf(label)
+  const q = await quote(label)
+  const order = async (method: api.Method) => call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(draft)).request, method, q.price))
+  const empty = await order("btc")
+  await control(request, `overdue/${empty.json.invoiceId}`)
+  expect(await heldStatus(empty.json.invoiceId as string), "not marked before an order meets it").toBe("open")
+  const funded = await order("xmr")
+  expect(funded.status, JSON.stringify(funded.json)).toBe(200)
+  expect(await heldStatus(empty.json.invoiceId as string), "closed by the new order").toBe("expired")
+
+  await control(request, `partial/${funded.json.invoiceId}`)
+  await control(request, `overdue/${funded.json.invoiceId}`)
+  expect(await order("btc"), "a paid order meeting the funded one").toEqual({ status: 409, json: { error: "order_exists" } })
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  const coded = await call("POST", "/api/name/register", { ...(await flow.orderRequest(draft)).request, code })
+  expect(coded, "a code order meeting the funded one").toEqual({ status: 409, json: { error: "order_exists" } })
+  const read = await call("GET", `/api/invoice/${funded.json.invoiceId}`)
+  expect([read.json.status, read.json.cryptoAmountPaid], "a funded invoice past its expiry reads open").toEqual(["open", (Number(funded.json.cryptoAmount) / 2).toFixed(5)])
+  expect(await call("POST", `/api/invoice/${funded.json.invoiceId}/cancel`)).toEqual({ status: 409, json: { error: "funded" } })
+  await control(request, `settle/${funded.json.invoiceId}`)
+  expect((await viewOf((funded.json.registration as Json).id as string)).phase, "settled into a registration").not.toBe("unpaid")
+})
+
+test("a code order closes an overdue invoice of its wallet and name with nothing received", async ({ request }) => {
+  const label = uniqueLabel("cd")
+  const draft = await draftOf(label)
+  const paid = await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(draft)).request, "btc", (await quote(label)).price))
+  await control(request, `overdue/${paid.json.invoiceId}`)
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  const coded = await call("POST", "/api/name/register", { ...(await flow.orderRequest(draft)).request, code })
+  expect(coded.status, JSON.stringify(coded.json)).toBe(200)
+  expect(await heldStatus(paid.json.invoiceId as string)).toBe("expired")
+})
+
 test("search quotes the oracle with the term's start, and a registered name carries its grace period", async () => {
   const label = uniqueLabel("cq")
   const answer = await quote(label)

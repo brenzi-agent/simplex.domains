@@ -439,8 +439,9 @@ function live(reg: Registration): boolean {
   return reg.phase !== "taken" && reg.phase !== "code_issued"
 }
 
-// The answer to an exact resend, or nothing; an overdue order of the same wallet and name is closed by this one first,
-// and any other live order of the commitment, or of the wallet and name, refuses it without saying anything of itself.
+// The answer to an exact resend, or nothing; an overdue order of the same wallet and name with nothing received is closed
+// by this one first, and any other live order of the commitment, or of the wallet and name, refuses it without saying
+// anything of itself.
 function existingOrder(o: OrderBody, orderHash: string | null, except: Registration | null = null): Registration | null {
   const resent = orderHash === null ? undefined : [...registrations.values()].find((r) => r.orderHash === orderHash)
   if (resent) return resent
@@ -516,9 +517,10 @@ export async function readRegistration(registrationId: string, seenVersion: numb
   return registrationView(reg)
 }
 
-// An open invoice past its rate window expires when it is next looked at.
+// An open invoice past its rate window with no money received expires when it is next looked at; a funded one stays
+// open until it settles.
 function expireIfDue(inv: Invoice): void {
-  if (inv.status === "open" && Date.parse(inv.expiresAt) <= Date.now()) {
+  if (inv.status === "open" && inv.amountPaid === null && Date.parse(inv.expiresAt) <= Date.now()) {
     inv.status = "expired"
     wake(registrations.get(inv.registrationId)!)
   }
@@ -1065,6 +1067,8 @@ export function controlInvoice(action: string, invoiceId: string): Record<string
     if (inv.method !== "card") Object.assign(inv, { cryptoAmountPaid: inv.cryptoAmount, cryptoAmountDue: "0" })
   } else if (action === "expire") {
     inv.status = "expired"
+  } else if (action === "overdue") {
+    inv.expiresAt = iso(nowSeconds())
   } else throw badRequest()
   wake(reg)
   return { ok: true, status: inv.status }

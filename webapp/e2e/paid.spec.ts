@@ -715,6 +715,18 @@ test("an invoice that closed while its payment was confirming says a payment rea
   await shot(page, "N12f-history-expired-paid")
 })
 
+test("an invoice past its rate window that part of the payment reached stays open for the rest, and registers once paid", async ({ page, request }) => {
+  const label = uniqueLabel("due")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await control(request, `partial/${invoiceId}`)
+  await control(request, `overdue/${invoiceId}`)
+  await page.reload()
+  await expect(onStep(page).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await expect(page.getByText(/^Part of the payment arrived/)).toBeVisible()
+  await control(request, `settle/${invoiceId}`)
+  await waitRegistered(page, label)
+})
+
 test("a browser restored before another browser made a new invoice carries on with that invoice", async ({ page, browser, request }) => {
   const label = uniqueLabel("sib")
   const { invoiceId, ownerCode } = await startOrder(page, label, { method: "btc" })

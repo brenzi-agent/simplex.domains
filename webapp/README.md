@@ -77,6 +77,7 @@ Tests and manual checks move orders along with `POST` requests to the mock:
 | `/control/partial/<invoice>` | half the crypto amount arrives |
 | `/control/confirming/<invoice>` | the full amount is seen, not yet confirmed |
 | `/control/expire/<invoice>` | the invoice expires |
+| `/control/overdue/<invoice>` | the invoice's rate window ends now; the next request that meets it expires it, unless money reached it |
 | `/control/fail/<registration>` | the next commit fails |
 | `/control/take` `{"label"}` | a rival registers the name before the waiting order |
 | `/control/search` `{"chainDown", "limitSeconds", "invoiceError", "findLimitSeconds", "unsentSeconds", "unreadSeconds", "writeDelayMs", "refuseLinks"}` | the chain cannot be read, search is rate limited, the next order is refused (`provider_unavailable`, `rate_limited` with a wait of `MOCK_RETRY_AFTER_SECONDS`, 30 s, `catalog_changed`, `internal`; `null` clears it), finding a code's orders is rate limited, no transaction goes out for that many seconds (each is tried again every `MOCK_RESEND_MS`, 5 s, up to `MOCK_RESENDS`, 12 times), the registration view's own chain reads fail for that many seconds (the view names them in `unread`), every write to a registration waits that long before its version check (to race two requests), or the next reveal finds its links refused |
