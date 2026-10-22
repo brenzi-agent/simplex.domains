@@ -221,8 +221,10 @@ describe("paidLine", () => {
     expect(paidLine(record({ invoiceId: null, method: "balance" }), null, null)).toBe("Paid from your balance")
     expect(paidLine(record({ invoiceId: null, method: "code" }), registration({ fromBalance: 1500 }), null)).toBe("Paid from your balance")
   })
-  it("says a code paid a code order", () => {
-    expect(paidLine(record({ invoiceId: null, method: "code", paid: 0 }), registration({ price: 0 }), null)).toBe("Paid with a code")
+  it("words a code order as a free name, never as a payment, and a taken one's code as released", () => {
+    expect(paidLine(record({ invoiceId: null, method: "code", paid: 0 }), registration({ price: 0 }), null)).toBe("Registered with a code")
+    expect(paidLine(record({ invoiceId: null, method: "code", paid: 0 }), registration({ price: 0, phase: "taken" }), null))
+      .toBe("Free name with a code; the code was released for another name")
   })
   it("names the record's worth and method before the order is read", () => {
     expect(paidLine(record({ method: "xmr", paid: 2500 }), null, null)).toBe("$25 Monero")

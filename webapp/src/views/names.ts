@@ -232,7 +232,7 @@ const PROGRESS: Partial<Record<api.Phase, string>> = {
   registering: "Registering on chain",
 }
 
-// a row's line goes on after a separator in lower case, as "paid with a code" after the date
+// a row's line goes on after a separator in lower case, as "registered with a code" after the date
 const continued = (text: string | null) => text ? text.charAt(0).toLowerCase() + text.slice(1) : text
 
 // the reference support asks for, in a face where l and I differ
@@ -247,7 +247,7 @@ function subLine(o: store.OrderRecord, { view, invoice, answer }: RowSeen, now: 
     const late = lateLine(invoice)
     return late ? [late, ...reference(invoice.invoiceId)] : `Nothing was charged${SEP}${dateOf(Date.parse(o.createdAt) / 1000)}`
   }
-  if (view.phase === "taken" && o.method === "code") return "Paid with a code, released for another name"
+  if (view.phase === "taken" && o.method === "code") return paid
   if (waitsToSign(view, now)) return `Open the order so this browser can sign it${SEP}${continued(paid)}`
   return PROGRESS[view.phase] ? `${PROGRESS[view.phase]}${SEP}${continued(paid)}` : paid
 }

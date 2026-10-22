@@ -148,7 +148,7 @@ export function phaseChip(view: RegistrationView, invoice: InvoiceView | null, o
   return PHASE_CHIPS.unpaid
 }
 
-// What paid the order: its invoice, with what another order's balance paid besides, a balance alone, or a code. Before
+// What paid the order: its invoice, with what another order's balance paid besides, a balance alone, or a free name's code. Before
 // the order is read, its record's method and worth.
 export function paidLine(o: OrderRecord, view: RegistrationView | null, invoice: InvoiceView | null): string {
   const fromBalance = view?.fromBalance ?? 0
@@ -157,7 +157,9 @@ export function paidLine(o: OrderRecord, view: RegistrationView | null, invoice:
     return fromBalance ? `${paid} and ${dollars(fromBalance)} from your balance` : paid
   }
   if (fromBalance || o.method === "balance") return "Paid from your balance"
-  return o.method === "code" ? "Paid with a code" : `${dollars(o.paid)} ${methodName(o.method)}`
+  // a code carries no money: it registers a free name, and a name taken first gives it back
+  if (o.method === "code") return view?.phase === "taken" ? "Free name with a code; the code was released for another name" : "Registered with a code"
+  return `${dollars(o.paid)} ${methodName(o.method)}`
 }
 
 // Money that reached an unpaid order's invoice once it had closed, or that it held as it closed, which is kept as the
