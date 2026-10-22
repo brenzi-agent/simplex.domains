@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
-  changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, FALLBACK_METHOD, initialState, reduce, screenOf, stepFor,
+  changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, FALLBACK_METHOD, initialState, reduce, screenOf, split, stepFor,
 } from "../src/screens/checkout.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import type { Checkout } from "../src/session.ts"
@@ -13,7 +13,7 @@ const OPEN_ORDER = { invoiceId: "inv-9", confirming: false }
 
 function checkout(change: Partial<Checkout> = {}): Checkout {
   return {
-    label: "alice1", price: 1500, years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, chain: CHAIN, contact: "", channel: "", method: "btc", code: null, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF",
+    label: "alice1", price: 1500, years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, chain: CHAIN, contact: "", channel: "", method: "btc", code: null, balance: null, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF",
     saved: true, agreed: false, searchAt: 0, step: "review", ...change,
   }
 }
@@ -208,5 +208,39 @@ describe("initialState", () => {
     expect(initialState(checkout(), "links")).toEqual({
       step: "links", checkout: checkout(), sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null,
     })
+  })
+})
+
+describe("a balance", () => {
+  const BALANCE = { source: "reg-taken", amount: 1000, heldUntil: null }
+  const read = (amount: number, held = false) => ({ amount, held, heldUntil: held ? "2026-10-17T12:30:00Z" : null, refunded: 0 })
+  it("pays what it holds of the price, and the rest is left to pay", () => {
+    expect(split(checkout({ balance: BALANCE }))).toEqual({ fromBalance: 1000, rest: 500 })
+    expect(covered(checkout({ balance: BALANCE }))).toBe(false)
+  })
+  it("covers a price up to what it holds, paying the price only", () => {
+    expect(split(checkout({ balance: { ...BALANCE, amount: 1500 } }))).toEqual({ fromBalance: 1500, rest: 0 })
+    expect(split(checkout({ balance: { ...BALANCE, amount: 4000 } }))).toEqual({ fromBalance: 1500, rest: 0 })
+    expect(covered(checkout({ balance: { ...BALANCE, amount: 4000 } }))).toBe(true)
+  })
+  it("pays nothing without a balance, which leaves the whole price", () => {
+    expect(split(checkout())).toEqual({ fromBalance: 0, rest: 1500 })
+    expect(covered(checkout())).toBe(false)
+  })
+  it("refused as changed takes the balance the service has now and says how it changed, ending the send", () => {
+    const sending = reduce(open({ checkout: checkout({ balance: BALANCE }) }), { type: "send-started" })
+    const changed = reduce(sending, { type: "balance-changed", balance: read(1500) })
+    expect([changed.sending, changed.busy, changed.refusal]).toEqual([false, false, null])
+    expect([changed.checkout.balance, changed.checkout.balanceChange]).toEqual([{ ...BALANCE, amount: 1500 }, "changed"])
+    expect(covered(changed.checkout), "the balance now covers the price").toBe(true)
+    const held = reduce(sending, { type: "balance-changed", balance: read(1000, true) })
+    expect([held.checkout.balance, held.checkout.balanceChange]).toEqual([{ ...BALANCE, heldUntil: "2026-10-17T12:30:00Z" }, "held"])
+  })
+  it("refused as gone, spent, refunded or not there, leaves the order to be paid in full", () => {
+    const s = open({ checkout: checkout({ balance: BALANCE }) })
+    for (const balance of [null, read(0)]) {
+      const gone = reduce(s, { type: "balance-changed", balance })
+      expect([gone.checkout.balance, gone.checkout.balanceChange, split(gone.checkout).rest]).toEqual([null, "gone", 1500])
+    }
   })
 })

@@ -2,11 +2,13 @@
 import * as api from "../api.ts"
 import { alertBox, btn, codeDisplay, el, line, link, nameText, nameTitle, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, dollars, freeDays, methodName, termEnd, termOf } from "../format.ts"
+import { dateOf, dollars, freeDays, methodName, termEnd, termOf, timeOf } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
 import type { LinkKind } from "../names.ts"
 import { REVEAL_HOURS } from "../screens/order.ts"
-import { changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, initialState, reduce, screenOf, stepFor, type WaitingOrder } from "../screens/checkout.ts"
+import {
+  changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
+} from "../screens/checkout.ts"
 import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
@@ -29,9 +31,9 @@ const TERMS_URL = "https://simplex.chat/"
 const SIGNED_WINDOW_S = 600
 
 const years = (c: session.Checkout) => c.code?.years ?? c.years
-// a card order waiting for Stripe holds a second paid order; a code pays nothing, so it holds none
-const blockedBy = ({ checkout, waiting }: CheckoutState) => checkout.code ? null : waiting
-const payLabel = (c: session.Checkout) => c.code ? "Register with your code" : `Pay ${dollars(c.price)} with ${methodName(c.method)}`
+// a card order waiting for Stripe holds a second paid order; a code or a balance that covers the price pays nothing, so it holds none
+const blockedBy = ({ checkout, waiting }: CheckoutState) => checkout.code || covered(checkout) ? null : waiting
+const payLabel = (c: session.Checkout) => c.code ? "Register with your code" : covered(c) ? "Register with your balance" : `Pay ${dollars(split(c).rest)} with ${methodName(c.method)}`
 
 function waitingCardOrder(): WaitingOrder | null {
   const order = store.orders().find((o) => o.method === "card" && o.cardSubmittedAt && o.invoiceId)
@@ -141,18 +143,33 @@ async function showOpenOrder(signal: AbortSignal): Promise<void> {
 const row = (what: string, value: Node | string, cls?: string) => el("div", { class: `trow${cls ? ` ${cls}` : ""}` }, el("span", {}, what), el("span", {}, value))
 
 // The order as the search answered it, with the chats its links open, over its term, with the free days before it
-// starts, its end, and what it costs; a name registered with a code costs nothing.
+// starts, its end, and what it costs; a name registered with a code costs nothing. Paid from a balance, its price takes
+// the chats' place and the table ends with what the balance pays and the rest.
 function orderCard(c: session.Checkout): HTMLElement {
   const y = years(c)
   const now = api.serviceNow() / 1000
   const name = `${c.label}.${c.chain.tld}`
   const chats = api.LINK_KINDS.filter((kind) => c[kind]).map((kind) => linkChat(c[kind], kind, name, `chat-${kind}`))
+  const { fromBalance, rest } = split(c)
+  const side = c.balance ? el("b", { class: "price" }, dollars(c.price)) : chats.length ? el("span", { class: "chats" }, chats) : null
   return el("section", { class: "card order" },
-    el("div", { class: "row" }, nameTitle(c.label, "name", c.chain.tld), chats.length ? el("span", { class: "chats" }, chats) : null),
+    el("div", { class: "row" }, nameTitle(c.label, "name", c.chain.tld), side),
     el("div", { class: "table" },
       row("Term", termOf(y, freeDays(c.termStart, now))),
       row("Registered until", dateOf(termEnd(y, c.termStart, now))),
-      c.code ? el("div", { class: "trow total" }, el("span", {}, "Free SimpleX name")) : row("Total", dollars(c.price), "total")))
+      c.code ? el("div", { class: "trow total" }, el("span", {}, "Free SimpleX name"))
+        : c.balance ? [row("From your balance", `\u2212${dollars(fromBalance)}`), row("To pay", dollars(rest), "total")]
+        : row("Total", dollars(c.price), "total")))
+}
+
+// how the balance had changed when the service refused a spend, which the review now shows
+function balanceChangeLine(c: session.Checkout): HTMLElement | null {
+  switch (c.balanceChange) {
+    case undefined: return null
+    case "gone": return line("warn", "wallet", "Your balance was spent or refunded meanwhile, so this order is paid in full.")
+    case "held": return line("warn", "wallet", `Your balance is in use by an open invoice until ${timeOf(Date.parse(c.balance!.heldUntil!))}. Try again once it closes.`)
+    case "changed": return line("warn", "wallet", `Your balance changed to ${dollars(c.balance!.amount)} meanwhile. Check what is left to pay.`)
+  }
 }
 
 // an order on its way is sent as it is: its method and code stay as they are until it is answered
@@ -259,8 +276,9 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null) },
     el("div", { class: "review" }, orderCard(c),
       c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or check another code.`) : null,
-      c.code ? null : blocked ? waitingNotice(blocked) : methodsBlock(s),
-      c.code || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours. `, eth))),
+      balanceChangeLine(c),
+      c.code || covered(c) ? null : blocked ? waitingNotice(blocked) : methodsBlock(s),
+      c.code || covered(c) || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours. `, eth))),
     payNote(s, blocked !== null, signal),
     termsBox(s))
 }
@@ -304,7 +322,7 @@ async function submitOrder(): Promise<void> {
   if (!c) return go("/#/names")
   if (session.isSending(c) || holding()) return
   // a card payment awaiting confirmation, met since the page was drawn, blocks a second paid order; the page shows it
-  if (!c.code && waitingCardOrder()) return refresh()
+  if (!c.code && !covered(c) && waitingCardOrder()) return refresh()
   session.startSending(c)
   try {
     await sendOrder()
@@ -317,8 +335,13 @@ async function sendOrder(): Promise<void> {
   const c = session.checkout()
   // a page left open while its order went through, in this tab or by Back and Forward, has nothing left to send
   if (!c) return go("/#/names")
+  // a balance pays under its order's name code; one whose order this browser no longer keeps pays nothing
+  const source = c.balance && store.orderByRegistration(c.balance.source)
+  if (c.balance && !source) return balanceChanged(c, null)
   dispatch({ type: "send-started" })
-  const draft: flow.Draft = { label: c.label, links: { contact: c.contact, channel: c.channel }, chain: c.chain, years: years(c), termStart: c.termStart, ownerCode: c.ownerCode! }
+  const links = { contact: c.contact, channel: c.channel }
+  const draft: flow.Draft = source ? flow.spendDraft(source, c.label, links, { ...c.chain, price: c.price, years: years(c), termStart: c.termStart })
+    : { label: c.label, links, chain: c.chain, years: years(c), termStart: c.termStart, ownerCode: c.ownerCode! }
   // The order is kept whatever the buyer did meanwhile. Its checkout ends, and the order opens, only while this checkout
   // is still the tab's: the buyer may have started another name, by Back and Forward too.
   const mine = currentRoute()
@@ -332,13 +355,20 @@ async function sendOrder(): Promise<void> {
     if (location.hash.startsWith("#/checkout")) goFrom(c.searchAt, search, url)
     else go(url)
   }
-  const chosen = c.code ? "code" : c.method
-  const of = JSON.stringify([draft, c.code?.display ?? c.method, c.price])
+  const chosen = c.code ? "code" : covered(c) ? "balance" : c.method
+  const of = JSON.stringify([draft, c.code?.display ?? c.method, c.price, c.balance && [c.balance.source, c.balance.amount]])
   try {
     const fresh = c.sent?.of === of && api.serviceNow() / 1000 - c.sent.request.timestamp < SIGNED_WINDOW_S
-    const built = fresh ? c.sent! : { of, ...await flow.orderRequest(draft) }
+    const built = fresh ? c.sent! : { of, ...await (source ? flow.spendRequest(source, draft, c.price, c.balance!.amount, c.method) : flow.orderRequest(draft)) }
     session.updateCheckout(c.label, { sent: built })
     try {
+      if (source) {
+        // a spend's `of` names its balance, so the order kept for it holds the spend
+        const next = await flow.sendSpend(source, draft, { request: built.request, owner: built.owner, spend: built.spend! })
+        // the balance is spent, or held by the new order's invoice, so it pays for nothing more in this tab
+        session.updateActiveBalance(source.registrationId, null)
+        return done(store.orderUrl(next))
+      }
       if (c.code) {
         const res = await api.registerWithCode(built.request, c.code.display)
         // the code is the order's now, so it pays for nothing more in this tab
@@ -372,7 +402,14 @@ async function sendOrder(): Promise<void> {
   }
 }
 
+// the balance as the service has it now, in the tab and on the review
+function balanceChanged(c: session.Checkout, balance: api.Balance | null): void {
+  if (c.balance) session.updateActiveBalance(c.balance.source, session.appliedBalance(c.balance.source, balance))
+  act({ type: "balance-changed", balance })
+}
+
 function orderError(e: unknown, c: session.Checkout): void {
+  if (e instanceof api.BalanceChanged) return balanceChanged(c, e.balance)
   const code = e instanceof api.ApiError ? e.code : "network"
   if (code === "name_taken") {
     // no order was made, so the name code made for it owns nothing to find later

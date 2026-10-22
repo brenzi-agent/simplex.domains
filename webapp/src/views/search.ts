@@ -10,7 +10,7 @@ import type { Hold } from "../screens/hold.ts"
 import { againLine, ranOut } from "../screens/names.ts"
 import { checkoutUrl } from "../screens/routes.ts"
 import {
-  type Answer, initialSearch, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent, type SearchKind, type SearchState,
+  type Answer, balanceHint, initialSearch, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent, type SearchKind, type SearchState,
 } from "../screens/search.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
@@ -48,8 +48,9 @@ export function searchPage(params: URLSearchParams): void {
     opens += 1
   }
   pageRoute = currentRoute()
-  dispatch({ type: "opened", opening, name, retarget, hold: tabHold() })
+  dispatch({ type: "opened", opening, name, retarget, balance: retarget ? null : session.activeBalance(), hold: tabHold() })
   if (state.retarget) void checkRetarget(state.retarget)
+  if (state.balance) void checkBalance(state.balance.source)
   if (searchDue(state)) submit()
   else if (returned && state.answer) void runSearch(state.name, state.seq)
   // WebKit scrolls a focused field into view when a web font loaded later resizes its text, so focus is taken after the fonts.
@@ -140,6 +141,18 @@ async function checkRetarget(record: store.OrderRecord): Promise<void> {
   if (read && onPage(page)) dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced) })
 }
 
+// The tab's balance as its order reads now; one spent or refunded meanwhile, or whose order this browser no longer
+// keeps, pays no more. One that could not be read is shown as last read.
+async function checkBalance(source: string): Promise<void> {
+  const page = opens
+  const record = store.orderByRegistration(source)
+  const read = record ? await readOrder(record) : null
+  if (!onPage(page) || (record && !read)) return
+  const balance = session.appliedBalance(source, read?.view.balance ?? null)
+  session.updateActiveBalance(source, balance)
+  if (state.balance?.source === source) dispatch({ type: "balance-read", balance })
+}
+
 // a search the wait paused is sent once it ends; one already on its way, as Back sends, is not sent again
 function holdEnded(): void {
   const paused = state.paused
@@ -161,14 +174,19 @@ function register(): void {
   const chain = flow.chainOf(answer)
   if (s.retarget) return void retarget(s.retarget, label, answer)
   const code = codeFor(s, label)
+  // a balance pays under its order's name code, which then owns this name too
+  const source = s.balance && store.orderByRegistration(s.balance.source)
+  const balance = source ? s.balance : null
+  const ownerCode = source ? source.ownerCode : null
   const started = session.checkout()
   const quote = { price: answer.price, years: answer.years, termStart: answer.termStart, chain }
-  if (started && started.label === label && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started)) {
-    session.updateCheckout(label, { ...quote, searchAt: historyPlace(), code, codeError: undefined })
+  const sameCode = !ownerCode || started?.ownerCode == null || started.ownerCode === ownerCode
+  if (started && started.label === label && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started) && sameCode) {
+    session.updateCheckout(label, { ...quote, searchAt: historyPlace(), code, codeError: undefined, balance, balanceChange: undefined, ownerCode: ownerCode ?? started.ownerCode })
     return go(checkoutUrl("links"))
   }
   session.setCheckout({
-    label, ...quote, contact: "", channel: "", method: "btc", code, ownerCode: null, saved: false, agreed: false,
+    label, ...quote, contact: "", channel: "", method: "btc", code, balance, ownerCode, saved: false, agreed: false,
     searchAt: historyPlace(), step: "links",
   })
   go(checkoutUrl("links"))
@@ -282,8 +300,8 @@ function pauseLine(hold: Hold, signal: AbortSignal): HTMLElement {
   return node
 }
 
-// the tab's active code registers a name it covers for free; a paid order's move pays its own way
-const usesCode = (s: SearchState) => s.retarget === null
+// the tab's active code registers a name it covers for free; a paid order's move pays its own way, as a balance does
+const usesCode = (s: SearchState) => s.retarget === null && s.balance === null
 const codeFor = (s: SearchState, label: string) => {
   const code = session.activeCode()
   return code && usesCode(s) && label.length >= code.minLength ? code : null
@@ -305,10 +323,16 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
     el("div", { class: "card row buy" }, nameTitle(label, "name", answer.tld), el("span", { class: "deal" }, deal), button),
     !code && short ? el("p", { class: "hint" }, `Your code allows you to register a free name of ${short.minLength} or more letters. `,
       el("span", { class: "nowrap" }, `This name has ${label.length}.`)) : null,
+    s.balance ? balanceLine(s.balance, answer.price) : null,
     covers ? line("", "wallet", covers) : null,
     own ? line("", "info", "You already have an order for this name. ", el("a", { class: "nowrap", href: own }, "Open that order")) : null,
     unpayable || own ? null : registerNote(s, signal),
   ]
+}
+
+function balanceLine(balance: session.AppliedBalance, price: number): HTMLElement {
+  const [first, second] = balanceHint(balance, price)
+  return el("p", { class: "hint soft" }, first, second ? [" ", el("span", { class: "nowrap" }, second)] : null)
 }
 
 function registerNote({ hold, register: { refusal } }: SearchState, signal: AbortSignal): HTMLElement | null {

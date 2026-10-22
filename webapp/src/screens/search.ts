@@ -1,5 +1,7 @@
 import type { SearchAnswer } from "../api.ts"
+import { dollars, timeOf } from "../format.ts"
 import { foldLabel, type LabelProblem, labelProblem } from "../names.ts"
+import type { AppliedBalance } from "../session.ts"
 import type { OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
 
@@ -25,6 +27,8 @@ export interface SearchState {
   answer: Answer | null
   bad: boolean
   retarget: OrderRecord | null
+  // the tab's balance, which pays for a name searched here unless a paid order moves
+  balance: AppliedBalance | null
   moved: Moved | null
   hold: Hold | null
   paused: boolean
@@ -33,7 +37,8 @@ export interface SearchState {
 }
 
 export type SearchEvent =
-  | { type: "opened"; opening: Opening; name: string; retarget: OrderRecord | null; hold: Hold | null }
+  | { type: "opened"; opening: Opening; name: string; retarget: OrderRecord | null; balance: AppliedBalance | null; hold: Hold | null }
+  | { type: "balance-read"; balance: AppliedBalance | null }
   | { type: "typed"; text: string }
   | { type: "searched"; label: string; hold: Hold | null }
   | { type: "answered"; seq: number; label: string; answer: SearchAnswer; mine: boolean; now: number }
@@ -51,7 +56,7 @@ export const REGISTER_LEAD = "Nothing changed. "
 
 export const initialSearch = (): SearchState => ({
   opening: "plain", name: "", typed: "", searched: null, seq: 0, searching: null, answer: null, bad: false,
-  retarget: null, moved: null, hold: null, paused: false, ownOrder: null, register: IDLE,
+  retarget: null, balance: null, moved: null, hold: null, paused: false, ownOrder: null, register: IDLE,
 })
 
 // An available name this browser has an order for, under its TLD, is checked again rather than offered while the order is read.
@@ -68,7 +73,7 @@ export const searchDue = (s: SearchState): boolean => !s.paused && s.name !== ""
 
 function opened(s: SearchState, e: Extract<SearchEvent, { type: "opened" }>): SearchState {
   const typed = e.name === s.name ? s.typed : e.name
-  const next = { ...s, opening: e.opening, name: e.name, typed, register: { ...s.register, refusal: null } }
+  const next = { ...s, opening: e.opening, name: e.name, typed, balance: e.balance, register: { ...s.register, refusal: null } }
   next.retarget = s.moved ? null : e.retarget
   const dropped = unsearched(next) ? { answer: null, searching: null, bad: false, seq: s.seq + 1 } : {}
   if (s.hold || e.hold === null) return { ...next, ...dropped }
@@ -89,6 +94,7 @@ function searched(s: SearchState, e: Extract<SearchEvent, { type: "searched" }>)
 export function reduce(s: SearchState, e: SearchEvent): SearchState {
   switch (e.type) {
     case "opened": return opened(s, e)
+    case "balance-read": return { ...s, balance: e.balance }
     case "typed": return { ...s, typed: e.text, bad: false }
     case "searched": return searched(s, e)
     case "answered": {
@@ -111,4 +117,12 @@ export function reduce(s: SearchState, e: SearchEvent): SearchState {
 
 export function screenOf(s: SearchState): SearchKind {
   return `search:${s.opening}`
+}
+
+// What the tab's balance pays of an available name's price, in two sentences, the second kept on one line; a balance an
+// open invoice holds pays nothing until that invoice closes.
+export function balanceHint({ amount, heldUntil }: AppliedBalance, price: number): [string, string | null] {
+  if (heldUntil) return [`Your balance is in use by an open invoice until ${timeOf(Date.parse(heldUntil))}.`, null]
+  if (price > amount) return [`Your balance covers ${dollars(amount)}.`, `You pay ${dollars(price - amount)}.`]
+  return ["Paid from your balance.", price < amount ? `${dollars(amount - price)} stays in it.` : null]
 }

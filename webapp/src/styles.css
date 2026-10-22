@@ -176,8 +176,8 @@ body > main { display: flex; flex-direction: column; min-width: 0; }
   .theme-line::before { content: ""; flex: none; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset -7px -3px 0 0 var(--toggle); rotate: -20deg; }
   html:has(.menu:not([hidden])) { overflow: hidden; scrollbar-gutter: stable; }
   .topbar:has(> .menu:not([hidden])) { background: var(--menu-bg); }
-  /* the chip says what its code pays for; its word "Code" is for screen readers only */
-  .code-chip .code-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  /* the chip says what its code pays for; its word "Code" is for screen readers only, while "Balance" stays */
+  .code-chip:not(.balance) .code-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 }
 
 /* the invest note under the page, and the footer's links after a rule (badges styles.css .invest, footer) */
@@ -297,6 +297,7 @@ html:has(.modal[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .line svg.i { margin-top: 2px; width: 16px; height: 16px; }
 .line.bad { color: var(--danger-fg); }
 .hint { text-align: center; font-size: var(--fs-small); color: var(--warn-fg); }
+.hint.soft { color: var(--ink-soft); }
 .line.warn { color: var(--warn-fg); }
 
 /* a chat's popup, after the app's connection alert: a dialog over the whole window */

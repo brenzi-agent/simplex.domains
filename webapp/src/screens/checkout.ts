@@ -1,6 +1,6 @@
-import type { Method } from "../api.ts"
+import type { Balance, Method } from "../api.ts"
 import type { LinkKind } from "../names.ts"
-import type { Checkout } from "../session.ts"
+import { appliedBalance, type Checkout } from "../session.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
 import type { CheckoutStep } from "./routes.ts"
 
@@ -35,6 +35,7 @@ export type CheckoutEvent =
   | { type: "order-refused"; reason: "code"; error: string }
   | { type: "order-refused"; reason: "method" | "failed" | "taken" }
   | { type: "price-changed"; price: number }
+  | { type: "balance-changed"; balance: Balance | null }
   | { type: "hold-started"; until: number }
   | { type: "hold-ended" }
 
@@ -52,6 +53,10 @@ export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial
       if (e.reason === "code") return { code: null, codeError: e.error }
       return e.reason === "method" ? { unavailable: checkout.method, method: FALLBACK_METHOD[checkout.method] } : null
     case "price-changed": return { price: e.price }
+    case "balance-changed": {
+      const balance = checkout.balance && appliedBalance(checkout.balance.source, e.balance)
+      return { balance, balanceChange: !balance ? "gone" : balance.heldUntil ? "held" : "changed" }
+    }
     default: return null
   }
 }
@@ -72,10 +77,21 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
     case "send-started": return { ...s, sending: true, busy: true }
     case "order-refused": return unsent(s, { checkout, refusal: e.reason === "failed" || e.reason === "taken" ? e.reason : null })
     case "price-changed": return unsent(s, { checkout, refusal: "price-changed" })
+    case "balance-changed": return unsent(s, { checkout })
     case "hold-started": return unsent(s, { hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: NO_LEAD }, refusal: "too-many" })
     case "hold-ended": return { ...s, hold: null }
   }
 }
+
+// What the checkout's balance pays of the price, and the rest, which an invoice pays; a balance held by an open invoice
+// pays the same, as the service takes it once that invoice closes.
+export function split(c: Checkout): { fromBalance: number; rest: number } {
+  const fromBalance = Math.min(c.balance?.amount ?? 0, c.price)
+  return { fromBalance, rest: c.price - fromBalance }
+}
+
+// an order its balance covers is paid by nothing else
+export const covered = (c: Checkout) => c.balance !== null && split(c).rest === 0
 
 // the review opens once the name code is saved
 export function stepFor(c: Checkout, asked: CheckoutStep): CheckoutStep {

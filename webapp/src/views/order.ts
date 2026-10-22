@@ -364,7 +364,7 @@ let instead: { invoiceId: string; had: string; chosen: string } | null = null
 export const openedInstead = (opened: typeof instead) => { instead = opened }
 const methodWord = (method: string) => method === "card" ? "card" : methodName(method)
 const insteadLine = (invoice: api.InvoiceView) => instead?.invoiceId !== invoice.invoiceId ? null : el("p", { class: "note" },
-  `This name already has a ${methodWord(instead.had)} invoice from an earlier try, so it opened instead of ${instead.chosen === "code" ? "using your code" : `a new ${methodWord(instead.chosen)} one`}.`)
+  `This name already has a ${methodWord(instead.had)} invoice from an earlier try, so it opened instead of ${instead.chosen === "code" ? "using your code" : instead.chosen === "balance" ? "using your balance" : `a new ${methodWord(instead.chosen)} one`}.`)
 
 function copyField(label: string, value: string): HTMLElement {
   // A long value, as an address, may break between any two letters, which the field's balance evens out: WebKit
@@ -666,7 +666,7 @@ async function orderAgain(record: store.OrderRecord): Promise<void> {
   if (!quote) return go(searchLink(record.label))
   session.setCheckout({
     label: record.label, price: quote.price, years: quote.years, termStart: quote.termStart, chain: flow.chainOf(quote), contact: record.contact, channel: record.channel,
-    method: record.method === "code" || record.method === "balance" ? "btc" : record.method, code: null, ownerCode: record.ownerCode, saved: true, agreed: false, searchAt: historyPlace(), step: "review",
+    method: record.method === "code" || record.method === "balance" ? "btc" : record.method, code: null, balance: null, ownerCode: record.ownerCode, saved: true, agreed: false, searchAt: historyPlace(), step: "review",
   })
   go(checkoutUrl("review"))
 }

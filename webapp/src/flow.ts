@@ -38,7 +38,7 @@ export interface Draft {
 }
 
 type Quote = Extract<api.SearchAnswer, { status: "available" }>
-export const chainOf = (q: Quote): api.ChainInfo => ({ resolver: q.resolver, sponsor: q.sponsor, chainId: q.chainId, tld: q.tld })
+export const chainOf = (q: api.ChainInfo): api.ChainInfo => ({ resolver: q.resolver, sponsor: q.sponsor, chainId: q.chainId, tld: q.tld })
 
 // The name's search answer as an order needs it, or null when it can no longer be ordered.
 export async function quoteOf(label: string): Promise<Quote | null> {
@@ -105,26 +105,46 @@ export async function retargetOrder(record: store.OrderRecord, label: string, li
   return view
 }
 
-// Another name paid from the record's balance, as the page read it, owned by the record's code. When the balance does not
-// cover the price, all of it pays and an invoice in `method` is made for the difference; a changed balance throws BalanceChanged.
-export async function spendBalance(record: store.OrderRecord, label: string, links: api.Links, quote: Quote, balance: number, method: api.Method): Promise<store.OrderRecord> {
-  const draft: Draft = { label, links, chain: chainOf(quote), years: quote.years, termStart: quote.termStart, ownerCode: record.ownerCode }
+// what an order from a balance needs of the name's search answer: its price and term, and the chain
+export type Priced = Pick<Quote, "price" | "years" | "termStart"> & api.ChainInfo
+
+export type BuiltSpend = BuiltOrder & { spend: api.SpendRequest }
+
+// the order of another name under the record's code, as the service makes the paying order's owner the new order's
+export const spendDraft = (record: store.OrderRecord, label: string, links: api.Links, quote: Priced): Draft =>
+  ({ label, links, chain: chainOf(quote), years: quote.years, termStart: quote.termStart, ownerCode: record.ownerCode })
+
+// Another name paid from the record's balance as the page read it, `draft` being spendDraft's: the order and the spend,
+// signed by the record's code. When the balance does not cover the price, all of it pays and an invoice in `method` is
+// made for the rest.
+export async function spendRequest(record: store.OrderRecord, draft: Draft, price: number, balance: number, method: api.Method): Promise<BuiltSpend> {
   const built = await orderRequest(draft)
   const wallet = walletOf(record.ownerCode)!
   const timestamp = now()
   const { labelHash: lh, length, duration, commitment, sealed } = built.request
   const message = `simplex.domains spend ${record.registrationId} ${lh} ${length} ${duration} ${commitment} ${await sha256Hex(sealed)} ${timestamp}`
-  const covered = quote.price <= balance
-  const res = await api.spend(record.registrationId, {
-    labelHash: lh, length, duration, commitment, sealed, price: quote.price, balance, ...covered ? {} : { method }, timestamp,
+  const covered = price <= balance
+  return { ...built, spend: {
+    labelHash: lh, length, duration, commitment, sealed, price, balance, ...covered ? {} : { method }, timestamp,
     signature: hex(signDigest(wallet.privateKey, personalDigest(message))),
-  })
+  } }
+}
+
+// The spend sent as it was built, so a resend after a lost answer is the same order; the new order is kept with the
+// record's code. A balance changed since it was read throws BalanceChanged.
+export async function sendSpend(record: store.OrderRecord, draft: Draft, built: BuiltSpend): Promise<store.OrderRecord> {
+  const res = await api.spend(record.registrationId, built.spend)
   const paidBy = "invoiceId" in res
     ? { ...paidWith(res), ids: { registrationId: res.registration.id, invoiceId: res.invoiceId } }
-    : { method: "balance" as const, paid: quote.price, ids: { registrationId: res.registrationId, invoiceId: null } }
+    : { method: "balance" as const, paid: built.spend.price, ids: { registrationId: res.registrationId, invoiceId: null } }
   const next = { ...recordFor(draft, built, paidBy.method, paidBy.paid, paidBy.ids), balanceSource: record.registrationId }
   store.saveOrder(next)
   return next
+}
+
+export async function spendBalance(record: store.OrderRecord, label: string, links: api.Links, quote: Priced, balance: number, method: api.Method): Promise<store.OrderRecord> {
+  const draft = spendDraft(record, label, links, quote)
+  return sendSpend(record, draft, await spendRequest(record, draft, quote.price, balance, method))
 }
 
 type RestoreResult = { record: store.OrderRecord; view: api.RegistrationView }

@@ -273,6 +273,26 @@ describe("spendBalance", () => {
     expect(refused).toMatchObject({ code: "balance_changed", status: 409, balance: now })
     expect(store.orders().map((o) => o.registrationId)).toEqual([SPEND.registrationId])
   })
+
+  it("sends a spend built once as the same body again after a lost answer, so the service takes it as an exact resend", async () => {
+    const { flow, store } = await modules()
+    const record = await source(store, flow)
+    const spend = flow.spendDraft(record, "another", NO_LINKS, quote(10000))
+    const built = await flow.spendRequest(record, spend, 10000, 20000, "btc")
+    let sent = 0
+    answers[`POST /api/registration/${SPEND.registrationId}/spend`] = () => ++sent === 1 ? new Response("", { status: 502 }) : { registrationId: "reg2" }
+    await expect(flow.sendSpend(record, spend, built)).rejects.toMatchObject({ code: "network" })
+    expect(store.orderByRegistration("reg2"), "nothing kept for an unanswered spend").toBeUndefined()
+    const next = await flow.sendSpend(record, spend, built)
+    expect(calls.map((c) => c.body)).toEqual([built.spend, built.spend])
+    expect(next).toMatchObject({ registrationId: "reg2", request: built.request, method: "balance", balanceSource: SPEND.registrationId })
+  })
+
+  it("drafts the new order under the source's name code, which then owns the new name too", async () => {
+    const { flow, store } = await modules()
+    const record = await source(store, flow)
+    expect(flow.spendDraft(record, "another", LINKS, quote(10000))).toEqual({ label: "another", links: LINKS, chain: SPEND.chain, years: 2, termStart: SPEND.termStart, ownerCode: OWNER_CODE })
+  })
 })
 
 describe("codeOrderOf and addOrder", () => {

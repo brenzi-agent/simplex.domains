@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest"
 import type { SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
-  initialSearch, type Opening, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent, type SearchKind, type SearchState, screenOf,
+  balanceHint, initialSearch, type Opening, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent, type SearchKind, type SearchState, screenOf,
 } from "../src/screens/search.ts"
+import { timeOf } from "../src/format.ts"
 import type { OrderRecord } from "../src/store.ts"
 
 const NOW = Date.parse("2026-10-17T12:00:00Z")
@@ -21,7 +22,7 @@ function record(change: Partial<OrderRecord> = {}): OrderRecord {
 }
 
 const openedEvent = (change: Partial<Extract<SearchEvent, { type: "opened" }>> = {}): Extract<SearchEvent, { type: "opened" }> =>
-  ({ type: "opened", opening: "plain", name: "", retarget: null, hold: null, ...change })
+  ({ type: "opened", opening: "plain", name: "", retarget: null, balance: null, hold: null, ...change })
 const open = (change: Partial<Extract<SearchEvent, { type: "opened" }>> = {}) => reduce(initialSearch(), openedEvent(change))
 const run = (s: SearchState, ...events: SearchEvent[]) => events.reduce(reduce, s)
 const wait = (until: number): Hold => ({ until, lead: NO_LEAD })
@@ -302,5 +303,28 @@ describe("returnedTo", () => {
     expect(back.answer).toMatchObject({ kind: "found", answer: AVAILABLE })
     expect(reduce(back, { type: "unanswered", seq: back.seq })).toMatchObject({ answer: { kind: "unchecked" }, paused: false })
     expect(reduce(back, { type: "search-held", seq: back.seq, until: NOW + 10_000 })).toMatchObject({ answer: null, paused: true, hold: { until: NOW + 10_000, lead: NO_LEAD } })
+  })
+})
+
+describe("a balance", () => {
+  const BALANCE = { source: "reg-taken", amount: 10000, heldUntil: null }
+  it("is the tab's as the page opens, and as its order reads now", () => {
+    const s = open({ balance: BALANCE })
+    expect(s.balance).toEqual(BALANCE)
+    expect(reduce(s, { type: "balance-read", balance: { ...BALANCE, amount: 2500 } }).balance).toEqual({ ...BALANCE, amount: 2500 })
+    expect(reduce(s, { type: "balance-read", balance: null }).balance, "spent or refunded meanwhile").toBeNull()
+    expect(reduce(s, openedEvent({ balance: null })).balance, "taken off in the header").toBeNull()
+  })
+  it("pays a name of its amount, saying what stays of a larger one", () => {
+    expect(balanceHint(BALANCE, 10000)).toEqual(["Paid from your balance.", null])
+    expect(balanceHint(BALANCE, 4000)).toEqual(["Paid from your balance.", "$60 stays in it."])
+  })
+  it("pays part of a dearer name, saying what is left to pay", () => {
+    expect(balanceHint(BALANCE, 20000)).toEqual(["Your balance covers $100.", "You pay $100."])
+    expect(balanceHint({ ...BALANCE, amount: 2550 }, 10000)).toEqual(["Your balance covers $25.50.", "You pay $74.50."])
+  })
+  it("held by an open invoice says until when, whatever the price", () => {
+    const until = "2026-10-17T12:30:00Z"
+    expect(balanceHint({ ...BALANCE, heldUntil: until }, 4000)).toEqual([`Your balance is in use by an open invoice until ${timeOf(Date.parse(until))}.`, null])
   })
 })
