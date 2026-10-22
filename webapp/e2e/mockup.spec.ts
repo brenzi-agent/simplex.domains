@@ -189,7 +189,7 @@ test("Check your code checks a code from its button: a code cut short is not a c
   await expect(onStep(page).getByRole("button", { name: "Find a name" })).toBeDisabled()
   await codeField(page).fill(code)
   await onStep(page).getByRole("button", { name: "Check" }).click()
-  await expect(onStep(page).locator(".verdict.ok")).toContainText("Prepaid code")
+  await expect(onStep(page).locator(".verdict.ok")).toContainText("This code allows you to register a free name")
   await expect(onStep(page).getByRole("button", { name: "Find a name" })).toBeEnabled()
 })
 

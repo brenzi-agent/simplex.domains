@@ -282,7 +282,7 @@ function pauseLine(hold: Hold, signal: AbortSignal): HTMLElement {
   return node
 }
 
-// the tab's active code pays for a name it covers; a paid order's move pays its own way
+// the tab's active code registers a name it covers for free; a paid order's move pays its own way
 const usesCode = (s: SearchState) => s.retarget === null
 const codeFor = (s: SearchState, label: string) => {
   const code = session.activeCode()
@@ -299,11 +299,12 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
   const code = codeFor(s, label)
   const short = usesCode(s) ? session.activeCode() : null
   const button = setAction(btn(retarget ? "Register with your payment" : "Register", "small", register), s.register.busy, unpayable || own !== null || s.hold !== null)
-  const deal = code ? [el("s", {}, dollars(answer.price)), " ", el("b", { class: "price" }, "$0"), el("span", { class: "soft" }, ` / ${code.years} years`)]
+  const deal = code ? [el("b", { class: "price" }, "Free"), el("span", { class: "soft" }, ` / ${code.years} years`)]
     : [el("b", { class: "price" }, dollars(answer.price)), el("span", { class: "soft" }, ` / ${answer.years} years`)]
   return [
     el("div", { class: "card row buy" }, nameTitle(label, "name", answer.tld), el("span", { class: "deal" }, deal), button),
-    !code && short ? el("p", { class: "hint" }, `Your code covers names of ${short.minLength} or more letters. `, el("span", { class: "nowrap" }, `This name has ${label.length}.`)) : null,
+    !code && short ? el("p", { class: "hint" }, `Your code allows you to register a free name of ${short.minLength} or more letters. `,
+      el("span", { class: "nowrap" }, `This name has ${label.length}.`)) : null,
     covers ? line("", "wallet", covers) : null,
     own ? line("", "info", "You already have an order for this name. ", el("a", { class: "nowrap", href: own }, "Open that order")) : null,
     unpayable || own ? null : registerNote(s, signal),

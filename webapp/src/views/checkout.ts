@@ -139,7 +139,7 @@ async function showOpenOrder(signal: AbortSignal): Promise<void> {
 const row = (what: string, value: Node | string, cls?: string) => el("div", { class: `trow${cls ? ` ${cls}` : ""}` }, el("span", {}, what), el("span", {}, value))
 
 // The order as the search answered it, with the chats its links open, over what it costs: its term, the free days
-// before the term starts, its end, and a code that pays for it.
+// before the term starts, its end; a name registered with a code costs nothing.
 function orderCard(c: session.Checkout): HTMLElement {
   const y = years(c)
   const now = api.serviceNow() / 1000
@@ -152,8 +152,7 @@ function orderCard(c: session.Checkout): HTMLElement {
       row("Term", `${y} years`),
       free > 0 ? row(`Free until ${dateOf(c.termStart)}`, free === 1 ? "1 day" : `${free} days`) : null,
       row("Registered until", dateOf(termEnd(y, c.termStart, now))),
-      c.code ? row("Your code", `\u2212${dollars(c.price)}`, "ok") : null,
-      row("Total", c.code ? "$0" : dollars(c.price), "total")))
+      c.code ? el("div", { class: "trow total" }, el("span", {}, "Free SimpleX name")) : row("Total", dollars(c.price), "total")))
 }
 
 // an order on its way is sent as it is: its method and code stay as they are until it is answered
@@ -251,7 +250,7 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null), alt: eth },
     el("div", { class: "review" }, orderCard(c),
       c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or check another code.`) : null,
-      c.code ? el("div", { class: "notes" }, el("p", {}, "Your code pays for this name. Nothing more to pay.")) : blocked ? waitingNotice(blocked) : methodsBlock(s),
+      c.code ? null : blocked ? waitingNotice(blocked) : methodsBlock(s),
       c.code || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours.`))),
     payNote(s, blocked !== null, signal))
 }

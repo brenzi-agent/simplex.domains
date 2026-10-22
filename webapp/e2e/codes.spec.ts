@@ -27,7 +27,7 @@ async function offersSearchInstead(page: Page): Promise<void> {
 async function reopenRefused(page: Page): Promise<void> {
   await page.addInitScript(watchKept)
   await page.reload()
-  await expect(page.locator(".screen-head .lead")).toHaveText("Your code can no longer pay for it, so trying again cannot register it.")
+  await expect(page.locator(".screen-head .lead")).toHaveText("Your code can no longer be used for it, so trying again cannot register it.")
   await expect(page.getByText("Your code was used for another name")).toBeVisible()
   await offersSearchInstead(page)
   expect(await saidKept(page), "the page said the code is kept before it said it is refused").toBe(false)
@@ -45,13 +45,15 @@ const keptRefusal = (page: Page, registrationId: string) =>
 const total = (page: Page) => page.locator(".card.order .trow.total")
 const chip = (page: Page) => page.locator("body > header .code-chip")
 const REGISTER_WITH_CODE = "Register with your code"
+// a review's last row with a code, which costs nothing
+const FREE_TOTAL = "Free SimpleX name"
 
 // The name searched is registered with a prepaid code entered in Check your code; the page is left on the registration.
 async function payWithCode(page: Page, label: string, code: string): Promise<void> {
   await useCode(page, code)
   await search(page, label)
   await toReview(page)
-  await expect(total(page)).toHaveText("Total$0")
+  await expect(total(page)).toHaveText(FREE_TOTAL)
   await onStep(page).getByRole("button", { name: REGISTER_WITH_CODE }).click()
   await page.waitForURL(/\?registration=/)
 }
@@ -63,7 +65,7 @@ async function registerWithCode(page: Page, request: APIRequestContext, prefix: 
   return { code, registrationId: new URL(page.url()).searchParams.get("registration")!, label }
 }
 
-test("a prepaid code from Check your code prices a name at $0 and registers it with nothing to pay", async ({ page, request }) => {
+test("a prepaid code from Check your code shows a name as Free and registers it with nothing to pay", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6, years: 5 }) as { code: string }
   const label = uniqueLabel("pre")
   await useCode(page, code)
@@ -71,14 +73,13 @@ test("a prepaid code from Check your code prices a name at $0 and registers it w
   await expect(page.locator("body > header").getByRole("link", { name: "Check your code" })).toBeHidden()
   await search(page, label)
   const deal = page.locator(".answer .row .deal")
-  await expect(deal).toHaveText(/^\$\d+ \$0 \/ 5 years$/)
-  await expect(deal.locator("s")).toBeVisible()
+  await expect(deal).toHaveText("Free / 5 years")
   await shot(page, "K1b-code-applied-home")
   await toReview(page)
-  await expect(total(page)).toHaveText("Total$0")
-  await expect(page.locator(".card.order .trow", { hasText: "Your code" })).toHaveText(/^Your code\u2212\$\d+$/)
-  await expect(page.locator(".card.order .trow", { hasText: "Term" })).toHaveText("Term5 years")
-  await expect(page.getByText("Your code pays for this name. Nothing more to pay.")).toBeVisible()
+  await expect(total(page)).toHaveText(FREE_TOTAL)
+  // no row nor note words the code as a payment
+  await expect(page.locator(".card.order .trow")).toHaveText([/^Term5 years$/, /^Free until/, /^Registered until/, FREE_TOTAL])
+  await expect(onStep(page).locator(".notes")).toHaveCount(0)
   await expect(page.getByRole("radio")).toHaveCount(0)
   await shot(page, "K3-checkout-covered")
   const register = onStep(page).getByRole("button", { name: REGISTER_WITH_CODE })
@@ -116,7 +117,7 @@ test("the tab's code pays for each name it covers until it is taken off, which t
   const label = uniqueLabel("stay")
   await search(page, label)
   await toReview(page)
-  await expect(total(page)).toHaveText("Total$0")
+  await expect(total(page)).toHaveText(FREE_TOTAL)
   // Back through the name code and links steps to the search, and on again
   await page.goBack()
   await expect(onStep(page).getByRole("heading", { name: CODE_HEADING })).toBeVisible()
@@ -126,11 +127,11 @@ test("the tab's code pays for each name it covers until it is taken off, which t
   await onStep(page).getByRole("button", { name: "Register" }).click()
   await onStep(page).getByRole("button", { name: "Skip for now" }).click()
   await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
-  await expect(total(page)).toHaveText("Total$0")
+  await expect(total(page)).toHaveText(FREE_TOTAL)
   // taking the code off, in the header, prices the order again
   await chip(page).getByRole("button", { name: "Remove code" }).click()
   await expect(chip(page)).toBeHidden()
-  await expect(total(page)).not.toHaveText("Total$0")
+  await expect(total(page)).not.toHaveText(FREE_TOTAL)
   await expect(payButton(page)).toBeEnabled()
   await expect(page.getByRole("radio")).toHaveCount(3)
   await search(page, uniqueLabel("other"))
@@ -142,11 +143,11 @@ test("a code the service refuses as the order is sent says why on the review, wh
   await useCode(page, code)
   await search(page, uniqueLabel("used"))
   await toReview(page)
-  await expect(total(page)).toHaveText("Total$0")
+  await expect(total(page)).toHaveText(FREE_TOTAL)
   await page.route("**/api/name/register", (route) => route.fulfill({ status: 409, json: { error: "code_used" } }))
   await onStep(page).getByRole("button", { name: REGISTER_WITH_CODE }).click()
   await expect(page.getByText("This code was already used. Pay for the name here, or check another code.")).toBeVisible()
-  await expect(total(page)).not.toHaveText("Total$0")
+  await expect(total(page)).not.toHaveText(FREE_TOTAL)
   await expect(page.getByRole("radio")).toHaveCount(3)
   await expect(payButton(page)).toHaveText(/^Pay \$[\d.,]+ with Bitcoin/)
   await expect(payButton(page)).toBeEnabled()
@@ -183,14 +184,15 @@ test("Check your code tells a prepaid code, a name code and anything else apart,
   await expect(verdict).toHaveText("No order was found for this code. The service has no order registered to its wallet.")
   await expect(find).toBeDisabled()
   await codeField(page).fill(code)
-  await expect(verdict).toHaveText("Prepaid code: it pays for a name of 8 or more letters, for 2 years.")
-  await expect(onStep(page).getByText("Search for a name; its price shows as $0.")).toBeVisible()
+  await expect(verdict).toHaveText("This code allows you to register a free name of 8 or more letters, for 2 years.")
+  await expect(onStep(page).getByText("Search for a name; it shows as Free.")).toBeVisible()
+  await expect(onStep(page).locator(".lead")).toHaveText("A code from SimpleX lets you register a free name.A name code brings a name you own to this browser.")
   await shot(page, "K1-code-valid")
   await find.click()
   const short = uniqueLabel("k7").slice(0, 7)
   await search(page, short)
-  await expect(page.locator(".answer .row .deal s")).toHaveCount(0)
-  await expect(page.locator(".answer .hint")).toHaveText("Your code covers names of 8 or more letters. This name has 7.")
+  await expect(page.locator(".answer .row .deal")).toHaveText(/^\$\d+ \/ 2 years$/)
+  await expect(page.locator(".answer .hint")).toHaveText("Your code allows you to register a free name of 8 or more letters. This name has 7.")
   await shot(page, "K7-code-too-short")
   await toReview(page)
   await expect(page.getByRole("radio")).toHaveCount(3)
@@ -292,7 +294,7 @@ test("a retry refused for a code used elsewhere says the code is gone and offers
   await page.route("**/retry", (route) => route.fulfill({ status: 409, json: { error: "code_used" } }))
   await page.getByRole("button", { name: "Try again" }).click()
   await expect(page.getByText("Your code was used for another name")).toBeVisible()
-  await expect(page.locator(".screen-head .lead")).toHaveText("Your code can no longer pay for it, so trying again cannot register it.")
+  await expect(page.locator(".screen-head .lead")).toHaveText("Your code can no longer be used for it, so trying again cannot register it.")
   await offersSearchInstead(page)
   await page.getByRole("button", { name: "Search a name" }).click()
   await expect(page.getByLabel("Name", { exact: true })).toBeVisible()
@@ -309,7 +311,7 @@ test("a failed code order opened again after its code was used elsewhere offers 
   await page.addInitScript(watchKept)
   await page.reload()
   await expect(page.getByText("Your code was used for another name")).toBeVisible()
-  await expect(page.locator(".screen-head .lead")).toHaveText("Your code can no longer pay for it, so trying again cannot register it.")
+  await expect(page.locator(".screen-head .lead")).toHaveText("Your code can no longer be used for it, so trying again cannot register it.")
   await offersSearchInstead(page)
   expect(await saidKept(page), "the page opened first after the code went said it is kept").toBe(false)
   await reopenRefused(page)

@@ -1,4 +1,4 @@
-// The code field of Check your code, judged as it is typed: a prepaid code that pays for a name, or a name code that owns one.
+// The code field of Check your code, judged as it is typed: a prepaid code that registers a free name, or a name code that owns one.
 import * as api from "../api.ts"
 import { codeProgress, mayBeOwnerCode, parseNameCode } from "../crypto/code.ts"
 import { seconds } from "../format.ts"
@@ -32,7 +32,7 @@ export const CODE_ERRORS: Record<string, string> = {
   code_not_covering: "This code does not cover this name.",
 }
 
-const coversLine = (code: session.AppliedCode) => `Prepaid code: it pays for a name of ${code.minLength} or more letters, for ${code.years} years.`
+const coversLine = (code: session.AppliedCode) => `This code allows you to register a free name of ${code.minLength} or more letters, for ${code.years} years.`
 const unused = (code: session.AppliedCode): CodeVerdict => ({ kind: "prepaid", code, line: coversLine(code) })
 
 const MISTYPED: CodeVerdict = { kind: "refused", title: "This code is not valid", line: "Check it for a mistyped character." }

@@ -663,11 +663,11 @@ for (const length of [25, MAX_LABEL_LENGTH]) {
     }
   })
 
-  test(`a code that pays shows the review at $0 fitting both windows, for a name of ${length} wide letters`, async ({ page, request }) => {
+  test(`a code shows the review of a free name fitting both windows, for a name of ${length} wide letters`, async ({ page, request }) => {
     const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
     await useCode(page, code)
     await toFullReview(page, wideLabel(length))
-    await expect(onStep(page).locator(".trow.total")).toHaveText("Total$0")
+    await expect(onStep(page).locator(".trow.total")).toHaveText("Free SimpleX name")
     await expect(onStep(page).getByRole("radio")).toHaveCount(0)
     await fitsWindow(page, `review-code-paid-${length}`)
   })

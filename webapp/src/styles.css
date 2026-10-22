@@ -322,10 +322,8 @@ html:has(.modal[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .trow { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 5px 0; font-size: 15px; }
 .trow span:first-child { color: var(--ink-soft); }
 .trow span:last-child { font-weight: 600; text-align: right; white-space: nowrap; }
-.trow.ok span:last-child { color: var(--ok-fg); }
 .trow.total { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--surface-line); font-size: 17px; }
 .trow.total span { color: var(--ink); font-weight: 700; }
-.deal s { color: var(--faint); font-weight: 600; }
 .pay-with, .code-entry, .link-fields, .forget { --block-gap: 12px; display: grid; gap: var(--block-gap); }
 /* an empty verdict or note stays in the accessibility tree, so its next words are announced; in a column, unlike a grid,
    its negative margin takes back the gap */

@@ -316,15 +316,15 @@ function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {
   const copy = copyButton(c.code, "text-link")
   copy.dataset.focus = `${c.code}-copy`
   const [text, tone] = check === undefined ? ["Checking", ""] : check === "unchecked" ? ["Not checked", "warn"] : CODE_CHIPS[check]
-  // an unused code pays for the names this tab finds from now on
+  // an unused code registers the names this tab finds from now on
   const use = check === "unused" ? small("Use", `${c.code}-use`, () => { session.setActiveCode({ display: c.code, minLength: c.minLength, years: c.years }); go(HOME) }) : null
-  const node = row(c.code, el("b", { class: "mono" }, c.code), `Pays for a name of ${c.minLength} or more letters, for ${c.years} years${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000)}`,
+  const node = row(c.code, el("b", { class: "mono" }, c.code), `A free name of ${c.minLength} or more letters, for ${c.years} years${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000)}`,
     chip(text, tone, check === undefined || check === "unused"), [use, copy])
   node.classList.add("code-row")
   return node
 }
 
-// Check your code: a prepaid code pays for the names this tab finds; a name code finds its order and adds it to Your names.
+// Check your code: a prepaid code registers the names this tab finds for free; a name code finds its order and adds it to Your names.
 let check: { verdict: CodeVerdict | null; restore: RestoreState } = { verdict: null, restore: initialRestore(null) }
 let checkRoute = -1
 // opened from an order's page, to which a name code added here goes back
@@ -358,7 +358,7 @@ function heard(v: CodeVerdict | null): void {
   showCheck()
 }
 
-// the code pays from now on, and is kept in Your names
+// the code registers names from now on, and is kept in Your names
 function useCode(code: AppliedCode): void {
   if (!store.codes().some((c) => c.code === code.display)) store.addCode({ code: code.display, minLength: code.minLength, years: code.years, addedAt: new Date().toISOString() })
   session.setActiveCode(code)
@@ -399,13 +399,13 @@ function checkAction({ verdict, restore }: typeof check): HTMLElement {
   return find
 }
 
-const checkLead = () => ["A prepaid code pays for a name.", el("br"), "A name code brings a name you own ", el("span", { class: "nowrap" }, "to this browser.")]
+const checkLead = () => ["A code from SimpleX lets you register a free name.", el("br"), "A name code brings a name you own ", el("span", { class: "nowrap" }, "to this browser.")]
 
 function buildCheck(c: typeof check, signal: AbortSignal): HTMLElement {
   const refusal = c.restore.refusal && REFUSALS[c.restore.refusal]
   holdEnder(signal, () => dispatchRestore({ type: "hold-ended" }))(c.restore.hold !== null)
   const note = c.restore.hold ? holdNotice(c.restore.hold, signal) : refusal ? alertBox("danger", "alert", refusal.title, refusal.text)
-    : c.verdict?.kind === "prepaid" ? el("p", { class: "note center" }, "Search for a name; its price shows as $0.") : null
+    : c.verdict?.kind === "prepaid" ? el("p", { class: "note center" }, "Search for a name; it shows as Free.") : null
   return screen({ title: "Check your code", lead: checkLead(), back: HOME, action: checkAction(c) },
     codeField(`${CHECK_CODE}-field`, "Code", heard), keptLive("check-note", undefined, note))
 }

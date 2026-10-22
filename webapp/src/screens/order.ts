@@ -117,7 +117,7 @@ const RETRY_CODE_NOTES: Record<CodeRefusal | "code_reserved", [string, string]> 
   code_used: ["Your code was used for another name", "A code registers one name only."],
   code_reserved: ["Your code is held by another registration; try again later", ""],
   code_invalid: ["This code is not valid", "The service no longer accepts it."],
-  code_expired: ["This code has expired", "An expired code cannot pay for a name."],
+  code_expired: ["This code has expired", "An expired code cannot register a name."],
 }
 
 // The service's refusal of a retry for the order's code, with the error to keep when no later retry gets past it.
@@ -143,7 +143,7 @@ export function reduce(state: OrderState, event: OrderEvent): OrderState {
 
 // The code is said to be kept only once the service says so; a browser that restored the order has not got its code.
 export const failedLead = ({ invoice, codeRefused, codeKept, record }: OrderState) => invoice ? "Your payment is kept. Trying again charges nothing."
-  : codeRefused ? "Your code can no longer pay for it, so trying again cannot register it."
+  : codeRefused ? "Your code can no longer be used for it, so trying again cannot register it."
   : record?.prepaidCode && codeKept ? "Your code is kept. Trying again spends nothing more." : "Trying again spends nothing more."
 
 export const coinOf = (invoice: InvoiceView) => invoice.cryptoCurrency === "btc" || invoice.cryptoCurrency === "xmr" ? invoice.cryptoCurrency : null

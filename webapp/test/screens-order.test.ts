@@ -245,7 +245,7 @@ describe("reduce", () => {
     it("retryRefusal: each code error of a retry has its note, saying why for each kept for good; all but one held elsewhere are kept", () => {
       expect(retryRefusal("code_used")).toEqual({ note: USED, kept: "code_used" })
       expect(retryRefusal("code_invalid")).toEqual({ note: { ...USED, title: "This code is not valid", text: "The service no longer accepts it." }, kept: "code_invalid" })
-      expect(retryRefusal("code_expired")).toEqual({ note: { ...USED, title: "This code has expired", text: "An expired code cannot pay for a name." }, kept: "code_expired" })
+      expect(retryRefusal("code_expired")).toEqual({ note: { ...USED, title: "This code has expired", text: "An expired code cannot register a name." }, kept: "code_expired" })
       expect(retryRefusal("code_reserved")).toEqual({ note: { ...USED, title: "Your code is held by another registration; try again later", text: "" }, kept: null })
       for (const other of ["network", "bad_request", "constructor", "toString"]) expect(retryRefusal(other), other).toBeNull()
     })
@@ -317,7 +317,7 @@ describe("failedLead", () => {
     expect(failedLead(failed(crypto({ status: "paid", paidInFull: true })))).toBe("Your payment is kept. Trying again charges nothing.")
   })
   it("a refused code says it can no longer pay", () => {
-    expect(failedLead(failed(null, { codeRefused: true }))).toBe("Your code can no longer pay for it, so trying again cannot register it.")
+    expect(failedLead(failed(null, { codeRefused: true }))).toBe("Your code can no longer be used for it, so trying again cannot register it.")
   })
   it("a code is said to be kept only once the service says so", () => {
     expect(failedLead(failed(null, { codeKept: true }))).toBe("Your code is kept. Trying again spends nothing more.")
