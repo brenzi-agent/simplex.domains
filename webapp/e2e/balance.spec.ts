@@ -293,3 +293,26 @@ test("Get a new invoice whose spend answer was lost opens the invoice that spend
   await expect(onStep(page).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   await expect(onStep(page).getByText(/in use by/)).toHaveCount(0)
 })
+
+test("a difference order adopted by another browser gets its new invoice as a new spend of the balance, never a plain order for the difference", async ({ page, browser, request }) => {
+  const { ownerCode } = await takenOrder(page, request, uniqueLabel("badopt"))
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  await search(page, sevenLetters())
+  await toReview(page)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  const first = new URL(page.url()).searchParams.get("order")!
+  // another browser restores the code, then opens the difference order's link, which it adopts without its balance
+  const other = await browser.newContext()
+  const away = await other.newPage()
+  await addNameCode(away, ownerCode)
+  await away.goto(`/?order=${first}`)
+  await expect(onStep(away).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await control(request, `expire/${first}`)
+  await onStep(away).getByRole("button", { name: "Get a new invoice" }).click()
+  await away.waitForURL(otherInvoice(first))
+  await expect(onStep(away).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  const next = await invoiceOf(away, new URL(away.url()).searchParams.get("order")!)
+  expect([next.amount, next.registration.price, next.registration.fromBalance]).toEqual([10000, 20000, 10000])
+  await other.close()
+})

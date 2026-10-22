@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
-  CARD_SLOW_MS, type ClosedCase, closedCase, costOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
+  CARD_SLOW_MS, type ClosedCase, closedCase, costOf, failedLead, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
   reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
@@ -328,6 +328,18 @@ describe("costOf", () => {
   })
   it("is null for a code order, which costs nothing", () => {
     expect(costOf(registration({ price: 0 }), null)).toBeNull()
+  })
+})
+
+describe("newInvoiceBy", () => {
+  it("spends again the balance that paid part of the order, as the record names it", () => {
+    expect(newInvoiceBy(record({ balanceSource: "reg-0" }), crypto({ status: "expired" }, { fromBalance: 1000 }))).toBe("spend")
+  })
+  it("asks find which balance paid part of an order this browser adopted, never ordering the difference alone", () => {
+    expect(newInvoiceBy(record(), crypto({ status: "expired", amount: 500 }, { fromBalance: 1000 }))).toBe("find")
+  })
+  it("orders again at the price an order paid by its invoice alone", () => {
+    expect(newInvoiceBy(record(), crypto({ status: "expired" }))).toBe("order")
   })
 })
 

@@ -149,6 +149,13 @@ export const failedLead = ({ view, invoice, codeRefused, codeKept, record }: Ord
 
 export const coinOf = (invoice: InvoiceView) => invoice.cryptoCurrency === "btc" || invoice.cryptoCurrency === "xmr" ? invoice.cryptoCurrency : null
 
+// How a closed invoice's order gets a new one: a new spend of the balance that paid part of it, once find names that
+// balance where this browser's record does not, or a new order at its price.
+export function newInvoiceBy(record: OrderRecord, invoice: InvoiceView): "spend" | "find" | "order" {
+  if (record.balanceSource) return "spend"
+  return invoice.registration.fromBalance > 0 ? "find" : "order"
+}
+
 // What the order cost, its invoice and what another order's balance paid besides; null for a code, which costs nothing.
 export function costOf(view: RegistrationView, invoice: InvoiceView | null): { cost: number; fromBalance: number } | null {
   if (invoice) return { cost: invoice.amount + view.fromBalance, fromBalance: view.fromBalance }

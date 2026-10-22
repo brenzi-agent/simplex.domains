@@ -323,6 +323,22 @@ describe("balanceHolder", () => {
   })
 })
 
+describe("balanceSourceOf", () => {
+  it("asks find which balance paid part of an order, and keeps it with the record", async () => {
+    const { flow, store } = await modules()
+    const built = await flow.orderRequest(draft())
+    const record = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "diff", invoiceId: "inv-diff" })
+    store.saveOrder(record)
+    const entry = (registrationId: string, balanceSource: string | null) =>
+      ({ registrationId, invoiceId: null, phase: "unpaid", createdAt: "2026-10-14T10:00:00Z", labelHash: built.request.labelHash, sealed: built.request.sealed, balanceSource, heldBy: null })
+    answers["POST /api/registration/find"] = { registrations: [entry("diff", "src"), entry("src", null)] }
+    expect(await flow.balanceSourceOf(record)).toBe("src")
+    expect(store.orderByRegistration("diff")?.balanceSource).toBe("src")
+    answers["POST /api/registration/find"] = { registrations: [entry("diff", null)] }
+    expect(await flow.balanceSourceOf({ ...record, registrationId: "diff" }), "an order no balance paid").toBeNull()
+  })
+})
+
 describe("codeOrderOf and addOrder", () => {
   const found = (registrationId: string, phase: Phase, request: { labelHash: string; sealed: string }) =>
     ({ registrationId, invoiceId: null, phase, createdAt: "2026-10-14T10:00:00Z", labelHash: request.labelHash, sealed: request.sealed, balanceSource: null, heldBy: null })

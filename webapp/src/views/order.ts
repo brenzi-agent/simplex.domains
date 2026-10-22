@@ -6,7 +6,7 @@ import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
-  type ClosedCase, closedCase, coinOf, costOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
+  type ClosedCase, closedCase, coinOf, costOf, failedLead, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
@@ -261,7 +261,7 @@ async function adoptSibling(view: api.RegistrationView, invoice: api.InvoiceView
   const next = closed ? await nextOrder(view, invoice) : undefined
   const record: store.OrderRecord = { ...sibling, registrationId: view.id, invoiceId: invoice.invoiceId,
     method: invoice.cryptoCurrency ?? "card", paid: view.price,
-    cancelled: false, cardSubmittedAt: undefined, prepaidCode: undefined, replacedBy: next && store.orderUrl(next),
+    cancelled: false, cardSubmittedAt: undefined, prepaidCode: undefined, balanceSource: undefined, replacedBy: next && store.orderUrl(next),
     // a replaced invoice came just before its replacement; otherwise the code asks the service when the order was made,
     // which a later search for a newer order compares against
     createdAt: next ? new Date(Date.parse(next.createdAt) - 1).toISOString() : await flow.createdAtOf(sibling, view.id).catch(() => null) ?? new Date(api.serviceNow()).toISOString() }
@@ -835,7 +835,14 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
       if (isOpen(gen)) go(searchLink(record.label))
       return
     }
-    if (record.balanceSource) return await spendAgain(record, record.balanceSource, quote, gen, method)
+    // part of the price came from a balance, which pays again; a browser that adopted the order asks find which balance
+    const by = newInvoiceBy(record, now)
+    const source = by === "find" ? await flow.balanceSourceOf(record) : record.balanceSource
+    if (by !== "order") {
+      if (source) return await spendAgain(record, source, quote, gen, method)
+      if (isOpen(gen)) go(searchLink(record.label))
+      return
+    }
     const built = await flow.orderRequest(flow.draftAgain(record, quote))
     const res = await api.createOrder(built.request, method, invoice.amount)
     const next = store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id })
