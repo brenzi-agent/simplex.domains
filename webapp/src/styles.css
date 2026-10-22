@@ -471,6 +471,7 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 .stage.done::before { background: var(--ok-fg); }
 .stage.active::before { background: linear-gradient(90deg, var(--primary) 0%, var(--primary) calc(var(--done, 0) * 100%), var(--surface-line) calc(var(--done, 0) * 100%)); }
 .stage.failed::before { background: var(--danger-fg); }
+.stage.failed b { color: var(--danger-fg); }
 .stage b { font-size: 15px; }
 .stage:not(.done, .active, .failed) b { color: var(--ink-soft); font-weight: 600; }
 .countdown { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-radius: 16px; background: var(--surface); border: 1px solid var(--surface-line); }
