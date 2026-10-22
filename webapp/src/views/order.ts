@@ -470,7 +470,7 @@ function partLines(invoice: api.InvoiceView, coin: "btc" | "xmr", payMore: (HTML
   if (left() <= 0) return { notice: partSeen(invoice, coin), rate: el("span", {}, RATE_EXPIRED), ended: true }
   const rest = el("span", {}, restAsked(invoice, coin))
   const time = el("span", {})
-  const held = el("span", {}, "Waiting for the rest of the payment", SEP, "Rate held ", time)
+  const held = el("span", {}, "Waiting for the rest of the payment", SEP, "Invoice valid for ", time)
   const expired = el("span", { class: "sizer" }, RATE_EXPIRED)
   onTheSecond(left, () => {
     if (left() > 0) time.textContent = clock(left())
