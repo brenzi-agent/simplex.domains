@@ -1,6 +1,8 @@
 import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Locator, type Page } from "@playwright/test"
 import { mkdirSync, readFileSync } from "node:fs"
-import { createPublicClient, http, parseAbi, type Hex } from "viem"
+import { createPublicClient, createTestClient, createWalletClient, encodeFunctionData, http, namehash, parseAbi, type Hex } from "viem"
+import { privateKeyToAccount } from "viem/accounts"
+import { foundry } from "viem/chains"
 import { labelHash, YEAR_S } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import { newOwnerCode, walletOf } from "../src/flow.ts"
@@ -42,12 +44,16 @@ export async function mockRegistration(request: APIRequestContext, invoiceId: st
 }
 
 // The worker's chain, read directly: the expiry the registrar holds and the price the oracle quotes.
-const deployment = JSON.parse(readFileSync(new URL(`../dev/local-chain-${SLOT}.json`, import.meta.url), "utf8")) as { rpcUrl: string; controller: Hex; baseRegistrar: Hex }
+const deployment = JSON.parse(readFileSync(new URL(`../dev/local-chain-${SLOT}.json`, import.meta.url), "utf8")) as
+  { rpcUrl: string; chainId: number; tld: string; resolver: Hex; controller: Hex; baseRegistrar: Hex }
 const chain = createPublicClient({ transport: http(deployment.rpcUrl) })
 const CHAIN_ABI = parseAbi([
   "function nameExpires(uint256 id) view returns (uint256)",
   "function rentPriceUSD(string label, uint256 duration) view returns ((uint256 base, uint256 premium))",
+  "function setText(bytes32 node, string key, string value)",
 ])
+// gas for a few of an owner's own transactions, which anvil gives the owner's wallet
+const OWNER_GAS_WEI = 10n ** 18n
 // SimplexPriceOracle's attoUSD to the cent
 const ATTO_PER_CENT = 10n ** 16n
 
@@ -59,6 +65,20 @@ export async function blockTimeOf(tx: string): Promise<number> {
 
 export const chainExpiry = async (label: string) =>
   Number(await chain.readContract({ address: deployment.baseRegistrar, abi: CHAIN_ABI, functionName: "nameExpires", args: [BigInt(hex(labelHash(label)))] }))
+
+// A name's owner changing it from its own wallet, as it may outside the store.
+async function asOwner(ownerCode: string, to: Hex, data: Hex): Promise<void> {
+  const account = privateKeyToAccount(hex(walletOf(ownerCode)!.privateKey) as Hex)
+  const transport = http(deployment.rpcUrl)
+  await createTestClient({ mode: "anvil", transport }).setBalance({ address: account.address, value: OWNER_GAS_WEI })
+  const hash = await createWalletClient({ account, chain: { ...foundry, id: deployment.chainId }, transport }).sendTransaction({ to, data })
+  expect((await chain.waitForTransactionReceipt({ hash })).status, "the owner's own transaction").toBe("success")
+}
+
+const nodeOf = (label: string) => namehash(`${label}.${deployment.tld}`)
+
+export const ownerSetsText = (ownerCode: string, label: string, key: string, value: string) =>
+  asOwner(ownerCode, deployment.resolver, encodeFunctionData({ abi: CHAIN_ABI, functionName: "setText", args: [nodeOf(label), key, value] }))
 
 export async function oracleQuote(label: string, years: number): Promise<number> {
   const quote = await chain.readContract({ address: deployment.controller, abi: CHAIN_ABI, functionName: "rentPriceUSD", args: [label, BigInt(years * YEAR_S)] })

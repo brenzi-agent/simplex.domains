@@ -8,7 +8,7 @@ import {
 import type { ChatKind, Profile } from "../../src/api.ts"
 import { codeHash, parseNameCode } from "../../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, durationFor, YEAR_S } from "../../src/crypto/registration.ts"
-import { labelProblem, linkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
+import { labelProblem, linkKind, type LinkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
 import {
   baseRegistrar, chainNow, controller, deployment, holder, mined, NotSent, ownerOf, priceOracleAt, read, registry, resolver, Reverted, send, sponsor,
 } from "./chain.ts"
@@ -241,6 +241,8 @@ function registering(labelHash: Hex): boolean {
 // a text record may hold several links, joined as the app joins them
 const LINK_SEPARATOR = ";"
 const splitLinks = (text: string) => text.split(LINK_SEPARATOR).map((l) => l.trim()).filter(Boolean)
+// a record set elsewhere may hold any number of links; a search answers the first few of each key
+const MAX_ENTITIES_PER_KEY = 5
 
 // --- link cards
 
@@ -280,6 +282,10 @@ function entity(link: string) {
   return profile && { ...profile, link, deepLink: deepLinkOf(link) }
 }
 
+// the short links of the key's kind in its record, in the record's order
+const entitiesOf = (kind: LinkKind, text: string) =>
+  splitLinks(text).filter((link) => linkProblem(kind, link) === null).slice(0, MAX_ENTITIES_PER_KEY).map(entity).filter((e) => e !== null)
+
 // --- search
 
 export async function search(hash: string, lengthText: string | null): Promise<Record<string, unknown>> {
@@ -312,7 +318,7 @@ export async function search(hash: string, lengthText: string | null): Promise<R
     // a failed read is not "no links": the page says the name could not be checked
     throw new HttpError(503, "provider_unavailable")
   }
-  const entities = [...splitLinks(contact), ...splitLinks(channel)].map(entity).filter((e) => e !== null)
+  const entities = [...entitiesOf("contact", contact), ...entitiesOf("channel", channel)]
   return { status: "registered", entities, records: { contact, channel }, owner: found.owner, resolver: found.resolver, recordsNonce: Number(nonce), expiresAt: found.expires, gracePeriod: found.grace, ...chain }
 }
 

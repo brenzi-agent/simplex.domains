@@ -3,11 +3,11 @@
 import { expect, type APIRequestContext } from "@playwright/test"
 import type * as api from "../src/api.ts"
 import { codeHash, takenOrderCode } from "../src/crypto/code.ts"
-import { labelHash, namehash, setTextDigest, YEAR_S } from "../src/crypto/registration.ts"
+import { CHANNEL_KEY, CONTACT_KEY, labelHash, namehash, setTextDigest, YEAR_S } from "../src/crypto/registration.ts"
 import { fromHex, hex, personalDigest, signDigest } from "../src/crypto/wallet.ts"
 import * as flow from "../src/flow.ts"
 import * as store from "../src/store.ts"
-import { contactLink, control, MOCK, oracleQuote, test, uniqueLabel } from "./helpers.ts"
+import { channelLink, contactLink, control, MOCK, oracleQuote, ownerSetsText, test, uniqueLabel } from "./helpers.ts"
 
 type Json = Record<string, unknown>
 
@@ -344,25 +344,42 @@ test("a taken order's code pays for names no dearer than it, by the oracle; /cod
   expect((await call("POST", "/api/code/check", { code: takenOrderCode(wallet.seed, six.view.id, 6).display })).json).toEqual({ minLength: 6, years: 2, state: "unused" })
 })
 
-test("a link edit repeated after it was mined is answered from the edit, not checked anew", async ({ request }) => {
-  const label = uniqueLabel("ce")
+// a name registered from a code order, without links, with what made it
+async function registeredName(request: APIRequestContext, prefix: string) {
+  const label = uniqueLabel(prefix)
   const { draft, built, id } = await codeOrder(request, label)
-  const record = flow.recordFor(draft, built, "code", 0, { registrationId: id, invoiceId: null })
-  await flow.revealOrder(await untilRevealable(id), record)
+  await flow.revealOrder(await untilRevealable(id), flow.recordFor(draft, built, "code", 0, { registrationId: id, invoiceId: null }))
   await untilPhase(id, ["registered"])
-  const name = await call("GET", `/api/name/${built.request.labelHash}?length=${label.length}`)
-  const nonce = name.json.recordsNonce as number
+  return { label, draft, labelHash: built.request.labelHash }
+}
+
+// a contact link edit of the name, signed by its key with the name's records nonce
+async function contactEdit(name: Awaited<ReturnType<typeof registeredName>>, value: string, nonce?: number): Promise<Json> {
+  const recordsNonce = nonce ?? (await call("GET", `/api/name/${name.labelHash}?length=${name.label.length}`)).json.recordsNonce as number
   const deadline = Math.floor(Date.now() / 1000) + 3600
-  const value = contactLink("Ce")
-  const node = namehash("simplex", label)
-  const chainId = BigInt(draft.chain.chainId)
-  const digest = setTextDigest(chainId, fromHex(draft.chain.resolver), node, "simplex.contact", value, BigInt(nonce), BigInt(deadline))
-  const edit = { labelHash: built.request.labelHash, key: "simplex.contact", value, nonce, deadline, signature: hex(signDigest(flow.walletOf(draft.ownerCode)!.privateKey, digest)) }
+  const digest = setTextDigest(BigInt(name.draft.chain.chainId), fromHex(name.draft.chain.resolver), namehash("simplex", name.label), CONTACT_KEY, value, BigInt(recordsNonce), BigInt(deadline))
+  return { labelHash: name.labelHash, key: CONTACT_KEY, value, nonce: recordsNonce, deadline, signature: hex(signDigest(flow.walletOf(name.draft.ownerCode)!.privateKey, digest)) }
+}
+
+test("a link edit repeated after it was mined is answered from the edit, not checked anew", async ({ request }) => {
+  const name = await registeredName(request, "ce")
+  const edit = await contactEdit(name, contactLink("Ce"))
   const first = await call("POST", "/api/name/records", edit)
   expect(first.status, JSON.stringify(first.json)).toBe(200)
   expect(await call("POST", "/api/name/records", edit)).toEqual(first)
   // the same nonce with another value is checked anew, and its nonce has moved
-  const other = { ...edit, value: contactLink("Cf"), signature: hex(signDigest(flow.walletOf(draft.ownerCode)!.privateKey,
-    setTextDigest(chainId, fromHex(draft.chain.resolver), node, "simplex.contact", contactLink("Cf"), BigInt(nonce), BigInt(deadline)))) }
+  const other = await contactEdit(name, contactLink("Cf"), edit.nonce as number)
   expect(await call("POST", "/api/name/records", other)).toEqual({ status: 400, json: { error: "bad_request" } })
+})
+
+test("search splits a record set elsewhere on semicolons, trims each link, and answers the first five links of each key's kind", async ({ request }) => {
+  const name = await registeredName(request, "cl")
+  const contacts = ["L1", "L2", "L3", "L4", "L5", "L6"].map(contactLink)
+  const contact = [`  ${contacts[0]}`, channelLink("Lx"), "not a link", "", ...contacts.slice(1)].join(" ; ")
+  const channel = `${channelLink("K1")} ;${contactLink("K2")}; `
+  await ownerSetsText(name.draft.ownerCode, name.label, CONTACT_KEY, contact)
+  await ownerSetsText(name.draft.ownerCode, name.label, CHANNEL_KEY, channel)
+  const answer = (await call("GET", `/api/name/${name.labelHash}?length=${name.label.length}`)).json
+  expect(answer.records).toEqual({ contact, channel })
+  expect((answer.entities as Json[]).map((e) => [e.type, e.link])).toEqual([...contacts.slice(0, 5).map((link) => ["address", link]), ["channel", channelLink("K1")]])
 })
