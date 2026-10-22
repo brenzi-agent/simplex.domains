@@ -19,7 +19,7 @@ const CHANNEL = "https://smp9.simplex.im/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2J"
 function registration(change: Partial<RegistrationView> = {}): RegistrationView {
   return {
     ...CHAIN, id: "reg-1", version: 1, phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: "0x9c11", sealed: "sealed-box", years: 2,
-    duration: 2 * YEAR_S, price: 1500, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, codeLength: null, intentNonce: null, unread: [], expiresAt: null, error: null, ...change,
+    duration: 2 * YEAR_S, price: 1500, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, intentNonce: null, unread: [], expiresAt: null, error: null, ...change,
   }
 }
 
@@ -108,7 +108,6 @@ describe("list helpers", () => {
       ["a registered name", registeredView(), null, record(), ["Registered", "ok"]],
       ["a name taken first", registration({ phase: "taken" }), null, record(), ["Taken first", "warn"]],
       ["a failed registration", registration({ phase: "failed" }), null, record(), ["Not registered", "bad"]],
-      ["an order turned into a code", registration({ phase: "code_issued" }), null, record(), ["Code taken", "ok"]],
     ]
     for (const [what, view, inv, o, chip] of cases) expect(phaseChip(view, inv, o, NOW), what).toEqual(chip)
   })

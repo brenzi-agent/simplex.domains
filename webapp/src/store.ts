@@ -19,7 +19,6 @@ export interface OrderRecord {
   // when this browser submitted a card payment, kept until the invoice leaves open
   cardSubmittedAt?: string
   cancelled?: boolean
-  takenCode?: string
   tld: string
   // the prepaid code that paid, shown again if the name is taken first and the code is released
   prepaidCode?: string

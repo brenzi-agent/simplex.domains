@@ -5,7 +5,7 @@ import {
 } from "viem"
 import { mnemonicToAccount } from "viem/accounts"
 import { describe, expect, it } from "vitest"
-import { codeHash, codeProgress, formatOwnerCode, mayBeOwnerCode, parseNameCode, takenOrderCode } from "../src/crypto/code.ts"
+import { codeHash, codeProgress, formatOwnerCode, mayBeOwnerCode, parseNameCode } from "../src/crypto/code.ts"
 import {
   clearRecordsDigest, commitmentSecret, durationFor, labelHash, makeCommitment, namehash, recordCalls,
   registerIntentDigest, setTextDigest, type Registration,
@@ -64,9 +64,11 @@ describe("prepaid code", () => {
   it("refuses a length outside 6 to 63 or written with a leading zero, as the service's parser does", () => {
     // the zero adds nothing to the check, so this text passes it and only the length rule refuses it
     expect(parseNameCode("SN07-BJTBP-29596-R3HJ8-25YM7")).toBeNull()
-    const seed = walletFromEntropy(ENTROPY).seed
-    const lengths = [5, 6, 9, 10, 63, 64].map((n) => {
-      const parsed = parseNameCode(takenOrderCode(seed, "t2Jk8RmQ4vXw9NcP3yLb6g", n).display)
+    // the design's example body under each length, with the check character that length gives
+    const texts = ["SN5-BJTBP-29596-R3HJ8-25YM9", "SN6-BJTBP-29596-R3HJ8-25YM8", "SN9-BJTBP-29596-R3HJ8-25YM5",
+      "SN10-BJTBP-29596-R3HJ8-25YMC", "SN63-BJTBP-29596-R3HJ8-25YMZ", "SN64-BJTBP-29596-R3HJ8-25YMY"]
+    const lengths = texts.map((text) => {
+      const parsed = parseNameCode(text)
       return parsed?.kind === "prepaid" ? parsed.minLength : null
     })
     expect(lengths).toEqual([null, 6, 9, 10, 63, null])
@@ -75,17 +77,6 @@ describe("prepaid code", () => {
   it("hashes the canonical form as the badge codes do: unpadded base64url SHA-256", () => {
     const expected = createHash("sha256").update("SN7BJTBP29596R3HJ825YM7").digest("base64url")
     expect(codeHash("SN7BJTBP29596R3HJ825YM7")).toBe(expected)
-  })
-
-  it("derives a taken order's code that parses, covers the length the service gives, and repeats", () => {
-    const seed = walletFromEntropy(ENTROPY).seed
-    const code = takenOrderCode(seed, "t2Jk8RmQ4vXw9NcP3yLb6g", 7)
-    expect(parseNameCode(code.display)).toEqual(code)
-    expect(code.minLength).toBe(7)
-    const long = takenOrderCode(seed, "t2Jk8RmQ4vXw9NcP3yLb6g", 12)
-    expect([long.minLength, long.display.slice(0, 4), parseNameCode(long.display)]).toEqual([12, "SN12", long])
-    expect(takenOrderCode(seed, "t2Jk8RmQ4vXw9NcP3yLb6g", 7).canonical).toBe(code.canonical)
-    expect(takenOrderCode(seed, "other", 7).canonical).not.toBe(code.canonical)
   })
 })
 

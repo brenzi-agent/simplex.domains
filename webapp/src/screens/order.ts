@@ -14,12 +14,12 @@ export const REVEAL_ATTEMPTS = 3
 const UNREAD_PACING_MS = [5_000, 15_000, 30_000]
 export const unreadDelay = (reads: number) => UNREAD_PACING_MS[Math.min(reads, UNREAD_PACING_MS.length - 1)]
 
-export type OrderKind = "pay-crypto" | "pay-card" | "confirming" | "registering" | "links-refused" | "registered" | "taken" | "code-issued" | "failed" | "not-on-device"
+export type OrderKind = "pay-crypto" | "pay-card" | "confirming" | "registering" | "links-refused" | "registered" | "taken" | "failed" | "not-on-device"
   | "status:closed" | "status:card-unconfirmed" | "status:paid-by-invoice" | "status:unreadable" | "status:unknown-link" | "status:price-changed"
 
 export type ClosedCase = "paid-late" | "cancelled" | "received" | "expired"
 
-type Action = "card" | "cancel" | "reorder" | "code" | "retry" | "move"
+type Action = "card" | "cancel" | "reorder" | "retry" | "move"
 
 export interface Note { tone: "warn" | "danger"; icon: IconName; title: string | null; text: string; link?: { text: string; href: string; after: string } }
 
@@ -65,8 +65,6 @@ export type OrderEvent =
   | { type: "reorder-started" }
   | { type: "reorder-failed"; note: Note }
   | { type: "price-changed"; price: number }
-  | { type: "code-started" }
-  | { type: "code-failed"; note: Note }
   | { type: "move-started" }
   | { type: "move-failed"; note: Note }
   | { type: "retry-started" }
@@ -105,8 +103,6 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "reorder-started": return start(s, "reorder")
     case "reorder-failed": return end(s, "reorder", { note: e.note })
     case "price-changed": return end(s, "reorder", { price: e.price })
-    case "code-started": return start(s, "code")
-    case "code-failed": return end(s, "code", { note: e.note })
     case "move-started": return start(s, "move")
     case "move-failed": return end(s, "move", { note: e.note })
     case "retry-started": return start(s, "retry")
@@ -162,7 +158,6 @@ export function screenOf(s: OrderState): OrderKind {
   if (view.phase === "unpaid") return "status:paid-by-invoice"
   if (view.phase === "registered") return "registered"
   if (view.phase === "taken") return "taken"
-  if (view.phase === "code_issued") return "code-issued"
   if (view.phase === "failed") return "failed"
   if (view.phase !== "registering" && view.label === null && !record) return "not-on-device"
   if (view.phase === "committed" && view.label === null && record?.linksRefused) return "links-refused"

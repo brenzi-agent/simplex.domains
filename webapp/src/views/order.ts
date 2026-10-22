@@ -71,7 +71,6 @@ function dispatch(event: OrderEvent): void {
   if (kind !== "pay-card") dropCard()
   if (kind === "registered") seenRegistered(state.view!, state.invoice)
   if (revealDue(state)) reveal(state.view!, state.record!)
-  // keepCodes dispatches record-changed itself, so it runs only when the screen or the record moved
   if (kind !== screenOf(before) || state.record !== before.record) keepCodes(state)
   wakeOnTime()
 }
@@ -252,7 +251,7 @@ async function adoptSibling(view: api.RegistrationView, invoice: api.InvoiceView
   const next = closed ? await nextOrder(view, invoice) : undefined
   const record: store.OrderRecord = { ...sibling, registrationId: view.id, invoiceId: invoice.invoiceId,
     method: invoice.cryptoCurrency ?? "card", paid: view.price,
-    cancelled: false, cardSubmittedAt: undefined, takenCode: undefined, prepaidCode: undefined, replacedBy: next && store.orderUrl(next),
+    cancelled: false, cardSubmittedAt: undefined, prepaidCode: undefined, replacedBy: next && store.orderUrl(next),
     // a replaced invoice came just before its replacement; otherwise the code asks the service when the order was made,
     // which a later search for a newer order compares against
     createdAt: next ? new Date(Date.parse(next.createdAt) - 1).toISOString() : await flow.createdAtOf(sibling, view.id).catch(() => null) ?? new Date(api.serviceNow()).toISOString() }
@@ -273,9 +272,9 @@ async function replaceOlder(view: api.RegistrationView, invoice: api.InvoiceView
 }
 
 // An expired invoice is still followed: a payment can arrive after it closed, and then nothing must be ordered again.
-// A taken or failed order is followed too, since another tab or browser can move, retry or turn it into a code.
+// A taken or failed order is followed too, since another tab or browser can move or retry it.
 function finished(invoice: api.InvoiceView | null, view: api.RegistrationView): boolean {
-  if (["registered", "code_issued"].includes(view.phase)) return true
+  if (view.phase === "registered") return true
   return view.phase === "unpaid" && invoice?.status === "paid"
 }
 
@@ -301,16 +300,9 @@ function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
 }
 
 function keepCodes(s: OrderState): void {
-  const { view, record, invoice, cardSubmittedAt: submitted } = s
+  const { view, record, invoice } = s
   if (!view || !record) return
-  const kind = screenOf(s)
-  if (kind === "code-issued" && !record.takenCode && view.codeLength !== null) {
-    const code = flow.takenCodeOf(record, view)
-    store.updateOrder(record.registrationId, { takenCode: code })
-    store.addCode({ code, minLength: view.codeLength, years: view.years, addedAt: new Date().toISOString() })
-    dispatch({ type: "record-changed", record: { ...record, takenCode: code }, cardSubmittedAt: submitted })
-  }
-  const released = kind === "taken" && !invoice ? releasedCode(view, record) : null
+  const released = screenOf(s) === "taken" && !invoice ? releasedCode(view, record) : null
   if (released && !store.codes().some((c) => c.code === released.code)) store.addCode({ ...released, addedAt: new Date().toISOString() })
 }
 
@@ -936,54 +928,16 @@ function buildTaken(s: OrderState, signal: AbortSignal): HTMLElement {
   const worth = dollars(view.price)
   const canAct = record !== null
   const other = setAction(btn("Choose another name", "", () => go(`/#/?retarget=${view.id}`)), false, !canAct)
-  // no code is offered when no length of name is as cheap as the order at today's prices
-  const codeLength = view.codeLength
-  const code = codeLength === null ? null : setAction(btn("Take a code", "quiet", () => void takeCode(codeLength)), canAct && s.busy === "code", !canAct || s.hold !== null)
-  if (code) code.dataset.focus = "take-code"
   holdEnds(signal)(s.hold !== null)
-  const cannot = canAct ? null : alertBox("info", "key", "The name code is not in this browser", "Add it in Check your code to choose another name or take a code.")
+  const cannot = canAct ? null : alertBox("info", "key", "The name code is not in this browser", "Add it in Check your code to choose another name.")
   return screen({ title: "Someone registered it first", lead: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your payment is kept."],
-    alt: code, action: other },
+    action: other },
     el("p", { class: "note" }, ...termLine(s)),
     stages(["done", "done", "failed"]),
-    el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it`,
-      codeLength === null ? "." : `, or take a code for names of ${codeLength} or more letters, for ${view.years} years.`),
+    el("p", { class: "note" }, `Choose another name of up to ${worth}, registered to the same wallet so your code owns it.`),
     cannot,
     actionNote(s, canAct ? signal : null),
     referenceLine(invoice.invoiceId))
-}
-
-async function takeCode(codeLength: number): Promise<void> {
-  const gen = opened
-  const view = state.view!
-  const record = state.record!
-  dispatch({ type: "code-started" })
-  try {
-    await flow.takeCodeFor(record, view, codeLength)
-    return reread(gen)
-  } catch (e) {
-    // the code may have been issued with the answer lost, or another browser moved the order: the order says
-    const now = await api.readRegistration(view.id).catch(() => null)
-    const held = holdOn(e, "The code was not taken. ", gen)
-    if (now && now.phase !== "taken") return reread(gen)
-    if (!held) answer(gen, { type: "code-failed", note: warning("The code could not be taken now. Try again in a moment.") })
-  }
-}
-
-function buildCodeIssued({ view: issued, record }: OrderState): HTMLElement {
-  const view = issued!
-  if (!record) {
-    return outcome({ tone: "info", icon: "key", title: "This order became a code",
-      text: "The code is made from the order's name code, so it shows in the browser that has it. Restore the name code here to see it.",
-      action: btn("Enter your name code", "", () => go(CODE_FROM_ORDER_URL)), reference: view.id })
-  }
-  const code = record.takenCode ?? flow.takenCodeOf(record, view)
-  return outcome({ tone: "ok", icon: "key", title: "Here is a code instead",
-    text: [`For names of ${view.codeLength} or more letters, for ${view.years} years: what `, nameText(record.label, view.tld), " was paid for."],
-    action: btn("Search another name", "quiet", () => go("/#/")),
-    extra: [codeDisplay(code),
-      el("div", { class: "code-qr" }, qrSvg(code, "code")),
-      el("div", { class: "left" }, alertBox("info", "info", "Keep a copy of this code", "The service keeps only its hash; this browser keeps the code, under Your names."))] })
 }
 
 function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
@@ -1046,7 +1000,6 @@ const BUILDERS: Record<OrderKind, Builder<OrderState>> = {
   "links-refused": buildLinksRefused,
   registered: buildRegistered,
   taken: buildTaken,
-  "code-issued": buildCodeIssued,
   failed: buildFailed,
   "not-on-device": buildNotOnDevice,
   "status:closed": buildClosed,

@@ -234,24 +234,6 @@ test("Your names tells part-paid and confirming orders from unpaid ones, and a n
   await shot(page, "N12e-history-phases")
 })
 
-test("after taking a code, the other-name search says the payment became a code", async ({ page, request }) => {
-  const label = uniqueLabel("tcode")
-  const { invoiceId } = await startOrder(page, label, { method: "btc" })
-  await control(request, "take", { label })
-  await control(request, `settle/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: 120_000 })
-  const registrationId = await registrationOf(request, invoiceId)
-  await page.getByRole("button", { name: "Take a code" }).click()
-  await expect(page.getByRole("heading", { name: "Here is a code instead" })).toBeVisible()
-  await page.goto(`/#/?retarget=${registrationId}`)
-  await expect(page.getByText("Your payment already became a code.")).toBeVisible()
-  // the search is a plain one now: a name found is registered as a new order
-  await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("tcn"))
-  await page.getByLabel("Name", { exact: true }).press("Enter")
-  await expect(page.getByRole("button", { name: "Register", exact: true })).toBeEnabled()
-  await expect(page.getByText("Covered by your payment")).toHaveCount(0)
-})
-
 test("full storage that still reads is warned about on the name code step, which shows the only copy of the code", async ({ browser }) => {
   const context = await browser.newContext()
   await context.addInitScript(() => {

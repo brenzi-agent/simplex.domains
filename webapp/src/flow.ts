@@ -1,6 +1,6 @@
-// The order flows, between the views and the crypto: build an order, reveal it, retarget it, take a code, restore, edit links.
+// The order flows, between the views and the crypto: build an order, reveal it, retarget it, restore, edit links.
 import * as api from "./api.ts"
-import { codeHash, formatOwnerCode, parseNameCode, takenOrderCode } from "./crypto/code.ts"
+import { formatOwnerCode, parseNameCode } from "./crypto/code.ts"
 import {
   CHANNEL_KEY, CONTACT_KEY, commitmentSecret, durationFor, labelHash, makeCommitment, namehash, registerIntentDigest, setTextDigest,
   type Registration,
@@ -104,32 +104,6 @@ export async function retargetOrder(record: store.OrderRecord, label: string, li
   return view
 }
 
-// A code for a taken order, derived from the owner code and the length the service gives, so the code alone recovers it;
-// only its hash is sent. Prices that moved since the view was read change the length, and the code is derived again.
-export async function takeCodeFor(record: store.OrderRecord, view: api.RegistrationView, codeLength: number): Promise<string> {
-  const wallet = walletOf(record.ownerCode)!
-  const code = takenOrderCode(wallet.seed, view.id, codeLength)
-  const hash = codeHash(code.canonical)
-  const timestamp = now()
-  const signature = hex(signDigest(wallet.privateKey, personalDigest(`simplex.domains code ${view.id} ${hash} ${codeLength} ${timestamp}`)))
-  try {
-    await api.takeCode(view.id, { codeHash: hash, codeLength, timestamp, signature })
-  } catch (e) {
-    const changed = e instanceof api.ApiError && e.code === "code_length_changed" && Number.isInteger(e.body.codeLength) ? e.body.codeLength as number : null
-    if (changed === null || changed === codeLength) throw e
-    return takeCodeFor(record, view, changed)
-  }
-  store.updateOrder(record.registrationId, { takenCode: code.display })
-  store.addCode({ code: code.display, minLength: code.minLength, years: view.years, addedAt: new Date().toISOString() })
-  return code.display
-}
-
-// the code an order became, as its view gives its length
-export function takenCodeOf(record: store.OrderRecord, view: api.RegistrationView): string {
-  const wallet = walletOf(record.ownerCode)!
-  return takenOrderCode(wallet.seed, view.id, view.codeLength!).display
-}
-
 type RestoreResult = { record: store.OrderRecord; view: api.RegistrationView }
 
 // The order's name and links, unsealed with the code, after checking that they rebuild the order's commitment.
@@ -207,7 +181,7 @@ export async function restore(text: string): Promise<RestoreResult> {
 export async function ownOrderFor(ownerCode: string, nameHash: string): Promise<store.OrderRecord | null> {
   const wallet = walletOf(ownerCode)!
   const found = (await findOrders(wallet)).filter((r) => r.labelHash === nameHash)
-  const chosen = found.find((r) => !["unpaid", "taken", "code_issued"].includes(r.phase)) ?? found.find((r) => r.phase === "unpaid")
+  const chosen = found.find((r) => !["unpaid", "taken"].includes(r.phase)) ?? found.find((r) => r.phase === "unpaid")
   return chosen ? (await reopen(wallet, ownerCode, chosen)).record : null
 }
 
@@ -254,7 +228,7 @@ async function reopen(wallet: Wallet, code: string, chosen: Found): Promise<Rest
   const invoice = chosen.invoiceId ? await api.readInvoice(chosen.invoiceId) : null
   const view = invoice?.registration ?? await api.readRegistration(chosen.registrationId)
   const opened = await openOrder(wallet, view)
-  // what only this browser knew about the order (a card in confirmation, a cancel, a taken code) is kept
+  // what only this browser knew about the order (a card in confirmation, a cancel, the prepaid code that paid) is kept
   const known = store.orderByRegistration(view.id)
   const record: store.OrderRecord = {
     ...known, registrationId: view.id, invoiceId: chosen.invoiceId, ownerCode: code, owner, ...opened,

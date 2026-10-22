@@ -17,7 +17,7 @@ const WARN: Note = { tone: "warn", icon: "alert", title: null, text: "The invoic
 function registration(change: Partial<RegistrationView> = {}): RegistrationView {
   return {
     ...CHAIN, id: "reg-1", version: 1, phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box", years: 2, duration: 2 * 365 * 86400,
-    price: 1500, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, codeLength: null, intentNonce: null, unread: [], expiresAt: null, error: null, ...change,
+    price: 1500, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, intentNonce: null, unread: [], expiresAt: null, error: null, ...change,
   }
 }
 
@@ -60,7 +60,6 @@ const STATES: Record<OrderKind, OrderState> = {
   "links-refused": read(null, registration(committed), { record: record({ linksRefused: true }) }),
   registered: read(null, registration({ phase: "registered", label: "alice", registerTx: "0xe9", expiresAt: NOW / 1000 + 63072000 })),
   taken: read(crypto({ status: "paid", paidInFull: true }, { phase: "taken" })),
-  "code-issued": read(crypto({ status: "paid", paidInFull: true }, { phase: "code_issued" })),
   failed: read(crypto({ status: "paid", paidInFull: true }, { phase: "failed", error: "The registration ran out of gas" })),
   "not-on-device": read(null, registration({ phase: "committing" }), { record: null }),
   "status:closed": read(crypto({ status: "expired" })),
@@ -91,7 +90,6 @@ describe("screenOf", () => {
     ["a registration link of an unpaid order", STATES["status:paid-by-invoice"], "status:paid-by-invoice"],
     ["a registered order", STATES.registered, "registered"],
     ["a name taken first", STATES.taken, "taken"],
-    ["an order turned into a code", STATES["code-issued"], "code-issued"],
     ["a failed registration", STATES.failed, "failed"],
     ["a commit in a browser without the name code", STATES["not-on-device"], "not-on-device"],
     ["a commit in the browser with the name code", STATES.registering, "registering"],
@@ -217,7 +215,6 @@ describe("reduce", () => {
     const cases: [OrderEvent["type"], OrderEvent["type"], OrderState, OrderState["busy"]][] = [
       ["cancel-started", "cancel-failed", { ...paying, note: WARN }, "cancel"],
       ["reorder-started", "reorder-failed", { ...STATES["status:closed"], note: WARN }, "reorder"],
-      ["code-started", "code-failed", { ...STATES.taken, note: WARN }, "code"],
       ["retry-started", "retry-failed", failing, "retry"],
       ["move-started", "move-failed", { ...STATES["links-refused"], note: WARN }, "move"],
     ]
@@ -271,7 +268,7 @@ describe("reduce", () => {
       const refused = { ...STATES.failed, codeRefused: true }
       expect(reduce(refused, answered(refused, STATES.registering)).codeRefused).toBe(false)
     })
-    it.each([["cancel-failed"], ["reorder-failed"], ["code-failed"], ["retry-failed"], ["move-failed"]])("%s of an action no longer at work changes nothing", (failed) => {
+    it.each([["cancel-failed"], ["reorder-failed"], ["retry-failed"], ["move-failed"]])("%s of an action no longer at work changes nothing", (failed) => {
       expect(reduce(paying, { type: failed, note: WARN } as OrderEvent)).toBe(paying)
     })
     it("cancel-answered ends the cancel and leaves no note", () => {

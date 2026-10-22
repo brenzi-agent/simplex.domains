@@ -114,7 +114,7 @@ export const waitsToSign = (view: RegistrationView, now: number) =>
 const PHASE_CHIPS: Record<Phase, [string, string]> = {
   unpaid: ["Waiting for payment", "warn"],
   queued: ["Registering", "brand"], committing: ["Registering", "brand"], committed: ["Registering", "brand"], registering: ["Registering", "brand"],
-  registered: ["Registered", "ok"], taken: ["Taken first", "warn"], failed: ["Not registered", "bad"], code_issued: ["Code taken", "ok"],
+  registered: ["Registered", "ok"], taken: ["Taken first", "warn"], failed: ["Not registered", "bad"],
 }
 
 export function phaseChip(view: RegistrationView, invoice: InvoiceView | null, o: OrderRecord, now: number): [string, string] {

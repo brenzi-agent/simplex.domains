@@ -1,6 +1,5 @@
 // Name codes, as simplex-chat's Badges/Code.hs reads them. The owner code is from simplexmq PR #1942's names-web.
 import { bytesToNumberBE, numberToBytesBE } from "@noble/curves/utils"
-import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha2"
 import { utf8ToBytes } from "@noble/hashes/utils"
 import { MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../names.ts"
@@ -86,18 +85,6 @@ function parsePrepaid(lengthText: string, body: string): NameCode | null {
   if (values[PREPAID_PAYLOAD] !== checkValue([...params, ...values.slice(0, PREPAID_PAYLOAD)])) return null
   const canonicalBody = values.map((v) => ALPHABET[v]).join("")
   return { kind: "prepaid", minLength, canonical: PREFIX + lengthText + canonicalBody, display: group(PREFIX + lengthText, canonicalBody) }
-}
-
-// A taken order's code for names of `minLength` letters or more: its payload from the owner code's seed and the
-// registration id, so the owner code recovers it.
-export function takenOrderCode(seed: Uint8Array, registrationId: string, minLength: number): NameCode & { kind: "prepaid" } {
-  const lengthText = String(minLength)
-  const mac = hmac(sha256, seed, utf8ToBytes("simplex.domains taken code " + registrationId))
-  // 256 is a multiple of 32, so a byte reduces without bias
-  const payload = [...mac.slice(0, PREPAID_PAYLOAD)].map((b) => b % BASE)
-  const params = [...lengthText].map((c) => ALPHABET.indexOf(c))
-  const body = [...payload, checkValue([...params, ...payload])].map((v) => ALPHABET[v]).join("")
-  return { kind: "prepaid", minLength: Number(lengthText), canonical: PREFIX + lengthText + body, display: group(PREFIX + lengthText, body) }
 }
 
 // the badge codes' hash: unpadded base64url SHA-256 of the canonical code

@@ -13,20 +13,14 @@ test("a name taken first moves the paid order to another name, owned by the same
   await control(request, "take", { label })
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
-  await expect(page.getByText(/^Choose another name of up to \$100, .* or take a code for names of \d+ or more letters, for 2 years\.$/)).toBeVisible()
-  // the two ways forward are stacked, the move to another name first
-  const [other, code] = [page.getByRole("button", { name: "Choose another name" }), page.getByRole("button", { name: "Take a code" })]
-  // the main button centred, the other way under it
-  const [otherBox, codeBox] = [(await other.boundingBox())!, (await code.boundingBox())!]
-  expect(otherBox.x + otherBox.width / 2).toBeCloseTo(codeBox.x + codeBox.width / 2, 0)
-  expect(otherBox.y + otherBox.height).toBeLessThanOrEqual(codeBox.y)
+  await expect(page.getByText("Choose another name of up to $100, registered to the same wallet so your code owns it.", { exact: true })).toBeVisible()
   await expect(page.getByText(`Reference ${invoiceId}`)).toBeVisible()
   await shot(page, "N8-taken")
   // a browser without the order's code says where to add it
   const elsewhere = await page.context().browser()!.newContext()
   const stranger = await elsewhere.newPage()
   await stranger.goto(`/?order=${invoiceId}`)
-  await expect(stranger.getByText("Add it in Check your code to choose another name or take a code.")).toBeVisible()
+  await expect(stranger.getByText("Add it in Check your code to choose another name.")).toBeVisible()
   await elsewhere.close()
 
   await page.getByRole("button", { name: "Choose another name" }).click()
@@ -92,26 +86,6 @@ test("a wait on moving the payment that ends while Back checks the name again se
   await expect(page.locator(".answer .line", { hasText: "Checking the name…" })).toBeVisible()
   await expect(page.getByText("Covered by your payment")).toBeVisible({ timeout: 2 * SEARCH_RTT_MS })
   expect(searches, "searches sent since Back").toBe(1)
-})
-
-test("a name taken first can become a code instead, kept under Your names", async ({ page, request }) => {
-  const label = uniqueLabel("tc")
-  const { invoiceId } = await startOrder(page, label, { method: "xmr" })
-  await control(request, "take", { label })
-  await control(request, `settle/${invoiceId}`)
-  await expect(page.getByRole("heading", { name: "Someone registered it first" })).toBeVisible({ timeout: REGISTRATION_MS })
-  await page.getByRole("button", { name: "Take a code" }).click()
-  await expect(page.getByRole("heading", { name: "Here is a code instead" })).toBeVisible()
-  const code = (await page.locator(".outcome .code-text").textContent())!.trim()
-  expect(code).toMatch(/^SN8-/)
-  // a code's term reads as the chip, Check your code and the home say it
-  await expect(page.locator(".outcome .notice.ok")).toContainText("For names of 8 or more letters, for 2 years: what")
-  await shot(page, "N8b-code-instead")
-
-  await page.goto("/#/names")
-  await expect(page.locator(".list-row", { hasText: code }).locator(".chip")).toHaveText("Unused")
-  await expect(page.locator(".list-row", { hasText: code }).locator(".sub")).toContainText("Pays for a name of 8 or more letters, for 2 years")
-  await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText("Code taken")
 })
 
 test("a failed registration is retried without paying again, and another tab follows the retry", async ({ page, request }) => {
@@ -256,7 +230,7 @@ test("an order whose links the service refuses at its reveal registers without t
   expect(answer.records).toEqual({ contact: "", channel: "" })
 })
 
-test("a move to a cheaper name says the rest is not refunded, and offers the code that keeps it all", async ({ page, request }) => {
+test("a move to a cheaper name says the rest is not refunded", async ({ page, request }) => {
   const label = `t${Math.random().toString(36).slice(2).replace(/[^a-z]/g, "").padEnd(6, "t")}`.slice(0, 7)
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await control(request, "take", { label })
@@ -265,8 +239,5 @@ test("a move to a cheaper name says the rest is not refunded, and offers the cod
   await page.getByRole("button", { name: "Choose another name" }).click()
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("cheap"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
-  await expect(page.locator(".answer .line", { hasText: "Uses" })).toHaveText("Uses $100 of your $200; the rest is not refunded. Take a code instead to keep it all.")
-  await page.getByRole("link", { name: "Take a code instead" }).click()
-  await expect(page.getByRole("button", { name: "Take a code" })).toBeVisible()
-  expect(new URL(page.url()).searchParams.get("order")).toBe(invoiceId)
+  await expect(page.locator(".answer .line", { hasText: "Uses" })).toHaveText("Uses $100 of your $200; the rest is not refunded.")
 })

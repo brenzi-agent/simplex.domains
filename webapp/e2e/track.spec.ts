@@ -178,7 +178,6 @@ test.describe(() => {
     await onStep(page).getByRole("button", { name: "Try again" }).click()
     await expect(onStep(page).getByText("That did not go through")).toBeVisible()
     await fitsWindow(page, "o3b-not-registered-retry-refused", frames)
-    await shown("o4-code-issued", invoiceOf(order, "paid", { phase: "code_issued", commitTx: "0x02" }), "Here is a code instead")
     // a taken order seen in a browser without its code, which says where to add the code
     const elsewhere = await browser.newContext()
     const stranger = await elsewhere.newPage()

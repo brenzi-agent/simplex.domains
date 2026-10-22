@@ -3,7 +3,6 @@
 import { expect, type APIRequestContext } from "@playwright/test"
 import type { Hex } from "viem"
 import type * as api from "../src/api.ts"
-import { codeHash, takenOrderCode } from "../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, labelHash, namehash, setTextDigest, YEAR_S } from "../src/crypto/registration.ts"
 import { fromHex, hex, personalDigest, signDigest } from "../src/crypto/wallet.ts"
 import * as flow from "../src/flow.ts"
@@ -328,37 +327,6 @@ async function nameBody(record: store.OrderRecord, view: api.RegistrationView): 
   return { labelHash: view.labelHash, length, duration: view.duration, commitment: view.commitment, sealed: view.sealed, timestamp,
     signature: hex(signDigest(flow.walletOf(record.ownerCode)!.privateKey, personalDigest(message))) }
 }
-
-test("a taken order's code pays for names no dearer than it, by the oracle; /code checks the length and answers a repeat whatever it carries", async ({ request }) => {
-  const takenOf = async (label: string) => {
-    const draft = await draftOf(label)
-    const built = await flow.orderRequest(draft)
-    const paid = await call("POST", "/api/invoice", invoiceBody(built.request, "btc", (await quote(label)).price))
-    const id = (paid.json.registration as Json).id as string
-    await control(request, "take", { label })
-    await control(request, `settle/${paid.json.invoiceId}`)
-    const record = flow.recordFor(draft, built, "btc", paid.json.amount as number, { registrationId: id, invoiceId: paid.json.invoiceId as string })
-    await flow.revealOrder(await untilRevealable(id), record)
-    return { record, view: await untilPhase(id, ["taken"]) }
-  }
-  const random = Math.random().toString(36).slice(2).replace(/[^a-z]/g, "").padEnd(11, "x")
-  const orders = await Promise.all([`a${random}`.slice(0, 6), `b${random}`.slice(0, 7), `c${random}`.slice(0, 12)].map(takenOf))
-  expect(orders.map(({ view }) => view.codeLength), "6, 7 and 12 letters at $400, $200 and $100").toEqual([6, 7, 8])
-  const [six] = orders
-  const wallet = flow.walletOf(six.record.ownerCode)!
-  const body = (codeLength: number) => {
-    const hash = codeHash(takenOrderCode(wallet.seed, six.view.id, codeLength).canonical)
-    const timestamp = Math.floor(Date.now() / 1000)
-    return { codeHash: hash, codeLength, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(`simplex.domains code ${six.view.id} ${hash} ${codeLength} ${timestamp}`))) }
-  }
-  expect(await call("POST", `/api/registration/${six.view.id}/code`, body(7))).toEqual({ status: 409, json: { error: "code_length_changed", codeLength: 6 } })
-  const issued = body(6)
-  expect((await call("POST", `/api/registration/${six.view.id}/code`, issued)).status).toBe(200)
-  expect((await call("POST", `/api/registration/${six.view.id}/code`, issued)).status, "a repeat").toBe(200)
-  const after = await viewOf(six.view.id)
-  expect([after.phase, after.codeLength]).toEqual(["code_issued", 6])
-  expect((await call("POST", "/api/code/check", { code: takenOrderCode(wallet.seed, six.view.id, 6).display })).json).toEqual({ minLength: 6, years: 2, state: "unused" })
-})
 
 // a name registered from a code order, without links, with what made it
 async function registeredName(request: APIRequestContext, prefix: string) {

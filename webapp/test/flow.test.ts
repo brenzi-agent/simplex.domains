@@ -1,7 +1,7 @@
 import { recoverAddress, recoverMessageAddress, type Hex } from "viem"
 import type { Phase } from "../src/api.ts"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { codeHash, formatOwnerCode, parseNameCode } from "../src/crypto/code.ts"
+import { formatOwnerCode } from "../src/crypto/code.ts"
 import { commitmentSecret, labelHash, makeCommitment, namehash, registerIntentDigest, setTextDigest, YEAR_S } from "../src/crypto/registration.ts"
 import { unseal } from "../src/crypto/seal.ts"
 import { checksumAddress, hex, walletFromEntropy } from "../src/crypto/wallet.ts"
@@ -61,7 +61,7 @@ const draft = (label = "dynamis") => ({ label, links: LINKS, chain: CHAIN, years
 
 function view(request: { labelHash: string; duration: number; commitment: string; sealed: string | null }, extra: Record<string, unknown> = {}) {
   return {
-    id: "reg1", version: 1, unread: [], moves: 0, codeLength: null, phase: "committed", labelHash: request.labelHash, label: null, owner: OWNER, commitment: request.commitment, sealed: request.sealed,
+    id: "reg1", version: 1, unread: [], moves: 0, phase: "committed", labelHash: request.labelHash, label: null, owner: OWNER, commitment: request.commitment, sealed: request.sealed,
     years: 2, duration: request.duration, price: 20000, commitTx: "0x01", registerTx: null, revealAfter: 1000, revealBefore: 87400, intentNonce: 3, expiresAt: null, error: null,
     ...CHAIN, ...extra,
   }
@@ -113,7 +113,7 @@ describe("revealOrder", () => {
   })
 })
 
-describe("retargetOrder and takeCodeFor", () => {
+describe("retargetOrder", () => {
   it("signs the new name's request with the order's key and keeps the record's wallet", async () => {
     const { flow, store } = await modules()
     const built = await flow.orderRequest(draft())
@@ -127,38 +127,6 @@ describe("retargetOrder and takeCodeFor", () => {
     const message = `simplex.domains name reg1 ${body.labelHash} 7 ${body.duration} ${body.commitment} 0x${sealedHash} ${body.timestamp}`
     expect(await recoverMessageAddress({ message, signature: body.signature })).toBe(OWNER)
     expect(store.orderByRegistration("reg1")).toMatchObject({ label: "another", owner: OWNER, request: { labelHash: body.labelHash } })
-  })
-
-  it("derives the taken order's code from the owner code, sends only its hash, and keeps the code", async () => {
-    const { flow, store } = await modules()
-    const built = await flow.orderRequest(draft())
-    const record = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" })
-    store.saveOrder(record)
-    answers["POST /api/registration/reg1/code"] = {}
-    const taken = view(built.request, { phase: "taken", years: 3, codeLength: 7 })
-    const code = await flow.takeCodeFor(record, taken as never, 7)
-    expect(code).toBe(flow.takenCodeOf(record, { ...taken, phase: "code_issued" } as never))
-    const parsed = parseNameCode(code)
-    expect(parsed?.kind === "prepaid" && parsed.minLength).toBe(7)
-    const body = calls[0].body as { codeHash: string; codeLength: number; timestamp: number; signature: Hex }
-    expect(body.codeHash).toBe(codeHash(parsed!.kind === "prepaid" ? parsed!.canonical : ""))
-    expect(body.codeLength).toBe(7)
-    expect(await recoverMessageAddress({ message: `simplex.domains code reg1 ${body.codeHash} 7 ${body.timestamp}`, signature: body.signature })).toBe(OWNER)
-    expect(store.codes().map((c) => [c.code, c.minLength, c.years])).toEqual([[code, 7, 3]])
-    expect(store.orderByRegistration("reg1")?.takenCode).toBe(code)
-  })
-
-  it("derives the code again for the length the service names when the prices moved", async () => {
-    const { flow, store } = await modules()
-    const built = await flow.orderRequest(draft())
-    const record = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" })
-    store.saveOrder(record)
-    let sent = 0
-    answers["POST /api/registration/reg1/code"] = () => ++sent === 1 ? new Response(JSON.stringify({ error: "code_length_changed", codeLength: 9 }), { status: 409 }) : {}
-    const code = await flow.takeCodeFor(record, view(built.request, { phase: "taken", codeLength: 7 }) as never, 7)
-    expect(calls.map((c) => c.body.codeLength)).toEqual([7, 9])
-    expect(code.startsWith("SN9-")).toBe(true)
-    expect(store.codes().map((c) => c.minLength)).toEqual([9])
   })
 })
 

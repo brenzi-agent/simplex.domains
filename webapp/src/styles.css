@@ -401,7 +401,6 @@ svg.qr { display: block; width: 132px; height: auto; }
 .qr-grid > .qr { grid-row: span 2; }
 .card.qr { display: grid; place-items: center; gap: 8px; padding: 12px; font-size: var(--fs-small); }
 .card.qr svg.qr { width: 150px; }
-.code-qr { display: flex; justify-content: center; margin-top: 16px; }
 .screen-body > .wallet { display: none; justify-self: center; font-size: 15px; }
 .copy-field .label { display: block; margin-bottom: 6px; }
 .copy-field .val { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--surface-line);
@@ -582,9 +581,9 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .method { height: 72px; font-size: 14px; }
   .review:has(.line) .method { height: 60px; }
   .review:has(.line) .order .name { font-size: 16px; }
-  /* a QR is for another device; a phone opens its wallet from the link under the address, and copies a code */
+  /* a QR is for another device; a phone opens its wallet from the link under the address */
   .qr-grid { grid-template-columns: minmax(0, 1fr); }
-  .qr-grid > .card.qr, .code-qr { display: none; }
+  .qr-grid > .card.qr { display: none; }
   .scan { display: grid; }
   .screen-body > .wallet { display: block; }
 }

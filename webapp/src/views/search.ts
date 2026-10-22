@@ -113,7 +113,7 @@ async function pointAtOwnOrder(label: string, hash: string, page: number): Promi
     const reg = invoice?.registration ?? (o.invoiceId ? null : await api.readRegistration(o.registrationId).catch(() => null))
     if (!onPage(page)) return
     const open = reg !== null && (reg.phase !== "unpaid" || invoice?.status === "open")
-    if (!open || ["taken", "failed", "code_issued", "registered"].includes(reg.phase)) continue
+    if (!open || ["taken", "failed", "registered"].includes(reg.phase)) continue
     return dispatch({ type: "own-order-seen", label, url: store.orderUrl(o) })
   }
   if (onPage(page) && state.ownOrder !== null) dispatch({ type: "own-order-seen", label, url: null })
@@ -129,20 +129,15 @@ async function readOrder(record: store.OrderRecord): Promise<{ view: api.Registr
 const movable = (view: api.RegistrationView, record: store.OrderRecord) =>
   view.phase === "taken" || view.phase === "failed" || (view.phase === "committed" && record.linksRefused === true)
 
-// a paid order taken first can still become a code worth all it paid, on its own page
-const codeOfferOf = (view: api.RegistrationView, record: store.OrderRecord) =>
-  view.phase === "taken" && record.invoiceId !== null && view.codeLength !== null ? store.orderUrl(record) : null
-
 function movedOf(view: api.RegistrationView, record: store.OrderRecord): Moved | null {
   if (movable(view, record)) return null
-  const url = store.orderUrl(record)
-  return view.phase === "code_issued" ? { to: "code", url } : { to: "name", url, label: record.label, tld: record.tld }
+  return { url: store.orderUrl(record), label: record.label, tld: record.tld }
 }
 
 async function checkRetarget(record: store.OrderRecord): Promise<void> {
   const page = opens
   const read = await readOrder(record)
-  if (read && onPage(page)) dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced), codeOffer: codeOfferOf(read.view, read.synced) })
+  if (read && onPage(page)) dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced) })
 }
 
 // a search the wait paused is sent once it ends; one already on its way, as Back sends, is not sent again
@@ -192,7 +187,7 @@ async function retarget(record: store.OrderRecord, label: string, quote: Availab
     const limited = holdFrom(e)
     if (!onPage(page)) return
     if (read?.synced.label === label) return go(store.orderUrl(record))
-    if (read && !movable(read.view, read.synced)) return dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced), codeOffer: null })
+    if (read && !movable(read.view, read.synced)) return dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced) })
     if (limited) return dispatch({ type: "register-held", until: holdEnd() })
     const code = e instanceof api.ApiError ? e.code : null
     if (code === "move_limit") return dispatch({ type: "register-refused", refusal: { why: "limit", reference: record.invoiceId ?? record.registrationId } })
@@ -255,7 +250,6 @@ function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
 }
 
 function openingLine(s: SearchState): HTMLElement | null {
-  if (s.moved?.to === "code") return alertBox("info", "key", "Your payment already became a code.", el("a", { href: s.moved.url }, "Open it"))
   if (s.moved) return alertBox("info", "info", "Your payment already went to another name.", el("a", { href: s.moved.url }, "Open ", nameText(s.moved.label, s.moved.tld)))
   if (!s.retarget) return null
   const worth = dollars(s.retarget.paid)
@@ -299,8 +293,7 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
   const retarget = s.retarget
   const unpayable = unaffordable(s, answer)
   // a cheaper name refunds nothing, which is said before the buyer chooses it
-  const cheaper = retarget && answer.price < retarget.paid ? [`Uses ${dollars(answer.price)} of your ${dollars(retarget.paid)}; the rest is not refunded.`,
-    s.codeOffer ? [" ", el("a", { href: s.codeOffer }, "Take a code instead"), " to keep it all."] : null] : null
+  const cheaper = retarget && answer.price < retarget.paid ? `Uses ${dollars(answer.price)} of your ${dollars(retarget.paid)}; the rest is not refunded.` : null
   const covers = retarget && (unpayable ? `This name costs more than the ${dollars(retarget.paid)} your order is worth.` : cheaper ?? "Covered by your payment")
   const own = ownOrderOf(s)
   const code = codeFor(s, label)
