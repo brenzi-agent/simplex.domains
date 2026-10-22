@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
-  balanceHeld, changeOf, heldForThisName, payWaits, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, FALLBACK_METHOD, initialState, reduce, screenOf, split, stepFor,
+  balanceHeld, changeOf, heldForThisName, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, FALLBACK_METHOD, initialState, reduce, screenOf, split, stepFor,
 } from "../src/screens/checkout.ts"
 import { timeOf } from "../src/format.ts"
 import { BALANCE_READ_MS, CONFIRMING_READ_MS, heldWords, holderStill, holdWait } from "../src/screens/balance.ts"
@@ -309,5 +309,17 @@ describe("a held balance and Pay", () => {
     const own = open({ checkout: checkout({ balance: HELD }), holder: holder("alice1") })
     expect([heldForThisName(own), payWaits(own)]).toEqual([true, false])
     expect(heldForThisName(open({ checkout: checkout({ balance: { ...HELD, held: false, heldUntil: null } }), holder: holder("alice1") })), "a balance free again").toBe(false)
+  })
+})
+
+describe("tookOwnOrder", () => {
+  const own = { label: "alice1", tld: "simplex", url: "/?registration=reg-9" }
+  it("is a balance gone to an order of this name, as a covered spend whose answer was lost makes", () => {
+    expect(tookOwnOrder(open({ checkout: checkout({ balance: null, balanceChange: "gone" }), holder: own }))).toBe(true)
+  })
+  it("is not a balance gone elsewhere, one still there, or one gone before its order is found", () => {
+    expect(tookOwnOrder(open({ checkout: checkout({ balance: null, balanceChange: "gone" }), holder: { ...own, label: "bakery7" } }))).toBe(false)
+    expect(tookOwnOrder(open({ checkout: checkout({ balance: null, balanceChange: "gone" }) }))).toBe(false)
+    expect(tookOwnOrder(open({ checkout: checkout({ balance: { source: "s", amount: 500, held: false, heldUntil: null }, balanceChange: "changed" }), holder: own }))).toBe(false)
   })
 })

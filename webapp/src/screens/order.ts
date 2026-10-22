@@ -169,7 +169,8 @@ export const spendCovers = ({ view, sourceBalance }: OrderState) =>
 // rest of that payment kept as this order's balance after such a move; null for a code, which costs nothing.
 export function costOf(view: RegistrationView, invoice: InvoiceView | null): { cost: number; fromBalance: number } | null {
   if (!invoice && view.fromBalance === 0) return null
-  return { cost: view.price, fromBalance: Math.min(view.fromBalance, view.price) }
+  // an order its invoice paid part of names the balance's part only while it is short of the price a move lowered
+  return { cost: view.price, fromBalance: invoice && view.fromBalance >= view.price ? 0 : Math.min(view.fromBalance, view.price) }
 }
 
 // The service refused the order's links at its reveal, as the view says or as this browser saw: trying again would commit

@@ -113,6 +113,11 @@ export const balanceHeld = (c: Checkout) => c.balance?.held === true
 export const heldForThisName = ({ checkout: c, holder }: CheckoutState) =>
   balanceHeld(c) && holder !== null && holder.label === c.label && holder.tld === c.chain.tld
 
+// The balance is gone to an order of this very name, as a covered spend whose answer was lost makes: that order is the
+// buyer's, with nothing more to pay, and the review opens it rather than asking for the whole price.
+export const tookOwnOrder = ({ checkout: c, holder }: CheckoutState) =>
+  c.balance === null && c.balanceChange === "gone" && holder !== null && holder.label === c.label && holder.tld === c.chain.tld
+
 // Pay waits while another order's invoice holds the balance
 export const payWaits = (s: CheckoutState) => balanceHeld(s.checkout) && !heldForThisName(s)
 

@@ -325,7 +325,8 @@ describe("costOf", () => {
   })
   it("is the cheaper name's price after a move, the balance paying no more of it than it costs", () => {
     expect(costOf(registration({ price: 500, fromBalance: 1500 }), null)).toEqual({ cost: 500, fromBalance: 500 })
-    expect(costOf(registration({ price: 1000, fromBalance: 1000 }), crypto({ status: "paid", amount: 1000 }, { price: 1000 })), "a difference order moved").toEqual({ cost: 1000, fromBalance: 1000 })
+    expect(costOf(registration({ price: 1000, fromBalance: 1000 }), crypto({ status: "paid", amount: 1000 })), "a difference order moved, whose coin paid half")
+      .toEqual({ cost: 1000, fromBalance: 0 })
   })
   it("is null for a code order, which costs nothing", () => {
     expect(costOf(registration({ price: 0 }), null)).toBeNull()

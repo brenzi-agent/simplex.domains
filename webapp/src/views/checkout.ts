@@ -8,7 +8,7 @@ import type { LinkKind } from "../names.ts"
 import { CONFIRMING_READ_MS, heldWords, holderStill, holdWait } from "../screens/balance.ts"
 import { REVEAL_HOURS } from "../screens/order.ts"
 import {
-  balanceHeld, changeOf, heldForThisName, payWaits, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
+  balanceHeld, changeOf, heldForThisName, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
 } from "../screens/checkout.ts"
 import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
@@ -94,7 +94,8 @@ async function watchBalance(source: string, signal: AbortSignal): Promise<void> 
     }
     if (signal.aborted) return
     session.updateActiveBalance(source, session.appliedBalance(source, balance))
-    if (!act({ type: "balance-read", balance }) || !balanceHeld(state.checkout)) return
+    if (!act({ type: "balance-read", balance })) return
+    if (!balanceHeld(state.checkout)) return showOwnOrder()
     const paying = store.orderByRegistration(source)
     if (!holder && paying && api.serviceNow() >= findAfter) {
       try {
@@ -238,7 +239,9 @@ function balanceChangeLine(s: CheckoutState): HTMLElement | null {
   }
   switch (c.balanceChange) {
     case undefined: return null
-    case "gone": return line("warn", "wallet", "Your balance was spent or refunded meanwhile, so you pay the whole price.")
+    case "gone": return holder && tookOwnOrder(s)
+      ? line("warn", "wallet", "Your order for ", el("a", { href: holder.url }, nameText(holder.label, holder.tld)), " already took your balance, with nothing more to pay.")
+      : line("warn", "wallet", "Your balance was spent or refunded meanwhile, so you pay the whole price.")
     case "changed": return line("warn", "wallet", `Your balance changed to ${dollars(c.balance!.amount)} meanwhile. Check what is left to pay.`)
   }
 }
@@ -284,7 +287,8 @@ const waitingNotice = (blocked: WaitingOrder) => el("section", { class: "pay-wit
 const actionLabel = (text: string, s: CheckoutState) => s.sending && !s.busy ? "Sending your order…" : text
 
 function payButton(s: CheckoutState, blocked: boolean): HTMLButtonElement {
-  const pay = btn(actionLabel(payLabel(s.checkout), s), "", () => void submitOrder())
+  const own = tookOwnOrder(s) ? s.holder!.url : null
+  const pay = own ? btn("Open your order", "", () => go(own)) : btn(actionLabel(payLabel(s.checkout), s), "", () => void submitOrder())
   pay.dataset.focus = "pay"
   if (s.checkout.balance?.held || s.checkout.balanceChange) pay.setAttribute("aria-describedby", BALANCE_LINE)
   return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !s.checkout.agreed || payWaits(s))
@@ -481,6 +485,16 @@ function balanceChanged(c: session.Checkout, balance: api.Balance | null): void 
   act({ type: "balance-changed", balance })
   // the review opened again follows the invoice that holds it
   if (balanceHeld(state.checkout)) refresh()
+  void showOwnOrder()
+}
+
+// A balance gone after this page sent a spend may have gone to that spend, whose answer was lost: the order of this name
+// that the code's find lists is the buyer's.
+async function showOwnOrder(): Promise<void> {
+  const c = state.checkout
+  if (c.balance || c.balanceChange !== "gone" || !c.sent?.spend) return
+  const own = await flow.ownOrderFor(c.ownerCode!, c.sent.request.labelHash).catch(() => null)
+  if (own && state.checkout.label === c.label) dispatch({ type: "holder-seen", holder: { label: own.label, tld: own.tld, url: store.orderUrl(own) } })
 }
 
 function orderError(e: unknown, c: session.Checkout): void {
