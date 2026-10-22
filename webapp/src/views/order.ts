@@ -6,7 +6,7 @@ import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
-  type ClosedCase, closedCase, coinOf, costOf, failedLead, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
+  closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedLead, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
@@ -174,7 +174,7 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
       if (!isRoute(mine)) return
       record = synced ?? undefined
     }
-    // A late payment to a replaced invoice keeps its page, which says how support refunds it. Only a browser without this
+    // A late payment to a replaced invoice keeps its page, which says that it is kept as the order's balance. Only a browser without this
     // order's record looks for its successor among its records, so two empty invoices never lead to each other.
     let unread: number | null = null
     try {
@@ -630,10 +630,10 @@ function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
   // only a new invoice is held for the tab's wait
   const reorders = (closed === "received" || closed === "expired") && s.record !== null && !s.record.replacedBy
   holdEnds(signal)(s.hold !== null)
-  // money that came after the close, once credited, is a balance like a taken order's
-  const late = closed === "paid-late" && s.record !== null && !s.record.replacedBy && session.appliedBalance(s.view!.id, s.view!.balance) !== null
+  const kept = closedBalance(s)
+  const replaced = kept === "replaced" ? el("p", { class: "note" }, "What reached this invoice is kept as your balance: you can cancel the new invoice and use the balance instead.") : null
   return outcome({ tone, icon: "alert", title: CLOSED_TITLE, text, reference: inv.invoiceId,
-    extra: actionNote(s, reorders ? signal : null), ...late ? balanceActions(s) : { action: closedAction(s, closed) } })
+    extra: [replaced, actionNote(s, reorders ? signal : null)], ...kept === "offer" ? balanceActions(s) : { action: closedAction(s, closed) } })
 }
 
 function closedWords(closed: ClosedCase, inv: api.InvoiceView): [Tone, Kid] {
@@ -823,7 +823,7 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
   if (!isOpen(gen) || !record) return
   try {
     // the invoice as it is now: one still open, or paid into a registration, is the order; one paid after it closed
-    // registered nothing, so the name is ordered again and support refunds the late payment
+    // registered nothing, so the name is ordered again and the late payment is kept as the old order's balance
     const now = await api.readInvoice(invoice.invoiceId)
     if (now.status === "open" || (now.status === "paid" && now.registration.phase !== "unpaid")) {
       if (isOpen(gen)) go(store.invoiceUrl(invoice.invoiceId))

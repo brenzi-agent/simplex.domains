@@ -182,6 +182,14 @@ export function screenOf(s: OrderState): OrderKind {
   return "registering"
 }
 
+// Money that reached a closed invoice, once credited to its order's balance, is offered as a taken order's balance is:
+// another name from it, or a refund. An invoice another replaced still leads there, saying its new one can be cancelled.
+export function closedBalance(s: OrderState): "offer" | "replaced" | null {
+  const closed = closedCase(s)
+  if ((closed !== "paid-late" && closed !== "received") || !s.record || !s.view?.balance?.amount) return null
+  return s.record.replacedBy ? "replaced" : "offer"
+}
+
 // An unpaid order's invoice that takes no more payment.
 export function closedCase({ invoice, view, record }: OrderState): ClosedCase | null {
   if (!invoice || view?.phase !== "unpaid") return null

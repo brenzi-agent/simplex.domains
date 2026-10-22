@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
-  CARD_SLOW_MS, type ClosedCase, closedCase, costOf, failedLead, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
+  CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedLead, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
   reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
@@ -328,6 +328,26 @@ describe("costOf", () => {
   })
   it("is null for a code order, which costs nothing", () => {
     expect(costOf(registration({ price: 0 }), null)).toBeNull()
+  })
+})
+
+describe("closedBalance", () => {
+  const BALANCE = { amount: 750, held: false, heldUntil: null, refunded: 0 }
+  it("offers the balance that a confirmed part payment on an expired invoice became, so the page asks no whole price again", () => {
+    expect(closedBalance(read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }, { balance: BALANCE })))).toBe("offer")
+  })
+  it("offers the balance that money paid after the close became", () => {
+    expect(closedBalance(read(crypto({ status: "paid", paidInFull: true }, { balance: BALANCE })))).toBe("offer")
+  })
+  it("leads a replaced invoice's balance to its new invoice, which can be cancelled for it", () => {
+    const replaced = read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }, { balance: BALANCE }), undefined, { record: record({ replacedBy: "/?order=inv-2" }) })
+    expect(closedBalance(replaced)).toBe("replaced")
+  })
+  it("offers nothing before the credit, after it is spent, without the code, or for an invoice nothing reached", () => {
+    expect(closedBalance(read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" })))).toBeNull()
+    expect(closedBalance(read(crypto({ status: "paid", paidInFull: true }, { balance: { ...BALANCE, amount: 0 } })))).toBeNull()
+    expect(closedBalance(read(crypto({ status: "paid", paidInFull: true }, { balance: BALANCE }), undefined, { record: null }))).toBeNull()
+    expect(closedBalance(read(crypto({ status: "expired" }, { balance: BALANCE })))).toBeNull()
   })
 })
 
