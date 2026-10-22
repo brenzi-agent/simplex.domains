@@ -279,7 +279,7 @@ async function reopen(wallet: Wallet, code: string, chosen: Found): Promise<Rest
   const record: store.OrderRecord = {
     ...known, registrationId: view.id, invoiceId: chosen.invoiceId, ownerCode: code, owner, ...opened,
     method: invoice ? invoice.cryptoCurrency ?? "card" : view.fromBalance > 0 ? "balance" : "code", paid: view.price, years: view.years,
-    tld: view.tld, createdAt: chosen.createdAt,
+    tld: view.tld, createdAt: chosen.createdAt, balanceSource: chosen.balanceSource ?? known?.balanceSource,
   }
   store.saveOrder(record)
   return { record, view }

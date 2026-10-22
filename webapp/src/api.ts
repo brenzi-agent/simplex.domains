@@ -72,8 +72,8 @@ export interface Entity extends Profile {
   deepLink: string
 }
 
-// An order's balance, in cents: what is left to spend, whether an open invoice of another order holds it and until when,
-// and what support has refunded from it
+// An order's balance, in cents: what is left to spend, whether an invoice of another order holds it and until when (null
+// once money reached that invoice, which holds it until its payment settles), and what support has refunded from it
 export interface Balance {
   amount: number
   held: boolean
@@ -99,6 +99,8 @@ export interface RegistrationView extends ChainInfo {
   // the cents another order's balance paid when this order was made
   fromBalance: number
   balance: Balance | null
+  // what money paid after the invoice closed waits on before it is all in the balance: being confirmed, being credited, or support
+  latePayment: { waiting: LateWait } | null
   // how often the order moved to another name or other links, which the service bounds
   moves: number
   commitTx: string | null
@@ -113,6 +115,9 @@ export interface RegistrationView extends ChainInfo {
   // a reveal was refused for its links, which the commitment holds: only another name or other links can register it
   linksRefused: boolean
 }
+
+const LATE_WAITS = ["confirming", "crediting", "support"] as const
+export type LateWait = typeof LATE_WAITS[number]
 
 export interface InvoiceView {
   invoiceId: string
@@ -250,7 +255,7 @@ const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registe
 const isBalance = (v: unknown) => isObject(v) && isAmount(v.amount) && typeof v.held === "boolean" && nullable(v.heldUntil, isText) && isAmount(v.refunded)
 const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && Number.isInteger(v.version) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
   && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isCount(v.duration) && isAmount(v.price) && Number.isInteger(v.moves)
-  && isAmount(v.fromBalance) && nullable(v.balance, isBalance)
+  && isAmount(v.fromBalance) && nullable(v.balance, isBalance) && nullable(v.latePayment, (l) => isObject(l) && LATE_WAITS.includes(l.waiting as LateWait))
   && nullable(v.commitTx, isText) && nullable(v.registerTx, isText) && nullable(v.revealAfter, isAmount) && nullable(v.revealBefore, isAmount)
   && nullable(v.intentNonce, isAmount) && Array.isArray(v.unread) && v.unread.every(isText) && nullable(v.expiresAt, isAmount) && nullable(v.error, isText)
   && typeof v.linksRefused === "boolean"
@@ -318,8 +323,11 @@ export async function spend(registrationId: string, body: SpendRequest): Promise
 }
 export const retry = (registrationId: string) => checked<RegistrationView>(call("POST", `/api/registration/${encodeURIComponent(registrationId)}/retry`), isRegistration)
 const isFound = (r: unknown) => isObject(r) && isText(r.registrationId) && nullable(r.invoiceId, isText) && PHASES.includes(r.phase as Phase) && isText(r.createdAt)
-  && isText(r.labelHash) && isText(r.sealed)
-export interface FoundOrder { registrationId: string; invoiceId: string | null; phase: Phase; createdAt: string; labelHash: string; sealed: string }
+  && isText(r.labelHash) && isText(r.sealed) && nullable(r.balanceSource, isText) && nullable(r.heldBy, isText)
+// `balanceSource`: the order whose balance paid this one; `heldBy`: the order whose invoice holds this one's balance
+export interface FoundOrder {
+  registrationId: string; invoiceId: string | null; phase: Phase; createdAt: string; labelHash: string; sealed: string; balanceSource: string | null; heldBy: string | null
+}
 export const findRegistrations = (owner: string, timestamp: number, signature: string) =>
   checked<{ registrations: FoundOrder[] }>(
     call("POST", "/api/registration/find", { owner, timestamp, signature }), (a) => Array.isArray(a.registrations) && a.registrations.every(isFound))

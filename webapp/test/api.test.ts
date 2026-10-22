@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ApiError, BalanceChanged, checkCode, previewLink, readInvoice, readRegistration, retryDelay, searchName, seenOf, spend } from "../src/api.ts"
+import { ApiError, BalanceChanged, checkCode, findRegistrations, previewLink, readInvoice, readRegistration, retryDelay, searchName, seenOf, spend } from "../src/api.ts"
 
 const HASH = "ab".repeat(32)
 
@@ -118,7 +118,7 @@ describe("service errors", () => {
 
   const REGISTRATION = {
     id: "r1", version: 4, unread: [], moves: 0, phase: "unpaid", labelHash: `0x${"ab".repeat(32)}`, label: null, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`,
-    sealed: "sealed", years: 2, duration: 2 * 365 * 86400, price: 10000, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, linksRefused: false,
+    sealed: "sealed", years: 2, duration: 2 * 365 * 86400, price: 10000, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, linksRefused: false, latePayment: null,
     resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex",
   }
   const INVOICE = { invoiceId: "inv1", status: "open", amount: 10000, currency: "usd", expiresAt: "2026-10-16T12:00:00Z", kind: "name", registration: REGISTRATION, cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bc1q" }
@@ -140,13 +140,31 @@ describe("service errors", () => {
 
   const BALANCE = { amount: 10000, held: true, heldUntil: "2026-10-16T12:00:00Z", refunded: 2500 }
 
+  it("passes what a late payment waits on", async () => {
+    for (const waiting of ["confirming", "crediting", "support"]) {
+      answerWith(200, JSON.stringify({ ...REGISTRATION, latePayment: { waiting } }))
+      expect((await readRegistration("r1")).latePayment).toEqual({ waiting })
+    }
+  })
+
+  it("passes find's paying order and holder of each order, and takes a malformed one as no answer", async () => {
+    const entry = { registrationId: "r2", invoiceId: null, phase: "unpaid", createdAt: "2026-10-16T12:00:00Z", labelHash: "0x01", sealed: "s", balanceSource: "r1", heldBy: null }
+    answerWith(200, JSON.stringify({ registrations: [entry] }))
+    expect((await findRegistrations("0xowner", 1, "0x")).registrations).toEqual([entry])
+    for (const change of [{ balanceSource: undefined }, { heldBy: 5 }]) {
+      answerWith(200, JSON.stringify({ registrations: [{ ...entry, ...change }] }))
+      const e = await findRegistrations("0xowner", 1, "0x").then(() => null, (e: unknown) => e)
+      expect((e as ApiError).code, JSON.stringify(change)).toBe("network")
+    }
+  })
+
   it("passes an order's balance and what a balance paid of it, and takes either malformed as no answer", async () => {
     answerWith(200, JSON.stringify({ ...REGISTRATION, fromBalance: 4000, balance: BALANCE }))
     expect(await readRegistration("r1")).toMatchObject({ fromBalance: 4000, balance: BALANCE })
     for (const change of [
       { fromBalance: undefined }, { fromBalance: -1 }, { balance: undefined }, { balance: {} }, { balance: { ...BALANCE, amount: -5 } },
       { balance: { ...BALANCE, held: "yes" } }, { balance: { ...BALANCE, heldUntil: 5 } }, { balance: { ...BALANCE, refunded: null } },
-      { linksRefused: undefined }, { linksRefused: "no" },
+      { linksRefused: undefined }, { linksRefused: "no" }, { latePayment: undefined }, { latePayment: {} }, { latePayment: { waiting: "later" } },
     ]) {
       answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
       const e = await readRegistration("r1").then(() => null, (e: unknown) => e)

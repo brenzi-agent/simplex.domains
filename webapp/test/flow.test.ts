@@ -62,7 +62,7 @@ const draft = (label = "dynamis") => ({ label, links: LINKS, chain: CHAIN, years
 function view(request: { labelHash: string; duration: number; commitment: string; sealed: string | null }, extra: Record<string, unknown> = {}) {
   return {
     id: "reg1", version: 1, unread: [], moves: 0, phase: "committed", labelHash: request.labelHash, label: null, owner: OWNER, commitment: request.commitment, sealed: request.sealed,
-    years: 2, duration: request.duration, price: 20000, fromBalance: 0, balance: null, commitTx: "0x01", registerTx: null, revealAfter: 1000, revealBefore: 87400, intentNonce: 3, expiresAt: null, error: null, linksRefused: false,
+    years: 2, duration: request.duration, price: 20000, fromBalance: 0, balance: null, commitTx: "0x01", registerTx: null, revealAfter: 1000, revealBefore: 87400, intentNonce: 3, expiresAt: null, error: null, linksRefused: false, latePayment: null,
     ...CHAIN, ...extra,
   }
 }
@@ -134,7 +134,7 @@ describe("restore", () => {
   it("finds the code's order with a signed request, checks the commitment, and saves the record", async () => {
     const { flow, store } = await modules()
     const built = await flow.orderRequest(draft())
-    answers["POST /api/registration/find"] = { registrations: [{ registrationId: "reg1", invoiceId: "inv1", phase: "committed", createdAt: "2026-10-14T10:00:00Z", labelHash: built.request.labelHash, sealed: built.request.sealed }] }
+    answers["POST /api/registration/find"] = { registrations: [{ registrationId: "reg1", invoiceId: "inv1", phase: "committed", createdAt: "2026-10-14T10:00:00Z", labelHash: built.request.labelHash, sealed: built.request.sealed, balanceSource: null, heldBy: null }] }
     answers["GET /api/invoice/inv1"] = {
       invoiceId: "inv1", status: "open", amount: 20000, currency: "usd", expiresAt: "2026-10-14T11:00:00Z", kind: "name", cryptoCurrency: "xmr", registration: view(built.request),
     }
@@ -145,19 +145,19 @@ describe("restore", () => {
     expect(store.orderByInvoice("inv1")?.ownerCode).toBe(OWNER_CODE)
   })
 
-  it("restores an order paid wholly from a balance, which has no invoice, as paid by the balance", async () => {
+  it("restores an order paid wholly from a balance, which has no invoice, as paid by the balance that find names", async () => {
     const { flow } = await modules()
     const built = await flow.orderRequest(draft())
-    answers["POST /api/registration/find"] = { registrations: [{ registrationId: "reg2", invoiceId: null, phase: "queued", createdAt: "2026-10-14T10:00:00Z", labelHash: built.request.labelHash, sealed: built.request.sealed }] }
+    answers["POST /api/registration/find"] = { registrations: [{ registrationId: "reg2", invoiceId: null, phase: "queued", createdAt: "2026-10-14T10:00:00Z", labelHash: built.request.labelHash, sealed: built.request.sealed, balanceSource: "reg1", heldBy: null }] }
     answers["GET /api/registration/reg2"] = view(built.request, { id: "reg2", phase: "queued", fromBalance: 20000 })
     const { record } = await flow.restore(OWNER_CODE)
-    expect(record).toMatchObject({ registrationId: "reg2", invoiceId: null, method: "balance", paid: 20000 })
+    expect(record).toMatchObject({ registrationId: "reg2", invoiceId: null, method: "balance", paid: 20000, balanceSource: "reg1" })
   })
 
   it("refuses an order whose commitment the code does not open", async () => {
     const { flow, store } = await modules()
     const built = await flow.orderRequest(draft())
-    answers["POST /api/registration/find"] = { registrations: [{ registrationId: "reg1", invoiceId: null, phase: "committed", createdAt: "2026-10-14T10:00:00Z", labelHash: built.request.labelHash, sealed: built.request.sealed }] }
+    answers["POST /api/registration/find"] = { registrations: [{ registrationId: "reg1", invoiceId: null, phase: "committed", createdAt: "2026-10-14T10:00:00Z", labelHash: built.request.labelHash, sealed: built.request.sealed, balanceSource: null, heldBy: null }] }
     answers["GET /api/registration/reg1"] = view({ ...built.request, commitment: `0x${"00".repeat(32)}` })
     await expect(flow.restore(OWNER_CODE)).rejects.toThrow("commitment")
     expect(store.orders()).toEqual([])
@@ -312,7 +312,7 @@ describe("balanceHolder", () => {
 
 describe("codeOrderOf and addOrder", () => {
   const found = (registrationId: string, phase: Phase, request: { labelHash: string; sealed: string }) =>
-    ({ registrationId, invoiceId: null, phase, createdAt: "2026-10-14T10:00:00Z", labelHash: request.labelHash, sealed: request.sealed })
+    ({ registrationId, invoiceId: null, phase, createdAt: "2026-10-14T10:00:00Z", labelHash: request.labelHash, sealed: request.sealed, balanceSource: null, heldBy: null })
 
   it("names the order the code restores, passing over an order whose sealed name is another's or does not open", async () => {
     const { flow, store } = await modules()
@@ -339,7 +339,7 @@ describe("codeOrderOf and addOrder", () => {
 
 describe("ownOrderFor", () => {
   const found = (registrationId: string, phase: string, labelHash: string, sealed: string) =>
-    ({ registrationId, invoiceId: null, phase, createdAt: "2026-10-14T10:00:00Z", labelHash, sealed })
+    ({ registrationId, invoiceId: null, phase, createdAt: "2026-10-14T10:00:00Z", labelHash, sealed, balanceSource: null, heldBy: null })
 
   it("opens the code's order on its way for the name, passing over its other names and its finished orders", async () => {
     const { flow, store } = await modules()

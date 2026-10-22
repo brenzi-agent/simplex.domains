@@ -684,3 +684,38 @@ test("find lists the 50 newest orders of a code and then every older one holding
   expect(found.map((f) => f.invoiceId)).toEqual([...newest.map((n) => n.invoiceId), kept.invoiceId])
   expect(found.map((f) => f.invoiceId)).not.toContain(plain.invoiceId)
 })
+
+test("a hold by an invoice money reached has no end, find names each order's paying balance and holder, and late money says what its credit waits on", async ({ request }) => {
+  const src = await lateBalance(request)
+  const holder = await holdBalance(src, PRICE.long)
+  const holderId = (holder.registration as Json).id as string
+  expect(await balanceOf(src.id)).toEqual({ amount: PRICE.long, held: true, heldUntil: holder.expiresAt, refunded: 0 })
+  expect(await findOf(src.draft.ownerCode)).toMatchObject([
+    { registrationId: holderId, balanceSource: src.id, heldBy: null }, { registrationId: src.id, balanceSource: null, heldBy: holderId },
+  ])
+  // money reached the holder's invoice and is confirming past its expiry: the hold has no end until it settles
+  await control(request, `partial/${holder.invoiceId}`)
+  await control(request, `overdue/${holder.invoiceId}`)
+  expect(await balanceOf(src.id)).toEqual({ amount: PRICE.long, held: true, heldUntil: null, refunded: 0 })
+  expect((await findOf(src.draft.ownerCode))[1]).toMatchObject({ registrationId: src.id, heldBy: holderId })
+
+  // an overdue holder that nothing reached holds nothing, and find names none
+  const other = await lateBalance(request)
+  const unfunded = await holdBalance(other, PRICE.long)
+  await control(request, `overdue/${unfunded.invoiceId}`)
+  expect(await balanceOf(other.id)).toEqual(free(PRICE.long))
+  expect((await findOf(other.draft.ownerCode))[1]).toMatchObject({ registrationId: other.id, heldBy: null })
+
+  // late money: received and not confirmed, then a credit held back as the service's would wait, then credited
+  const late = await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(await draftOf(uniqueLabel("lw")))).request, "btc", PRICE.long))
+  const lateId = (late.json.registration as Json).id as string
+  await control(request, `expire/${late.json.invoiceId}`)
+  expect([(await viewOf(lateId)).latePayment, (await viewOf(lateId)).balance], "nothing received").toEqual([null, null])
+  await control(request, `confirming/${late.json.invoiceId}`)
+  expect((await viewOf(lateId)).latePayment).toEqual({ waiting: "confirming" })
+  await control(request, `late/${late.json.invoiceId}`, { waiting: "support" })
+  await control(request, `settle/${late.json.invoiceId}`)
+  expect([(await viewOf(lateId)).latePayment, (await viewOf(lateId)).balance]).toEqual([{ waiting: "support" }, null])
+  await control(request, `late/${late.json.invoiceId}`, { waiting: null })
+  expect([(await viewOf(lateId)).latePayment, (await viewOf(lateId)).balance]).toEqual([null, free(PRICE.long)])
+})

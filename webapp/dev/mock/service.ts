@@ -121,6 +121,8 @@ interface Invoice {
   // the confirmed money credited to the order's balance after the invoice closed, in coin units (cents for a card), and its cents
   lateUnits: bigint
   lateCents: number
+  // what a credit of confirmed late money waits on, set by the tests: the service's next pass, or support
+  lateWait: "crediting" | "support" | null
 }
 
 // An order's balance, in cents; the holder is the order whose open invoice pays the rest of a dearer name.
@@ -367,7 +369,7 @@ async function registrationView(reg: Registration): Promise<Record<string, unkno
   return {
     id: reg.id, version: reg.version, moves: reg.moves, phase: reg.phase, labelHash: reg.labelHash, label: reg.label, owner: reg.owner, commitment: reg.commitment, sealed: reg.sealed,
     resolver: deployment.resolver, sponsor: deployment.sponsor, chainId: deployment.chainId, tld: deployment.tld, years: reg.years, duration: reg.duration, price: reg.paid,
-    fromBalance: reg.fromBalance, balance: balanceView(reg.id), commitTx: reg.commitTx, registerTx: reg.registerTx, revealAfter: reg.revealAfter, revealBefore: reg.revealBefore,
+    fromBalance: reg.fromBalance, balance: balanceView(reg.id), latePayment: latePayment(reg), commitTx: reg.commitTx, registerTx: reg.registerTx, revealAfter: reg.revealAfter, revealBefore: reg.revealBefore,
     intentNonce, unread, expiresAt: reg.expiresAt, error: reg.error, linksRefused: reg.linksRefused,
   }
 }
@@ -379,13 +381,30 @@ const overdue = (inv: Invoice) => inv.status === "open" && inv.amountPaid === nu
 
 const holderInvoice = (b: Balance) => b.holder === null ? null : invoices.get(registrations.get(b.holder)!.invoiceId!)!
 
-// The holder is not named, so an order's link discloses no other order; an overdue holder holds nothing.
+// the order whose invoice holds a balance now; an overdue holder holds nothing
+function heldBy(registrationId: string): string | null {
+  const b = balances.get(registrationId)
+  const inv = b ? holderInvoice(b) : null
+  return inv !== null && !overdue(inv) ? b!.holder : null
+}
+
+// The holder is not named, so an order's link discloses no other order. Its end is said only while no money reached its
+// invoice: money that did holds the balance until it settles, whatever the time.
 function balanceView(registrationId: string): Record<string, unknown> | null {
   const b = balances.get(registrationId)
   if (!b) return null
-  const inv = holderInvoice(b)
-  const held = inv !== null && !overdue(inv)
-  return { amount: b.amount, held, heldUntil: held ? inv.expiresAt : null, refunded: b.refunded }
+  const holder = heldBy(registrationId)
+  const inv = holder === null ? null : invoices.get(registrations.get(holder)!.invoiceId!)!
+  return { amount: b.amount, held: inv !== null, heldUntil: inv !== null && inv.amountPaid === null ? inv.expiresAt : null, refunded: b.refunded }
+}
+
+// What money on a closed unpaid order waits on before it is all in the order's balance: money received and not confirmed,
+// or a credit the tests hold back; null once all is credited, or when none came.
+function latePayment(reg: Registration): Record<string, unknown> | null {
+  const inv = reg.invoiceId === null ? null : invoices.get(reg.invoiceId)!
+  if (reg.phase !== "unpaid" || inv === null || inv.status === "open" || inv.amountPaid === null) return null
+  if (inv.lateWait !== null) return { waiting: inv.lateWait }
+  return inv.status === "paid" ? null : { waiting: "confirming" }
 }
 
 function credit(registrationId: string, cents: number): void {
@@ -567,7 +586,7 @@ function openInvoice(reg: Registration, method: Method, amount: number): Invoice
     expiresAt: iso(nowSeconds() + INVOICE_MINUTES * 60),
     cryptoAmount: method === "card" ? null : (amount / 100 / RATES[method]).toFixed(method === "btc" ? 5 : 3),
     amountPaid: null, cryptoAmountPaid: null, cryptoAmountDue: null, paidInFull: null, settledAt: null,
-    clientSecret: method === "card" ? `pi_mock_secret_${randomBytes(12).toString("hex")}` : null, lateUnits: 0n, lateCents: 0,
+    clientSecret: method === "card" ? `pi_mock_secret_${randomBytes(12).toString("hex")}` : null, lateUnits: 0n, lateCents: 0, lateWait: null,
   }
   reg.invoiceId = inv.id
   invoices.set(inv.id, inv)
@@ -1078,7 +1097,8 @@ export async function find(body: Record<string, unknown>): Promise<Record<string
   // a balance never expires, so an older order holding one is listed after the newest
   const found = [...all.slice(0, FOUND_MAX), ...all.slice(FOUND_MAX).filter((r) => (balances.get(r.id)?.amount ?? 0) > 0)]
   if (found.length === 0) throw new HttpError(404, "not_found")
-  return { registrations: found.map((r) => ({ registrationId: r.id, invoiceId: r.invoiceId, phase: r.phase, createdAt: r.createdAt, labelHash: r.labelHash, sealed: r.sealed })) }
+  return { registrations: found.map((r) => ({ registrationId: r.id, invoiceId: r.invoiceId, phase: r.phase, createdAt: r.createdAt, labelHash: r.labelHash, sealed: r.sealed,
+    balanceSource: r.balanceSource, heldBy: heldBy(r.id) })) }
 }
 
 export function previewLink(body: Record<string, unknown>): Profile {
@@ -1182,7 +1202,7 @@ export function controlInvoice(action: string, invoiceId: string): Record<string
       spendHold(reg)
       changed(reg)
       void advance(reg)
-    } else if (reg.phase === "unpaid") creditLate(inv)
+    } else if (reg.phase === "unpaid" && inv.lateWait === null) creditLate(inv)
   } else if (action === "partial") {
     const half = (Number(inv.cryptoAmount) / 2).toFixed(5)
     Object.assign(inv, { amountPaid: Math.floor(inv.amount / 2), paidInFull: false, cryptoAmountPaid: half, cryptoAmountDue: (Number(inv.cryptoAmount) - Number(half)).toFixed(5) })
@@ -1196,6 +1216,18 @@ export function controlInvoice(action: string, invoiceId: string): Record<string
   } else throw badRequest()
   wake(reg)
   return { ok: true, status: inv.status }
+}
+
+// A credit of late money held back as the service's would wait, or let go: what is confirmed then is credited.
+export function controlLate(invoiceId: string, waiting: unknown): Record<string, unknown> {
+  const inv = invoices.get(invoiceId)
+  if (!inv) throw new HttpError(404, "not_found")
+  if (waiting !== null && waiting !== "crediting" && waiting !== "support") throw badRequest()
+  inv.lateWait = waiting
+  const reg = registrations.get(inv.registrationId)!
+  if (waiting === null && inv.status === "paid" && reg.phase === "unpaid") creditLate(inv)
+  wake(reg)
+  return { ok: true }
 }
 
 export function controlRegistration(action: string, registrationId: string): Record<string, unknown> {
