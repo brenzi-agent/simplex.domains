@@ -219,6 +219,50 @@ test("an order whose links the service refuses at its reveal registers without t
   expect(answer.records).toEqual({ contact: "", channel: "" })
 })
 
+test("an order failed with links the service refused offers no Try again, which the service refuses, in another browser too, and registers without them", async ({ page, browser, request }) => {
+  const label = uniqueLabel("lf")
+  await search(page, label)
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await onStep(page).getByRole("textbox", { name: "Link", exact: true }).fill(contactLink("LF"))
+  await previewsShown(page)
+  await onStep(page).getByRole("button", { name: "Continue" }).click()
+  await savedToReview(page)
+  const ownerCode = await checkoutOwnerCode(page)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  const invoiceId = new URL(page.url()).searchParams.get("order")!
+  await control(request, "search", { refuseLinks: true })
+  try {
+    await control(request, `settle/${invoiceId}`)
+    await expect(page.getByText("The service refused this order's links")).toBeVisible({ timeout: REGISTRATION_MS })
+  } finally {
+    await control(request, "search", { refuseLinks: false })
+  }
+  // the commitment runs out unsigned, and the order fails with the refused links still in it
+  const registrationId = await registrationOf(request, invoiceId)
+  await control(request, `lapse/${registrationId}`)
+  await expect(onStep(page).getByRole("heading", { name: "Paid, not registered" })).toBeVisible()
+  await expect(onStep(page).getByText("The service refused this order's links")).toBeVisible()
+  await expect(onStep(page).getByRole("button", { name: "Try again" })).toHaveCount(0)
+  await expect(onStep(page).getByRole("button", { name: "Choose another name" })).toBeVisible()
+  await shot(page, "N9b-failed-links-refused")
+  const retried = await request.post(`${MOCK}/api/registration/${registrationId}/retry`)
+  expect([retried.status(), (await retried.json()).error], "a retry would commit the refused links again").toEqual([400, "bad_request"])
+
+  // a browser that restores the code learns of the refusal from the view
+  const other = await browser.newContext()
+  const restored = await other.newPage()
+  await addNameCode(restored, ownerCode)
+  await restored.goto(`/?order=${invoiceId}`)
+  await expect(onStep(restored).getByRole("button", { name: "Register without links" })).toBeVisible()
+  await expect(onStep(restored).getByRole("button", { name: "Try again" })).toHaveCount(0)
+  await other.close()
+
+  await onStep(page).getByRole("button", { name: "Register without links" }).click()
+  await waitRegistered(page, label)
+  expect((await searchName(request, label)).records).toEqual({ contact: "", channel: "" })
+})
+
 test("a failed order's move to a cheaper name says the rest stays as its balance", async ({ page, request }) => {
   const label = `t${Math.random().toString(36).slice(2).replace(/[^a-z]/g, "").padEnd(6, "t")}`.slice(0, 7)
   const { registrationId } = await failedOrder(page, request, label)

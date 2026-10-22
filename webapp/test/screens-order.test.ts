@@ -17,7 +17,7 @@ const WARN: Note = { tone: "warn", icon: "alert", title: null, text: "The invoic
 function registration(change: Partial<RegistrationView> = {}): RegistrationView {
   return {
     ...CHAIN, id: "reg-1", version: 1, phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box", years: 2, duration: 2 * 365 * 86400,
-    price: 1500, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, intentNonce: null, unread: [], expiresAt: null, error: null, ...change,
+    price: 1500, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, intentNonce: null, unread: [], expiresAt: null, error: null, linksRefused: false, ...change,
   }
 }
 
@@ -91,6 +91,10 @@ describe("screenOf", () => {
     ["a registered order", STATES.registered, "registered"],
     ["a name taken first", STATES.taken, "taken"],
     ["a failed registration", STATES.failed, "failed"],
+    ["a failed registration whose links the service refused, as its view says", read(null, registration({ phase: "failed", linksRefused: true })), "links-refused"],
+    ["a failed registration whose links this browser saw refused", read(null, registration({ phase: "failed" }), { record: record({ linksRefused: true }) }), "links-refused"],
+    ["a failed registration with refused links, seen without the name code", read(null, registration({ phase: "failed", linksRefused: true }), { record: null }), "failed"],
+    ["a commit whose links another browser saw refused", read(null, registration({ ...committed, linksRefused: true })), "links-refused"],
     ["a commit in a browser without the name code", STATES["not-on-device"], "not-on-device"],
     ["a commit in the browser with the name code", STATES.registering, "registering"],
     ["a registration being sent, seen without the name code", read(null, registration({ phase: "registering" }), { record: null }), "registering"],
@@ -334,6 +338,10 @@ describe("failedLead", () => {
   it("an invoice's payment is kept", () => {
     expect(failedLead(failed(crypto({ status: "paid", paidInFull: true })))).toBe("Your payment is kept. Trying again charges nothing.")
   })
+  it("links the service refused send a browser without the code to enter it, as trying again cannot register them", () => {
+    const refused = read(crypto({ status: "paid", paidInFull: true }), registration({ phase: "failed", linksRefused: true }), { record: null })
+    expect(failedLead(refused)).toBe("The service refused its links. Enter its name code to register it without them, or another name.")
+  })
   it("a refused code says it can no longer pay", () => {
     expect(failedLead(failed(null, { codeRefused: true }))).toBe("Your code can no longer be used for it, so trying again cannot register it.")
   })
@@ -364,6 +372,7 @@ describe("reveal helpers", () => {
     expect(revealDue({ ...waiting, record: null })).toBe(false)
     // links the service refused cannot be signed again
     expect(revealDue({ ...waiting, record: record({ linksRefused: true }) })).toBe(false)
+    expect(revealDue(read(null, registration({ ...committed, linksRefused: true }))), "refused at another browser's reveal").toBe(false)
     expect(revealDue(read(null, registration({ ...committed, label: "alice" })))).toBe(false)
     expect(revealDue(read(null, registration({ ...committed, phase: "registering" })))).toBe(false)
     // the sponsor's nonce the service could not read leaves nothing to sign with

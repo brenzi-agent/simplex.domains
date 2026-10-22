@@ -110,6 +110,8 @@ export interface RegistrationView extends ChainInfo {
   unread: string[]
   expiresAt: number | null
   error: string | null
+  // a reveal was refused for its links, which the commitment holds: only another name or other links can register it
+  linksRefused: boolean
 }
 
 export interface InvoiceView {
@@ -251,6 +253,7 @@ const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id)
   && isAmount(v.fromBalance) && nullable(v.balance, isBalance)
   && nullable(v.commitTx, isText) && nullable(v.registerTx, isText) && nullable(v.revealAfter, isAmount) && nullable(v.revealBefore, isAmount)
   && nullable(v.intentNonce, isAmount) && Array.isArray(v.unread) && v.unread.every(isText) && nullable(v.expiresAt, isAmount) && nullable(v.error, isText)
+  && typeof v.linksRefused === "boolean"
 const isInvoice = (v: unknown) => isObject(v) && isText(v.invoiceId) && ["open", "paid", "expired"].includes(v.status as string) && isAmount(v.amount)
   && isText(v.currency) && isText(v.expiresAt) && isRegistration(v.registration) && optional(v.amountPaid, isAmount)
   && optional(v.cryptoAmountPaid, isDecimal) && optional(v.cryptoAmountDue, isDecimal) && optional(v.cryptoAmount, isDecimal)

@@ -32,7 +32,7 @@ const routes: [string, RegExp, Handler][] = [
   ["POST", /^\/api\/registration\/([^/]+)\/retry$/, (m) => retry(m[1])],
   ["POST", /^\/api\/registration\/([^/]+)\/spend$/, (m, b) => oneOrderAtATime(() => spend(m[1], b))],
   ["POST", /^\/control\/(settle|partial|confirming|expire|overdue)\/([^/]+)$/, (m) => controlInvoice(m[1], m[2])],
-  ["POST", /^\/control\/(fail)\/([^/]+)$/, (m) => controlRegistration(m[1], m[2])],
+  ["POST", /^\/control\/(fail|lapse)\/([^/]+)$/, (m) => controlRegistration(m[1], m[2])],
   ["POST", /^\/control\/take$/, (_, b) => controlTake(b.label)],
   ["POST", /^\/control\/refund\/([^/]+)$/, (m, b) => controlRefund(m[1], b.cents)],
   ["POST", /^\/control\/rate$/, (_, b) => controlRate(b)],

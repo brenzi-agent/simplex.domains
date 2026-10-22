@@ -142,7 +142,8 @@ export function reduce(state: OrderState, event: OrderEvent): OrderState {
 }
 
 // The code is said to be kept only once the service says so; a browser that restored the order has not got its code.
-export const failedLead = ({ invoice, codeRefused, codeKept, record }: OrderState) => invoice ? "Your payment is kept. Trying again charges nothing."
+export const failedLead = ({ view, invoice, codeRefused, codeKept, record }: OrderState) => view?.linksRefused ? "The service refused its links. Enter its name code to register it without them, or another name."
+  : invoice ? "Your payment is kept. Trying again charges nothing."
   : codeRefused ? "Your code can no longer be used for it, so trying again cannot register it."
   : record?.prepaidCode && codeKept ? "Your code is kept. Trying again spends nothing more." : "Trying again spends nothing more."
 
@@ -154,6 +155,10 @@ export function costOf(view: RegistrationView, invoice: InvoiceView | null): { c
   return view.fromBalance > 0 ? { cost: view.fromBalance, fromBalance: view.fromBalance } : null
 }
 
+// The service refused the order's links at its reveal, as the view says or as this browser saw: trying again would commit
+// the same links, so only another name or other links can register it.
+export const linksRefused = ({ view, record }: OrderState) => view?.linksRefused === true || record?.linksRefused === true
+
 export function screenOf(s: OrderState): OrderKind {
   if (s.gone) return "status:unknown-link"
   if (s.price !== null) return "status:price-changed"
@@ -164,9 +169,9 @@ export function screenOf(s: OrderState): OrderKind {
   if (view.phase === "unpaid") return "status:paid-by-invoice"
   if (view.phase === "registered") return "registered"
   if (view.phase === "taken") return "taken"
-  if (view.phase === "failed") return "failed"
+  if (view.phase === "failed") return record && linksRefused(s) ? "links-refused" : "failed"
   if (view.phase !== "registering" && view.label === null && !record) return "not-on-device"
-  if (view.phase === "committed" && view.label === null && record?.linksRefused) return "links-refused"
+  if (view.phase === "committed" && view.label === null && linksRefused(s)) return "links-refused"
   return "registering"
 }
 
@@ -194,7 +199,7 @@ export function refusalsOf({ view, reveal }: OrderState): number {
 
 export function revealDue(s: OrderState): boolean {
   const { view, record, reveal } = s
-  if (view?.phase !== "committed" || view.label !== null || view.intentNonce === null || !record || record.linksRefused) return false
+  if (view?.phase !== "committed" || view.label !== null || view.intentNonce === null || !record || linksRefused(s)) return false
   if ((view.revealAfter ?? 0) * 1000 > s.now) return false
   return !(reveal?.key === revealKey(view) && reveal.sending) && refusalsOf(s) < REVEAL_ATTEMPTS
 }

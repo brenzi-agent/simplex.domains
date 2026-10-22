@@ -79,6 +79,7 @@ Tests and manual checks move orders along with `POST` requests to the mock:
 | `/control/expire/<invoice>` | the invoice expires |
 | `/control/overdue/<invoice>` | the invoice's rate window ends now; the next request that meets it expires it, unless money reached it |
 | `/control/fail/<registration>` | the next commit fails |
+| `/control/lapse/<registration>` | a committed order not signed yet runs out of time for its reveal and fails |
 | `/control/take` `{"label"}` | a rival registers the name before the waiting order; a paid order taken keeps its price as its balance |
 | `/control/refund/<invoice or registration>` `{"cents"}` | support refunds the order's whole balance, the cents given or all of it, answering the refund and the orders whose balances paid it, or why not: `no_balance`, `balance_held` (with the holder and its invoice's expiry, overdue or not) or `balance_changed` |
 | `/control/rate` `{"btc", "xmr"}` | the coin's current rate in whole dollars; a late payment is credited at the lower of it and its invoice's rate (`null` goes back to the invoice's) |

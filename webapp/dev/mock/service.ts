@@ -368,7 +368,7 @@ async function registrationView(reg: Registration): Promise<Record<string, unkno
     id: reg.id, version: reg.version, moves: reg.moves, phase: reg.phase, labelHash: reg.labelHash, label: reg.label, owner: reg.owner, commitment: reg.commitment, sealed: reg.sealed,
     resolver: deployment.resolver, sponsor: deployment.sponsor, chainId: deployment.chainId, tld: deployment.tld, years: reg.years, duration: reg.duration, price: reg.paid,
     fromBalance: reg.fromBalance, balance: balanceView(reg.id), commitTx: reg.commitTx, registerTx: reg.registerTx, revealAfter: reg.revealAfter, revealBefore: reg.revealBefore,
-    intentNonce, unread, expiresAt: reg.expiresAt, error: reg.error,
+    intentNonce, unread, expiresAt: reg.expiresAt, error: reg.error, linksRefused: reg.linksRefused,
   }
 }
 
@@ -1042,7 +1042,8 @@ export async function retry(registrationId: string): Promise<Record<string, unkn
   const reg = registrations.get(registrationId)
   if (!reg) throw new HttpError(404, "not_found")
   lapse(reg)
-  if (reg.phase !== "failed") throw badRequest()
+  // its commitment holds the refused links, so a new commit could never register: only a move fixes them
+  if (reg.phase !== "failed" || reg.linksRefused) throw badRequest()
   const version = reg.version
   if ((await ownerOf(reg.labelHash).catch(unavailable)) === reg.owner) {
     await unchangedSince(reg, version)
@@ -1201,7 +1202,10 @@ export function controlRegistration(action: string, registrationId: string): Rec
   const reg = registrations.get(registrationId)
   if (!reg) throw new HttpError(404, "not_found")
   if (action === "fail") reg.failNext = true
-  else throw badRequest()
+  else if (action === "lapse" && reg.phase === "committed") {
+    reg.revealBefore = nowSeconds() - 1
+    lapse(reg)
+  } else throw badRequest()
   return { ok: true }
 }
 

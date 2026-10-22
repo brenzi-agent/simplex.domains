@@ -123,12 +123,13 @@ async function pointAtOwnOrder(label: string, hash: string, page: number): Promi
 async function readOrder(record: store.OrderRecord): Promise<{ view: api.RegistrationView; synced: store.OrderRecord } | null> {
   const view = await (record.invoiceId ? api.readInvoice(record.invoiceId).then((i) => i.registration) : api.readRegistration(record.registrationId)).catch(() => null)
   if (!view) return null
-  return { view, synced: { ...(await flow.syncRecord(record, view) ?? record), paid: view.price } }
+  const synced = await flow.syncRecord(record, view) ?? record
+  return { view, synced: { ...synced, paid: view.price, linksRefused: view.linksRefused || synced.linksRefused } }
 }
 
 // an order moves from a failed registration, or from links the service refused; a name taken first keeps its payment as a balance
 const movable = (view: api.RegistrationView, record: store.OrderRecord) =>
-  view.phase === "failed" || (view.phase === "committed" && record.linksRefused === true)
+  view.phase === "failed" || (view.phase === "committed" && (view.linksRefused || record.linksRefused === true))
 
 function movedOf(view: api.RegistrationView, record: store.OrderRecord): Moved | null {
   if (movable(view, record)) return null

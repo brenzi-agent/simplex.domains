@@ -201,6 +201,11 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
       record = { ...record, cardSubmittedAt: undefined }
     }
     record = (record && store.orderByRegistration(record.registrationId)) ?? record
+    // links refused at another browser's reveal are kept with this browser's record, which a move then leaves out
+    if (record && view.linksRefused && !record.linksRefused) {
+      store.updateOrder(record.registrationId, { linksRefused: true })
+      record = { ...record, linksRefused: true }
+    }
     const recorded = JSON.stringify(record ?? null)
     if (answered !== drawn || recorded !== drawnRecord) {
       drawn = answered
@@ -975,13 +980,15 @@ function onTheSecond(left: () => number, f: () => void, signal: AbortSignal): vo
   next()
 }
 
-// The order cannot register with the links it committed to; it moves to the same name without them, or to another name.
+// The order cannot register with the links it committed to, waiting to be signed or failed since; it moves to the same
+// name without them, or to another name.
 function buildLinksRefused(s: OrderState, signal: AbortSignal): HTMLElement {
   const view = s.view!
   const move = setAction(btn("Register without links", "", () => void moveWithoutLinks()), s.busy === "move", s.hold !== null)
   move.dataset.focus = "move"
   holdEnds(signal)(s.hold !== null)
-  return screen({ title: headingOf(s), lead: orderLine(s), action: move, alt: link("Choose another name", () => go(`/#/?retarget=${view.id}`)) },
+  const title = view.phase === "failed" ? s.invoice ? "Paid, not registered" : "Not registered" : headingOf(s)
+  return screen({ title, lead: orderLine(s), action: move, alt: link("Choose another name", () => go(`/#/?retarget=${view.id}`)) },
     alertBox("warn", "alert", "The service refused this order's links",
       "They are part of the order, so they cannot be changed in it. Register the name without them and add links in Your names once it is registered, or choose another name."),
     actionNote(s, signal),
@@ -1085,7 +1092,8 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   // a code refused for good leaves nothing to try again, so the page offers another search as the other endings do
   const retry = setAction(btn("Try again", "", () => void retryRegistration()), s.busy === "retry", s.hold !== null)
   retry.dataset.focus = "retry"
-  const action = s.codeRefused ? btn("Search a name", "quiet", () => go(searchLink(""))) : retry
+  // links the service refused leave nothing to try again either; the browser with the code moves the order instead
+  const action = view.linksRefused ? withoutRecord("") : s.codeRefused ? btn("Search a name", "quiet", () => go(searchLink(""))) : retry
   holdEnds(signal)(s.hold !== null)
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
   return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s), action },
