@@ -1,9 +1,12 @@
 import { type APIRequestContext, type Browser, expect, type Page } from "@playwright/test"
 import { CODE_LIMIT } from "../dev/mock/limits.ts"
+import type { Links } from "../src/api.ts"
+import { checksumAddress } from "../src/crypto/wallet.ts"
+import { walletOf } from "../src/flow.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  blockTimeOf, chainExpiry, CHECKOUT_KEY, CODE_HEADING, codeField, control, LINKS_HEADING, MOCK, onStep, payButton, savedToReview, search, searchName, shot, startOrder, test, toCodeStep,
-  restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
+  blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fillLinks, LINKS_HEADING, MOCK, onStep, payButton, previewsShown, savedToReview,
+  search, searchName, shot, shownCode, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
@@ -50,22 +53,33 @@ const TOO_MANY = 429
 // a review's last row with a code, which costs nothing
 const FREE_TOTAL = "Free SimpleX name"
 
-// The name searched is registered with a prepaid code entered in Check your code; the page is left on the registration.
-async function payWithCode(page: Page, label: string, code: string): Promise<void> {
+// The name searched is registered with a prepaid code entered in Check your code, with its links or with them skipped;
+// the page is left on the registration.
+async function payWithCode(page: Page, label: string, code: string, links: Links | null = null): Promise<void> {
   await useCode(page, code)
   await search(page, label)
-  await toReview(page)
+  if (links) {
+    await onStep(page).getByRole("button", { name: "Register" }).click()
+    await fillLinks(page, links.contact, links.channel)
+    await previewsShown(page)
+    await onStep(page).getByRole("button", { name: "Continue" }).click()
+    await expect(onStep(page).getByRole("heading", { name: CODE_HEADING })).toBeVisible()
+    await savedToReview(page)
+  } else await toReview(page)
   await expect(total(page)).toHaveText(FREE_TOTAL)
   await onStep(page).getByRole("button", { name: REGISTER_WITH_CODE }).click()
   await page.waitForURL(/\?registration=/)
 }
 
-async function registerWithCode(page: Page, request: APIRequestContext, prefix: string): Promise<{ code: string; registrationId: string; label: string }> {
+async function registerWithCode(page: Page, request: APIRequestContext, prefix: string, links: Links | null = null): Promise<{ code: string; registrationId: string; label: string }> {
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   const label = uniqueLabel(prefix)
-  await payWithCode(page, label, code)
+  await payWithCode(page, label, code, links)
   return { code, registrationId: new URL(page.url()).searchParams.get("registration")!, label }
 }
+
+const ownerCodeOf = (page: Page, registrationId: string) =>
+  page.evaluate((id) => JSON.parse(localStorage.getItem(`simplex-names:order:${id}`)!).ownerCode as string, registrationId)
 
 test("a prepaid code from Check your code shows a name as Free and registers it with nothing to pay", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 6, years: 5 }) as { code: string }
@@ -111,6 +125,70 @@ test("a prepaid code from Check your code shows a name as Free and registers it 
   await expect(page.locator(".code-entry .verdict.bad")).toContainText("This code was already used")
   await expect(onStep(page).getByRole("button", { name: "Find a name" })).toBeDisabled()
   await shot(page, "K5-code-used")
+})
+
+// These cases need a prepaid code alone, from /control/code, so they run against the service as well as the mock.
+test("a prepaid code registers a name with its links, which its records on chain then hold", async ({ page, request }) => {
+  const links = { contact: contactLink("CL"), channel: channelLink("CL") }
+  const { registrationId, label } = await registerWithCode(page, request, "clinks", links)
+  await waitRegistered(page, label)
+  const answer = await searchName(request, label)
+  expect(answer.status).toBe("registered")
+  expect(answer.records).toEqual(links)
+  expect(answer.owner, "the name code's wallet owns the name").toBe(checksumAddress(walletOf(await ownerCodeOf(page, registrationId))!.address))
+  await page.goto(`/#/?name=${label}`)
+  await expect(page.locator(".answer .row .chat"), "the name's answer opens both chats").toHaveCount(2)
+})
+
+test("a code order's name code, entered in another browser before the reveal, lets that browser reveal and register the name", async ({ page, browser, request }) => {
+  const links = { contact: contactLink("CR"), channel: channelLink("CR") }
+  const { registrationId, label } = await registerWithCode(page, request, "creveal", links)
+  const ownerCode = await ownerCodeOf(page, registrationId)
+  // the buying browser goes away before its commitment's wait is over, so it never reveals the name
+  await page.close()
+
+  const other = await browser.newContext()
+  const restored = await other.newPage()
+  const reveals: string[] = []
+  restored.on("request", (r) => { if (r.method() === "POST" && r.url().endsWith(`/api/registration/${registrationId}/reveal`)) reveals.push(r.url()) })
+  await restoreOrder(restored, ownerCode, label)
+  await waitRegistered(restored, label)
+  expect(reveals.length, "the restoring browser revealed the name").toBeGreaterThan(0)
+  const answer = await searchName(request, label)
+  expect(answer.records).toEqual(links)
+  expect(answer.owner).toBe(checksumAddress(walletOf(ownerCode)!.address))
+  await expect(await shownCode(restored), "the restored browser holds the name code").toHaveText(ownerCode)
+  await other.close()
+})
+
+test("Edit links on a name registered with a code adds its links on chain, then changes one", async ({ page, request }) => {
+  const { registrationId, label } = await registerWithCode(page, request, "cedit")
+  await waitRegistered(page, label)
+  await page.goto("/#/names")
+  await page.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: "Add links" }).click()
+  await page.waitForURL((url) => url.hash === `#/edit/${registrationId}`)
+  const contact = contactLink("CE")
+  const channel = channelLink("CE")
+  const link = onStep(page).getByRole("textbox", { name: "Link", exact: true })
+  await link.fill(contact)
+  await onStep(page).getByRole("button", { name: "Add a channel link" }).click()
+  await onStep(page).getByRole("textbox", { name: "Channel", exact: true }).fill(channel)
+  await previewsShown(page)
+  const save = onStep(page).getByRole("button", { name: "Save links" })
+  await save.click()
+  await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
+  expect((await searchName(request, label)).records).toEqual({ contact, channel })
+
+  // read again from the chain, the page shows the saved links, and a second edit spends the next nonce
+  await page.reload()
+  await expect(link).toHaveValue(contact)
+  await expect(onStep(page).getByRole("textbox", { name: "Channel", exact: true })).toHaveValue(channel)
+  const nextContact = contactLink("CF")
+  await link.fill(nextContact)
+  await previewsShown(page)
+  await save.click()
+  await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
+  expect((await searchName(request, label)).records).toEqual({ contact: nextContact, channel })
 })
 
 test("the tab's code pays for each name it covers until it is taken off, which takes it off the checkout too", async ({ page, request }) => {
