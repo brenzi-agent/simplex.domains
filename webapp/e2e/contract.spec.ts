@@ -497,6 +497,9 @@ test("a spend refuses in the contract's order: formats, the paying order, its ow
     ["an unknown order", "nope", signed(difference), 404, { error: "not_found" }],
     ["another key's signature", src.id, spendBody(src, order, difference, order.timestamp, flow.newOwnerCode()), 400, { error: "bad_request" }],
     ["a live order of the code for the name", src.id, signed(difference, await orderOf(src, ordered)), 409, { error: "order_exists" }],
+    // checks run in order, so a request with two flaws meets the earlier one
+    ["a live order and a balance other than the order's", src.id, signed({ ...difference, balance: PRICE.long - 1 }, await orderOf(src, ordered)), 409, { error: "order_exists" }],
+    ["a stale timestamp and a balance other than the order's", src.id, spendBody(src, order, { ...difference, balance: PRICE.long - 1 }, order.timestamp - SIGNED_WINDOW_S - 100), 400, { error: "bad_request" }],
     ["a timestamp past the window", src.id, spendBody(src, order, difference, order.timestamp - SIGNED_WINDOW_S - 100), 400, { error: "bad_request" }],
     ["free days more than an hour off", src.id, signed(difference, off), 400, { error: "bad_request" }],
     ["a balance other than the order's", src.id, signed({ ...difference, balance: PRICE.long - 1 }), 409, { error: "balance_changed", balance: free(PRICE.long) }],
@@ -733,4 +736,14 @@ test("a wallet's registered order is not live: ordering the name again meets the
   await untilPhase(id, ["registered"])
   const again = await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(draft)).request, "btc", price))
   expect([again.status, again.json.error]).toEqual([409, "name_taken"])
+})
+
+test("money paid after a difference invoice closed goes to that order's own balance, leaving the released balance that paid part of it as it was", async ({ request }) => {
+  const src = await lateBalance(request)
+  const holder = await holdBalance(src, PRICE.long)
+  const holderId = (holder.registration as Json).id as string
+  await control(request, `expire/${holder.invoiceId}`)
+  expect(await balanceOf(src.id), "the close released the hold").toEqual(free(PRICE.long))
+  await control(request, `settle/${holder.invoiceId}`)
+  expect([await balanceOf(holderId), await balanceOf(src.id)]).toEqual([free(PRICE.seven - PRICE.long), free(PRICE.long)])
 })

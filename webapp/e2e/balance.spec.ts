@@ -321,3 +321,21 @@ test("a difference order adopted by another browser gets its new invoice as a ne
   expect([next.amount, next.registration.price, next.registration.fromBalance]).toEqual([10000, 20000, 10000])
   await other.close()
 })
+
+test("Try again after a spend whose answer was lost sends the same body, and the service answers the one order it made", async ({ page, request }) => {
+  await takenOrder(page, request, uniqueLabel("bretry"))
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  const dearer = sevenLetters()
+  await search(page, dearer)
+  await toReview(page)
+  const bodies: string[] = []
+  await loseNextSpendAnswer(page, bodies)
+  await payButton(page).click()
+  await expect(onStep(page).getByRole("heading", { name: "That did not go through" })).toBeVisible()
+  await onStep(page).getByRole("button", { name: "Try again" }).click()
+  await page.waitForURL(/\?order=/)
+  expect(bodies).toHaveLength(2)
+  expect(bodies[1], "the kept body, sent again as it was").toBe(bodies[0])
+  const { registrations } = await (await request.get(`${MOCK}/control/state`)).json() as { registrations: { labelHash: string }[] }
+  expect(registrations.filter((r) => r.labelHash === JSON.parse(bodies[0]).labelHash), "one order for the name").toHaveLength(1)
+})
