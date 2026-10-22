@@ -545,6 +545,7 @@ function prepaidOf(text: unknown): { hash: string; row: PrepaidCode | undefined 
 }
 
 export function checkCode(body: Record<string, unknown>): Record<string, unknown> {
+  if (typeof body.code !== "string") throw badRequest()
   const { row } = prepaidOf(body.code)
   if (!row) throw new HttpError(400, "code_invalid")
   return { minLength: row.minLength, years: row.years, state: row.state }

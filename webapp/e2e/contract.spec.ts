@@ -180,13 +180,16 @@ test("search quotes the oracle with the term's start, and a registered name carr
   expect([bakery.json.status, bakery.json.gracePeriod]).toEqual(["registered", 90 * 86400])
 })
 
-test("a code check answers every state, revoked included, and an unknown code is code_invalid", async ({ request }) => {
+test("a code check answers every state, revoked included, an unknown code is code_invalid, and a body without a text code is bad_request", async ({ request }) => {
   for (const state of ["unused", "reserved", "used", "revoked", "expired", "unpaid"]) {
     const { code } = await control(request, "code", { minLength: 7, years: 3, state }) as { code: string }
     expect((await call("POST", "/api/code/check", { code })).json, state).toEqual({ minLength: 7, years: 3, state })
   }
   for (const code of ["SN7-BJTBP-29596-R3HJ8-25YM7", "SN-8M7X0-8Z533-AG8DP-RBN5T-BPQ6D-YH09G", "nonsense"]) {
     expect(await call("POST", "/api/code/check", { code }), code).toEqual({ status: 400, json: { error: "code_invalid" } })
+  }
+  for (const body of [{}, { code: null }, { code: 6 }, { code: ["SN7-BJTBP-29596-R3HJ8-25YM7"] }]) {
+    expect(await call("POST", "/api/code/check", body), JSON.stringify(body)).toEqual({ status: 400, json: { error: "bad_request" } })
   }
 })
 
