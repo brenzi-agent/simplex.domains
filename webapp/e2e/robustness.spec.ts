@@ -281,8 +281,10 @@ test("a payment that arrives after expiry turns the open page into the late page
   await expect(page.getByText("The payment arrived after this invoice had closed")).toBeVisible()
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await page.goto("/#/names")
-  await expect(page.locator(".list-row", { hasText: `${label}.simplex` })).toHaveCount(1)
-  await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).locator(".sub")).toContainText("Paid after the invoice closed; kept as your balance")
+  const order = page.locator(".list-row:not([data-key^='balance-'])", { hasText: `${label}.simplex` })
+  await expect(order).toHaveCount(1)
+  await expect(order.locator(".sub")).toContainText("Paid after the invoice closed; kept as your balance")
+  await expect(page.locator(".list-row[data-key^='balance-'] .main")).toHaveText(`$100From ${label}.simplex, paid after its invoice closed`)
 })
 
 test("an order left before its wait ends asks for this browser in Your names", async ({ page, request }) => {

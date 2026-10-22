@@ -3,17 +3,11 @@ import type * as api from "../api.ts"
 import { copyButton, el } from "../dom.ts"
 import { chatIcon } from "../icons.ts"
 import { qrSvg } from "../qr.ts"
-import { focusOn, onPageLeft } from "./shell.ts"
+import { POPUP_TITLE, showPopup } from "./shell.ts"
 
 const KIND_NAMES: Record<api.ChatKind, string> = { contact: "Contact address", channel: "Channel", business: "Business address", bot: "Bot" }
 // links from the service come from records on chain, which anyone can write: only SimpleX and https links are followed
 const SAFE_LINK = /^(simplex:\/|https:\/\/)/
-const POPUP_TITLE_ID = "chat-title"
-// the popup's return value when the page it was opened on is left, which takes focus elsewhere
-const LEFT = "left"
-let shownDialog: HTMLDialogElement | null = null
-onPageLeft(() => shownDialog?.close(LEFT))
-
 // a profile the service did not read shows the kind's default picture, and no name
 export const chatPicture = (p: api.Profile) => el("span", { class: "chat-pic" }, p.profile === "ok" && p.image ? el("img", { src: p.image, alt: "" }) : chatIcon(p.kind))
 const chatName = (p: api.Profile) => p.displayName || KIND_NAMES[p.kind]
@@ -33,27 +27,15 @@ const subscribers = (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "su
 
 // After the app's connection plan alert (ConnectPlan.kt, AlertManager.showOpenChatAlert): the profile, its link as a QR, open and copy.
 function openChat(e: api.Entity, name: string, key: string): void {
-  const dialog = el("dialog", { class: "modal", "aria-labelledby": POPUP_TITLE_ID })
-  const close = () => dialog.close()
   const open = SAFE_LINK.test(e.deepLink) ? el("a", { class: "btn", href: e.deepLink }, e.kind === "channel" ? "Open channel in SimpleX" : "Open in SimpleX") : null
   const qr = SAFE_LINK.test(e.link) ? qrSvg(e.link, `QR code of the link to ${chatName(e)}`) : null
-  dialog.append(el("div", { class: "modal-backdrop", onclick: close }),
-    el("div", { class: "pop" },
-      chatPicture(e),
-      el("h2", { id: POPUP_TITLE_ID }, chatName(e)),
-      el("span", { class: "soft" }, `${e.kind === "channel" ? "#" : "@"}${name}`),
-      e.fullName ? el("span", {}, e.fullName) : null,
-      e.subscribers === null ? null : el("span", { class: "soft" }, subscribers(e.subscribers)),
-      qr && el("div", { class: "pop-qr" }, qr),
-      el("div", { class: "pop-acts" }, open, copyButton(e.link, "btn quiet", "Copy link", "Copy link")),
-      el("button", { class: "text-link", type: "button", onclick: close }, "Close")))
-  dialog.addEventListener("close", () => {
-    shownDialog = null
-    dialog.remove()
-    if (dialog.returnValue !== LEFT) focusOn(key)
-  })
-  shownDialog = dialog
-  document.body.append(dialog)
-  dialog.showModal()
-  open?.focus()
+  showPopup(key, [
+    chatPicture(e),
+    el("h2", { id: POPUP_TITLE }, chatName(e)),
+    el("span", { class: "soft" }, `${e.kind === "channel" ? "#" : "@"}${name}`),
+    e.fullName ? el("span", {}, e.fullName) : null,
+    e.subscribers === null ? null : el("span", { class: "soft" }, subscribers(e.subscribers)),
+    qr && el("div", { class: "pop-qr" }, qr),
+    el("div", { class: "pop-acts" }, open, copyButton(e.link, "btn quiet", "Copy link", "Copy link")),
+  ], open)
 }

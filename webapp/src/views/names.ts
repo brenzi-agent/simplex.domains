@@ -2,12 +2,12 @@
 import * as api from "../api.ts"
 import { alertBox, btn, chip, codeDisplay, copyButton, el, type Kid, nameText, nameTitle, reducedMotion, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, SEP } from "../format.ts"
+import { dateOf, dollars, SEP, timeOf } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import { qrSvg } from "../qr.ts"
 import {
-  CODE_CHIPS, EDIT_RETRY_MS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
-  againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, listedOrders, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
+  balanceRows, type BalanceRow, CODE_CHIPS, EDIT_RETRY_MS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
+  againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, nameRows, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
   reduceList, reduceRestore, REFUSALS, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
 import { checkoutUrl, CODE_URL } from "../screens/routes.ts"
@@ -18,7 +18,8 @@ import { chatPicture } from "./chats.ts"
 import { codeField, type CodeVerdict } from "./codes.ts"
 import { focusUnsettled, type LinkFields, linkFieldsFor } from "./links.ts"
 import {
-  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusHeading, focusOn, go, isRedraw, isRoute, kept, keptLive, redirect, screen, whenLeaving,
+  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusHeading, focusOn, go, isRedraw, isRoute, kept, keptLive, redirect, screen, showRefund,
+  useBalance, whenLeaving,
 } from "./shell.ts"
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, secondsLeft, tabHold } from "./hold.ts"
@@ -212,10 +213,12 @@ const emptyNames = (s: ListState) => asStep(screen({ title: "Your names", lead: 
 function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
   const open = session.checkout()
-  const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...listedOrders(s).map((o) => orderRow(o, s))]
-  if (!names.length && !s.codes.length) return emptyNames(s)
+  const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...nameRows(s).map((o) => orderRow(o, s))]
+  const balances = balanceRows(s)
+  if (!names.length && !balances.length && !s.codes.length) return emptyNames(s)
   return screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME },
     el("div", { class: "card list" }, names.length ? names : el("p", { class: "note" }, "No names in this browser yet.")),
+    balances.length ? [el("h2", { class: "label" }, "Balance"), el("div", { class: "card list" }, balances.map((b) => balanceRow(b, s)))] : null,
     s.codes.length ? [el("h2", { class: "label" }, "Codes"), el("div", { class: "card list" }, s.codes.map((c) => codeRow(c, s)))] : null,
     el("div", { class: "end-links" }, el("a", { href: CODE_URL }, "Add a code"), s.asking || !hasRecords(s) ? null : forgetLink()),
     forgetQuestion(s))
@@ -305,6 +308,25 @@ function pendingRow(p: store.PendingCode, s: ListState, open: session.Checkout |
   // the count goes in once the chip is in its row, where its spoken copy goes beside it
   if (hold) waitOut(state, secondsLeft(hold), (left) => `Try again in ${left}`, () => undefined, signal)
   return node
+}
+
+const BALANCE_FROM: Record<BalanceRow["from"], string> = {
+  taken: "registered by someone else first", late: "paid after its invoice closed", rest: "left after a cheaper name",
+}
+
+// A balance pays for another name, or support refunds it; while an open invoice holds it, neither, and the order that
+// holds it, which only this browser's records name, is a link away.
+function balanceRow(b: BalanceRow, s: ListState): HTMLElement {
+  const o = s.orders.find((r) => r.registrationId === b.id)!
+  const { view } = s.seen[b.id]
+  const holder = b.heldUntil ? s.orders.find((r) => r.balanceSource === b.id && r.invoiceId && !r.cancelled) : undefined
+  const acts = b.heldUntil ? [holder ? small("Open that order", `${b.id}-holder`, () => go(store.orderUrl(holder))) : null]
+    : b.amount > 0 ? [small("Use", `${b.id}-use`, () => useBalance({ source: b.id, amount: b.amount, heldUntil: null })),
+      small("Refund", `${b.id}-refund`, () => showRefund(o.invoiceId ?? o.registrationId, `${b.id}-refund`))] : []
+  const sub = ["From ", nameText(view.label ?? o.label, view.tld), `, ${BALANCE_FROM[b.from]}`,
+    b.refunded ? `${SEP}refunded ${dollars(b.refunded)} by support` : null,
+    b.heldUntil ? `${SEP}in use by an open invoice until ${timeOf(Date.parse(b.heldUntil))}` : null]
+  return row(`balance-${b.id}`, el("b", { class: "price" }, dollars(b.amount)), sub, b.heldUntil ? chip("In use", "brand", true) : null, acts)
 }
 
 function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {

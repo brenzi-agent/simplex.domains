@@ -316,6 +316,8 @@ html:has(.modal[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .pop-qr svg.qr { width: 148px; }
 .pop-acts { width: 100%; display: grid; gap: 8px; margin-top: 10px; }
 .pop .text-link { padding: 8px 12px; color: var(--ink-soft); }
+.pop > p { margin-top: 4px; }
+.pop > .code-display { justify-self: stretch; margin-top: 10px; padding-left: 14px; font-size: 14px; }
 @media (max-width: 520px) { .pop-qr { display: none; } }
 
 /* Check your order: the search's row for the name over a table of what it costs, as the badges checkout's

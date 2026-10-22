@@ -1,5 +1,5 @@
 // The page's frame: theme switch and navigation between views; index.html draws the header and footer.
-import { alertBox, announce, btn, el, icon, type Kid, liveRegion, reducedMotion, refill, type Tone, waitOut } from "../dom.ts"
+import { alertBox, announce, btn, copyButton, el, icon, type Kid, liveRegion, reducedMotion, refill, type Tone, waitOut } from "../dom.ts"
 import type { IconName } from "../icons.ts"
 import type { Hold } from "../screens/hold.ts"
 import * as session from "../session.ts"
@@ -281,6 +281,48 @@ export function limitScreen(hold: Hold | null, again: () => void, back: string, 
   // the count goes in once the line is in its notice, where its spoken copy goes beside it
   if (hold) waitOut(line, Math.max(1, secondsLeft(hold)), (left) => `${LIMITED} Try again in ${left}.`, () => undefined, signal)
   return shown
+}
+
+// the heading of the popup on show, which names it
+export const POPUP_TITLE = "popup-title"
+// the popup's return value when the page it was opened on is left, which takes focus elsewhere
+const LEFT = "left"
+let shownDialog: HTMLDialogElement | null = null
+pageLeft.push(() => shownDialog?.close(LEFT))
+
+// A popup over the whole window, with its heading's id POPUP_TITLE, closed by its Close or its backdrop; `first` takes
+// focus as it opens, and the control keyed `key` takes it back as it closes.
+export function showPopup(key: string, kids: Kid[], first: HTMLElement | null): void {
+  const dialog = el("dialog", { class: "modal", "aria-labelledby": POPUP_TITLE })
+  const close = () => dialog.close()
+  dialog.append(el("div", { class: "modal-backdrop", onclick: close }),
+    el("div", { class: "pop" }, ...kids, el("button", { class: "text-link", type: "button", onclick: close }, "Close")))
+  dialog.addEventListener("close", () => {
+    shownDialog = null
+    dialog.remove()
+    if (dialog.returnValue !== LEFT) focusOn(key)
+  })
+  shownDialog = dialog
+  document.body.append(dialog)
+  dialog.showModal()
+  first?.focus()
+}
+
+// Support refunds a balance by hand, on a message that quotes the order's reference.
+export function showRefund(reference: string, key: string): void {
+  const copy = copyButton(reference, "field-copy", "Copy reference")
+  showPopup(key, [
+    el("h2", { id: POPUP_TITLE }, "Refund"),
+    el("p", {}, "Write to ", el("a", { class: "nowrap", href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL),
+      " with your order reference. Support refunds what is left of your balance."),
+    el("div", { class: "code-display" }, el("span", { class: "code-text" }, reference), el("span", { class: "code-buttons" }, copy)),
+  ], copy)
+}
+
+// a balance this tab pays with from now on, for a name the search finds
+export function useBalance(balance: session.AppliedBalance): void {
+  session.setActiveBalance(balance)
+  go("/#/")
 }
 
 export const referenceLine = (reference: string) => el("p", { class: "note ref" }, "Reference ", el("span", { class: "mono" }, reference))
