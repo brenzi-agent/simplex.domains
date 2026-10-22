@@ -8,7 +8,7 @@ import type { LinkKind } from "../names.ts"
 import { CONFIRMING_READ_MS, heldWords, holderStill, holdWait } from "../screens/balance.ts"
 import { REVEAL_HOURS } from "../screens/order.ts"
 import {
-  balanceHeld, changeOf, heldForThisName, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
+  balanceHeld, changeOf, heldForThisName, methodOf, methodsFor, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
 } from "../screens/checkout.ts"
 import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
@@ -22,7 +22,6 @@ import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./hold.ts"
 import { openedInstead, RETRY_MS } from "./order.ts"
 
-const METHOD_ORDER: Method[] = ["card", "btc", "xmr"]
 const CHECKOUT_NOTE = "checkout-note"
 const SAVED_LABEL = "I have saved my name code"
 // the dApp that registers a name paid for in ETH
@@ -35,7 +34,7 @@ const SIGNED_WINDOW_S = 600
 const years = (c: session.Checkout) => c.code?.years ?? c.years
 // a card order waiting for Stripe holds a second paid order; a code or a balance that covers the price pays nothing, so it holds none
 const blockedBy = ({ checkout, waiting }: CheckoutState) => checkout.code || covered(checkout) ? null : waiting
-const payLabel = (c: session.Checkout) => c.code ? "Register with your code" : covered(c) ? "Register with your balance" : `Pay ${dollars(split(c).rest)} with ${methodName(c.method)}`
+const payLabel = (c: session.Checkout) => c.code ? "Register with your code" : covered(c) ? "Register with your balance" : `Pay ${dollars(split(c).rest)} with ${methodName(methodOf(c))}`
 
 function waitingCardOrder(): WaitingOrder | null {
   const order = store.orders().find((o) => o.method === "card" && o.cardSubmittedAt && o.invoiceId)
@@ -260,15 +259,15 @@ function chooseMethod(m: Method): void {
 function methodsBlock({ checkout: c, openOrder: order, sending }: CheckoutState): HTMLElement {
   // one Tab stop for the group, as a radio group has; arrows move between the methods open to choose
   const keyed = (e: KeyboardEvent, m: Method) => {
-    const open = METHOD_ORDER.filter((other) => other !== state.checkout.unavailable)
+    const open = methodsFor(state.checkout).filter((other) => other !== state.checkout.unavailable)
     const by = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0
     if (e.key === "Enter" || e.key === " ") chooseMethod(m)
     else if (by) chooseMethod(open[(open.indexOf(m) + by + open.length) % open.length])
     else return
     e.preventDefault()
   }
-  const radios = METHOD_ORDER.map((m) => {
-    const [on, off] = [m === c.method, m === c.unavailable]
+  const radios = methodsFor(c).map((m) => {
+    const [on, off] = [m === methodOf(c), m === c.unavailable]
     return el("div", { class: "method", role: "radio", "data-method": m, "data-focus": `method-${m}`, "aria-checked": String(on), "aria-disabled": off || sending ? "true" : undefined,
       tabindex: on ? "0" : "-1", onclick: () => chooseMethod(m), onkeydown: (e: Event) => keyed(e as KeyboardEvent, m) },
     methodMark(m), el("b", {}, methodName(m)))
@@ -431,12 +430,13 @@ async function sendOrder(): Promise<void> {
     if (location.hash.startsWith("#/checkout")) goFrom(c.searchAt, search, url)
     else go(url)
   }
-  const chosen = c.code ? "code" : covered(c) ? "balance" : c.method
-  const of = JSON.stringify([draft, c.code?.display ?? c.method, c.price, c.balance && [c.balance.source, c.balance.amount]])
+  const method = methodOf(c)
+  const chosen = c.code ? "code" : covered(c) ? "balance" : method
+  const of = JSON.stringify([draft, c.code?.display ?? method, c.price, c.balance && [c.balance.source, c.balance.amount]])
   try {
     // a spend that reached the service, as its order holding the balance shows, is sent again as it was, however old
     const fresh = c.sent?.of === of && (api.serviceNow() / 1000 - c.sent.request.timestamp < SIGNED_WINDOW_S || (c.sent.spend !== undefined && heldForThisName(state)))
-    const built = fresh ? c.sent! : { of, ...await (source ? flow.spendRequest(source, draft, c.price, c.balance!.amount, c.method) : flow.orderRequest(draft)) }
+    const built = fresh ? c.sent! : { of, ...await (source ? flow.spendRequest(source, draft, c.price, c.balance!.amount, method) : flow.orderRequest(draft)) }
     session.updateCheckout(c.label, { sent: built })
     try {
       if (source) {
@@ -453,9 +453,9 @@ async function sendOrder(): Promise<void> {
         store.saveOrder({ ...flow.recordFor(draft, built, "code", 0, { registrationId: res.registrationId, invoiceId: null }), prepaidCode: c.code.display })
         return done(store.orderUrl({ invoiceId: null, registrationId: res.registrationId }))
       }
-      const res = await api.createOrder(built.request, c.method, c.price)
-      const { method, paid } = flow.paidWith(res)
-      store.saveOrder(flow.recordFor(draft, built, method, paid, { registrationId: res.registration.id, invoiceId: res.invoiceId }))
+      const res = await api.createOrder(built.request, method, c.price)
+      const paidBy = flow.paidWith(res)
+      store.saveOrder(flow.recordFor(draft, built, paidBy.method, paidBy.paid, { registrationId: res.registration.id, invoiceId: res.invoiceId }))
       done(store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id }))
     } catch (e) {
       if (!(e instanceof api.ApiError && e.code === "order_exists")) throw e

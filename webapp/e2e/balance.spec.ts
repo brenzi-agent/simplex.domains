@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
 import {
-  addNameCode, control, MOCK, onStep, payButton, search, searchName, sevenLetters, shot, takenOrder, test, toReview, uniqueLabel, waitRegistered,
+  addNameCode, control, MOCK, onStep, payButton, search, searchName, sevenLetters, shot, startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 const balanceRow = (page: Page) => onStep(page).locator(".list-row[data-key^='balance-']")
@@ -436,4 +436,34 @@ test("a covered spend whose answer was lost, its review opened again, says its o
   await onStep(page).getByRole("button", { name: "Open your order" }).click()
   await page.waitForURL(/\?registration=/)
   await waitRegistered(page, name)
+})
+
+test("a difference below the card's least charge is offered in Bitcoin and Monero only, its button where every step's is", async ({ page, request }) => {
+  const label = uniqueLabel("bsmall")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await control(request, `expire/${invoiceId}`)
+  const { cryptoAmount } = await (await request.get(`${MOCK}/api/invoice/${invoiceId}`)).json() as { cryptoAmount: string }
+  try {
+    // the coin's price a little below the invoice's, so the late payment credits 40-odd cents short of a name's price
+    await control(request, "rate", { btc: Math.floor((10000 - 40) / (Number(cryptoAmount) * 100)) })
+    await control(request, `settle/${invoiceId}`)
+  } finally {
+    await control(request, "rate", { btc: null, xmr: null })
+  }
+  await onStep(page).getByRole("button", { name: "Choose another name" }).click()
+  await search(page, uniqueLabel("bsmalln"))
+  await expect(page.locator(".answer .hint")).toHaveText(/^Your balance covers \$99\.\d\d\. You pay \$0\.\d\d\.$/)
+  await toReview(page)
+  await expect(page.getByRole("radio", { name: "Card" })).toHaveCount(0)
+  await expect(page.getByRole("radio", { name: "Bitcoin" })).toHaveAttribute("aria-checked", "true")
+  await expect(page.getByRole("radio", { name: "Monero" })).toBeVisible()
+  await expect(payButton(page)).toHaveText(/^Pay \$0\.\d\d with Bitcoin$/)
+  for (const [size, top] of [[{ width: 1280, height: 800 }, 587], [{ width: 390, height: 844 }, 636]] as const) {
+    await page.setViewportSize(size)
+    expect(await payButton(page).evaluate((b) => Math.round(b.getBoundingClientRect().top)), `the button at ${size.width}x${size.height}`).toBe(top)
+  }
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  await expect(onStep(page).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
 })

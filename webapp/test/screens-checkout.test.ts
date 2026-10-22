@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
-  balanceHeld, changeOf, heldForThisName, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, FALLBACK_METHOD, initialState, reduce, screenOf, split, stepFor,
+  balanceHeld, changeOf, heldForThisName, methodOf, methodsFor, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, FALLBACK_METHOD, initialState, reduce, screenOf, split, stepFor,
 } from "../src/screens/checkout.ts"
 import { timeOf } from "../src/format.ts"
 import { BALANCE_READ_MS, CONFIRMING_READ_MS, heldWords, holderStill, holdWait } from "../src/screens/balance.ts"
@@ -321,5 +321,23 @@ describe("tookOwnOrder", () => {
     expect(tookOwnOrder(open({ checkout: checkout({ balance: null, balanceChange: "gone" }), holder: { ...own, label: "bakery7" } }))).toBe(false)
     expect(tookOwnOrder(open({ checkout: checkout({ balance: null, balanceChange: "gone" }) }))).toBe(false)
     expect(tookOwnOrder(open({ checkout: checkout({ balance: { source: "s", amount: 500, held: false, heldUntil: null }, balanceChange: "changed" }), holder: own }))).toBe(false)
+  })
+})
+
+describe("methods for a small difference", () => {
+  const BALANCE = { source: "reg-taken", amount: 1460, held: false, heldUntil: null }
+  it("leaves out the card for a difference below its least charge, paying in Bitcoin what was chosen as card", () => {
+    const small = checkout({ balance: BALANCE, method: "card" })
+    expect([methodsFor(small), methodOf(small)]).toEqual([["btc", "xmr"], "btc"])
+    expect(methodOf(checkout({ balance: BALANCE, method: "xmr" }))).toBe("xmr")
+  })
+  it("offers every method for a difference of the least charge or more, and for an order no balance pays", () => {
+    expect(methodsFor(checkout({ balance: { ...BALANCE, amount: 1450 }, method: "card" }))).toEqual(["card", "btc", "xmr"])
+    expect(methodsFor(checkout({ method: "card" }))).toEqual(["card", "btc", "xmr"])
+    expect(methodOf(checkout({ method: "card" }))).toBe("card")
+  })
+  it("falls back from the method in use, not a card it no longer offers, when that one is down", () => {
+    const s = open({ checkout: checkout({ balance: BALANCE, method: "card" }) })
+    expect(changeOf(s, { type: "order-refused", reason: "method" })).toEqual({ unavailable: "btc", method: "xmr" })
   })
 })

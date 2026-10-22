@@ -57,7 +57,7 @@ export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial
     case "method-chosen": return e.method === checkout.method || e.method === checkout.unavailable ? null : { method: e.method }
     case "order-refused":
       if (e.reason === "code") return { code: null, codeError: e.error }
-      return e.reason === "method" ? { unavailable: checkout.method, method: FALLBACK_METHOD[checkout.method] } : null
+      return e.reason === "method" ? { unavailable: methodOf(checkout), method: FALLBACK_METHOD[methodOf(checkout)] } : null
     case "price-changed": return { price: e.price }
     case "balance-changed":
     case "balance-read": return balanceNow(checkout, e.balance)
@@ -120,6 +120,19 @@ export const tookOwnOrder = ({ checkout: c, holder }: CheckoutState) =>
 
 // Pay waits while another order's invoice holds the balance
 export const payWaits = (s: CheckoutState) => balanceHeld(s.checkout) && !heldForThisName(s)
+
+// Stripe's least charge: a difference below it is paid in coin
+export const MIN_CARD_CHARGE_CENTS = 50
+export const METHODS: Method[] = ["card", "btc", "xmr"]
+
+// the methods that can pay what is left: every one, but the card for a difference below its least charge
+export function methodsFor(c: Checkout): Method[] {
+  const { rest } = split(c)
+  return c.balance && rest > 0 && rest < MIN_CARD_CHARGE_CENTS ? METHODS.filter((m) => m !== "card") : METHODS
+}
+
+// the method the order pays with: the one chosen, or Bitcoin when that one cannot pay what is left
+export const methodOf = (c: Checkout): Method => methodsFor(c).includes(c.method) ? c.method : "btc"
 
 // an order its balance covers is paid by nothing else
 export const covered = (c: Checkout) => c.balance !== null && split(c).rest === 0

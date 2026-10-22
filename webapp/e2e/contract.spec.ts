@@ -747,3 +747,28 @@ test("money paid after a difference invoice closed goes to that order's own bala
   await control(request, `settle/${holder.invoiceId}`)
   expect([await balanceOf(holderId), await balanceOf(src.id)]).toEqual([free(PRICE.seven - PRICE.long), free(PRICE.long)])
 })
+
+test("a spend whose difference is below the card's least charge refuses the card and takes coin", async ({ request }) => {
+  const label = uniqueLabel("mc")
+  const draft = await draftOf(label)
+  const built = await flow.orderRequest(draft)
+  const opened = await call("POST", "/api/invoice", invoiceBody(built.request, "btc", PRICE.long))
+  const id = (opened.json.registration as Json).id as string
+  store.saveOrder(flow.recordFor(draft, built, "btc", PRICE.long, { registrationId: id, invoiceId: opened.json.invoiceId as string }))
+  await control(request, `expire/${opened.json.invoiceId}`)
+  try {
+    // a coin's price a little below the invoice's, so the late payment credits 40-odd cents short of the price
+    await control(request, "rate", { btc: Math.floor((PRICE.long - 40) / (Number(opened.json.cryptoAmount) * 100)) })
+    await control(request, `settle/${opened.json.invoiceId}`)
+  } finally {
+    await control(request, "rate", { btc: null, xmr: null })
+  }
+  const amount = (await balanceOf(id))!.amount
+  expect(PRICE.long - amount).toBeGreaterThan(0)
+  expect(PRICE.long - amount).toBeLessThan(50)
+  const src: Paying = { draft, record: store.orderByRegistration(id)!, id, invoiceId: opened.json.invoiceId as string, price: PRICE.long }
+  const spendFor = async (method: api.Method) => spendCall(id, await spendBody(src, await orderOf(src, uniqueLabel("mcn")), { price: PRICE.long, balance: amount, method }))
+  expect(await spendFor("card")).toEqual({ status: 400, json: { error: "bad_request" } })
+  const coin = await spendFor("btc")
+  expect([coin.status, coin.json.amount], "the difference in Bitcoin").toEqual([200, PRICE.long - amount])
+})

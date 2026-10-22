@@ -382,7 +382,8 @@ html:has(.modal[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .screen-body:has(> .review .line) > [role="status"]:empty { margin-top: -8px; }
 .notes { display: grid; gap: 4px; font-size: var(--fs-small); color: var(--ink-soft); text-align: center; text-wrap: balance; }
 /* the payment methods as the badges checkout's cards: the mark over the name, the chosen one ringed */
-.methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+/* the methods share the row evenly, three or the two left when the card cannot take a small difference */
+.methods { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 12px; }
 .method { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 66px; padding: 0 8px; font-size: 15px;
   border: 1px solid var(--surface-line); border-radius: 18px; background: var(--surface); cursor: pointer; }
 .method svg { width: 26px; height: 26px; }

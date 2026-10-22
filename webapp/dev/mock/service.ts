@@ -158,6 +158,9 @@ const control: { chainDown: boolean; limitedUntil: number; invoiceError: string 
   { chainDown: false, limitedUntil: 0, invoiceError: null, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0, writeDelayMs: 0, refuseLinks: false, rates: { btc: null, xmr: null } }
 
 const sendTx: typeof send = (...args) => Date.now() < control.unsentUntil ? Promise.reject(new NotSent()) : send(...args)
+// Stripe's least charge in US dollars
+const MIN_CARD_CHARGE_CENTS = 50
+
 const INVOICE_ERRORS: Record<string, number> = { provider_unavailable: 503, rate_limited: 429, catalog_changed: 409, internal: 500 }
 // the raised price an injected catalog_changed reports, in cents
 const RAISED_PRICE_CENTS = 5000
@@ -1034,6 +1037,8 @@ export async function spend(sourceId: string, body: Record<string, unknown>): Pr
   const chain = await chainPrice(order.length, YEARS)
   if (price !== chain) throw new HttpError(409, "catalog_changed", { price: chain })
   if (difference) await injectedRefusal(order.length)
+  // the card provider charges no less than its minimum, so a smaller difference is paid in coin
+  if (difference && method === "card" && (price as number) - (balance as number) < MIN_CARD_CHARGE_CENTS) throw badRequest()
   // checked again at the write: the awaits above let settlement, a cancel or a refund change the balance
   const holder = spendable(source, balance as number)
   if (holder) close(holder)
