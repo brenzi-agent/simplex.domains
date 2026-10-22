@@ -7,7 +7,7 @@ import { type Method, methodMark } from "../icons.ts"
 import type { LinkKind } from "../names.ts"
 import { REVEAL_HOURS } from "../screens/order.ts"
 import {
-  changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
+  balanceHeld, changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
 } from "../screens/checkout.ts"
 import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
@@ -17,6 +17,7 @@ import { focusUnsettled, linkChat, linkFieldsFor } from "./links.ts"
 import {
   asStep, type Builder, currentRoute, draw, focusOn, go, goFrom, isRedraw, isRoute, kept, keptLive, limitScreen, outcome, redirect, refresh, screen, searchLink, whenLeaving,
 } from "./shell.ts"
+import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./hold.ts"
 import { openedInstead, RETRY_MS } from "./order.ts"
 
@@ -66,6 +67,32 @@ export function checkoutPage(asked: CheckoutStep): void {
   whenLeaving(() => reads.abort())
   if (state.waiting) void settleWaiting(state.waiting, reads.signal)
   else void showOpenOrder(reads.signal)
+  if (c.balance) void watchBalance(c.balance.source, reads.signal)
+}
+
+const pause = (ms: number, signal: AbortSignal) => new Promise<void>((done) => {
+  after(Math.max(0, ms), done, signal)
+  signal.addEventListener("abort", () => done(), { once: true })
+})
+
+// The balance as its order reads now, in the tab and on the review. While an open invoice holds it, Pay waits for that
+// invoice to close: followed when this browser made it, else until it expires, when the service lets an unpaid one go.
+async function watchBalance(source: string, signal: AbortSignal): Promise<void> {
+  while (!signal.aborted) {
+    let balance: api.Balance | null
+    try {
+      balance = (await api.readRegistration(source, undefined, signal)).balance
+    } catch (e) {
+      await pause(api.retryDelay(e, RETRY_MS) ?? RETRY_MS, signal)
+      continue
+    }
+    if (signal.aborted) return
+    session.updateActiveBalance(source, session.appliedBalance(source, balance))
+    if (!act({ type: "balance-read", balance }) || !balanceHeld(state.checkout)) return
+    const holder = store.balanceHolder(source)
+    if (holder?.invoiceId) await follow(holder.invoiceId, signal, (seen) => seen?.status === "open")
+    else await pause(Date.parse(state.checkout.balance!.heldUntil!) - api.serviceNow(), signal)
+  }
 }
 
 function dispatch(event: CheckoutEvent): void {
@@ -162,12 +189,17 @@ function orderCard(c: session.Checkout): HTMLElement {
         : row("Total", dollars(c.price), "total")))
 }
 
-// how the balance had changed when the service refused a spend, which the review now shows
+// An open invoice holding the balance, named by its order where this browser made it; else how the balance changed
+// since the search showed it.
 function balanceChangeLine(c: session.Checkout): HTMLElement | null {
+  if (c.balance?.heldUntil) {
+    const holder = store.balanceHolder(c.balance.source)
+    return line("warn", "wallet", "Your balance is in use by ", holder ? el("a", { href: store.orderUrl(holder) }, nameText(holder.label, holder.tld)) : "an open invoice",
+      ` until ${timeOf(Date.parse(c.balance.heldUntil))}.`)
+  }
   switch (c.balanceChange) {
     case undefined: return null
     case "gone": return line("warn", "wallet", "Your balance was spent or refunded meanwhile, so this order is paid in full.")
-    case "held": return line("warn", "wallet", `Your balance is in use by an open invoice until ${timeOf(Date.parse(c.balance!.heldUntil!))}. Try again once it closes.`)
     case "changed": return line("warn", "wallet", `Your balance changed to ${dollars(c.balance!.amount)} meanwhile. Check what is left to pay.`)
   }
 }
@@ -215,7 +247,7 @@ const actionLabel = (text: string, s: CheckoutState) => s.sending && !s.busy ? "
 function payButton(s: CheckoutState, blocked: boolean): HTMLButtonElement {
   const pay = btn(actionLabel(payLabel(s.checkout), s), "", () => void submitOrder())
   pay.dataset.focus = "pay"
-  return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !s.checkout.agreed)
+  return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !s.checkout.agreed || balanceHeld(s.checkout))
 }
 
 // every order waits for the buyer to agree to the name terms; the terms open beside the order
@@ -406,6 +438,8 @@ async function sendOrder(): Promise<void> {
 function balanceChanged(c: session.Checkout, balance: api.Balance | null): void {
   if (c.balance) session.updateActiveBalance(c.balance.source, session.appliedBalance(c.balance.source, balance))
   act({ type: "balance-changed", balance })
+  // the review opened again follows the invoice that holds it
+  if (balanceHeld(state.checkout)) refresh()
 }
 
 function orderError(e: unknown, c: session.Checkout): void {

@@ -162,3 +162,38 @@ test("the name code shows the balance in another browser, a spend meeting a refu
   await expect(balanceRow(page).locator(".main")).toHaveText(`$0From ${label}.simplex, registered by someone else first · refunded $100 by support`)
   await expect(balanceRow(page).getByRole("button")).toHaveCount(0)
 })
+
+test("a review whose balance another order's open invoice holds turns its button off, names that order, and turns it on once the invoice closes", async ({ page, request }) => {
+  await takenOrder(page, request, uniqueLabel("bheld"))
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  await search(page, uniqueLabel("bheldc"))
+  await toReview(page)
+  const register = onStep(page).getByRole("button", { name: "Register with your balance" })
+  await expect(register).toBeEnabled()
+
+  // another tab of this browser spends the balance on a dearer name, whose invoice for the difference holds it
+  const other = await page.context().newPage()
+  await yourNames(other)
+  await balanceRow(other).getByRole("button", { name: "Use" }).click()
+  const dearer = sevenLetters()
+  await search(other, dearer)
+  await toReview(other)
+  await payButton(other).click()
+  await other.waitForURL(/\?order=/)
+  await expect(onStep(other).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+
+  await register.click()
+  const held = onStep(page).locator(".line", { hasText: "Your balance is in use by" })
+  await expect(held).toHaveText(new RegExp(`^Your balance is in use by ${dearer}\\.simplex until \\d\\d:\\d\\d\\.$`))
+  await expect(register).toBeDisabled()
+  await shot(page, "B10-review-balance-held")
+  await held.getByRole("link").click()
+  await page.waitForURL((url) => url.searchParams.get("order") === new URL(other.url()).searchParams.get("order"))
+  await page.goBack()
+  await expect(held).toBeVisible()
+
+  await onStep(other).getByRole("button", { name: "Cancel this invoice" }).click()
+  await expect(held).toHaveCount(0)
+  await expect(register).toBeEnabled()
+  await other.close()
+})

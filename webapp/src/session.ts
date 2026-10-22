@@ -19,8 +19,8 @@ export interface AppliedBalance {
 export const appliedBalance = (source: string, balance: Balance | null): AppliedBalance | null =>
   balance && balance.amount > 0 ? { source, amount: balance.amount, heldUntil: balance.held ? balance.heldUntil : null } : null
 
-// how the balance a spend sent had changed when the service refused it: less or more left, none, or held by an open invoice
-export type BalanceChange = "changed" | "gone" | "held"
+// how the balance changed since the page took it: another amount left, or none
+export type BalanceChange = "changed" | "gone"
 
 export interface Checkout {
   label: string

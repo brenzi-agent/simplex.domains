@@ -319,7 +319,7 @@ const BALANCE_FROM: Record<BalanceRow["from"], string> = {
 function balanceRow(b: BalanceRow, s: ListState): HTMLElement {
   const o = s.orders.find((r) => r.registrationId === b.id)!
   const { view } = s.seen[b.id]
-  const holder = b.heldUntil ? s.orders.find((r) => r.balanceSource === b.id && r.invoiceId && !r.cancelled) : undefined
+  const holder = b.heldUntil ? store.balanceHolder(b.id) : undefined
   const acts = b.heldUntil ? [holder ? small("Open that order", `${b.id}-holder`, () => go(store.orderUrl(holder))) : null]
     : b.amount > 0 ? [small("Use", `${b.id}-use`, () => useBalance({ source: b.id, amount: b.amount, heldUntil: null })),
       small("Refund", `${b.id}-refund`, () => showRefund(o.invoiceId ?? o.registrationId, `${b.id}-refund`))] : []

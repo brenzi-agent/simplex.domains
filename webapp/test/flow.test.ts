@@ -295,6 +295,21 @@ describe("spendBalance", () => {
   })
 })
 
+describe("balanceHolder", () => {
+  it("names this browser's order whose invoice holds a balance, passing over a covered order, a cancelled one and another balance's", async () => {
+    const { flow, store } = await modules()
+    const built = await flow.orderRequest(draft())
+    const keep = (registrationId: string, change: Partial<import("../src/store.ts").OrderRecord>) =>
+      store.saveOrder({ ...flow.recordFor(draft(), built, "btc", 20000, { registrationId, invoiceId: `inv-${registrationId}` }), ...change })
+    keep("covered", { invoiceId: null, method: "balance", balanceSource: "src" })
+    keep("cancelled", { balanceSource: "src", cancelled: true })
+    keep("other", { balanceSource: "src2" })
+    expect(store.balanceHolder("src")).toBeUndefined()
+    keep("holder", { balanceSource: "src" })
+    expect(store.balanceHolder("src")?.registrationId).toBe("holder")
+  })
+})
+
 describe("codeOrderOf and addOrder", () => {
   const found = (registrationId: string, phase: Phase, request: { labelHash: string; sealed: string }) =>
     ({ registrationId, invoiceId: null, phase, createdAt: "2026-10-14T10:00:00Z", labelHash: request.labelHash, sealed: request.sealed })

@@ -36,6 +36,7 @@ export type CheckoutEvent =
   | { type: "order-refused"; reason: "method" | "failed" | "taken" }
   | { type: "price-changed"; price: number }
   | { type: "balance-changed"; balance: Balance | null }
+  | { type: "balance-read"; balance: Balance | null }
   | { type: "hold-started"; until: number }
   | { type: "hold-ended" }
 
@@ -53,12 +54,19 @@ export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial
       if (e.reason === "code") return { code: null, codeError: e.error }
       return e.reason === "method" ? { unavailable: checkout.method, method: FALLBACK_METHOD[checkout.method] } : null
     case "price-changed": return { price: e.price }
-    case "balance-changed": {
-      const balance = checkout.balance && appliedBalance(checkout.balance.source, e.balance)
-      return { balance, balanceChange: !balance ? "gone" : balance.heldUntil ? "held" : "changed" }
-    }
+    case "balance-changed":
+    case "balance-read": return balanceNow(checkout, e.balance)
     default: return null
   }
+}
+
+// The checkout's balance as its order reads now, which says how much it changed; one an open invoice holds says so by its
+// end, and nothing changes when the read finds it as it was.
+function balanceNow(c: Checkout, read: Balance | null): Partial<Checkout> | null {
+  if (!c.balance) return null
+  const balance = appliedBalance(c.balance.source, read)
+  if (JSON.stringify(balance) === JSON.stringify(c.balance)) return null
+  return { balance, balanceChange: !balance ? "gone" : balance.amount !== c.balance.amount ? "changed" : c.balanceChange }
 }
 
 const unsent = (s: CheckoutState, change: Partial<CheckoutState>): CheckoutState => ({ ...s, sending: false, busy: false, ...change })
@@ -78,6 +86,7 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
     case "order-refused": return unsent(s, { checkout, refusal: e.reason === "failed" || e.reason === "taken" ? e.reason : null })
     case "price-changed": return unsent(s, { checkout, refusal: "price-changed" })
     case "balance-changed": return unsent(s, { checkout })
+    case "balance-read": return change ? { ...s, checkout } : s
     case "hold-started": return unsent(s, { hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: NO_LEAD }, refusal: "too-many" })
     case "hold-ended": return { ...s, hold: null }
   }
@@ -89,6 +98,9 @@ export function split(c: Checkout): { fromBalance: number; rest: number } {
   const fromBalance = Math.min(c.balance?.amount ?? 0, c.price)
   return { fromBalance, rest: c.price - fromBalance }
 }
+
+// a balance an open invoice holds pays for nothing until that invoice closes
+export const balanceHeld = (c: Checkout) => Boolean(c.balance?.heldUntil)
 
 // an order its balance covers is paid by nothing else
 export const covered = (c: Checkout) => c.balance !== null && split(c).rest === 0
