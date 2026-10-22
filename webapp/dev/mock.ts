@@ -2,7 +2,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import {
   cancelInvoice, checkCode, controlInvoice, controlRegistration, controlSearch, controlTake, createInvoice, dump, editRecords, find,
-  HttpError, issueCode, oneOrderAtATime, setCodeState, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retry, reveal, search, takenCode,
+  HttpError, issueCode, oneOrderAtATime, setCodeState, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retry, reveal, search,
 } from "./mock/service.ts"
 
 const PORT = Number(process.env.MOCK_PORT ?? "8099")
@@ -29,7 +29,6 @@ const routes: [string, RegExp, Handler][] = [
   ["GET", /^\/api\/registration\/([^/]+)$/, (m, _, q) => readRegistration(m[1], versionOf(q))],
   ["POST", /^\/api\/registration\/([^/]+)\/reveal$/, (m, b) => reveal(m[1], b)],
   ["POST", /^\/api\/registration\/([^/]+)\/name$/, (m, b) => oneOrderAtATime(() => retarget(m[1], b))],
-  ["POST", /^\/api\/registration\/([^/]+)\/code$/, (m, b) => oneOrderAtATime(() => takenCode(m[1], b))],
   ["POST", /^\/api\/registration\/([^/]+)\/retry$/, (m) => retry(m[1])],
   ["POST", /^\/control\/(settle|partial|confirming|expire|overdue)\/([^/]+)$/, (m) => controlInvoice(m[1], m[2])],
   ["POST", /^\/control\/(fail)\/([^/]+)$/, (m) => controlRegistration(m[1], m[2])],

@@ -10,7 +10,7 @@ import { codeHash, parseNameCode } from "../../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, durationFor, YEAR_S } from "../../src/crypto/registration.ts"
 import { labelProblem, linkKind, type LinkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
 import {
-  baseRegistrar, chainNow, controller, deployment, holder, mined, NotSent, ownerOf, priceOracleAt, read, registry, resolver, Reverted, send, sponsor,
+  baseRegistrar, chainNow, controller, deployment, holder, mined, NotSent, ownerOf, read, registry, resolver, Reverted, send, sponsor,
 } from "./chain.ts"
 import { TERM_START_S, untilChainTime } from "../chain-time.ts"
 import { addressFor } from "./addresses.ts"
@@ -54,7 +54,7 @@ const REFUSED = "The blockchain refused the transaction"
 const SEALED_MAX = 11095
 const SECP256K1_HALF_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n
 
-export type Phase = "unpaid" | "queued" | "committing" | "committed" | "registering" | "registered" | "taken" | "failed" | "code_issued"
+export type Phase = "unpaid" | "queued" | "committing" | "committed" | "registering" | "registered" | "taken" | "failed"
 type Method = "card" | "btc" | "xmr"
 
 interface Registration {
@@ -69,7 +69,7 @@ interface Registration {
   years: number
   paid: number
   method: Method | "code"
-  // the hash of the prepaid code that pays for it; a code issued for a taken order is known only by its hash
+  // the hash of the prepaid code that pays for it
   prepaidCode: string | null
   phase: Phase
   // counts every change to what the view shows; long polls hold on it, and every write is conditional on it
@@ -86,9 +86,6 @@ interface Registration {
   error: string | null
   createdAt: string
   failNext: boolean
-  issuedCodeHash: string | null
-  // the minLength of the code issued for it, which the code's text carries
-  issuedCodeLength: number | null
   // successful moves to another name or other links, at most MAX_ORDER_MOVES
   moves: number
   // a reveal refused for its links, which only a move to other links can fix
@@ -345,13 +342,11 @@ async function viewRead<T>(field: string, unread: string[], f: () => Promise<T>)
 async function registrationView(reg: Registration): Promise<Record<string, unknown>> {
   const unread: string[] = []
   const intentNonce = reg.phase === "committed" ? await viewRead("intentNonce", unread, async () => Number(await read<bigint>(sponsor, "nonces", [reg.owner]))) : null
-  const codeLength = reg.phase === "code_issued" ? reg.issuedCodeLength
-    : reg.phase === "taken" && reg.method !== "code" ? await viewRead("codeLength", unread, () => codeLengthFor(reg)) : null
   return {
     id: reg.id, version: reg.version, moves: reg.moves, phase: reg.phase, labelHash: reg.labelHash, label: reg.label, owner: reg.owner, commitment: reg.commitment, sealed: reg.sealed,
     resolver: deployment.resolver, sponsor: deployment.sponsor, chainId: deployment.chainId, tld: deployment.tld, years: reg.years, duration: reg.duration, price: reg.paid,
     commitTx: reg.commitTx, registerTx: reg.registerTx, revealAfter: reg.revealAfter, revealBefore: reg.revealBefore,
-    codeLength, intentNonce, unread, expiresAt: reg.expiresAt, error: reg.error,
+    intentNonce, unread, expiresAt: reg.expiresAt, error: reg.error,
   }
 }
 
@@ -392,18 +387,6 @@ function checkDuration(duration: number, years: number): void {
   if (free < 0 || Math.abs(free - Math.max(0, TERM_START_S - nowSeconds())) > TERM_SLACK_S) throw badRequest()
 }
 
-// A taken order's code pays for any name no dearer than the order: the shortest length from which every longer one costs,
-// for the order's years, at most what the order is worth; null when no length does. The whole price list is read once.
-async function codeLengthFor(reg: Registration): Promise<number | null> {
-  const oracle = priceOracleAt(await read<Address>(controller, "prices"))
-  const [base, exceptions] = await read<[bigint, { labelLength: bigint; priceCentsPerYear: bigint }[]]>(oracle, "prices")
-  const perYear = new Map(exceptions.map((e) => [Number(e.labelLength), e.priceCentsPerYear]))
-  const affordable = (length: number) => Number(perYear.get(length) ?? base) * reg.years <= reg.paid
-  let shortest: number | null = null
-  for (let length = MAX_LABEL_LENGTH; length >= MIN_LABEL_LENGTH && affordable(length); length--) shortest = length
-  return shortest
-}
-
 // an order's own chain reads fail with their own tag, which the page tells from a payment method being unavailable
 const chainPrice = (length: number, years: number) => priceOf(length, years).catch((): never => { throw new HttpError(503, "name_check_unavailable") })
 
@@ -417,7 +400,7 @@ async function nameFree(labelHash: Hex): Promise<void> {
   if (found.type !== "available" || registering(labelHash)) throw new HttpError(409, "name_taken")
 }
 
-// Orders, retargets and taken codes check state, await the chain, then write: run one at a time so two at once cannot both pass.
+// Orders and retargets check state, await the chain, then write: run one at a time so two at once cannot both pass.
 let orderTurn: Promise<unknown> = Promise.resolve()
 
 export function oneOrderAtATime<T>(f: () => Promise<T>): Promise<T> {
@@ -439,10 +422,10 @@ async function checkOrderSigner(o: OrderBody, body: Record<string, unknown>): Pr
 
 const freshTimestamp = (timestamp: unknown) => { if (Math.abs(nowSeconds() - (timestamp as number)) > SIGNED_REQUEST_SECONDS) throw badRequest() }
 
-// A registration is live while its invoice is open, or once paid until it is taken or turned into a code.
+// A registration is live while its invoice is open, or once paid until it is taken.
 function live(reg: Registration): boolean {
   if (reg.phase === "unpaid") return reg.invoiceId !== null && invoices.get(reg.invoiceId)!.status === "open"
-  return reg.phase !== "taken" && reg.phase !== "code_issued"
+  return reg.phase !== "taken"
 }
 
 // The answer to an exact resend, or nothing; an overdue order of the same wallet and name with nothing received is closed
@@ -494,7 +477,7 @@ export async function createInvoice(body: Record<string, unknown>): Promise<Reco
 function newRegistration(order: OrderBody, extra: Pick<Registration, "years" | "paid" | "method" | "prepaidCode" | "phase" | "orderHash">): Registration {
   const reg: Registration = {
     id: id(), invoiceId: null, ...order, ...extra, label: null, secret: null, records: null, intent: null, commitTx: null, registerTx: null,
-    revealAfter: null, revealBefore: null, expiresAt: null, error: null, createdAt: iso(nowSeconds()), failNext: false, issuedCodeHash: null, issuedCodeLength: null, moves: 0, linksRefused: false, resends: 0, version: 1,
+    revealAfter: null, revealBefore: null, expiresAt: null, error: null, createdAt: iso(nowSeconds()), failNext: false, moves: 0, linksRefused: false, resends: 0, version: 1,
   }
   registrations.set(reg.id, reg)
   return reg
@@ -902,30 +885,6 @@ function codeStillPays(row: PrepaidCode, reg: Registration, length: number): voi
   const error = row.state !== "unused" && row.registrationId !== reg.id ? CODE_ERRORS[row.state] : undefined
   if (error) throw new HttpError(error === "code_invalid" ? 400 : 409, error)
   if (length < row.minLength) throw new HttpError(409, "code_not_covering")
-}
-
-export async function takenCode(registrationId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const reg = registrations.get(registrationId)
-  if (!reg) throw new HttpError(404, "not_found")
-  const { codeHash: hash, codeLength } = body
-  if (typeof hash !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(hash) || !Number.isInteger(codeLength)) throw badRequest()
-  await checkSigned(reg.owner, `simplex.domains code ${reg.id} ${hash} ${codeLength} ${body.timestamp}`, body.timestamp, body.signature)
-  // a repeat is answered from the code issued, whatever the prices are now
-  if (reg.issuedCodeHash === hash) return {}
-  if (reg.phase !== "taken" || reg.method === "code") throw badRequest()
-  const version = reg.version
-  const minLength = await codeLengthFor(reg).catch(unavailable)
-  if (minLength === null) throw new HttpError(409, "code_unavailable")
-  if (minLength !== codeLength) throw new HttpError(409, "code_length_changed", { codeLength: minLength })
-  if (codes.has(hash)) throw new HttpError(409, "code_conflict")
-  await unchangedSince(reg, version)
-  // the service never sees the code, only its hash; the page shows the code it derived
-  codes.set(hash, { minLength, years: reg.years, state: "unused", registrationId: null })
-  reg.issuedCodeHash = hash
-  reg.issuedCodeLength = minLength
-  reg.phase = "code_issued"
-  changed(reg)
-  return {}
 }
 
 export async function retry(registrationId: string): Promise<Record<string, unknown>> {
