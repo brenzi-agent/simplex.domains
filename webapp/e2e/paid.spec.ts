@@ -1103,6 +1103,13 @@ const takenAnswer = (route: Route) => route.fulfill({ json: { status: "registere
 const payPlaces = (page: Page) => page.evaluate(() => ["h1", ".name-check", ":is(.card.pay, .stripe)", ".actions-row .alt"]
   .map((s) => { const b = document.querySelector(`body > main ${s}`)!.getBoundingClientRect(); return `${s} ${Math.round(b.top)} ${Math.round(b.height)}` }))
 
+// how far the sentence in force sits from the middle of the note: the room above it less the room under it
+const takenRoom = (page: Page) => page.evaluate(() => {
+  const note = document.querySelector("body > main .name-check")!.getBoundingClientRect()
+  const text = document.querySelector("body > main .name-check > :not(.sizer)")!.getBoundingClientRect()
+  return Math.abs((text.top - note.top) - (note.bottom - text.bottom))
+})
+
 test("a Bitcoin page checks its name as it opens and every 5 minutes; taken meanwhile, the note turns red and the payment is turned off in place", async ({ page }) => {
   await page.clock.install()
   const checks: string[] = []
@@ -1137,8 +1144,10 @@ test("a Bitcoin page checks its name as it opens and every 5 minutes; taken mean
   await expect(copy, "a control of the payment takes no focus").not.toBeFocused()
   await expect(onStep(page).getByRole("button", { name: "Cancel this invoice" })).toBeEnabled()
   expect(await payPlaces(page), "nothing moves on a laptop").toEqual(before.desktop)
+  expect(await takenRoom(page), "the shorter sentence centred in the note's room on a laptop").toBeLessThanOrEqual(1)
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await payPlaces(page), "nothing moves on a phone").toEqual(before.phone)
+  expect(await takenRoom(page), "the shorter sentence centred in the note's room on a phone").toBeLessThanOrEqual(1)
   await page.setViewportSize({ width: 1280, height: 900 })
   await shot(page, "N4t-bitcoin-name-taken")
 
