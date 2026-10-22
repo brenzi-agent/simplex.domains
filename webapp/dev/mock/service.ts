@@ -1015,14 +1015,17 @@ export async function editRecords(body: Record<string, unknown>): Promise<Record
   if (earlier) return repeatedEdit(earlier)
   if (deadline < nowSeconds()) throw badRequest()
   // a failed chain read is the provider's, not the request's
-  let owner: Address, current: bigint
+  let owner: Address, nameResolver: Address, current: bigint
   try {
-    owner = getAddress(await read<Address>(registry, "owner", [node]))
+    // getAddress takes a chain id second, so it is not handed map's index
+    [owner, nameResolver] = (await Promise.all([read<Address>(registry, "owner", [node]), read<Address>(registry, "resolver", [node])])).map((a) => getAddress(a))
     current = await read<bigint>(resolver, "nonces", [owner])
   } catch {
     throw new HttpError(503, "provider_unavailable")
   }
   if (signer !== owner) throw badRequest()
+  // the relay writes only the store's resolver, which a name pointed elsewhere no longer reads
+  if (nameResolver !== getAddress(deployment.resolver)) throw badRequest()
   if (BigInt(nonce) !== current) throw badRequest()
   // kept from the moment it goes out
   const edit: { sent: SentEdit | null } = { sent: null }

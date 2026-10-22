@@ -45,11 +45,12 @@ export async function mockRegistration(request: APIRequestContext, invoiceId: st
 
 // The worker's chain, read directly: the expiry the registrar holds and the price the oracle quotes.
 const deployment = JSON.parse(readFileSync(new URL(`../dev/local-chain-${SLOT}.json`, import.meta.url), "utf8")) as
-  { rpcUrl: string; chainId: number; tld: string; resolver: Hex; controller: Hex; baseRegistrar: Hex }
+  { rpcUrl: string; chainId: number; tld: string; ens: Hex; resolver: Hex; controller: Hex; baseRegistrar: Hex }
 const chain = createPublicClient({ transport: http(deployment.rpcUrl) })
 const CHAIN_ABI = parseAbi([
   "function nameExpires(uint256 id) view returns (uint256)",
   "function rentPriceUSD(string label, uint256 duration) view returns ((uint256 base, uint256 premium))",
+  "function setResolver(bytes32 node, address resolver)",
   "function setText(bytes32 node, string key, string value)",
 ])
 // gas for a few of an owner's own transactions, which anvil gives the owner's wallet
@@ -76,6 +77,9 @@ async function asOwner(ownerCode: string, to: Hex, data: Hex): Promise<void> {
 }
 
 const nodeOf = (label: string) => namehash(`${label}.${deployment.tld}`)
+
+export const ownerSetsResolver = (ownerCode: string, label: string, resolver: Hex) =>
+  asOwner(ownerCode, deployment.ens, encodeFunctionData({ abi: CHAIN_ABI, functionName: "setResolver", args: [nodeOf(label), resolver] }))
 
 export const ownerSetsText = (ownerCode: string, label: string, key: string, value: string) =>
   asOwner(ownerCode, deployment.resolver, encodeFunctionData({ abi: CHAIN_ABI, functionName: "setText", args: [nodeOf(label), key, value] }))

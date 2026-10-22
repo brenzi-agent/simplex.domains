@@ -1,13 +1,14 @@
 // The store API contract's acceptance cases (plans/names-codes/2026-10-21-store-api.md) that the mock can show, against
 // the worker's mock directly. The page's own flows build and sign the requests.
 import { expect, type APIRequestContext } from "@playwright/test"
+import type { Hex } from "viem"
 import type * as api from "../src/api.ts"
 import { codeHash, takenOrderCode } from "../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, labelHash, namehash, setTextDigest, YEAR_S } from "../src/crypto/registration.ts"
 import { fromHex, hex, personalDigest, signDigest } from "../src/crypto/wallet.ts"
 import * as flow from "../src/flow.ts"
 import * as store from "../src/store.ts"
-import { channelLink, contactLink, control, MOCK, oracleQuote, ownerSetsText, test, uniqueLabel } from "./helpers.ts"
+import { channelLink, contactLink, control, MOCK, oracleQuote, ownerSetsResolver, ownerSetsText, test, uniqueLabel } from "./helpers.ts"
 
 type Json = Record<string, unknown>
 
@@ -30,6 +31,8 @@ const TERM_START = Date.UTC(2027, 0, 1) / 1000
 const SIGNED_WINDOW_S = 600
 const TERM_SLACK_S = 3600
 const PHASE_MS = 120_000
+// a resolver that is not the store's, for a name pointed elsewhere
+const ELSEWHERE: Hex = "0x000000000000000000000000000000000000dEaD"
 
 type Quote = Extract<api.SearchAnswer, { status: "available" }>
 
@@ -370,6 +373,16 @@ test("a link edit repeated after it was mined is answered from the edit, not che
   // the same nonce with another value is checked anew, and its nonce has moved
   const other = await contactEdit(name, contactLink("Cf"), edit.nonce as number)
   expect(await call("POST", "/api/name/records", other)).toEqual({ status: 400, json: { error: "bad_request" } })
+})
+
+test("a link edit of a name pointed at another resolver is bad_request, and goes through once the name points back", async ({ request }) => {
+  const name = await registeredName(request, "cg")
+  const edit = await contactEdit(name, contactLink("Cg"))
+  await ownerSetsResolver(name.draft.ownerCode, name.label, ELSEWHERE)
+  expect(await call("POST", "/api/name/records", edit)).toEqual({ status: 400, json: { error: "bad_request" } })
+  await ownerSetsResolver(name.draft.ownerCode, name.label, name.draft.chain.resolver as Hex)
+  const sent = await call("POST", "/api/name/records", edit)
+  expect(sent.status, JSON.stringify(sent.json)).toBe(200)
 })
 
 test("search splits a record set elsewhere on semicolons, trims each link, and answers the first five links of each key's kind", async ({ request }) => {
