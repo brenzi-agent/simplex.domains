@@ -19,11 +19,6 @@ import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
 import { asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, historyPlace, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen, searchLink, whenDropped, whenLeaving } from "./shell.ts"
 
 export const RETRY_MS = 3000
-// The badge service's words for a cancel the provider took while the service still shows the invoice open; a card
-// invoice has no address. The browser keeps the cancel, so the warning stays until the invoice closes.
-const cancelStillOpen = (invoice: api.InvoiceView) => invoice.cryptoCurrency
-  ? "This invoice was cancelled, but the service still shows it open. Do not send anything more to the address."
-  : "This invoice was cancelled, but the service still shows it open. Do not pay it again."
 
 // the count stays with its word on one line; a payment taken on first sight waits for no confirmation at all
 const confirmations = (n: number) => (n === 1 ? "Waiting for 1\u00a0confirmation" : n > 1 ? `Waiting for ${n}\u00a0confirmations` : "Waiting for the payment to settle")
@@ -526,7 +521,6 @@ function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
 function closedWords(closed: ClosedCase, inv: api.InvoiceView): [Tone, Kid] {
   switch (closed) {
     case "paid-late": return ["warn", "The payment arrived after this invoice had closed, so nothing was registered. Support refunds it: quote the reference below."]
-    case "still-open": return ["warn", `${cancelStillOpen(inv)}${partlyPaid(inv) ? " Part of the payment arrived; quote the reference below to support." : ""}`]
     case "cancelled": return ["info", "This invoice was cancelled and nothing was received."]
     case "received": {
       const coin = coinOf(inv)
@@ -541,8 +535,7 @@ function closedWords(closed: ClosedCase, inv: api.InvoiceView): [Tone, Kid] {
 function closedAction(s: OrderState, closed: ClosedCase): HTMLButtonElement {
   const { record } = s
   if (record?.replacedBy) return btn("Open the new invoice", "quiet", () => go(record.replacedBy!))
-  // a cancel the service still shows open takes no more payment, so nothing here pays it
-  if (closed === "paid-late" || closed === "still-open") return btn("Search a name", "quiet", () => go(searchLink("")))
+  if (closed === "paid-late") return btn("Search a name", "quiet", () => go(searchLink("")))
   if (!record) return withoutRecord("quiet")
   if (closed === "cancelled") {
     const again = setAction(btn("Order the name again", "", () => void orderAgain(record)), s.busy === "reorder", s.hold !== null)
@@ -622,10 +615,6 @@ async function cancelBeforeReorder(invoice: api.InvoiceView, gen: number): Promi
     after = await api.cancelInvoice(invoice.invoiceId)
     const record = store.orderByInvoice(invoice.invoiceId)
     if (record && after.status !== "paid") store.updateOrder(record.registrationId, { cancelled: true })
-    if (after.status === "open") {
-      say(cancelStillOpen(after))
-      return false
-    }
   } catch (e) {
     const code = e instanceof api.ApiError ? e.code : "network"
     if (holdOn(e, "The invoice is still open. ", gen)) return false
@@ -657,14 +646,12 @@ async function cancelInvoice(): Promise<void> {
   try {
     const after = await api.cancelInvoice(invoice!.invoiceId)
     if (record && after.status !== "paid") store.updateOrder(record.registrationId, { cancelled: true })
-    // without a record nothing keeps the cancel, so the warning shows here once
-    const stillOpen = !record && after.status === "open"
-    answer(gen, { type: "cancel-answered", note: stillOpen ? { tone: "danger", icon: "alert", title: null, text: cancelStillOpen(after) } : null })
-    if (!stillOpen) reread(gen)
+    answer(gen, { type: "cancel-answered" })
+    reread(gen)
   } catch (e) {
     // an invoice that closed meanwhile, or an order another request changed first, is shown as it is now
     if (e instanceof api.ApiError && (e.code === "not_open" || e.code === "registration_changed")) {
-      answer(gen, { type: "cancel-answered", note: null })
+      answer(gen, { type: "cancel-answered" })
       return reread(gen)
     }
     if (e instanceof api.ApiError && e.code === "funded") return answer(gen, { type: "cancel-failed", note: warning("A payment has reached this invoice, so it cannot be cancelled.") })

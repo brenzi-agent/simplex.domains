@@ -782,32 +782,18 @@ test("Cancel this invoice reads as working while its request runs, and as itself
   await expect(page.getByText("The invoice could not be cancelled now. Try again in a moment.")).toBeVisible()
 })
 
-test("a cancel the service answers with the invoice still open warns not to send more, after a reload too", async ({ page, request }) => {
-  const label = uniqueLabel("still")
-  const { invoiceId } = await startOrder(page, label, { method: "btc" })
-  await control(request, "search", { cancelStillOpen: true })
-  await page.getByText("Cancel this invoice").click()
-  const warning = page.getByText("This invoice was cancelled, but the service still shows it open. Do not send anything more to the address.")
-  await expect(warning).toBeVisible()
-  await control(request, "search", { cancelStillOpen: false })
-  await page.reload()
-  await expect(warning).toBeVisible()
-  await expect(page.getByText("Cancel this invoice")).toHaveCount(0)
-  // money that reached it after the cancel does not make it payable again
-  await control(request, `partial/${invoiceId}`)
-  await page.goto("/#/names")
-  await expect(page.locator(".list-row", { hasText: label }).locator(".chip")).toHaveText("Invoice cancelled")
-
-  // a browser without the order's record keeps nothing, so it warns at once
-  const fresh = await page.context().browser()!.newContext()
-  const stranger = await fresh.newPage()
-  const { invoiceId: other } = await startOrder(page, uniqueLabel("still2"), { method: "xmr" })
-  await stranger.goto(`/?order=${other}`)
-  await control(request, "search", { cancelStillOpen: true })
-  await stranger.getByText("Cancel this invoice").click()
-  await expect(stranger.getByText("This invoice was cancelled, but the service still shows it open. Do not send anything more to the address.")).toBeVisible()
-  await control(request, "search", { cancelStillOpen: false })
-  await fresh.close()
+test("a cancel refused for a rate limit keeps the invoice payable and says so until the wait is over", async ({ page }) => {
+  await startOrder(page, uniqueLabel("cxh"), { method: "btc" })
+  await page.route("**/api/invoice/*/cancel", (route) => route.fulfill({ status: 429, headers: { "retry-after": "2" }, json: { error: "rate_limited" } }))
+  const cancel = onStep(page).getByText("Cancel this invoice")
+  await cancel.click()
+  await expect(page.locator("[aria-hidden=true]", { hasText: /^The invoice is still open\. Try again in/ })).toBeVisible()
+  await expect(onStep(page).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await page.unroute("**/api/invoice/*/cancel")
+  await expect(page.getByText("Too many attempts")).toHaveCount(0, { timeout: 10_000 })
+  await cancel.click()
+  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
+  await expect(page.getByText("This invoice was cancelled and nothing was received.")).toBeVisible()
 })
 
 test("a restored browser that never opened another browser's newer invoice finds it through the code", async ({ page, browser, request }) => {

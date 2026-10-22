@@ -128,14 +128,13 @@ const codes = new Map<string, PrepaidCode>()
 const waiters = new Map<string, Set<() => void>>()
 // labels the control endpoint is registering to someone else, which a registration waits for
 const taking = new Map<string, Promise<void>>()
-// the next createInvoice answers with this error once, to show the checkout's refusals
-// and the next cancel answers with the invoice still open, as the real service may when the provider took the cancel late;
+// the next createInvoice answers with this error once, to show the checkout's refusals;
 // find has a rate limit of its own
 // until unsentUntil, no transaction goes out, as a chain that fails before the send; until unreadUntil, the view's own chain
 // reads fail; each write to a registration waits writeDelayMs before its check, so a test can race two
 // the next reveal finds its links refused, as the service's link check would if it no longer took what the page took
-const control: { chainDown: boolean; limitedUntil: number; invoiceError: string | null; cancelStillOpen: boolean; findLimitedUntil: number; unsentUntil: number; unreadUntil: number; writeDelayMs: number; refuseLinks: boolean } =
-  { chainDown: false, limitedUntil: 0, invoiceError: null, cancelStillOpen: false, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0, writeDelayMs: 0, refuseLinks: false }
+const control: { chainDown: boolean; limitedUntil: number; invoiceError: string | null; findLimitedUntil: number; unsentUntil: number; unreadUntil: number; writeDelayMs: number; refuseLinks: boolean } =
+  { chainDown: false, limitedUntil: 0, invoiceError: null, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0, writeDelayMs: 0, refuseLinks: false }
 
 const sendTx: typeof send = (...args) => Date.now() < control.unsentUntil ? Promise.reject(new NotSent()) : send(...args)
 const INVOICE_ERRORS: Record<string, number> = { provider_unavailable: 503, rate_limited: 429, catalog_changed: 409, internal: 500 }
@@ -531,10 +530,6 @@ export async function cancelInvoice(invoiceId: string): Promise<Record<string, u
   expireIfDue(inv)
   if (inv.status !== "open") throw new HttpError(409, "not_open")
   if (inv.amountPaid) throw new HttpError(409, "funded")
-  if (control.cancelStillOpen) {
-    control.cancelStillOpen = false
-    return invoiceView(inv)
-  }
   inv.status = "expired"
   wake(registrations.get(inv.registrationId)!)
   return invoiceView(inv)
@@ -1120,7 +1115,6 @@ export function controlSearch(body: Record<string, unknown>): Record<string, unk
   if (typeof body.chainDown === "boolean") control.chainDown = body.chainDown
   if (typeof body.limitSeconds === "number") control.limitedUntil = Date.now() + body.limitSeconds * 1000
   if (body.invoiceError === null || (typeof body.invoiceError === "string" && body.invoiceError in INVOICE_ERRORS)) control.invoiceError = body.invoiceError
-  if (typeof body.cancelStillOpen === "boolean") control.cancelStillOpen = body.cancelStillOpen
   if (typeof body.findLimitSeconds === "number") control.findLimitedUntil = Date.now() + body.findLimitSeconds * 1000
   if (typeof body.unsentSeconds === "number") control.unsentUntil = Date.now() + body.unsentSeconds * 1000
   if (typeof body.unreadSeconds === "number") control.unreadUntil = Date.now() + body.unreadSeconds * 1000

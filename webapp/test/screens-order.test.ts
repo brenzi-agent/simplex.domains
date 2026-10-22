@@ -76,10 +76,8 @@ describe("screenOf", () => {
     ["a link the service does not know", STATES["status:unknown-link"], "status:unknown-link"],
     ["a new invoice refused for a changed price", STATES["status:price-changed"], "status:price-changed"],
     ["an order not read yet", initialState("inv-1", null), "status:unreadable"],
-    ["an open invoice this browser cancelled", read(crypto(), undefined, { record: record({ cancelled: true }) }), "status:closed"],
     ["an open crypto invoice", STATES["pay-crypto"], "pay-crypto"],
     ["a crypto invoice paid in full", STATES.confirming, "confirming"],
-    ["a cancelled invoice paid in full anyway", read(crypto({ paidInFull: true }), undefined, { record: record({ cancelled: true }) }), "confirming"],
     ["a card invoice with nothing submitted", STATES["pay-card"], "pay-card"],
     ["a card form that did not load", STATES["status:card-unconfirmed"], "status:card-unconfirmed"],
     ["a card submitted a moment ago", read(card(), undefined, { cardSubmittedAt: submittedAgo(1000) }), "confirming"],
@@ -108,8 +106,6 @@ describe("screenOf", () => {
 describe("closedCase", () => {
   const cases: [string, ClosedCase, OrderState][] = [
     ["a payment after the invoice closed", "paid-late", read(crypto({ status: "paid", paidInFull: true }))],
-    ["a cancel the service still shows open", "still-open", read(crypto(), undefined, { record: record({ cancelled: true }) })],
-    ["a cancel the service still shows open, part paid", "still-open", read(crypto({ cryptoAmountPaid: "0.0001" }), undefined, { record: record({ cancelled: true }) })],
     ["a cancelled invoice that closed with nothing received", "cancelled", read(crypto({ status: "expired" }), undefined, { record: record({ cancelled: true }) })],
     ["an expired invoice that money reached", "received", read(crypto({ status: "expired", cryptoAmountPaid: "0.0001", cryptoAmountDue: "0.00015" }))],
     ["a cancelled invoice that money reached", "received", read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }), undefined, { record: record({ cancelled: true }) })],
@@ -122,7 +118,6 @@ describe("closedCase", () => {
   })
   it.each([
     ["an open invoice nobody cancelled", STATES["pay-crypto"]],
-    ["a cancelled invoice paid in full anyway", read(crypto({ paidInFull: true }), undefined, { record: record({ cancelled: true }) })],
     ["a paid invoice whose registration went on", STATES.taken],
     ["a registration link without an invoice", STATES["status:paid-by-invoice"]],
     ["an order not read yet", initialState("inv-1", null)],
@@ -279,10 +274,8 @@ describe("reduce", () => {
     it.each([["cancel-failed"], ["reorder-failed"], ["code-failed"], ["retry-failed"], ["move-failed"]])("%s of an action no longer at work changes nothing", (failed) => {
       expect(reduce(paying, { type: failed, note: WARN } as OrderEvent)).toBe(paying)
     })
-    it("cancel-answered ends the cancel, with the warning a browser without the record shows once", () => {
-      const working = reduce({ ...paying, record: null }, { type: "cancel-started" })
-      expect(reduce(working, { type: "cancel-answered", note: WARN })).toEqual({ ...paying, record: null, note: WARN })
-      expect(reduce(reduce(paying, { type: "cancel-started" }), { type: "cancel-answered", note: null })).toEqual(paying)
+    it("cancel-answered ends the cancel and leaves no note", () => {
+      expect(reduce(reduce(paying, { type: "cancel-started" }), { type: "cancel-answered" })).toEqual(paying)
     })
     it("price-changed ends a new invoice's request with the new price", () => {
       const working = reduce(STATES["status:closed"], { type: "reorder-started" })

@@ -141,16 +141,10 @@ test("Get a new invoice keeps an invoice the service would not cancel", async ({
     await expect(page).toHaveURL(new RegExp(`order=${invoiceId}`))
     await page.unroute("**/api/invoice/*/cancel")
   }
-  await page.route("**/api/invoice/*/cancel", async (route) => {
-    const res = await route.fetch({ method: "GET", url: route.request().url().replace("/cancel", "") })
-    await route.fulfill({ status: 200, json: await res.json() })
-  })
+  await page.route("**/api/invoice/*/cancel", (route) => route.fulfill({ status: 429, headers: { "retry-after": "2" }, json: { error: "rate_limited" } }))
   await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await expect(page.getByText("This invoice was cancelled, but the service still shows it open. Do not pay it again.")).toBeVisible()
-  await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
-  await expect(page.getByRole("button", { name: "Get a new invoice" })).toHaveCount(0)
-  await expect(page.getByRole("button", { name: "Search a name" })).toBeVisible()
-  await shot(page, "N10a2-cancel-still-open")
+  await expect(page.locator("[aria-hidden=true]", { hasText: /^The invoice is still open\. Try again in/ })).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`order=${invoiceId}`))
 })
 
 test("a registration link of an order paid by invoice points at its payment link", async ({ page, request }) => {

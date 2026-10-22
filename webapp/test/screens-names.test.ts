@@ -99,7 +99,6 @@ describe("list helpers", () => {
       ["an expired invoice", registration(), invoice({ status: "expired" }), record(), ["Invoice expired", "bad"]],
       ["an expired invoice money reached", registration(), invoice({ status: "expired", cryptoAmountPaid: "0.0001" }), record(), ["Invoice expired", "warn"]],
       ["a cancelled invoice that closed", registration(), invoice({ status: "expired" }), record({ cancelled: true }), ["Invoice cancelled", "bad"]],
-      ["a cancel the service still shows open", registration(), invoice(), record({ cancelled: true }), ["Invoice cancelled", "warn"]],
       ["a payment after the invoice closed", registration(), invoice({ status: "paid" }), record(), ["Paid late", "warn"]],
       ["a payment in full", registration(), invoice({ paidInFull: true }), record(), ["Confirming payment", "warn"]],
       ["a card submitted", registration(), invoice({ cryptoCurrency: "card" }), record({ cardSubmittedAt: "2026-10-17T11:59:30Z" }), ["Confirming payment", "warn"]],

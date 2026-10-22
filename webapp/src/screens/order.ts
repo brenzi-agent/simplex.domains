@@ -17,7 +17,7 @@ export const unreadDelay = (reads: number) => UNREAD_PACING_MS[Math.min(reads, U
 export type OrderKind = "pay-crypto" | "pay-card" | "confirming" | "registering" | "links-refused" | "registered" | "taken" | "code-issued" | "failed" | "not-on-device"
   | "status:closed" | "status:card-unconfirmed" | "status:paid-by-invoice" | "status:unreadable" | "status:unknown-link" | "status:price-changed"
 
-export type ClosedCase = "paid-late" | "still-open" | "cancelled" | "received" | "expired"
+export type ClosedCase = "paid-late" | "cancelled" | "received" | "expired"
 
 type Action = "card" | "cancel" | "reorder" | "code" | "retry" | "move"
 
@@ -60,7 +60,7 @@ export type OrderEvent =
   | { type: "reveal-failed"; key: string }
   | { type: "reveal-retried" }
   | { type: "cancel-started" }
-  | { type: "cancel-answered"; note: Note | null }
+  | { type: "cancel-answered" }
   | { type: "cancel-failed"; note: Note }
   | { type: "reorder-started" }
   | { type: "reorder-failed"; note: Note }
@@ -100,7 +100,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "reveal-failed": return s.reveal?.key === e.key ? { ...s, reveal: { ...s.reveal, sending: false } } : s
     case "reveal-retried": return s.reveal ? { ...s, reveal: { ...s.reveal, refusals: 0 } } : s
     case "cancel-started": return start(s, "cancel")
-    case "cancel-answered": return end(s, "cancel", { note: e.note })
+    case "cancel-answered": return end(s, "cancel", {})
     case "cancel-failed": return end(s, "cancel", { note: e.note })
     case "reorder-started": return start(s, "reorder")
     case "reorder-failed": return end(s, "reorder", { note: e.note })
@@ -169,11 +169,11 @@ export function screenOf(s: OrderState): OrderKind {
   return "registering"
 }
 
-// An unpaid order's invoice that takes no more payment: closed, or cancelled while the service still shows it open.
+// An unpaid order's invoice that takes no more payment.
 export function closedCase({ invoice, view, record }: OrderState): ClosedCase | null {
   if (!invoice || view?.phase !== "unpaid") return null
   if (invoice.status === "paid") return "paid-late"
-  if (invoice.status === "open") return record?.cancelled && !invoice.paidInFull ? "still-open" : null
+  if (invoice.status === "open") return null
   if (record?.cancelled && !holdsPayment(invoice)) return "cancelled"
   return holdsPayment(invoice) ? "received" : "expired"
 }

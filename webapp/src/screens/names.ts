@@ -121,7 +121,6 @@ export function phaseChip(view: RegistrationView, invoice: InvoiceView | null, o
   if (waitsToSign(view, now)) return ["Open to finish", "warn"]
   if (view.phase !== "unpaid") return PHASE_CHIPS[view.phase]
   if (invoice?.status === "expired") return o.cancelled && !holdsPayment(invoice) ? ["Invoice cancelled", "bad"] : ["Invoice expired", holdsPayment(invoice) ? "warn" : "bad"]
-  if (o.cancelled && invoice?.status === "open" && !invoice.paidInFull) return ["Invoice cancelled", "warn"]
   if (invoice?.status === "paid") return ["Paid late", "warn"]
   if (invoice?.paidInFull || o.cardSubmittedAt) return ["Confirming payment", "warn"]
   if (invoice?.amountPaid || Number(invoice?.cryptoAmountPaid ?? "0") > 0) return ["Waiting for the rest", "warn"]

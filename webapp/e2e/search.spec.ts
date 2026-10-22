@@ -8,7 +8,7 @@ import {
 } from "./helpers.ts"
 
 test.afterEach(async ({ request }) => {
-  await control(request, "search", { chainDown: false, limitSeconds: 0, invoiceError: null, cancelStillOpen: false, findLimitSeconds: 0 })
+  await control(request, "search", { chainDown: false, limitSeconds: 0, invoiceError: null, findLimitSeconds: 0 })
 })
 
 test("search answers every kind of name", async ({ page, request }) => {
