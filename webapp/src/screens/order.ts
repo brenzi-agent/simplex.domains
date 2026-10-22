@@ -156,10 +156,11 @@ export function newInvoiceBy(record: OrderRecord, invoice: InvoiceView): "spend"
   return invoice.registration.fromBalance > 0 ? "find" : "order"
 }
 
-// What the order cost, its invoice and what another order's balance paid besides; null for a code, which costs nothing.
+// What the order's name costs, which a move to a cheaper name lowers, and what another order's balance paid of it, the
+// rest of that payment kept as this order's balance after such a move; null for a code, which costs nothing.
 export function costOf(view: RegistrationView, invoice: InvoiceView | null): { cost: number; fromBalance: number } | null {
-  if (invoice) return { cost: invoice.amount + view.fromBalance, fromBalance: view.fromBalance }
-  return view.fromBalance > 0 ? { cost: view.fromBalance, fromBalance: view.fromBalance } : null
+  if (!invoice && view.fromBalance === 0) return null
+  return { cost: view.price, fromBalance: Math.min(view.fromBalance, view.price) }
 }
 
 // The service refused the order's links at its reveal, as the view says or as this browser saw: trying again would commit
