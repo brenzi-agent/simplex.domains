@@ -181,7 +181,8 @@ body > main { display: flex; flex-direction: column; min-width: 0; }
 }
 
 /* the invest note under the page, and the footer's links after a rule (badges styles.css .invest, footer) */
-.invest { padding: 22px 16px 32px; text-align: center; }
+/* the room above it keeps the last link of a step 48 px from it, however short the window */
+.invest { padding: 46px 16px 32px; text-align: center; }
 .invest .half { display: inline-block; }
 .invest-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; white-space: nowrap; }
 /* the wordmark, a touch taller than the text and lifted so its baseline sits with the text's */
@@ -232,9 +233,9 @@ body > main { display: flex; flex-direction: column; min-width: 0; }
 /* Every screen is one centred column: its heading block, Back beside the heading as the badges store draws it, then its
    content and its actions' row. A step is a frame of one height, so Back, the heading and the main button stand at one
    place on every step; the content runs down from under the heading, so nothing above a change moves as it comes. */
-.screen { --back-w: 72px; --screen-top: 29px; width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: var(--screen-top) 16px 48px; display: grid;
+.screen { --back-w: 72px; --screen-top: 29px; width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: var(--screen-top) 16px 0; display: grid;
   grid-template-columns: minmax(0, 1fr); align-content: start; row-gap: 22px; }
-.screen.step { --step-h: 564px; height: calc(var(--step-h) + var(--screen-top)); padding-bottom: 0; grid-template-rows: auto minmax(0, 1fr) 78px; }
+.screen.step { --step-h: 540px; height: calc(var(--step-h) + var(--screen-top)); grid-template-rows: auto minmax(0, 1fr) 78px; }
 /* a step with no action gives the action row's room to its content */
 .screen.step:not(:has(> .actions-row)) { grid-template-rows: auto minmax(0, 1fr); }
 .screen-head { display: grid; grid-template-columns: var(--back-w) minmax(0, 1fr) var(--back-w); row-gap: 10px; }
@@ -254,6 +255,8 @@ h1 .long { word-break: break-all; }
 .actions-row { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .actions-row > .btn { min-width: 280px; }
 .actions-row > .alt { order: 1; font-size: 15px; }
+/* with no main button, the link keeps the place it has under one */
+.actions-row:not(:has(> .btn)) { padding-top: calc(var(--control-h) + 10px); }
 .end-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; font-size: 15px; }
 /* a chat's popup keeps the page behind it still */
 /* a page held still under a popup keeps its scrollbar's room, so it does not shift sideways as the scrollbar goes */
@@ -573,7 +576,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 @media (max-width: 520px) {
   :root { --fs-h1: 30px; --fs-lead: 15px; }
   .screen { --screen-top: 20px; row-gap: 16px; }
-  .screen.step { --step-h: 616px; }
+  .screen.step { --step-h: 640px; }
   .screen-head { grid-template-columns: minmax(0, 1fr); grid-template-rows: 24px auto; row-gap: 8px; }
   .back { margin-top: -8px; }
   .screen-head h1 { grid-area: 2 / 1; }

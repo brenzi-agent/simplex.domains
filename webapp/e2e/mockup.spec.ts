@@ -108,8 +108,9 @@ test("Your names with nothing kept leads to finding a name or adding a name code
     await expect(onStep(page).locator(".card.none")).toHaveText(/^No names in this browser yet/)
     await expect(onStep(page).locator(".card.none")).toContainText("To see a name you registered in another browser, add its name code.")
     const find = onStep(page).getByRole("button", { name: "Find a name" })
-    const top = await find.evaluate((b) => Math.round(b.getBoundingClientRect().top))
-    expect(top, `Find a name at ${size.width}x${size.height}`).toBe(size === LAPTOP ? 611 : 612)
+    const tops = await Promise.all([find, onStep(page).locator(".actions-row .alt", { hasText: "Add a name code" })].map((l) => l.evaluate((n) => Math.round(n.getBoundingClientRect().top))))
+    // the link's top is its row's, as every step's link under the main button
+    expect(tops, `Find a name and its link at ${size.width}x${size.height}`).toEqual(size === LAPTOP ? [587, 641] : [636, 690])
   }
   await onStep(page).getByRole("link", { name: "Add a name code" }).click()
   await expect(page.getByRole("heading", { name: "Check your code" })).toBeVisible()

@@ -49,9 +49,13 @@ async function headingAt(page: Page): Promise<{ x: number; y: number }> {
 // how far the page reaches past the window, less the footer the badges store keeps below the fold
 const overflow = (page: Page) => page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight - Math.round(document.querySelector("body > footer")!.getBoundingClientRect().height))
 
-interface Frame { heading: number; actions: number | null; back: number | null }
-// where the audited mockup draws a step's heading, its main button and Back's word, at each window size
-const MOCKUP_FRAMES: Frame[] = [{ heading: 125, actions: 611, back: 137 }, { heading: 106, actions: 612, back: 74 }]
+interface Frame { heading: number; actions: number | null; button: number | null; link: number | null; back: number | null; investGap: number | null }
+type Place = Exclude<keyof Frame, "investGap">
+// where the mockup draws a step's heading, its actions' row, its main button, the link under it and Back's word, at each
+// window size; a step without a main button keeps its link at the link's place
+const MOCKUP_FRAMES: Record<Place, number>[] = [{ heading: 125, actions: 587, button: 587, link: 641, back: 137 }, { heading: 106, actions: 636, button: 636, link: 690, back: 74 }]
+// the least room on a laptop between a step's last link and the invest note under it
+const INVEST_GAP = 48
 
 // The screen in view fits the window at each size, its content above its actions' row; a step's heading and actions'
 // row stand where every step's do, which the caller compares. Captured for review when shots are asked for.
@@ -60,9 +64,11 @@ async function fitsWindow(page: Page, name: string, frames?: Record<string, Fram
     await page.setViewportSize(size)
     const measured = () => page.evaluate(() => {
       const shown = document.querySelector("body > main > section")!
-      // a step with no action gives its content the action row's room, down to the step's foot
+      // a step with no action gives its content the action row's room, down to the step's foot; one with only a link,
+      // the empty place of a main button above it
       const row = shown.querySelector(":scope > .actions-row")
-      const actions = row ? row.getBoundingClientRect() : shown.classList.contains("step") ? { top: shown.getBoundingClientRect().bottom } : undefined
+      const only = row && !row.querySelector(":scope > .btn") ? row.querySelector(":scope > .alt") : null
+      const actions = (only ?? row)?.getBoundingClientRect() ?? (shown.classList.contains("step") ? { top: shown.getBoundingClientRect().bottom } : undefined)
       const content = [...shown.querySelectorAll(":scope > .screen-body > *")].map((k) => k.getBoundingClientRect()).filter((b) => b.height > 0)
       const footer = Math.round(document.querySelector("body > footer")!.getBoundingClientRect().height)
       // what is kept whole, as a name's end with its TLD, a price with its term and a name code, drawn on more than one line
@@ -76,12 +82,19 @@ async function fitsWindow(page: Page, name: string, frames?: Record<string, Fram
     await expect.poll(measured, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ overflow: 0, overlap: 0, split: [] })
     if (frames) {
       const at = await page.evaluate(() => {
-        const back = document.querySelector("body > main .back span")
-        const actions = document.querySelector("body > main > section > .actions-row")
+        const top = (selector: string) => {
+          const node = document.querySelector(selector)
+          return node ? Math.round(node.getBoundingClientRect().top) : null
+        }
+        const links = [...document.querySelectorAll("body > main a")].map((a) => a.getBoundingClientRect()).filter((b) => b.height > 0)
+        const invest = top("body > .invest p")
         return {
-          heading: Math.round(document.querySelector("body > main h1")!.getBoundingClientRect().top),
-          actions: actions ? Math.round(actions.getBoundingClientRect().top) : null,
-          back: back ? Math.round(back.getBoundingClientRect().top) : null,
+          heading: top("body > main h1")!,
+          actions: top("body > main > section > .actions-row"),
+          button: top("body > main > section > .actions-row > .btn"),
+          link: top("body > main > section > .actions-row > .alt"),
+          back: top("body > main .back span"),
+          investGap: links.length && invest !== null ? Math.round(invest - Math.max(...links.map((b) => b.bottom))) : null,
         }
       })
       ;(frames[name] ??= [])[i] = at
@@ -91,14 +104,18 @@ async function fitsWindow(page: Page, name: string, frames?: Record<string, Fram
   await shot(page, `names-u1-${name}`)
 }
 
-// every step's heading, actions' row and Back, where it has one, at the mockup's place for each window size
+// every step's heading, actions' row, main button, link and Back, where it has them, at the mockup's place for each
+// window size; on a laptop its last link keeps its room above the invest note
 function oneFrame(frames: Record<string, Frame[]>): void {
   for (const [i, size] of FIT_SIZES.entries()) {
     const at = Object.fromEntries(Object.entries(frames).map(([name, f]) => [name, f[i]]))
     const mockup = MOCKUP_FRAMES[i]
-    const off = Object.entries(at).filter(([, f]) => f.heading !== mockup.heading || (f.actions !== null && f.actions !== mockup.actions) || (f.back !== null && f.back !== mockup.back))
-    expect(off, `the steps' heading, actions and Back at ${size.width}x${size.height}, the mockup's ${JSON.stringify(mockup)}`).toEqual([])
+    const places = Object.keys(mockup) as Place[]
+    const off = Object.entries(at).filter(([, f]) => places.some((place) => f[place] !== null && f[place] !== mockup[place]))
+    expect(off, `the steps' heading, actions, button, link and Back at ${size.width}x${size.height}, the mockup's ${JSON.stringify(mockup)}`).toEqual([])
   }
+  const cramped = Object.entries(frames).filter(([, f]) => f[0].investGap !== null && f[0].investGap < INVEST_GAP)
+  expect(cramped, `the steps' last link at least ${INVEST_GAP} px above the invest note at ${FIT_SIZES[0].width}x${FIT_SIZES[0].height}`).toEqual([])
 }
 
 test("every purchase step fits a laptop's and a phone's window, its heading and main button at one place on every step", async ({ page, request }) => {
@@ -142,11 +159,11 @@ test("every purchase step fits a laptop's and a phone's window, its heading and 
   await fitsWindow(page, "7-registered", frames)
   await page.goto("/#/code")
   await fitsWindow(page, "8-check-code", frames)
-  oneFrame(frames)
   await startOrder(page, uniqueLabel("fitcard"), { method: "card" })
   await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
   await expect(page.locator(".name-check:not(.unchecked)")).toBeVisible()
-  await fitsWindow(page, "5b-pay-card")
+  await fitsWindow(page, "5b-pay-card", frames)
+  oneFrame(frames)
 })
 
 const FIT_INVOICE = "inv-fitall"
