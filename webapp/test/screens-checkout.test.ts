@@ -3,7 +3,8 @@ import {
   balanceHeld, changeOf, heldForThisName, payWaits, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, FALLBACK_METHOD, initialState, reduce, screenOf, split, stepFor,
 } from "../src/screens/checkout.ts"
 import { timeOf } from "../src/format.ts"
-import { BALANCE_READ_MS, CONFIRMING_READ_MS, heldWords, holdWait } from "../src/screens/balance.ts"
+import { BALANCE_READ_MS, CONFIRMING_READ_MS, heldWords, holderStill, holdWait } from "../src/screens/balance.ts"
+import type { InvoiceView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import type { Checkout } from "../src/session.ts"
 
@@ -257,6 +258,24 @@ describe("a balance", () => {
     expect(reduce(s, { type: "balance-read", balance: read(600) }).checkout).toMatchObject({ balance: { ...BALANCE, amount: 600 }, balanceChange: "changed" })
     const removed = open({ checkout: checkout() })
     expect(reduce(removed, { type: "balance-read", balance: read(1000, true) }), "a balance taken off meanwhile").toBe(removed)
+  })
+})
+
+describe("holderStill", () => {
+  const holder = (change: Partial<InvoiceView>) => ({ invoiceId: "inv-9", status: "open", amount: 1000, currency: "usd", expiresAt: "2026-10-17T12:30:00Z", kind: "name", cryptoCurrency: "btc",
+    cryptoAmount: "0.0002", cryptoAmountPaid: "0", ...change }) as InvoiceView
+  const UNTIL = "2026-10-17T12:30:00Z"
+  it("follows an open holder that nothing reached", () => {
+    expect(holderStill(holder({}), UNTIL)).toBe(true)
+  })
+  it("reads the view again once money reaches the holder whose hold the page shows with a time, or the holder closes", () => {
+    expect(holderStill(holder({ cryptoAmountPaid: "0.0001" }), UNTIL)).toBe(false)
+    expect(holderStill(holder({ paidInFull: true }), UNTIL)).toBe(false)
+    expect(holderStill(holder({ status: "expired" }), UNTIL)).toBe(false)
+    expect(holderStill(null, UNTIL), "a holder the service forgot").toBe(false)
+  })
+  it("keeps following a holder already shown as confirming", () => {
+    expect(holderStill(holder({ paidInFull: true }), null)).toBe(true)
   })
 })
 

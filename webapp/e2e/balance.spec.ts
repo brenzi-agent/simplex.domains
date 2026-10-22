@@ -363,3 +363,26 @@ test("a difference order whose balance has grown to cover the price offers to re
   await page.waitForURL(/\?registration=/)
   await waitRegistered(page, dearer)
 })
+
+test("a review following the order that holds its balance says the hold has no time once money reaches that order's invoice", async ({ page, request }) => {
+  await takenOrder(page, request, uniqueLabel("bpaid"))
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  await search(page, uniqueLabel("bpaidc"))
+  await toReview(page)
+  const other = await page.context().newPage()
+  await yourNames(other)
+  await balanceRow(other).getByRole("button", { name: "Use" }).click()
+  const dearer = sevenLetters()
+  await search(other, dearer)
+  await toReview(other)
+  await payButton(other).click()
+  await other.waitForURL(/\?order=/)
+  const holder = new URL(other.url()).searchParams.get("order")!
+  await other.close()
+
+  await onStep(page).getByRole("button", { name: "Register with your balance" }).click()
+  const held = onStep(page).locator(".line", { hasText: "Your balance is in use by" })
+  await expect(held).toHaveText(new RegExp(`^Your balance is in use by ${dearer}\\.simplex until \\d\\d:\\d\\d\\.$`))
+  await control(request, `partial/${holder}`)
+  await expect(held).toHaveText(`Your balance is in use by ${dearer}.simplex while its payment is being confirmed.`, { timeout: 10_000 })
+})

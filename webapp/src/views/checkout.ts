@@ -5,7 +5,7 @@ import * as flow from "../flow.ts"
 import { dateOf, dollars, freeDays, methodName, termEnd, termOf } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
 import type { LinkKind } from "../names.ts"
-import { heldWords, holdWait } from "../screens/balance.ts"
+import { heldWords, holderStill, holdWait } from "../screens/balance.ts"
 import { REVEAL_HOURS } from "../screens/order.ts"
 import {
   balanceHeld, changeOf, heldForThisName, payWaits, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
@@ -99,7 +99,7 @@ async function watchBalance(source: string, signal: AbortSignal): Promise<void> 
     const seen = holder && { label: holder.label, tld: holder.tld, url: store.orderUrl(holder) }
     if (JSON.stringify(seen) !== JSON.stringify(state.holder)) dispatch({ type: "holder-seen", holder: seen })
     const followed = holder?.invoiceId != null
-    if (followed) await follow(holder!.invoiceId!, signal, (read) => read?.status === "open")
+    if (followed) await follow(holder!.invoiceId!, signal, (read) => holderStill(read, state.checkout.balance?.heldUntil ?? null))
     // a holder whose invoice closed may be followed by another, which find names on the next turn
     if (followed) holder = null
     await pause(holdWait(state.checkout.balance?.heldUntil ?? null, followed, readAt, Date.now()), signal)
