@@ -545,8 +545,8 @@ export async function cancelInvoice(invoiceId: string): Promise<Record<string, u
 
 // --- prepaid codes
 
-function prepaidOf(text: unknown): { hash: string; row: PrepaidCode | undefined } {
-  const code = typeof text === "string" ? parseNameCode(text) : null
+function prepaidOf(text: string): { hash: string; row: PrepaidCode | undefined } {
+  const code = parseNameCode(text)
   if (code?.kind !== "prepaid") throw new HttpError(400, "code_invalid")
   const hash = codeHash(code.canonical)
   return { hash, row: codes.get(hash) }
@@ -562,6 +562,7 @@ export function checkCode(body: Record<string, unknown>): Record<string, unknown
 const CODE_ERRORS: Partial<Record<PrepaidCode["state"], string>> = { used: "code_used", reserved: "code_reserved", expired: "code_expired", unpaid: "payment_pending", revoked: "code_invalid" }
 
 export async function registerWithCode(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (typeof body.code !== "string") throw badRequest()
   const order = orderBody(body)
   const { hash, row } = prepaidOf(body.code)
   if (!row) throw new HttpError(400, "code_invalid")

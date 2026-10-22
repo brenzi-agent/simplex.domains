@@ -238,6 +238,19 @@ test("a code check answers every state, revoked included, an unknown code is cod
   }
 })
 
+test("a code order without a text code is bad_request, even for a name too short, and a text that is no issued code is code_invalid", async () => {
+  const { request } = await flow.orderRequest(await draftOf(uniqueLabel("ck")))
+  for (const code of [undefined, null, 6, ["SN7-BJTBP-29596-R3HJ8-25YM7"]]) {
+    for (const length of [request.length, 5]) {
+      const res = await call("POST", "/api/name/register", { ...request, length, code })
+      expect(res, `code ${JSON.stringify(code)}, length ${length}`).toEqual({ status: 400, json: { error: "bad_request" } })
+    }
+  }
+  for (const code of ["SN7-BJTBP-29596-R3HJ8-25YM7", "SN-8M7X0-8Z533-AG8DP-RBN5T-BPQ6D-YH09G", "nonsense", ""]) {
+    expect(await call("POST", "/api/name/register", { ...request, code }), code).toEqual({ status: 400, json: { error: "code_invalid" } })
+  }
+})
+
 test("find lists an owner's orders newest first, each with its label hash and sealed", async ({ request }) => {
   const { draft, built, id } = await codeOrder(request, uniqueLabel("cf"))
   const next = uniqueLabel("cf2")
