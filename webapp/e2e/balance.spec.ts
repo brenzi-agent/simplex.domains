@@ -240,3 +240,56 @@ test("a balance held by another browser's invoice whose payment is confirming pa
   await control(request, `settle/${holder}`)
   await expect(onStep(page).getByText("Your balance was spent or refunded meanwhile")).toBeVisible({ timeout: 20_000 })
 })
+
+// the next spend reaches the service, whose answer is lost on the way back; the bodies sent are kept
+async function loseNextSpendAnswer(page: Page, bodies: string[]): Promise<void> {
+  let lost = false
+  await page.route("**/api/registration/*/spend", async (route) => {
+    bodies.push(route.request().postData()!)
+    if (lost) return route.continue()
+    lost = true
+    await route.fetch()
+    await route.abort()
+  })
+}
+
+test("a spend whose answer was lost, its review opened again, names its own order holding the balance and sends the kept body again", async ({ page, request }) => {
+  await takenOrder(page, request, uniqueLabel("blost"))
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  const dearer = sevenLetters()
+  await search(page, dearer)
+  await toReview(page)
+  const bodies: string[] = []
+  await loseNextSpendAnswer(page, bodies)
+  await payButton(page).click()
+  await expect(onStep(page).getByRole("heading", { name: "That did not go through" })).toBeVisible()
+  // Back and Forward open the review anew, which finds the order the lost answer made
+  await page.goBack()
+  await page.goForward()
+  const own = onStep(page).locator(".line", { hasText: "holds your balance" })
+  await expect(own).toHaveText(new RegExp(`^Your order for ${dearer}\\.simplex holds your balance until \\d\\d:\\d\\d\\. Press Pay \\$100 with Bitcoin to open it\\.$`))
+  await expect(payButton(page)).toBeEnabled()
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  await expect(onStep(page).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  expect(bodies, "the kept body, sent again as it was").toHaveLength(2)
+  expect(bodies[1]).toBe(bodies[0])
+})
+
+test("Get a new invoice whose spend answer was lost opens the invoice that spend made, rather than calling the balance another order's", async ({ page, request }) => {
+  await takenOrder(page, request, uniqueLabel("blni"))
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  await search(page, sevenLetters())
+  await toReview(page)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  const first = new URL(page.url()).searchParams.get("order")!
+  await control(request, `expire/${first}`)
+  await loseNextSpendAnswer(page, [])
+  await onStep(page).getByRole("button", { name: "Get a new invoice" }).click()
+  await expect(onStep(page).getByText("That did not go through")).toBeVisible()
+  await onStep(page).getByRole("button", { name: "Get a new invoice" }).click()
+  await page.waitForURL(otherInvoice(first))
+  await expect(onStep(page).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  await expect(onStep(page).getByText(/in use by/)).toHaveCount(0)
+})

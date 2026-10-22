@@ -8,7 +8,7 @@ import type { LinkKind } from "../names.ts"
 import { heldWords, holdWait } from "../screens/balance.ts"
 import { REVEAL_HOURS } from "../screens/order.ts"
 import {
-  balanceHeld, changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
+  balanceHeld, changeOf, heldForThisName, payWaits, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
 } from "../screens/checkout.ts"
 import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
@@ -202,7 +202,12 @@ function orderCard(c: session.Checkout): HTMLElement {
 
 // The order whose invoice holds the balance, named and linked once find names it, and how long it holds it; else how the
 // balance changed since the search showed it.
-function balanceChangeLine({ checkout: c, holder }: CheckoutState): HTMLElement | null {
+function balanceChangeLine(s: CheckoutState): HTMLElement | null {
+  const { checkout: c, holder } = s
+  if (holder && heldForThisName(s)) {
+    return line("warn", "wallet", "Your order for ", el("a", { href: holder.url }, nameText(holder.label, holder.tld)), ` holds your balance ${heldWords(c.balance!.heldUntil)}.`,
+      ` Press ${payLabel(c)} to open it.`)
+  }
   if (c.balance?.held) {
     return line("warn", "wallet", "Your balance is in use by ", holder ? el("a", { href: holder.url }, nameText(holder.label, holder.tld)) : "another order",
       ` ${heldWords(c.balance.heldUntil)}.`)
@@ -257,7 +262,7 @@ const actionLabel = (text: string, s: CheckoutState) => s.sending && !s.busy ? "
 function payButton(s: CheckoutState, blocked: boolean): HTMLButtonElement {
   const pay = btn(actionLabel(payLabel(s.checkout), s), "", () => void submitOrder())
   pay.dataset.focus = "pay"
-  return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !s.checkout.agreed || balanceHeld(s.checkout))
+  return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !s.checkout.agreed || payWaits(s))
 }
 
 // every order waits for the buyer to agree to the name terms; the terms open beside the order
@@ -400,7 +405,8 @@ async function sendOrder(): Promise<void> {
   const chosen = c.code ? "code" : covered(c) ? "balance" : c.method
   const of = JSON.stringify([draft, c.code?.display ?? c.method, c.price, c.balance && [c.balance.source, c.balance.amount]])
   try {
-    const fresh = c.sent?.of === of && api.serviceNow() / 1000 - c.sent.request.timestamp < SIGNED_WINDOW_S
+    // a spend that reached the service, as its order holding the balance shows, is sent again as it was, however old
+    const fresh = c.sent?.of === of && (api.serviceNow() / 1000 - c.sent.request.timestamp < SIGNED_WINDOW_S || (c.sent.spend !== undefined && heldForThisName(state)))
     const built = fresh ? c.sent! : { of, ...await (source ? flow.spendRequest(source, draft, c.price, c.balance!.amount, c.method) : flow.orderRequest(draft)) }
     session.updateCheckout(c.label, { sent: built })
     try {

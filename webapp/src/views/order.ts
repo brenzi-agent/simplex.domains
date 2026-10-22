@@ -871,12 +871,22 @@ async function spendAgain(record: store.OrderRecord, source: string, quote: flow
   const balance = await balanceOf(source)
   if (!isOpen(gen)) return
   if (!balance) return go(searchLink(record.label))
-  if (balance.held) {
-    return dispatch({ type: "reorder-failed", note: warning(`Your balance is in use by another order ${heldWords(balance.heldUntil)}. Nothing was charged.`) })
-  }
   // the balance's order has the same name code as this one, which signs the spend
-  const next = await flow.spendBalance({ registrationId: source, ownerCode: record.ownerCode }, record.label, { contact: record.contact, channel: record.channel }, quote, balance.amount, method)
-  const url = store.orderUrl(next)
+  const paying = { registrationId: source, ownerCode: record.ownerCode }
+  if (balance.held) {
+    // an earlier press whose answer was lost made the order that holds it, which is this name's new invoice
+    const holder = await flow.balanceHolder(paying).catch(() => null)
+    if (!isOpen(gen)) return
+    if (holder && holder.registrationId !== record.registrationId && holder.label === record.label) return replacedWith(record, store.orderUrl(holder), gen)
+    const by = holder ? `${holder.label}.${holder.tld}` : "another order"
+    return dispatch({ type: "reorder-failed", note: warning(`Your balance is in use by ${by} ${heldWords(balance.heldUntil)}. Nothing was charged.`) })
+  }
+  const next = await flow.spendBalance(paying, record.label, { contact: record.contact, channel: record.channel }, quote, balance.amount, method)
+  replacedWith(record, store.orderUrl(next), gen)
+}
+
+// the old record leads to the order that replaced it, which opens
+function replacedWith(record: store.OrderRecord, url: string, gen: number): void {
   store.updateOrder(record.registrationId, { replacedBy: url })
   if (isOpen(gen)) go(url)
 }

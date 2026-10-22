@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
-  balanceHeld, changeOf, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, FALLBACK_METHOD, initialState, reduce, screenOf, split, stepFor,
+  balanceHeld, changeOf, heldForThisName, payWaits, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, FALLBACK_METHOD, initialState, reduce, screenOf, split, stepFor,
 } from "../src/screens/checkout.ts"
 import { timeOf } from "../src/format.ts"
 import { BALANCE_READ_MS, CONFIRMING_READ_MS, heldWords, holdWait } from "../src/screens/balance.ts"
@@ -276,5 +276,19 @@ describe("holdWait", () => {
   it("says until when a hold lasts, or that the holder's payment is being confirmed", () => {
     expect(heldWords("2026-10-17T12:10:00Z")).toBe(`until ${timeOf(Date.parse("2026-10-17T12:10:00Z"))}`)
     expect(heldWords(null)).toBe("while its payment is being confirmed")
+  })
+})
+
+describe("a held balance and Pay", () => {
+  const HELD = { source: "reg-taken", amount: 1000, held: true, heldUntil: "2026-10-17T12:30:00Z" }
+  const holder = (label: string) => ({ label, tld: "simplex", url: "/?order=inv-9" })
+  it("waits while another name's order holds it, or an order find has not named yet", () => {
+    expect(payWaits(open({ checkout: checkout({ balance: HELD }) }))).toBe(true)
+    expect(payWaits(open({ checkout: checkout({ balance: HELD }), holder: holder("bakery7") }))).toBe(true)
+  })
+  it("stays on while this name's own order holds it, as after a spend whose answer was lost, which sending again opens", () => {
+    const own = open({ checkout: checkout({ balance: HELD }), holder: holder("alice1") })
+    expect([heldForThisName(own), payWaits(own)]).toEqual([true, false])
+    expect(heldForThisName(open({ checkout: checkout({ balance: { ...HELD, held: false, heldUntil: null } }), holder: holder("alice1") })), "a balance free again").toBe(false)
   })
 })

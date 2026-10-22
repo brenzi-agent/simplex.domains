@@ -108,6 +108,14 @@ export function split(c: Checkout): { fromBalance: number; rest: number } {
 // a balance an open invoice holds pays for nothing until that invoice closes
 export const balanceHeld = (c: Checkout) => c.balance?.held === true
 
+// The order holding the balance is one of this name, as a spend whose answer was lost makes: sending the kept order again
+// opens it, so Pay stays on.
+export const heldForThisName = ({ checkout: c, holder }: CheckoutState) =>
+  balanceHeld(c) && holder !== null && holder.label === c.label && holder.tld === c.chain.tld
+
+// Pay waits while another order's invoice holds the balance
+export const payWaits = (s: CheckoutState) => balanceHeld(s.checkout) && !heldForThisName(s)
+
 // an order its balance covers is paid by nothing else
 export const covered = (c: Checkout) => c.balance !== null && split(c).rest === 0
 
