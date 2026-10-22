@@ -719,3 +719,18 @@ test("a hold by an invoice money reached has no end, find names each order's pay
   await control(request, `late/${late.json.invoiceId}`, { waiting: null })
   expect([(await viewOf(lateId)).latePayment, (await viewOf(lateId)).balance]).toEqual([null, free(PRICE.long)])
 })
+
+test("a wallet's registered order is not live: ordering the name again meets the name on chain, not the order", async ({ request }) => {
+  const label = uniqueLabel("rl")
+  const draft = await draftOf(label)
+  const built = await flow.orderRequest(draft)
+  const { price } = await quote(label)
+  const paid = await call("POST", "/api/invoice", invoiceBody(built.request, "btc", price))
+  const id = (paid.json.registration as Json).id as string
+  store.saveOrder(flow.recordFor(draft, built, "btc", price, { registrationId: id, invoiceId: paid.json.invoiceId as string }))
+  await control(request, `settle/${paid.json.invoiceId}`)
+  await flow.revealOrder(await untilRevealable(id), store.orderByRegistration(id)!)
+  await untilPhase(id, ["registered"])
+  const again = await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(draft)).request, "btc", price))
+  expect([again.status, again.json.error]).toEqual([409, "name_taken"])
+})
