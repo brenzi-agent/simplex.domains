@@ -253,6 +253,11 @@ describe("lateLine", () => {
     expect(lateLine(invoice({ status: "expired", cryptoAmountPaid: "0.00025", paidInFull: true })))
       .toBe("A payment did not complete before the invoice closed; kept as your balance")
   })
+  it("sends to support money the service cannot credit by itself", () => {
+    expect(lateLine(invoice({ status: "paid", paidInFull: true }, { latePayment: { waiting: "support" } }))).toBe("Paid after the invoice closed; write to support to have it credited")
+    expect(lateLine(invoice({ status: "expired", cryptoAmountPaid: "0.0001" }, { latePayment: { waiting: "support" } })))
+      .toBe("Part of the payment arrived; write to support to have it credited")
+  })
   it("is null for an invoice that closed with nothing received, and for an open one", () => {
     expect(lateLine(invoice({ status: "expired" }))).toBeNull()
     expect(lateLine(invoice({ status: "open", cryptoAmountPaid: "0.0001" }))).toBeNull()

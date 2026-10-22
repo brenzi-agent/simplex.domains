@@ -283,6 +283,22 @@ test("a payment that arrives after expiry turns the open page into the late page
   await expect(page.locator(".list-row[data-key^='balance-'] .main")).toHaveText(`$100From ${label}.simplex, paid after its invoice closed`)
 })
 
+test("money paid after the close that the service cannot credit by itself sends the buyer to support, and the page stops reading it", async ({ page, request }) => {
+  const label = uniqueLabel("latesup")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await control(request, `expire/${invoiceId}`)
+  await control(request, `late/${invoiceId}`, { waiting: "support" })
+  await control(request, `settle/${invoiceId}`)
+  await expect(onStep(page).getByText("It is not credited to your balance by itself: write to chat@simplex.chat with the reference below.")).toBeVisible()
+  await expect(onStep(page).getByRole("button", { name: "Get a refund" })).toHaveCount(0)
+  const reads: string[] = []
+  page.on("request", (r) => { if (r.url().includes(`/api/invoice/${invoiceId}`)) reads.push(r.url()) })
+  await page.waitForTimeout(7_000)
+  expect(reads, "no reads once only support can credit it").toEqual([])
+  await page.goto("/#/names")
+  await expect(page.locator(".list-row:not([data-key^='balance-'])", { hasText: `${label}.simplex` }).locator(".sub")).toContainText("Paid after the invoice closed; write to support to have it credited")
+})
+
 test("an order left before its wait ends asks for this browser in Your names", async ({ page, request }) => {
   const label = uniqueLabel("left")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })

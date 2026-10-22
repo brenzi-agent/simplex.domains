@@ -172,11 +172,12 @@ export function paidLine(o: OrderRecord, view: RegistrationView | null, invoice:
 // Money that reached an unpaid order's invoice once it had closed, or that it held as it closed, which is kept as the
 // order's balance; null when the invoice took none.
 export function lateLine(invoice: InvoiceView): string | null {
-  if (invoice.status === "paid") return "Paid after the invoice closed; kept as your balance"
+  const kept = invoice.registration.latePayment?.waiting === "support" ? "write to support to have it credited" : "kept as your balance"
+  if (invoice.status === "paid") return `Paid after the invoice closed; ${kept}`
   if (invoice.status !== "expired") return null
   const part = Number(invoice.cryptoAmountPaid ?? "0") > 0 && !invoice.paidInFull
   const arrived = part ? "Part of the payment arrived" : holdsPayment(invoice) ? "A payment did not complete before the invoice closed" : null
-  return arrived && `${arrived}; kept as your balance`
+  return arrived && `${arrived}; ${kept}`
 }
 
 export const CODE_CHIPS: Record<CodeState, [string, string]> = {

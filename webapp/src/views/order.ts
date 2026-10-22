@@ -6,7 +6,7 @@ import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
-  closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedLead, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
+  closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
@@ -279,14 +279,6 @@ async function replaceOlder(view: api.RegistrationView, invoice: api.InvoiceView
       store.updateOrder(o.registrationId, { replacedBy: store.orderUrl({ invoiceId: invoice.invoiceId, registrationId: view.id }) })
     }
   }
-}
-
-// An expired invoice is still followed: a payment can arrive after it closed, and then nothing must be ordered again.
-// A taken or failed order is followed too, since another tab or browser can move or retry it.
-function finished(invoice: api.InvoiceView | null, view: api.RegistrationView): boolean {
-  if (view.phase === "registered") return true
-  // money paid after the close is credited to the order's balance a little later, which the page waits for
-  return view.phase === "unpaid" && invoice?.status === "paid" && view.balance !== null
 }
 
 function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
@@ -626,7 +618,7 @@ const partlyPaid = (invoice: api.InvoiceView) => Number(invoice.cryptoAmountPaid
 function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
   const inv = s.invoice!
   const closed = closedCase(s)!
-  const [tone, text] = closedWords(closed, inv)
+  const [tone, text] = closedWords(closed, inv, s.view!)
   // only a new invoice is held for the tab's wait
   const reorders = (closed === "received" || closed === "expired") && s.record !== null && !s.record.replacedBy
   holdEnds(signal)(s.hold !== null)
@@ -636,14 +628,19 @@ function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
     extra: [replaced, actionNote(s, reorders ? signal : null)], ...kept === "offer" ? balanceActions(s) : { action: closedAction(s, closed) } })
 }
 
-function closedWords(closed: ClosedCase, inv: api.InvoiceView): [Tone, Kid] {
+// a late credit the service cannot make by itself, which support makes by hand
+const creditBySupport: Kid[] = [" It is not credited to your balance by itself: write to ", el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with the reference below."]
+
+function closedWords(closed: ClosedCase, inv: api.InvoiceView, view: api.RegistrationView): [Tone, Kid] {
+  const bySupport = view.latePayment?.waiting === "support"
+  if (closed === "paid-late" && bySupport) return ["warn", ["The payment arrived after this invoice had closed, so nothing was registered.", creditBySupport]]
   switch (closed) {
     case "paid-late": return ["warn", `The payment arrived after this invoice had closed, so nothing was registered. It is ${KEPT_LATE}`]
     case "cancelled": return ["info", "This invoice was cancelled and nothing was received."]
     case "received": {
       const coin = coinOf(inv)
       const arrived = coin && partlyPaid(inv) && !inv.paidInFull ? `${inv.cryptoAmountPaid} ${TICKER[coin]} arrived, which is not the full amount.` : "A payment did not complete before the invoice closed."
-      return ["warn", `${arrived} Once confirmed, it is ${KEPT_LATE}`]
+      return ["warn", bySupport ? [arrived, creditBySupport] : `${arrived} Once confirmed, it is ${KEPT_LATE}`]
     }
     case "expired": return ["info", inv.cryptoCurrency ? "Nothing was received before it closed." : "Nothing was paid before it closed."]
   }

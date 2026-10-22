@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
-  CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedLead, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
+  CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
   reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
@@ -328,6 +328,24 @@ describe("costOf", () => {
   })
   it("is null for a code order, which costs nothing", () => {
     expect(costOf(registration({ price: 0 }), null)).toBeNull()
+  })
+})
+
+describe("finished", () => {
+  const paidLate = (reg: Partial<RegistrationView>) => crypto({ status: "paid", paidInFull: true }, reg)
+  it("follows money paid after the close until it is in the balance", () => {
+    expect(finished(paidLate({}), registration())).toBe(false)
+    expect(finished(paidLate({}), registration({ balance: { amount: 1500, held: false, heldUntil: null, refunded: 0 } }))).toBe(true)
+  })
+  it("follows a late credit while it is confirming or being made, and stops once only support can make it", () => {
+    for (const waiting of ["confirming", "crediting"] as const) expect(finished(paidLate({}), registration({ latePayment: { waiting } })), waiting).toBe(false)
+    expect(finished(paidLate({}), registration({ latePayment: { waiting: "support" } }))).toBe(true)
+    expect(finished(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }), registration({ latePayment: { waiting: "support" } })), "a part payment").toBe(true)
+  })
+  it("stops at a registered name, and follows an open invoice and a taken or failed order", () => {
+    expect(finished(null, registration({ phase: "registered" }))).toBe(true)
+    expect(finished(crypto(), registration())).toBe(false)
+    expect(finished(null, registration({ phase: "taken" }))).toBe(false)
   })
 })
 

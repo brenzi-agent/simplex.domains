@@ -190,6 +190,16 @@ export function closedBalance(s: OrderState): "offer" | "replaced" | null {
   return s.record.replacedBy ? "replaced" : "offer"
 }
 
+// An expired invoice is still followed: a payment can arrive after it closed, and then nothing must be ordered again.
+// A taken or failed order is followed too, since another tab or browser can move or retry it. Money paid after the close
+// is followed until it is all in the order's balance, or until the service says only support can credit it.
+export function finished(invoice: InvoiceView | null, view: RegistrationView): boolean {
+  if (view.phase === "registered") return true
+  if (view.phase !== "unpaid" || !invoice || invoice.status === "open") return false
+  if (view.latePayment) return view.latePayment.waiting === "support"
+  return invoice.status === "paid" && view.balance !== null
+}
+
 // An unpaid order's invoice that takes no more payment.
 export function closedCase({ invoice, view, record }: OrderState): ClosedCase | null {
   if (!invoice || view?.phase !== "unpaid") return null
