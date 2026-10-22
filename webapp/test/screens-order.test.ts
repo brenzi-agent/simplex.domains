@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
-  CARD_SLOW_MS, type ClosedCase, closedCase, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
+  CARD_SLOW_MS, type ClosedCase, closedCase, costOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
   reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
@@ -306,6 +306,24 @@ describe("reduce", () => {
     expect(reversed).toEqual(inOrder)
     expect(inOrder.view!.phase).toBe("registering")
     expect(inOrder.now).toBe(NOW + 2000)
+  })
+})
+
+describe("costOf", () => {
+  it("is the invoice's amount for an order paid by its invoice alone", () => {
+    expect(costOf(registration(), crypto())).toEqual({ cost: 1500, fromBalance: 0 })
+  })
+  it("adds what a balance paid to a difference invoice, which holds the rest only", () => {
+    expect(costOf(registration({ price: 2500, fromBalance: 1000 }), crypto({ amount: 1500 }))).toEqual({ cost: 2500, fromBalance: 1000 })
+  })
+  it("is what the balance paid for an order without an invoice that a balance covered", () => {
+    expect(costOf(registration({ price: 1500, fromBalance: 1500 }), null)).toEqual({ cost: 1500, fromBalance: 1500 })
+  })
+  it("keeps what was paid after a move to a cheaper name lowered the order's price", () => {
+    expect(costOf(registration({ price: 500, fromBalance: 1500 }), null)).toEqual({ cost: 1500, fromBalance: 1500 })
+  })
+  it("is null for a code order, which costs nothing", () => {
+    expect(costOf(registration({ price: 0 }), null)).toBeNull()
   })
 })
 

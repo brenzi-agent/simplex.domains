@@ -1,5 +1,5 @@
 import { holdsPayment, type CodeState, type InvoiceView, LINK_KINDS, type Links, type Phase, type RegistrationView, type SearchAnswer } from "../api.ts"
-import { dateOf } from "../format.ts"
+import { dateOf, dollars, methodName } from "../format.ts"
 import { type CodeRecord, type OrderRecord, orderUrl, type PendingCode } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
 
@@ -125,6 +125,28 @@ export function phaseChip(view: RegistrationView, invoice: InvoiceView | null, o
   if (invoice?.paidInFull || o.cardSubmittedAt) return ["Confirming payment", "warn"]
   if (invoice?.amountPaid || Number(invoice?.cryptoAmountPaid ?? "0") > 0) return ["Waiting for the rest", "warn"]
   return PHASE_CHIPS.unpaid
+}
+
+// What paid the order: its invoice, with what another order's balance paid besides, a balance alone, or a code. Before
+// the order is read, its record's method and worth.
+export function paidLine(o: OrderRecord, view: RegistrationView | null, invoice: InvoiceView | null): string {
+  const fromBalance = view?.fromBalance ?? 0
+  if (invoice) {
+    const paid = `${dollars(invoice.amount)} ${methodName(invoice.cryptoCurrency ?? "card")}`
+    return fromBalance ? `${paid} and ${dollars(fromBalance)} from your balance` : paid
+  }
+  if (fromBalance || o.method === "balance") return "Paid from your balance"
+  return o.method === "code" ? "Paid with a code" : `${dollars(o.paid)} ${methodName(o.method)}`
+}
+
+// Money that reached an unpaid order's invoice once it had closed, or that it held as it closed, which is kept as the
+// order's balance; null when the invoice took none.
+export function lateLine(invoice: InvoiceView): string | null {
+  if (invoice.status === "paid") return "Paid after the invoice closed; kept as your balance"
+  if (invoice.status !== "expired") return null
+  const part = Number(invoice.cryptoAmountPaid ?? "0") > 0 && !invoice.paidInFull
+  const arrived = part ? "Part of the payment arrived" : holdsPayment(invoice) ? "A payment did not complete before the invoice closed" : null
+  return arrived && `${arrived}; kept as your balance`
 }
 
 export const CODE_CHIPS: Record<CodeState, [string, string]> = {

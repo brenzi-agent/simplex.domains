@@ -3,7 +3,7 @@ import type { InvoiceView, RegistrationView, SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
   changesOf, CODE_CHIPS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
-  initialList, initialRestore, lapsed, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
+  initialList, initialRestore, lapsed, lateLine, listedOrders, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
   againLine, ranOut, registrableAgain, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../src/screens/names.ts"
 import type { CodeRecord, OrderRecord, PendingCode } from "../src/store.ts"
@@ -173,6 +173,41 @@ describe("list helpers", () => {
     expect(hasRecords(list({ pending: [pending("SN-P")] }))).toBe(true)
     expect(hasRecords(list({ codes: [code("SN6-A")] }))).toBe(true)
     expect(hasRecords(list({ orders: [record({ replacedBy: "/?order=inv-2" })] }))).toBe(true)
+  })
+})
+
+describe("paidLine", () => {
+  it("names the invoice's amount and method", () => {
+    expect(paidLine(record(), registration(), invoice())).toBe("$15 Bitcoin")
+    expect(paidLine(record(), registration(), invoice({ cryptoCurrency: undefined }))).toBe("$15 Card")
+  })
+  it("adds what a balance paid beside a difference invoice", () => {
+    expect(paidLine(record(), registration({ price: 2500, fromBalance: 1000 }), invoice())).toBe("$15 Bitcoin and $10 from your balance")
+  })
+  it("says a balance alone paid an order it covered, read or not", () => {
+    expect(paidLine(record({ invoiceId: null, method: "balance" }), null, null)).toBe("Paid from your balance")
+    expect(paidLine(record({ invoiceId: null, method: "code" }), registration({ fromBalance: 1500 }), null)).toBe("Paid from your balance")
+  })
+  it("says a code paid a code order", () => {
+    expect(paidLine(record({ invoiceId: null, method: "code", paid: 0 }), registration({ price: 0 }), null)).toBe("Paid with a code")
+  })
+  it("names the record's worth and method before the order is read", () => {
+    expect(paidLine(record({ method: "xmr", paid: 2500 }), null, null)).toBe("$25 Monero")
+  })
+})
+
+describe("lateLine", () => {
+  it("keeps a payment that arrived after its invoice closed as the order's balance", () => {
+    expect(lateLine(invoice({ status: "paid", paidInFull: true }))).toBe("Paid after the invoice closed; kept as your balance")
+  })
+  it("keeps part of a payment, and a payment that had not completed, held as the invoice closed", () => {
+    expect(lateLine(invoice({ status: "expired", cryptoAmountPaid: "0.0001" }))).toBe("Part of the payment arrived; kept as your balance")
+    expect(lateLine(invoice({ status: "expired", cryptoAmountPaid: "0.00025", paidInFull: true })))
+      .toBe("A payment did not complete before the invoice closed; kept as your balance")
+  })
+  it("is null for an invoice that closed with nothing received, and for an open one", () => {
+    expect(lateLine(invoice({ status: "expired" }))).toBeNull()
+    expect(lateLine(invoice({ status: "open", cryptoAmountPaid: "0.0001" }))).toBeNull()
   })
 })
 

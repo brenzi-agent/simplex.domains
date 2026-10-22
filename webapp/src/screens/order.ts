@@ -148,6 +148,12 @@ export const failedLead = ({ invoice, codeRefused, codeKept, record }: OrderStat
 
 export const coinOf = (invoice: InvoiceView) => invoice.cryptoCurrency === "btc" || invoice.cryptoCurrency === "xmr" ? invoice.cryptoCurrency : null
 
+// What the order cost, its invoice and what another order's balance paid besides; null for a code, which costs nothing.
+export function costOf(view: RegistrationView, invoice: InvoiceView | null): { cost: number; fromBalance: number } | null {
+  if (invoice) return { cost: invoice.amount + view.fromBalance, fromBalance: view.fromBalance }
+  return view.fromBalance > 0 ? { cost: view.fromBalance, fromBalance: view.fromBalance } : null
+}
+
 export function screenOf(s: OrderState): OrderKind {
   if (s.gone) return "status:unknown-link"
   if (s.price !== null) return "status:price-changed"

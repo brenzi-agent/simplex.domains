@@ -272,7 +272,7 @@ test("Forget everything also drops the tab's unfinished checkout", async ({ page
   await expect(page.getByText("No names in this browser yet", { exact: true })).toBeVisible()
 })
 
-test("a payment that arrives after expiry turns the open page into the refund page, and no new invoice is made", async ({ page, request }) => {
+test("a payment that arrives after expiry turns the open page into the late page, kept as the balance, and no new invoice is made", async ({ page, request }) => {
   const label = uniqueLabel("late")
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await control(request, `expire/${invoiceId}`)
@@ -282,7 +282,7 @@ test("a payment that arrives after expiry turns the open page into the refund pa
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await page.goto("/#/names")
   await expect(page.locator(".list-row", { hasText: `${label}.simplex` })).toHaveCount(1)
-  await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).locator(".sub")).toContainText("support refunds it")
+  await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).locator(".sub")).toContainText("Paid after the invoice closed; kept as your balance")
 })
 
 test("an order left before its wait ends asks for this browser in Your names", async ({ page, request }) => {

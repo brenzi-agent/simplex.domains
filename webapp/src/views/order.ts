@@ -6,7 +6,7 @@ import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
-  type ClosedCase, closedCase, coinOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
+  type ClosedCase, closedCase, coinOf, costOf, failedLead, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../screens/order.ts"
 import { checkoutUrl, CODE_FROM_ORDER_URL } from "../screens/routes.ts"
@@ -342,8 +342,13 @@ const labelOf = (view: api.RegistrationView, record: store.OrderRecord | null) =
 const UNKNOWN_NAME = "The name shows once it is registered"
 
 // what the order is for and what it cost, after its name where the screen has not said it already
-const termLine = ({ view, invoice }: OrderState): Kid[] => invoice ? [el("span", { class: "nowrap" }, `${dollars(invoice.amount)} / ${view!.years} years`)]
-  : [el("span", { class: "nowrap" }, `${view!.years} years`), SEP, "With a code"]
+function termLine({ view, invoice }: OrderState): Kid[] {
+  const paid = costOf(view!, invoice)
+  if (!paid) return [el("span", { class: "nowrap" }, `${view!.years} years`), SEP, "With a code"]
+  const { cost, fromBalance } = paid
+  return [el("span", { class: "nowrap" }, `${dollars(cost)} / ${view!.years} years`),
+    fromBalance ? [SEP, el("span", { class: "nowrap" }, fromBalance === cost ? "Paid from your balance" : `${dollars(fromBalance)} from your balance`)] : null]
+}
 
 // the order in one line, the lead of each screen that pays or registers it
 function orderLine(s: OrderState): Kid[] {
@@ -460,7 +465,7 @@ function turnOff<T extends HTMLElement>(details: T, off: boolean): T {
 
 const partSeen = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Part of the payment arrived: ${invoice.cryptoAmountPaid} of ${invoice.cryptoAmount} ${TICKER[coin]} is seen.`
 const restAsked = (invoice: api.InvoiceView, coin: "btc" | "xmr") => `Send the remaining ${invoice.cryptoAmountDue} ${TICKER[coin]} to the same address.`
-const INVOICE_EXPIRED = "The invoice expired before the full amount arrived. Don't send more; what you sent is refunded."
+const INVOICE_EXPIRED = "The invoice expired before the full amount arrived. Don't send more; what you sent is kept as your balance."
 
 // A part-paid invoice stays open past its rate window until it closes, and past the window asks for no more: of its
 // payment controls only the address stays. When the window ends in view, the words and controls that ask for more are
@@ -605,6 +610,7 @@ function cardStandIn(form: HTMLElement): void {
 const withoutRecord = (cls: string, text = "Enter your name code") => btn(text, cls, () => go(CODE_FROM_ORDER_URL))
 
 const CLOSED_TITLE = "Invoice closed"
+const KEPT_LATE = "kept as your balance for another name, or refunded on request; Your names shows it."
 const partlyPaid = (invoice: api.InvoiceView) => Number(invoice.cryptoAmountPaid ?? "0") > 0
 
 function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
@@ -620,12 +626,12 @@ function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
 
 function closedWords(closed: ClosedCase, inv: api.InvoiceView): [Tone, Kid] {
   switch (closed) {
-    case "paid-late": return ["warn", "The payment arrived after this invoice had closed, so nothing was registered. Support refunds it: quote the reference below."]
+    case "paid-late": return ["warn", `The payment arrived after this invoice had closed, so nothing was registered. It is ${KEPT_LATE}`]
     case "cancelled": return ["info", "This invoice was cancelled and nothing was received."]
     case "received": {
       const coin = coinOf(inv)
       const arrived = coin && partlyPaid(inv) && !inv.paidInFull ? `${inv.cryptoAmountPaid} ${TICKER[coin]} arrived, which is not the full amount.` : "A payment did not complete before the invoice closed."
-      return ["warn", [`${arrived} Write to `, el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with the reference below and we will sort it out."]]
+      return ["warn", `${arrived} Once confirmed, it is ${KEPT_LATE}`]
     }
     case "expired": return ["info", inv.cryptoCurrency ? "Nothing was received before it closed." : "Nothing was paid before it closed."]
   }

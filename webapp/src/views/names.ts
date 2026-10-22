@@ -2,12 +2,12 @@
 import * as api from "../api.ts"
 import { alertBox, btn, chip, codeDisplay, copyButton, el, type Kid, nameText, nameTitle, reducedMotion, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, dollars, methodName, SEP } from "../format.ts"
+import { dateOf, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import { qrSvg } from "../qr.ts"
 import {
   CODE_CHIPS, EDIT_RETRY_MS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
-  againLine, initialRestore, lapsed, LINK_NAMES, ranOut, moneyReached, listedOrders, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
+  againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, listedOrders, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
   reduceList, reduceRestore, REFUSALS, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
 import { checkoutUrl, CODE_URL } from "../screens/routes.ts"
@@ -235,18 +235,14 @@ const continued = (text: string | null) => text ? text.charAt(0).toLowerCase() +
 // the reference support asks for, in a face where l and I differ
 const reference = (id: string) => [`${SEP}reference `, el("span", { class: "mono" }, id)]
 
-const recordedPaid = (o: store.OrderRecord) => o.method === "code" ? "Paid with a code" : `${dollars(o.paid)} ${methodName(o.method)}`
-
 function subLine(o: store.OrderRecord, { view, invoice, answer }: RowSeen, now: number): string | (Node | string)[] {
   // what was paid, from the invoice; the record's amount is the order's worth, lower after a move to a cheaper name
-  const paid = invoice ? `${dollars(invoice.amount)} ${methodName(invoice.cryptoCurrency ?? "card")}` : recordedPaid(o)
+  const paid = paidLine(o, view, invoice)
   if (lapsed({ view, answer }, now)) return `Expired ${view.expiresAt ? dateOf(view.expiresAt) : ""}`.trim()
   if (view.phase === "registered") return view.expiresAt ? `Until ${dateOf(view.expiresAt)}` : paid
-  if (invoice?.status === "paid" && view.phase === "unpaid") return ["Paid after the invoice closed; support refunds it", ...reference(invoice.invoiceId)]
-  if (invoice?.status === "expired" && view.phase === "unpaid") {
-    const part = Number(invoice.cryptoAmountPaid ?? "0") > 0 && !invoice.paidInFull
-    const arrived = part ? "Part of the payment arrived" : api.holdsPayment(invoice) ? "A payment did not complete before the invoice closed" : null
-    return arrived ? [`${arrived}; support sorts it out`, ...reference(invoice.invoiceId)] : `Nothing was charged${SEP}${dateOf(Date.parse(o.createdAt) / 1000)}`
+  if (invoice && invoice.status !== "open" && view.phase === "unpaid") {
+    const late = lateLine(invoice)
+    return late ? [late, ...reference(invoice.invoiceId)] : `Nothing was charged${SEP}${dateOf(Date.parse(o.createdAt) / 1000)}`
   }
   if (view.phase === "taken" && o.method === "code") return "Paid with a code, released for another name"
   if (waitsToSign(view, now)) return `Open the order so this browser can sign it${SEP}${continued(paid)}`
@@ -278,7 +274,7 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
     : [codeToggle(id, shown), edits ? small(hasLinks(o, seen.answer) ? "Edit links" : "Add links", `${id}-edit`, () => go(`/#/edit/${id}`)) : null]
   // a registered name shows the chats it opens, as the home's answer does
   const chats = registered && seen.answer?.status === "registered" ? seen.answer.entities.map(chatPicture) : []
-  return row(id, nameTitle(label, "name", tld), seen ? subLine(o, seen, s.now) : recordedPaid(o), rowChip(s, o, seen),
+  return row(id, nameTitle(label, "name", tld), seen ? subLine(o, seen, s.now) : paidLine(o, null, null), rowChip(s, o, seen),
     [chats.length ? el("span", { class: "chats" }, chats) : null, ...acts], shown ? rowCode(code) : null)
 }
 

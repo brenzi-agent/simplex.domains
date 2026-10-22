@@ -729,7 +729,7 @@ test("an invoice that closed while its payment was confirming says a payment rea
   await shot(page, "N12f-history-expired-paid")
 })
 
-const INVOICE_EXPIRED = "The invoice expired before the full amount arrived. Don't send more; what you sent is refunded."
+const INVOICE_EXPIRED = "The invoice expired before the full amount arrived. Don't send more; what you sent is kept as your balance."
 // the controls that ask for more of the payment, which go once the rate expires; the address and the reference stay
 const payMore = (page: Page) => [
   onStep(page).getByRole("img", { name: "Bitcoin payment" }),
