@@ -214,7 +214,7 @@ function balanceChangeLine(s: CheckoutState): HTMLElement | null {
   }
   switch (c.balanceChange) {
     case undefined: return null
-    case "gone": return line("warn", "wallet", "Your balance was spent or refunded meanwhile, so this order is paid in full.")
+    case "gone": return line("warn", "wallet", "Your balance was spent or refunded meanwhile, so you pay the whole price.")
     case "changed": return line("warn", "wallet", `Your balance changed to ${dollars(c.balance!.amount)} meanwhile. Check what is left to pay.`)
   }
 }

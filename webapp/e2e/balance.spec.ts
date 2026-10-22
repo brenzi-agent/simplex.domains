@@ -134,7 +134,7 @@ test("a difference invoice cancelled frees its balance, which Order the name aga
   expect([third.amount, third.registration.price, third.registration.fromBalance]).toEqual([10000, 20000, 10000])
 })
 
-test("the name code shows the balance in another browser, a spend meeting a refund says so, and a refund support records shows as refunded", async ({ page, browser, request }) => {
+test("the name code shows the balance in another browser, a spend meeting a refund asks the whole price, and a refund support records shows as refunded", async ({ page, browser, request }) => {
   const label = uniqueLabel("bref")
   const { invoiceId, ownerCode } = await takenOrder(page, request, label)
   const kept = `$100From ${label}.simplex, registered by someone else first`
@@ -152,7 +152,7 @@ test("the name code shows the balance in another browser, a spend meeting a refu
   await toReview(page)
   await control(request, `refund/${invoiceId}`)
   await onStep(page).getByRole("button", { name: "Register with your balance" }).click()
-  await expect(onStep(page).getByText("Your balance was spent or refunded meanwhile, so this order is paid in full.")).toBeVisible()
+  await expect(onStep(page).getByText("Your balance was spent or refunded meanwhile, so you pay the whole price.")).toBeVisible()
   await expect(chip(page)).toBeHidden()
   await expect(onStep(page).locator(".trow.total")).toHaveText(/^Total\s*\$100$/)
   await expect(payButton(page)).toHaveText("Pay $100 with Bitcoin")
