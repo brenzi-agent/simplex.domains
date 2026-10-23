@@ -77,12 +77,15 @@ const pause = (ms: number, signal: AbortSignal) => new Promise<void>((done) => {
 
 // The balance as its order reads now, in the tab and on the review. While an invoice holds it, Pay waits: the holder,
 // as the code's find names it, is followed until its invoice closes; else the balance is read again when the hold can
-// end, or after a pause while the holder's payment is confirming. Reads are never closer than the minimum, on the
-// service's clock, and find, which has a tight limit of its own, is asked again only after the wait a refusal names.
+// end, or after a pause while the holder's payment is confirming. A find that names no holder of a balance read held
+// answered after the hold ended, so the balance is read again at once. Reads are never closer than the minimum, on the
+// service's clock, and find, which has a tight limit of its own, is asked again only after the wait a refusal names, or
+// after a pause once it named no holder.
 async function watchBalance(source: string, signal: AbortSignal): Promise<void> {
   let holder: store.OrderRecord | null = null
   let findAfter = 0
   while (!signal.aborted) {
+    let unnamed = false
     const readAt = api.serviceNow()
     let balance: api.Balance | null
     try {
@@ -99,6 +102,10 @@ async function watchBalance(source: string, signal: AbortSignal): Promise<void> 
     if (!holder && paying && api.serviceNow() >= findAfter) {
       try {
         holder = await flow.balanceHolder(paying)
+        if (!holder) {
+          unnamed = true
+          findAfter = api.serviceNow() + CONFIRMING_READ_MS
+        }
       } catch (e) {
         findAfter = api.serviceNow() + (api.retryDelay(e, RETRY_MS) ?? CONFIRMING_READ_MS)
       }
@@ -110,7 +117,7 @@ async function watchBalance(source: string, signal: AbortSignal): Promise<void> 
     if (followed) await follow(holder!.invoiceId!, signal, (read) => holderStill(read, state.checkout.balance?.heldUntil ?? null))
     // a holder whose invoice closed may be followed by another, which find names on the next turn
     if (followed) holder = null
-    await pause(holdWait(state.checkout.balance?.heldUntil ?? null, followed, readAt, api.serviceNow()), signal)
+    await pause(holdWait(state.checkout.balance?.heldUntil ?? null, followed || unnamed, readAt, api.serviceNow()), signal)
   }
 }
 

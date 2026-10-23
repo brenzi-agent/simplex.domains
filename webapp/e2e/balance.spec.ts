@@ -203,6 +203,44 @@ test("a review whose balance another order's open invoice holds turns its button
   await other.close()
 })
 
+test("a review whose balance's holder closes while find is asked for it reads the balance again at once, rather than at the hold's end", async ({ page, request }) => {
+  await takenOrder(page, request, uniqueLabel("brace"))
+  await page.getByRole("button", { name: "Choose another name" }).click()
+  await search(page, uniqueLabel("bracec"))
+  await toReview(page)
+  const register = onStep(page).getByRole("button", { name: "Register with your balance" })
+  await expect(register).toBeEnabled()
+  const other = await page.context().newPage()
+  await yourNames(other)
+  await balanceRow(other).getByRole("button", { name: "Use" }).click()
+  await search(other, sevenLetters())
+  await toReview(other)
+  await payButton(other).click()
+  await other.waitForURL(/\?order=/)
+  await expect(onStep(other).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+
+  // the review's find is answered only after the holder's invoice closed, so it names no holder of the balance it read held
+  let answer: () => void = () => undefined
+  const answered = new Promise<void>((resolve) => { answer = resolve })
+  await page.route("**/api/registration/find", async (route) => {
+    await answered
+    await route.continue()
+  })
+  const asked = page.waitForRequest("**/api/registration/find")
+  await register.click()
+  const held = onStep(page).locator(".line", { hasText: "Your balance is in use by" })
+  await expect(held).toBeVisible()
+  await asked
+  const cancelled = other.waitForResponse((r) => r.url().endsWith("/cancel") && r.ok())
+  await onStep(other).getByRole("button", { name: "Cancel this invoice" }).click()
+  await cancelled
+  answer()
+  await expect(held).toHaveCount(0)
+  await expect(register).toBeEnabled()
+  await page.unrouteAll({ behavior: "wait" })
+  await other.close()
+})
+
 test("a balance held by another browser's invoice whose payment is confirming past its expiry names that order, says so without a time, and is read at a pause", async ({ page, browser, request }) => {
   const { ownerCode } = await takenOrder(page, request, uniqueLabel("bconf"))
   // this browser's own invoice for the difference, expired since: an order of the balance that holds nothing

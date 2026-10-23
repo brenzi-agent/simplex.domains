@@ -15,8 +15,9 @@ export const holderStill = (invoice: InvoiceView | null, heldUntil: string | nul
   invoice?.status === "open" && !(heldUntil !== null && holdsPayment(invoice))
 
 // The wait before a held balance is read again, from the read at `readAt`: until its holder's invoice expires, or a
-// confirming pause, and never less than the minimum. A holder followed until it closed needs only the minimum.
-export function holdWait(heldUntil: string | null, followed: boolean, readAt: number, now: number): number {
-  const due = followed ? readAt : heldUntil ? Date.parse(heldUntil) : readAt + CONFIRMING_READ_MS
+// confirming pause, and never less than the minimum. A hold that may have ended, its holder followed until it closed or
+// no longer named by find, needs only the minimum.
+export function holdWait(heldUntil: string | null, ended: boolean, readAt: number, now: number): number {
+  const due = ended ? readAt : heldUntil ? Date.parse(heldUntil) : readAt + CONFIRMING_READ_MS
   return Math.max(0, Math.max(due, readAt + BALANCE_READ_MS) - now)
 }
