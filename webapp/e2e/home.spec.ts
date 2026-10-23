@@ -160,6 +160,44 @@ test("a phone's header is the symbol and a menu button, whose menu over the page
   await expect(menu).toBeHidden()
 })
 
+// the open menu's items, in their order
+const MENU_ITEMS = ["Find a name", "Check your code", "Your names", "Invest on Wefunder", "Trademark owners", "simplex.chat/contact", "Dark theme"]
+// the name of what has focus, and whether the open menu is the topmost thing at its middle, as a reader would see it
+const focused = (page: Page) => page.evaluate(() => {
+  const at = document.activeElement as HTMLElement
+  const box = at.getBoundingClientRect()
+  const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+  return { name: at.getAttribute("aria-label") ?? at.innerText.trim(), seen: top !== null && (at === top || at.contains(top)) }
+})
+
+test("Tab keeps to the open phone menu and its button, never reaching the page under it, until the menu closes", async ({ page }) => {
+  await page.setViewportSize(PHONE)
+  await search(page, "bakery")
+  const button = page.locator("body > header").getByRole("button", { name: "Menu" })
+  await button.focus()
+  await page.keyboard.press("Enter")
+  const stops = []
+  for (let i = 0; i <= MENU_ITEMS.length; i++) {
+    await page.keyboard.press("Tab")
+    stops.push(await focused(page))
+  }
+  expect(stops, "each Tab from the menu button").toEqual([...MENU_ITEMS, "Close menu"].map((name) => ({ name, seen: true })))
+  await page.keyboard.press("Shift+Tab")
+  expect(await focused(page), "Shift+Tab from the menu button").toEqual({ name: MENU_ITEMS.at(-1), seen: true })
+  await expect(page.getByLabel("Name", { exact: true }), "the page under the menu").not.toBeFocused()
+  await page.keyboard.press("Escape")
+  await expect(button).toBeFocused()
+  await page.keyboard.press("Tab")
+  await expect(page.getByRole("navigation", { name: "Menu" })).toBeHidden()
+  expect((await focused(page)).seen, "the closed menu's first stop is on the page").toBe(true)
+
+  // a menu left open as the window widens leaves the page usable
+  await button.click()
+  await page.setViewportSize(LAPTOP)
+  await page.getByLabel("Name", { exact: true }).focus()
+  await expect(page.getByLabel("Name", { exact: true })).toBeFocused()
+})
+
 test("an empty link field pastes the link copied in the app, and its chat then shows with its kind", async ({ page, context, browserName }) => {
   test.skip(browserName !== "chromium", "only Chromium lets a test grant the page a read of what was copied")
   await context.grantPermissions(["clipboard-read", "clipboard-write"])

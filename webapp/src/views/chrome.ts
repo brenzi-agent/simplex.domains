@@ -6,15 +6,29 @@ import { onDrawn, onPageLeft, refresh } from "./shell.ts"
 
 const menuButton = () => document.querySelector<HTMLButtonElement>(".menu-button")!
 const menu = () => document.querySelector<HTMLElement>("#menu")!
+// the window the menu button shows in (styles.css)
+const PHONE = "(max-width: 520px)"
+// what the open menu covers, which takes neither focus nor a click meanwhile
+const COVERED = "body > main, body > .invest, body > footer"
 
 function setMenu(open: boolean): void {
   menu().hidden = !open
+  for (const part of document.querySelectorAll<HTMLElement>(COVERED)) part.inert = open
   menuButton().setAttribute("aria-expanded", String(open))
   menuButton().setAttribute("aria-label", open ? "Close menu" : "Menu")
 }
 
 function closeMenu(): void {
   if (!menu().hidden) setMenu(false)
+}
+
+// Tab goes round the menu button and the open menu's items, the only controls in view under the header's symbol
+function keepFocusIn(e: KeyboardEvent): void {
+  const stops = [menuButton(), ...menu().querySelectorAll<HTMLElement>("a, button")]
+  const [edge, next] = e.shiftKey ? [stops[0], stops.at(-1)!] : [stops.at(-1)!, stops[0]]
+  if (document.activeElement !== edge) return
+  e.preventDefault()
+  next.focus()
 }
 
 const chip = () => document.querySelector<HTMLElement>(".code-chip")!
@@ -53,9 +67,13 @@ export function setUpChrome(): void {
   // a link in the menu leaves it closed behind the page it opens, as does any other page reached meanwhile
   menu().addEventListener("click", (e) => { if ((e.target as Element).closest("a")) closeMenu() })
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || menu().hidden) return
+    if (menu().hidden) return
+    if (e.key === "Tab") return keepFocusIn(e)
+    if (e.key !== "Escape") return
     closeMenu()
     menuButton().focus()
   })
   onPageLeft(closeMenu)
+  // a window widened past a phone's has no menu, so one left open closes
+  matchMedia(PHONE).addEventListener("change", (e) => { if (!e.matches) closeMenu() })
 }
