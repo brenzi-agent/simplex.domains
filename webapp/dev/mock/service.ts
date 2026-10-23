@@ -153,9 +153,10 @@ const taking = new Map<string, Promise<void>>()
 // until unsentUntil, no transaction goes out, as a chain that fails before the send; until unreadUntil, the view's own chain
 // reads fail; each write to a registration waits writeDelayMs before its check, so a test can race two
 // the next reveal finds its links refused, as the service's link check would if it no longer took what the page took;
+// a fetch of a link in fetchDelays takes that many milliseconds;
 // a late payment is credited at the lower of its invoice's rate and the coin's current rate in cents, when one is set
-const control: { chainDown: boolean; limitedUntil: number; invoiceError: string | null; findLimitedUntil: number; unsentUntil: number; unreadUntil: number; writeDelayMs: number; refuseLinks: boolean; rates: Record<Coin, bigint | null> } =
-  { chainDown: false, limitedUntil: 0, invoiceError: null, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0, writeDelayMs: 0, refuseLinks: false, rates: { btc: null, xmr: null } }
+const control: { chainDown: boolean; limitedUntil: number; invoiceError: string | null; findLimitedUntil: number; unsentUntil: number; unreadUntil: number; writeDelayMs: number; refuseLinks: boolean; fetchDelays: Record<string, number>; rates: Record<Coin, bigint | null> } =
+  { chainDown: false, limitedUntil: 0, invoiceError: null, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0, writeDelayMs: 0, refuseLinks: false, fetchDelays: {}, rates: { btc: null, xmr: null } }
 
 const sendTx: typeof send = (...args) => Date.now() < control.unsentUntil ? Promise.reject(new NotSent()) : send(...args)
 // Stripe's least charge in US dollars
@@ -299,14 +300,34 @@ function linkProfile(link: string): Profile | null {
   }
 }
 
-function entity(link: string) {
+// A profile that was read is kept this long, as the service caches it; one not read now is fetched again.
+const PROFILE_CACHE_MS = 10 * 60_000
+const readProfiles = new Map<string, { profile: Profile; until: number }>()
+
+// The link's profile as a fetch gives it: a link not fetched answers at once, and a fetch takes the delay a test set for its link.
+async function fetchedProfile(link: string): Promise<Profile | null> {
   const profile = linkProfile(link)
+  if (profile === null || profile.profile === "unavailable") return profile
+  const kept = readProfiles.get(link)
+  if (kept && kept.until > Date.now()) return kept.profile
+  const delay = control.fetchDelays[link]
+  if (delay) await sleep(delay)
+  if (profile.profile === "ok") {
+    const now = Date.now()
+    for (const [cached, { until }] of readProfiles) if (until <= now) readProfiles.delete(cached)
+    readProfiles.set(link, { profile, until: now + PROFILE_CACHE_MS })
+  }
+  return profile
+}
+
+async function entity(link: string) {
+  const profile = await fetchedProfile(link)
   return profile && { ...profile, link, deepLink: deepLinkOf(link) }
 }
 
 // the short links of the key's kind in its record, in the record's order
-const entitiesOf = (kind: LinkKind, text: string) =>
-  splitLinks(text).filter((link) => linkProblem(kind, link) === null).slice(0, MAX_ENTITIES_PER_KEY).map(entity).filter((e) => e !== null)
+const entitiesOf = async (kind: LinkKind, text: string) =>
+  (await Promise.all(splitLinks(text).filter((link) => linkProblem(kind, link) === null).slice(0, MAX_ENTITIES_PER_KEY).map(entity))).filter((e) => e !== null)
 
 // --- search
 
@@ -340,7 +361,7 @@ export async function search(hash: string, lengthText: string | null): Promise<R
     // a failed read is not "no links": the page says the name could not be checked
     throw new HttpError(503, "provider_unavailable")
   }
-  const entities = [...entitiesOf("contact", contact), ...entitiesOf("channel", channel)]
+  const entities = [...await entitiesOf("contact", contact), ...await entitiesOf("channel", channel)]
   return { status: "registered", entities, records: { contact, channel }, owner: found.owner, resolver: found.resolver, recordsNonce: Number(nonce), expiresAt: found.expires, gracePeriod: found.grace, ...chain }
 }
 
@@ -1105,10 +1126,9 @@ export async function find(body: Record<string, unknown>): Promise<Record<string
     balanceSource: r.balanceSource, heldBy: heldBy(r.id) })) }
 }
 
-export function previewLink(body: Record<string, unknown>): Profile {
-  const profile = typeof body.link === "string" ? linkProfile(body.link) : null
-  if (!profile || new TextEncoder().encode(body.link as string).length > 4096) throw new HttpError(400, "invalid_link")
-  return profile
+export async function previewLink(body: Record<string, unknown>): Promise<Profile> {
+  if (typeof body.link !== "string" || linkProfile(body.link) === null || new TextEncoder().encode(body.link).length > 4096) throw new HttpError(400, "invalid_link")
+  return (await fetchedProfile(body.link))!
 }
 
 // --- the records relay
@@ -1338,6 +1358,8 @@ export function controlSearch(body: Record<string, unknown>): Record<string, unk
   if (typeof body.unreadSeconds === "number") control.unreadUntil = Date.now() + body.unreadSeconds * 1000
   if (typeof body.writeDelayMs === "number") control.writeDelayMs = body.writeDelayMs
   if (typeof body.refuseLinks === "boolean") control.refuseLinks = body.refuseLinks
+  const delays = body.fetchDelays
+  if (typeof delays === "object" && delays !== null && Object.values(delays).every((ms) => Number.isInteger(ms) && ms >= 0)) control.fetchDelays = delays as Record<string, number>
   return { ok: true }
 }
 
