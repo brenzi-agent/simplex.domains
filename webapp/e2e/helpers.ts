@@ -207,6 +207,16 @@ const METHOD_NAMES = { card: "Card", btc: "Bitcoin", xmr: "Monero" }
 export const onStep = (page: Page) => page.locator("body > main > section")
 export const payButton = (page: Page) => onStep(page).getByRole("button", { name: /^Pay / })
 
+// what the card page's note says of its name, in brief
+export const AVAILABLE_BRIEF = /^Available at \d\d:\d\d\. If someone registers it first, you keep the payment as balance\.$/
+export const TAKEN_BRIEF = /^Taken at \d\d:\d\d\. Don't pay this invoice: cancel it and choose another name\.$/
+
+// a configured key makes the order's page load Stripe.js
+export const withStripeKey = (page: Page) => page.route(/\/\?order=/, async (route) => {
+  const res = await route.fetch()
+  await route.fulfill({ response: res, body: (await res.text()).replace('name="stripe-publishable-key" content=""', 'name="stripe-publishable-key" content="pk_test_e2e"') })
+})
+
 // Check your code's field, which takes a prepaid code or a name code
 export const codeField = (page: Page) => onStep(page).getByRole("textbox", { name: "Code", exact: true })
 

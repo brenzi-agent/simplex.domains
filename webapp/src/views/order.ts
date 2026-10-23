@@ -452,20 +452,28 @@ function stopWatchingName(): void {
 function nameNote(s: OrderState): HTMLElement {
   watchName(s)
   const note = kept(NAME_NOTE, () => el("div", { class: "notice name-check unchecked", role: "status" }, el("span", {}), el("span", {})))
-  fillNameNote(note)
+  fillNameNote(note, s)
   return note
 }
 
-function fillNameNote(note: HTMLElement): void {
+function fillNameNote(note: HTMLElement, s: OrderState): void {
   const shown = JSON.stringify(nameCheck)
   if (note.dataset.shown === shown) return
   note.dataset.shown = shown
   const taken = nameTaken()
-  const at = ` (checked at ${timeOf(nameCheck?.at ?? Date.now())}). `
+  const time = timeOf(nameCheck?.at ?? Date.now())
+  const at = ` (checked at ${time}). `
+  const dontPay = "Don't pay this invoice: cancel it and choose another name."
   const [free, gone] = note.children
-  refill(free, el("b", {}, "The name is available"), at,
-    "If someone registers it before you pay and the registration succeeds, what you paid is kept as your balance for another name, or refunded on request.")
-  refill(gone, el("b", {}, "Someone has registered this name"), at, "Don't pay this invoice: cancel it and choose another name.")
+  // the card page says them in brief, so Stripe's form fits above Pay with a name of 63 letters
+  if (screenOf(s) === "pay-card") {
+    refill(free, el("b", {}, "Available"), ` at ${time}. If someone registers it first, you keep the payment as balance.`)
+    refill(gone, el("b", {}, "Taken"), ` at ${time}. ${dontPay}`)
+  } else {
+    refill(free, el("b", {}, "The name is available"), at,
+      "If someone registers it before you pay and the registration succeeds, what you paid is kept as your balance for another name, or refunded on request.")
+    refill(gone, el("b", {}, "Someone has registered this name"), at, dontPay)
+  }
   free.classList.toggle("sizer", taken)
   gone.classList.toggle("sizer", !taken)
   note.classList.toggle("danger", taken)
@@ -476,7 +484,7 @@ function fillNameNote(note: HTMLElement): void {
 function showNameCheck(): void {
   if (!isRoute(pageRoute) || !checksName(state)) return
   const note = document.querySelector<HTMLElement>("body > main .name-check")
-  if (note) fillNameNote(note)
+  if (note) fillNameNote(note, state)
   if (payDetails) turnOff(payDetails, nameTaken())
   if (payButton) setAction(payButton, state.busy === "card", card === null || nameTaken())
 }
@@ -609,6 +617,8 @@ async function payByCard(): Promise<void> {
   dispatch({ type: "card-submitted", at })
 }
 
+const STRIPE_NOTE = "The card form is Stripe's. Nothing is charged until you pay."
+
 function buildPayCard(s: OrderState): HTMLElement {
   const invoice = s.invoice!
   const form = kept("stripe-form", () => el("div", { class: "stripe" }))
@@ -620,8 +630,10 @@ function buildPayCard(s: OrderState): HTMLElement {
   // a submitted card is remembered only in storage; without it, a reload would offer the form again
   const forgetful = store.canPersist() ? null : alertBox("warn", "alert", "This browser cannot remember a card payment",
     "After paying, keep this page open until it moves on. Reloading would show the card form again.")
-  return screen({ title: "Pay by card", lead: orderLine(s), action: payButton, alt: cancelLink(s) }, note, insteadLine(invoice), forgetful, form,
-    el("p", { class: "note center" }, "The card form is Stripe's. Nothing is charged until you pay."), actionNote(s, null))
+  // Stripe's note is under the form, or on a phone under Pay and Cancel, so the form fits above Pay (styles.css)
+  const alt = el("span", {}, cancelLink(s), el("span", { class: "note stripe-note" }, STRIPE_NOTE))
+  return screen({ title: "Pay by card", lead: orderLine(s), action: payButton, alt }, note, insteadLine(invoice), forgetful, form,
+    el("p", { class: "note center stripe-note" }, STRIPE_NOTE), actionNote(s, null))
 }
 
 function cardStandIn(form: HTMLElement): void {

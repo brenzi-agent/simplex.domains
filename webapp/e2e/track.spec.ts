@@ -1,9 +1,9 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  agreeToTerms, brokenNames, CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
-  lineStarts, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, rowFit, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, test, toCodeStep,
-  toFullReview, toReview, uniqueLabel, useCode, waitRegistered,
+  agreeToTerms, AVAILABLE_BRIEF, brokenNames, CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
+  lineStarts, offCentre, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, rowFit, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, test, toCodeStep,
+  toFullReview, toReview, uniqueLabel, useCode, waitRegistered, withStripeKey,
 } from "./helpers.ts"
 
 test("the purchase steps swap the whole page, one screen at a time rising in, and Back walks them in reverse", async ({ page }) => {
@@ -214,6 +214,88 @@ test("the balance's steps fit both windows, their heading, main button and link 
   await fitsWindow(page, "b5-pay-difference-card", frames)
   oneFrame(frames)
 })
+
+// Stripe's card form at the column's full width, as tall as styles.css reserves for it (.stripe): Stripe.js dahlia
+// draws it 221-230 px tall on the 600 px column and 306-320 px on a phone's
+const STRIPE_FORM_PX = { laptop: 230, phone: 320 }
+// a Stripe.js whose card form comes when the test calls __loadCard, at Stripe's height for the window
+const STRIPE_FORM_ON_CUE = `window.Stripe = () => ({ elements: () => ({ create: () => {
+  const handlers = {}
+  return { on: (event, handler) => { handlers[event] = handler }, destroy: () => undefined, mount: (target) => {
+    window.__loadCard = () => {
+      const form = document.createElement("div")
+      form.style.height = matchMedia("(min-width: 632px)").matches ? "${STRIPE_FORM_PX.laptop}px" : "${STRIPE_FORM_PX.phone}px"
+      target.append(form)
+      handlers.ready?.()
+    }
+  } }
+} }) })`
+// the least room between Stripe's note under Cancel on a phone and the invest note under the step
+const ROOM_ABOVE_INVEST = 24
+
+// where the card page draws each of its parts, the lines of its notes, and the room its step's rows keep between them
+const cardPage = (page: Page) => page.evaluate(() => {
+  const shown = (selector: string) => [...document.querySelectorAll<HTMLElement>(`body > main ${selector}`)].find((n) => n.getClientRects().length > 0) ?? null
+  const box = (selector: string) => {
+    const b = shown(selector)?.getBoundingClientRect()
+    return b ? { top: Math.round(b.top), bottom: Math.round(b.bottom) } : null
+  }
+  const lines = (n: Element | null) => {
+    if (!n) return 0
+    const range = document.createRange()
+    range.selectNodeContents(n)
+    return new Set([...range.getClientRects()].map((r) => Math.round(r.bottom))).size
+  }
+  const invest = document.querySelector("body > .invest p")!.getBoundingClientRect()
+  return {
+    heading: box("h1"), lead: box(".screen-head .lead"), nameNote: box(".name-check"), form: box(".stripe"), button: box(".actions-row > .btn"), link: box(".actions-row > .alt"), cancel: box(".actions-row .alt a"),
+    stripeNote: box(".stripe-note"), stripeNoteUnderPay: shown(".actions-row .stripe-note") !== null, investTop: Math.round(invest.top),
+    nameNoteLines: lines(shown(".name-check > :not(.sizer)")), stripeNoteLines: lines(shown(".stripe-note")),
+    content: Math.round(Math.max(...[...document.querySelectorAll("body > main .screen-body > *")].map((n) => n.getBoundingClientRect()).filter((b) => b.height > 0).map((b) => b.bottom))),
+    rowGap: parseFloat(getComputedStyle(document.querySelector("body > main > section")!).rowGap),
+  }
+})
+
+for (const length of [10, MAX_LABEL_LENGTH]) {
+  test(`the card page keeps still as Stripe's form loads at its full height, which fits above Pay at a laptop's and a phone's size, light and dark, for a name of ${length} letters`, async ({ page }) => {
+    const label = `${uniqueLabel("cardfit")}${wideLabel(MAX_LABEL_LENGTH)}`.slice(0, length)
+    await startOrder(page, label, { method: "card" })
+    await withStripeKey(page)
+    await page.route("https://js.stripe.com/**", (route) => route.fulfill({ contentType: "text/javascript", body: STRIPE_FORM_ON_CUE }))
+    for (const [i, size] of FIT_SIZES.entries()) {
+      const phone = size === FIT_SIZES[1]
+      const at = `${size.width}x${size.height}`
+      await page.setViewportSize(size)
+      await page.reload()
+      await expect(onStep(page).locator(".name-check:not(.unchecked) > :not(.sizer)"), at).toHaveText(AVAILABLE_BRIEF)
+      await expect(payButton(page), `${at}: Pay waits for the form`).toBeDisabled()
+      const before = await cardPage(page)
+      await page.evaluate(() => (window as unknown as { __loadCard: () => void }).__loadCard())
+      await expect(payButton(page), `${at}: Pay once the form is ready`).toBeEnabled()
+      for (const dark of [false, true]) {
+        await page.evaluate((d) => document.documentElement.classList.toggle("dark", d), dark)
+        expect(await cardPage(page), `${at}${dark ? ", dark" : ""}: every part where it was before the form loaded`).toEqual(before)
+      }
+      await page.evaluate(() => document.documentElement.classList.remove("dark"))
+      const { form, button, link, cancel, stripeNote, stripeNoteUnderPay, investTop, nameNoteLines, stripeNoteLines, content, rowGap } = before
+      expect(form!.bottom - form!.top, `${at}: the room held for Stripe's form`).toBe(phone ? STRIPE_FORM_PX.phone : STRIPE_FORM_PX.laptop)
+      expect([button!.top, link!.top], `${at}: Pay and Cancel where every step's button and link are`).toEqual([MOCKUP_FRAMES[i].button, MOCKUP_FRAMES[i].link])
+      expect(content + rowGap, `${at}: the content above Pay, the step's row gap between`).toBeLessThanOrEqual(button!.top)
+      expect(nameNoteLines, `${at}: the name's note's lines`).toBe(phone ? 2 : 1)
+      expect(stripeNoteLines, `${at}: Stripe's note's lines`).toBe(1)
+      expect(stripeNoteUnderPay, `${at}: Stripe's note under Pay`).toBe(phone)
+      if (phone) {
+        expect(stripeNote!.top, `${at}: Stripe's note under Cancel`).toBeGreaterThanOrEqual(cancel!.bottom)
+        expect(investTop - stripeNote!.bottom, `${at}: the room between Stripe's note and the invest note`).toBeGreaterThanOrEqual(ROOM_ABOVE_INVEST)
+        expect(await offCentre(onStep(page).locator(".actions-row .stripe-note")), `${at}: Stripe's note centred`).toBeLessThanOrEqual(1)
+      } else {
+        expect(stripeNote!.top, `${at}: Stripe's note under the form`).toBeGreaterThan(form!.bottom)
+      }
+      expect(await overflow(page), at).toBe(0)
+    }
+    await shot(page, `names-u1-5d-pay-card-stripe-${length}`)
+  })
+}
 
 const FIT_INVOICE = "inv-fitall"
 // an invoice of a kept order, as the service answers it, for a page to draw

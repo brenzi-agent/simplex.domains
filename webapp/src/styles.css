@@ -254,8 +254,8 @@ body > main { grid-area: main; display: flex; flex-direction: column; min-width:
 .screen-body { --body-gap: 14px; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: var(--body-gap); }
 /* the main button centred, its text-link alternative under it */
 .actions-row { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.actions-row > .btn { min-width: 280px; }
-.actions-row > .alt { order: 1; font-size: 15px; }
+.actions-row > .btn { flex-shrink: 0; min-width: 280px; }
+.actions-row > .alt { order: 1; font-size: 15px; text-align: center; }
 /* with no main button, the link keeps the place it has under one */
 .actions-row:not(:has(> .btn)) { padding-top: calc(var(--control-h) + 10px); }
 .end-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; font-size: 15px; }
@@ -441,6 +441,8 @@ svg.qr { display: block; width: 132px; height: auto; }
 .notice.name-check b { display: inline; font-weight: 600; color: var(--ink); }
 .notice.name-check.danger b { color: inherit; }
 .notice.name-check.unchecked { visibility: hidden; opacity: 0; }
+/* a phone's card page says Stripe's note under Pay */
+.actions-row .stripe-note { display: none; }
 html:not(.theming) .notice.name-check { transition: background-color 200ms, border-color 200ms, color 200ms, opacity 200ms, visibility 200ms; }
 .card.pay, .stripe { transition: opacity 200ms; }
 :is(.card.pay, .stripe).off { opacity: .45; }
@@ -636,9 +638,12 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .table { padding: 2px 16px 4px; }
   .method { height: 72px; font-size: 14px; }
   .review:has(.line) .order .name { font-size: 16px; }
-  /* the card page tighter still, so a lead of two lines, the name's note, the form and its note fit above Pay */
+  /* the card page tighter still, so a lead of three lines, the name's note and Stripe's form fit above Pay, with Stripe's
+     note under Cancel in the room above the invest note */
   .screen-body:has(> .stripe) { gap: 6px; }
   .screen-body:has(> .stripe) > .name-check { padding-block: 6px; line-height: 1.4; }
+  .screen-body > .stripe-note { display: none; }
+  .actions-row .stripe-note { display: block; margin-top: 6px; font-size: 13px; line-height: 1.4; text-wrap: balance; }
   /* a QR is for another device; a phone opens its wallet from the link under the address */
   .qr-grid { grid-template-columns: minmax(0, 1fr); }
   .qr-grid > .qr { display: none; }

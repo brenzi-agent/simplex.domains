@@ -7,7 +7,7 @@ import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
   blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, mockRegistration, onStep, oracleQuote, payButton, previewsShown, REGISTRATION_MS,
-  offCentre, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered,
+  offCentre, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered, withStripeKey, AVAILABLE_BRIEF, TAKEN_BRIEF,
 } from "./helpers.ts"
 
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
@@ -605,7 +605,8 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   // a whole amount has no cents, as the search and the order showed it
   await expect(onStep(page).locator(".screen-head .lead")).toContainText(/\u00b7 \$\d+ \/ 2 years$/)
   await expect(onStep(page).getByRole("button", { name: /^Pay \$\d+$/ })).toBeVisible()
-  await expect(onStep(page).getByText("The card form is Stripe's. Nothing is charged until you pay.")).toBeVisible()
+  // Stripe's note is drawn once, under the form here or under Pay on a phone
+  await expect(onStep(page).getByText("The card form is Stripe's. Nothing is charged until you pay.").filter({ visible: true })).toHaveCount(1)
   // the development stand-in says what it is, and the invoice can be cancelled from the form as from a crypto invoice
   await expect(onStep(page).getByText("Development: no card is checked.")).toBeVisible()
   await expect(onStep(page).getByRole("button", { name: "Cancel this invoice" })).toBeVisible()
@@ -1032,12 +1033,6 @@ test("an unknown order link says so", async ({ page }) => {
   await shot(page, "N11-unknown")
 })
 
-// a configured key makes the order's page load Stripe.js
-const withStripeKey = (page: Page) => page.route(/\/\?order=/, async (route) => {
-  const res = await route.fetch()
-  await route.fulfill({ response: res, body: (await res.text()).replace('name="stripe-publishable-key" content=""', 'name="stripe-publishable-key" content="pk_test_e2e"') })
-})
-
 test("a card form that does not load says so and offers a new invoice", async ({ page }) => {
   const label = uniqueLabel("nocard")
   const { invoiceId } = await startOrder(page, label, { method: "card" })
@@ -1224,13 +1219,24 @@ test("a Bitcoin page checks its name as it opens and every 5 minutes; taken mean
   await expect(onStep(page).locator(".card.pay")).toHaveJSProperty("inert", true)
 })
 
-test("a card page whose name was taken meanwhile turns its form and Pay off", async ({ page }) => {
+test("a card page whose name was taken meanwhile says so in brief and turns its form and Pay off, nothing on it moving", async ({ page }) => {
   await startOrder(page, uniqueLabel("chkcard"), { method: "card" })
-  await expect(onStep(page).locator(".name-check:not(.unchecked) > :not(.sizer)")).toHaveText(AVAILABLE)
+  const sentence = onStep(page).locator(".name-check:not(.unchecked) > :not(.sizer)")
+  await expect(sentence).toHaveText(AVAILABLE_BRIEF)
   await expect(onStep(page).getByRole("button", { name: /^Pay \$/ })).toBeEnabled()
+  const placesAtEachSize = async () => {
+    const places: string[][] = []
+    for (const size of FIT_SIZES) {
+      await page.setViewportSize(size)
+      places.push(await payPlaces(page))
+    }
+    return places
+  }
+  const before = await placesAtEachSize()
   await page.route("**/api/name/**", takenAnswer)
   await page.reload()
-  await expect(onStep(page).locator(".name-check:not(.unchecked) > :not(.sizer)")).toHaveText(TAKEN)
+  await expect(sentence).toHaveText(TAKEN_BRIEF)
+  expect(await placesAtEachSize(), "the heading, the note, the form and Cancel at a laptop's and a phone's size").toEqual(before)
   await expect(onStep(page).locator(".stripe")).toHaveJSProperty("inert", true)
   await expect(onStep(page).getByRole("button", { name: /^Pay \$/ })).toBeDisabled()
   await expect(onStep(page).getByRole("button", { name: "Cancel this invoice" })).toBeEnabled()
