@@ -219,6 +219,7 @@ test("Tab keeps to the open phone menu and its button, never reaching the page u
   // a menu left open as the window widens leaves the page usable
   await button.click()
   await page.setViewportSize(LAPTOP)
+  await expect(page.locator(".menu-button"), "the menu closed as the window widened").toHaveAttribute("aria-expanded", "false")
   await page.getByLabel("Name", { exact: true }).focus()
   await expect(page.getByLabel("Name", { exact: true })).toBeFocused()
 })
