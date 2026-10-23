@@ -117,7 +117,7 @@ export async function shot(page: Page, name: string): Promise<void> {
   await painted()
   // the pointer is moved off the page's controls, so no capture shows a hover
   await page.mouse.move(0, 0)
-  // an open dialog holds the page still, so a person sees the window, which its backdrop covers whole
+  // an open dialog is seen over the window, which its backdrop covers whole
   const dialogOpen = await page.locator(".modal[open]").count() > 0
   // Playwright's WebKit on Linux, drawing in software, takes each capture after a theme switch slower than the last,
   // past a test's time; its captures are a comparison set, so it keeps the light ones

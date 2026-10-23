@@ -48,8 +48,7 @@ test("a chat's picture opens its profile as the app's connection alert, which Es
   await news.click()
   const dialog = page.getByRole("dialog", { name: "Bakery news" })
   await expect(dialog).toBeVisible()
-  // headless Chromium hides its scrollbars yet keeps their room once asked to, which no browser a person uses does
-  if (browserName !== "chromium") expect(await headline(), "the page behind the popup keeps its place").toBe(before)
+  expect(await headline(), "the page behind the popup keeps its place").toBe(before)
   expect(await page.locator(".modal-backdrop").evaluate((n) => getComputedStyle(n).backdropFilter), "a flat scrim").toBe("none")
   await expect(dialog).toContainText("#bakery.simplex")
   await expect(dialog).toContainText("Daily bakes and opening hours")
@@ -89,6 +88,40 @@ test("a chat's picture opens its profile as the app's connection alert, which Es
   await page.evaluate(() => { location.hash = "#/names" })
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
   await expect(page.getByRole("dialog")).toHaveCount(0)
+})
+
+// The window's layout width and where a part of the page stands across it, which a scrollbar taken away would move,
+// and the box `cover` draws over the window, which must be the whole of it below `top`.
+const across = (page: Page, part: string, cover: string) => page.evaluate(([part, cover]) => {
+  const box = document.querySelector(cover)?.getBoundingClientRect()
+  return { width: document.documentElement.clientWidth, height: innerHeight, part: Math.round(document.querySelector(part)!.getBoundingClientRect().left),
+    cover: box ? { left: Math.round(box.left), right: Math.round(box.right), bottom: Math.round(Math.min(box.bottom, innerHeight)) } : null }
+}, [part, cover])
+const whole = (width: number, height: number) => ({ left: 0, right: width, bottom: height })
+
+test("a popup and the phone's menu cover the whole window, moving nothing behind them, at a laptop's and a phone's size", async ({ page }) => {
+  await answerWith(page, BAKERY)
+  for (const size of [LAPTOP, PHONE]) {
+    await page.setViewportSize(size)
+    await search(page, "bakery")
+    const news = page.locator(".answer").getByRole("button", { name: "Bakery news, channel" })
+    await expect(news).toBeVisible()
+    const shut = await across(page, ".search-field", ".modal-backdrop")
+    await news.click()
+    await expect(page.getByRole("dialog", { name: "Bakery news" })).toBeVisible()
+    expect(await across(page, ".search-field", ".modal-backdrop"), `the popup at ${size.width}x${size.height}`).toEqual({ ...shut, cover: whole(shut.width, shut.height) })
+    await page.keyboard.press("Escape")
+    await expect(page.getByRole("dialog")).toHaveCount(0)
+  }
+  // the menu is a phone's; it covers the page under the header down to the window's foot, however far the page is scrolled
+  const menu = page.getByRole("navigation", { name: "Menu" })
+  const shut = await across(page, ".menu-button", "#menu")
+  await page.getByRole("button", { name: "Menu" }).click()
+  await expect(menu).toBeVisible()
+  expect(await across(page, ".menu-button", "#menu"), `the menu at ${PHONE.width}x${PHONE.height}`).toEqual({ ...shut, cover: whole(shut.width, shut.height) })
+  await page.mouse.wheel(0, PHONE.height)
+  await expect.poll(() => page.evaluate(() => scrollY), "the page scrolled to its end").toBeGreaterThan(0)
+  expect((await across(page, ".menu-button", "#menu")).cover, "the menu scrolled to the page's end").toEqual(whole(shut.width, shut.height))
 })
 
 test("a phone's header is the symbol and a menu button, whose menu over the page leads everywhere the header and footer do", async ({ page }) => {
