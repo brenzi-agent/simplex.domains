@@ -499,6 +499,13 @@ test("a difference below the card's least charge is offered in Bitcoin and Moner
   for (const [size, top] of [[{ width: 1280, height: 800 }, 587], [{ width: 390, height: 844 }, 636]] as const) {
     await page.setViewportSize(size)
     expect(await payButton(page).evaluate((b) => Math.round(b.getBoundingClientRect().top)), `the button at ${size.width}x${size.height}`).toBe(top)
+    // the terms centred between the order above them and the button, as on every review, however little room the balance's rows leave
+    const off = await onStep(page).evaluate((step) => {
+      const terms = step.querySelector(".check.terms")!.getBoundingClientRect()
+      const above = Math.max(...[...step.querySelectorAll(".screen-body > :not(.mid)")].map((n) => n.getBoundingClientRect()).filter((b) => b.height > 0).map((b) => b.bottom))
+      return Math.abs((terms.top + terms.bottom) / 2 - (above + step.querySelector(".actions-row")!.getBoundingClientRect().top) / 2)
+    })
+    expect(off, `the terms' distance from the middle of their room at ${size.width}x${size.height}`).toBeLessThanOrEqual(1)
   }
   await page.setViewportSize({ width: 1280, height: 800 })
   await payButton(page).click()
