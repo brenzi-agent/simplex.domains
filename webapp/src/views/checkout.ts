@@ -1,6 +1,6 @@
 // The checkout's steps: the links the name opens, its name code, and Check your order with how it pays, and Pay.
 import * as api from "../api.ts"
-import { alertBox, announce, btn, codeDisplay, el, line, link, nameText, nameTitle, setAction } from "../dom.ts"
+import { alertBox, announce, btn, codeDisplay, el, line, link, nameText, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, freeDays, methodName, termEnd, termOf } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
@@ -21,7 +21,7 @@ import {
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./hold.ts"
 import { openedInstead, RETRY_MS } from "./order.ts"
-import { termsBox } from "./terms.ts"
+import { rowName, termsBox } from "./terms.ts"
 
 const CHECKOUT_NOTE = "checkout-note"
 const SAVED_LABEL = "I have saved my name code"
@@ -209,7 +209,7 @@ function orderCard(c: session.Checkout): HTMLElement {
   const { fromBalance, rest } = split(c)
   const side = c.balance ? el("b", { class: "price" }, dollars(c.price)) : chats.length ? el("span", { class: "chats" }, chats) : null
   return el("section", { class: "card order" },
-    el("div", { class: "row" }, nameTitle(c.label, "name", c.chain.tld), side),
+    el("div", { class: "row" }, rowName(c.label, c.chain.tld, c.community, "community"), side),
     el("div", { class: "table" },
       row("Term", termOf(y, freeDays(c.termStart, now))),
       row("Registered until", dateOf(termEnd(y, c.termStart, now))),

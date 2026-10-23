@@ -2,7 +2,7 @@
 import * as api from "../api.ts"
 import { labelHash } from "../crypto/registration.ts"
 import { hex } from "../crypto/wallet.ts"
-import { alertBox, btn, el, icon, type Kid, line, link, nameText, nameTitle, setAction, waitOut } from "../dom.ts"
+import { alertBox, btn, el, icon, type Kid, line, link, nameText, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dollars, letters } from "../format.ts"
 import { foldLabel, MAX_LABEL_LENGTH } from "../names.ts"
@@ -18,7 +18,7 @@ import { type Builder, CONTACT_EMAIL, currentRoute, draw, go, historyPlace, isRe
 import { chatButton } from "./chats.ts"
 import { moveLimitNote, noteBox } from "./order.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
-import { termsChangedLine, termsCheck } from "./terms.ts"
+import { rowName, termsChangedLine, termsCheck } from "./terms.ts"
 
 // word joiners keep "a–z" and "0–9" whole: a line may otherwise break after their dash
 const RANGES = "a\u2060–\u2060z, 0\u2060–\u20609"
@@ -327,7 +327,7 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
   const deal = code ? [el("b", { class: "price" }, "Free"), el("span", { class: "soft" }, ` / ${code.years} years`)]
     : [el("b", { class: "price" }, dollars(answer.price)), el("span", { class: "soft" }, ` / ${answer.years} years`)]
   return [
-    el("div", { class: "card row buy" }, nameTitle(label, "name", answer.tld), el("div", { class: "offer" }, el("span", { class: "deal" }, deal), button)),
+    el("div", { class: "card row buy" }, rowName(label, answer.tld, answer.community, "community"), el("div", { class: "offer" }, el("span", { class: "deal" }, deal), button)),
     !code && short ? el("p", { class: "hint" }, `Your code allows you to register a free name of ${short.minLength} or more letters. `,
       el("span", { class: "nowrap" }, `This name has ${label.length}.`)) : null,
     s.balance ? balanceLine(s.balance, answer.price) : null,
@@ -371,8 +371,8 @@ function takenAnswer(found: Found, answer: Extract<api.SearchAnswer, { status: "
     : el("span", { class: "soft" }, registering ? "Being registered" : "Taken")
   const name = `${label}.${answer.tld}`
   return [
-    el("div", { class: "card row" }, nameTitle(label, "name", answer.tld),
-      answer.entities.length ? el("span", { class: "chats" }, answer.entities.map((e, i) => chatButton(e, name, `chat-${i}`))) : null, whose),
+    el("div", { class: "card row" }, rowName(label, answer.tld, answer.community, "community"),
+      answer.entities.length ? el("span", { class: "chats" }, answer.entities.map((e, i) => chatButton(e, name, `chat-${i}`, answer.community !== null))) : null, whose),
     lapsed ? line("", "clock", lapsed) : registering ? line("", "clock", "Someone is registering it right now. Its owner and links show once it is on chain.") : null,
   ]
 }

@@ -72,6 +72,7 @@ const COMMUNITY_TERMS = "/community"
 
 export const termsFor = (terms: Terms, community: Community | null) => community ? `${terms.version}${COMMUNITY_TERMS}` : terms.version
 export const currentTerms = (a: { terms: Terms; community: Community | null }) => termsFor(a.terms, a.community)
+export const communityAgreed = (terms: string | null | undefined) => terms?.endsWith(COMMUNITY_TERMS) === true
 
 export type SearchAnswer =
   | ({ status: "available"; price: number; currency: string; years: number; termStart: number; community: Community | null; terms: Terms } & ChainInfo)

@@ -93,8 +93,9 @@ export function nameText(label: string, tld: string, after = ""): HTMLSpanElemen
   return el("span", { class: "nt" }, nameHead(label), el("span", { class: "nowrap" }, `${nameTail(label)}.${tld}${after}`))
 }
 
-export function nameTitle(label: string, cls = "name", tld = "simplex"): HTMLDivElement {
-  return el("div", { class: cls }, nameHead(label), el("span", { class: "nowrap" }, nameTail(label), el("span", { class: "tld" }, `.${tld}`)))
+// `after` is a label that belongs to the name, kept with its last letters, so it never starts a line alone
+export function nameTitle(label: string, cls = "name", tld = "simplex", ...after: Kid[]): HTMLDivElement {
+  return el("div", { class: cls }, nameHead(label), el("span", { class: "nowrap" }, nameTail(label), el("span", { class: "tld" }, `.${tld}`), ...after))
 }
 
 export function gradName(label: string, tld = "simplex"): HTMLSpanElement {
@@ -104,12 +105,13 @@ export function gradName(label: string, tld = "simplex"): HTMLSpanElement {
 // what a name's letters take on one line, which the parts of a name broken over lines still add up to
 function lettersWidth(name: Element): number {
   const range = document.createRange()
-  const walker = document.createTreeWalker(name, NodeFilter.SHOW_TEXT)
+  const walker = document.createTreeWalker(name, NodeFilter.SHOW_TEXT, { acceptNode: (text) => text.parentElement?.closest("button") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT })
   let width = 0
   for (let text = walker.nextNode(); text; text = walker.nextNode()) {
     range.selectNodeContents(text)
     for (const part of range.getClientRects()) width += part.width
   }
+  for (const label of name.querySelectorAll("button")) width += label.getBoundingClientRect().width + parseFloat(getComputedStyle(label).marginLeft)
   return width
 }
 

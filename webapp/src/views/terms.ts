@@ -1,16 +1,24 @@
 import type * as api from "../api.ts"
-import { el, icon, line, nameText } from "../dom.ts"
+import { el, icon, line, nameText, nameTitle } from "../dom.ts"
 import { POPUP_TITLE, showPopup } from "./shell.ts"
 
 const TERMS_CHANGED = "The terms changed. Agree to them again."
 const INFO_KEY = "community-info"
 
-function showCommunity(label: string, tld: string, community: api.Community, key: string): void {
+function showCommunity(label: string, tld: string, community: api.Community | null, key: string): void {
   showPopup(key, [
     el("h2", { id: POPUP_TITLE }, nameText(label, tld)),
     el("span", { class: "soft" }, "Community name"),
-    el("p", {}, `This name is for ${community.for}. Its owner agrees to use it for this community, not as the name of one person or business.`),
+    el("p", {}, community ? `This name is for ${community.for}. ` : "", "Its owner agrees to use it for this community, not as the name of one person or business."),
   ], null)
+}
+
+// `listed` marks a community name whose entry is not read yet, so the marker takes its place before the entry comes
+export function rowName(label: string, tld: string, community: api.Community | null, key: string, listed = community !== null): HTMLDivElement {
+  if (!listed) return nameTitle(label, "name", tld)
+  const marker = el("button", { class: "cmark", type: "button", "aria-label": "Community name: about it", "aria-haspopup": "dialog", "data-focus": key,
+    onclick: () => showCommunity(label, tld, community, key) }, "Community", icon("info"))
+  return nameTitle(label, "name comm", tld, " ", marker)
 }
 
 export interface Agreement {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   ApiError, BalanceChanged, checkCode, createOrder, currentTerms, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
-  termsFor,
+  communityAgreed, termsFor,
 } from "../src/api.ts"
 
 const HASH = "ab".repeat(32)
@@ -261,6 +261,11 @@ describe("service errors", () => {
       expect(termsFor(TERMS, null)).toBe("2026-10-23")
       expect(termsFor(TERMS, COMMUNITY)).toBe("2026-10-23/community")
       expect(currentTerms(AVAILABLE as never)).toBe("2026-10-23/community")
+    })
+
+    it("tells signed terms that agreed to a community name's wording", () => {
+      expect(communityAgreed("2026-10-23/community")).toBe(true)
+      for (const terms of ["2026-10-23", null, undefined]) expect(communityAgreed(terms), String(terms)).toBe(false)
     })
 
     it("passes a community entry in every search answer, and the terms in the available one", async () => {

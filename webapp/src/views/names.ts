@@ -24,6 +24,7 @@ import {
 } from "./shell.ts"
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, secondsLeft, tabHold } from "./hold.ts"
+import { rowName } from "./terms.ts"
 
 const UNREAD_RETRY_MS = 5_000
 const HOME = "/#/"
@@ -285,7 +286,8 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
     : [codeToggle(id, shown), edits ? small(hasLinks(o, seen.answer) ? "Edit links" : "Add links", `${id}-edit`, () => go(`/#/edit/${id}`)) : null]
   // a registered name shows the chats it opens, as the home's answer does
   const chats = registered && seen.answer?.status === "registered" ? seen.answer.entities.map(chatPicture) : []
-  return row(id, nameTitle(label, "name", tld), seen ? subLine(o, seen, s.now) : paidLine(o, null, null), rowChip(s, o, seen),
+  const listed = seen ? seen.view.community !== null : api.communityAgreed(o.terms)
+  return row(id, rowName(label, tld, seen?.view.community ?? null, `${id}-community`, listed), seen ? subLine(o, seen, s.now) : paidLine(o, null, null), rowChip(s, o, seen),
     [chats.length ? el("span", { class: "chats" }, chats) : null, ...acts], shown ? rowCode(code) : null)
 }
 
