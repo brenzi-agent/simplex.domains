@@ -26,6 +26,9 @@ let linkFields = 0
 // a link's profile as shown, so a field or a review drawn again for it shows it at once
 const previews = new Map<string, api.Profile>()
 const PREVIEW_RETRY_S = 3
+// each field's wait for the check of its link to end, which a Save or Continue pressed meanwhile waits on
+const checksEnded = new WeakMap<HTMLElement, () => Promise<void>>()
+type FieldState = "ok" | "bad" | "checking" | "empty"
 
 // a preview's place is held while it is asked for, so the page is laid out at its height from the start
 const previewPlace = () => el("div", { class: "entity skeleton", "aria-hidden": "true" })
@@ -114,7 +117,17 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
   // the field lives as long as the route keeps it; a check started anew ends the last one's wait
   const life = new AbortController()
   let waiting = new AbortController()
-  whenDropped(() => { life.abort(); waiting.abort() })
+  let ended: (() => void)[] = []
+  const endChecks = () => {
+    for (const end of ended) end()
+    ended = []
+  }
+  const setState = (state: FieldState) => {
+    field.dataset.state = state
+    if (state !== "checking") endChecks()
+  }
+  checksEnded.set(field, () => field.dataset.state === "checking" && !life.signal.aborted ? new Promise((done) => ended.push(done)) : Promise.resolve())
+  whenDropped(() => { life.abort(); waiting.abort(); endChecks() })
   phone.addEventListener("change", placeholder, { signal: life.signal })
   const shown = () => !life.signal.aborted
   let seq = 0
@@ -122,7 +135,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
   const holdPreviewPlace = () => show(preview.querySelector(".skeleton:not([data-link])") ?? previewPlace())
   const refuse = (text: string) => {
     box.className = "field bad"
-    field.dataset.state = "bad"
+    setState("bad")
     input.setAttribute("aria-invalid", "true")
     input.setAttribute("aria-describedby", errorId)
     // the same refusal again, as typing on in a refused link gives, keeps still
@@ -136,7 +149,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
     box.className = "field"
     input.removeAttribute("aria-invalid")
     input.removeAttribute("aria-describedby")
-    field.dataset.state = link ? "checking" : "empty"
+    setState(link ? "checking" : "empty")
     if (!link) {
       save("", null)
       return show(null)
@@ -146,7 +159,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
     const keptKind = (field.dataset.keptKind as LinkKind | undefined) ?? valueKind
     const kind = takes.kind ?? (link === kept ? keptKind : null) ?? linkKind(link)
     const accept = () => {
-      field.dataset.state = "ok"
+      setState("ok")
       save(link, kind)
     }
     const known = previews.get(link)
@@ -212,7 +225,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
   input.addEventListener("input", () => void check())
   // the link is left at its start, where focus brings it back, as a browser shows a field from its last caret and scroll
   input.addEventListener("blur", () => { input.setSelectionRange(0, 0); input.scrollLeft = 0 })
-  field.dataset.state = "empty"
+  setState("empty")
   if (value) void check()
   return field
 }
@@ -279,8 +292,10 @@ export function linkFieldsFor(links: api.Links, save: (kind: LinkKind, link: str
   }
 }
 
-export function focusUnsettled(fields: HTMLElement[]): boolean {
+// Waits for the links being checked, then gives focus to a field still refused or checking; true when none is.
+export async function linksSettled(fields: HTMLElement[]): Promise<boolean> {
+  await Promise.all(fields.map((f) => checksEnded.get(f)?.()))
   const unsettled = fields.find((f) => f.dataset.state === "bad" || f.dataset.state === "checking")
   unsettled?.querySelector("input")!.focus()
-  return unsettled !== undefined
+  return unsettled === undefined
 }

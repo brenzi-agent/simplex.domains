@@ -317,6 +317,23 @@ async function limitCodeChecks(page: Page, times: number, waitSeconds: number): 
   return () => checks
 }
 
+test("Save pressed in Edit links while a link is still checked waits for its check, then saves it", async ({ page, request }) => {
+  const first = contactLink("UnrC")
+  const second = contactLink("UnrD")
+  const { registrationId, label } = await registerWithCode(page, request, "cwait", { contact: first, channel: channelLink("CW") })
+  await waitRegistered(page, label)
+  await control(request, "search", { fetchDelays: { [second]: 700 } })
+  await page.goto(`/#/edit/${registrationId}`)
+  const link = onStep(page).getByRole("textbox", { name: "Link", exact: true })
+  await expect(link).toHaveValue(first)
+  await link.fill(second)
+  await expect(page.locator(".link-field").first()).toHaveAttribute("data-state", "checking")
+  await onStep(page).getByRole("button", { name: "Save links" }).click()
+  await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
+  expect((await searchName(request, label)).records).toEqual({ contact: second, channel: channelLink("CW") })
+  await control(request, "search", { fetchDelays: {} })
+})
+
 test("a code row in Your names whose check meets the rate limit counts down its wait and is checked again, as often as it is met", async ({ page, request }) => {
   const { code } = await control(request, "code", { minLength: 7 }) as { code: string }
   await useCode(page, code)

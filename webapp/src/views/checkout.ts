@@ -14,7 +14,7 @@ import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { CODE_ERRORS } from "./codes.ts"
-import { focusUnsettled, linkChat, linkFieldsFor } from "./links.ts"
+import { linkChat, linkFieldsFor, linksSettled } from "./links.ts"
 import {
   asStep, type Builder, currentRoute, draw, focusOn, go, goFrom, isRedraw, isRoute, kept, keptLive, limitScreen, outcome, redirect, refresh, screen, searchLink, whenLeaving,
 } from "./shell.ts"
@@ -321,8 +321,16 @@ function continueButton(onclick: () => void, held = false): HTMLButtonElement {
   return next
 }
 
-// a link refused or being checked takes focus; until the code is saved, the review opens the name code step instead
-const linksDone = (fields: HTMLElement[]) => { if (!focusUnsettled(fields)) go(checkoutUrl("review")) }
+// Continue waits for a link being checked, once; a link refused takes focus. Until the code is saved, the review opens
+// the name code step instead.
+let awaitingChecks = false
+async function linksDone(fields: HTMLElement[]): Promise<void> {
+  if (awaitingChecks) return
+  const route = currentRoute()
+  awaitingChecks = true
+  const settled = await linksSettled(fields).finally(() => { awaitingChecks = false })
+  if (settled && isRoute(route)) go(checkoutUrl("review"))
+}
 
 function buildLinks(s: CheckoutState): HTMLElement {
   const c = s.checkout
@@ -334,7 +342,7 @@ function buildLinks(s: CheckoutState): HTMLElement {
   skip?.setAttribute("data-focus", "skip")
   return screen({ title: "What should your name open?", back: searchLink(c.label),
     lead: ["Paste your SimpleX contact address or channel link. ", el("span", { class: "nowrap" }, "You can change it later.")],
-    alt: skip, action: continueButton(() => linksDone(links.fields()), !linked) },
+    alt: skip, action: continueButton(() => void linksDone(links.fields()), !linked) },
     el("span", { class: "label" }, "Link"), links.node)
 }
 

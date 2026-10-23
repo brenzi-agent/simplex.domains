@@ -17,7 +17,7 @@ import type { AppliedCode } from "../session.ts"
 import * as store from "../store.ts"
 import { chatPicture } from "./chats.ts"
 import { codeField, type CodeVerdict } from "./codes.ts"
-import { focusUnsettled, type LinkFields, linkFieldsFor } from "./links.ts"
+import { type LinkFields, linkFieldsFor, linksSettled } from "./links.ts"
 import {
   asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusHeading, focusOn, go, isRedraw, isRoute, kept, keptLive, redirect, screen, showRefund,
   useBalance, whenLeaving,
@@ -526,9 +526,15 @@ function resultNode(f: EditForm, signal: AbortSignal): HTMLElement | null {
   }
 }
 
+// a Save pressed while a link is checked waits for its check, once
+let awaitingChecks = false
+
 async function saveLinks(links: LinkFields): Promise<void> {
-  if (focusUnsettled(links.fields())) return
+  if (awaitingChecks) return
   const route = editRoute
+  awaitingChecks = true
+  const settled = await linksSettled(links.fields()).finally(() => { awaitingChecks = false })
+  if (!settled || !isRoute(route)) return
   dispatchEdit({ type: "save-started" })
   const { record, read, form } = edit
   if (!form?.saving) return
