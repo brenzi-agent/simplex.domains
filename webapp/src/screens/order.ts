@@ -49,10 +49,12 @@ export interface OrderState {
   // the balance that paid part of the order, as its own order reads now, which a new invoice spends again
   sourceBalance: Balance | null
   ask: TermsAsk | null
+  // a search after the order was taken answered that the name is reserved
+  reserved: boolean
 }
 
 export type OrderEvent =
-  | { type: "answered"; seq: number; now: number; invoice: InvoiceView | null; view: RegistrationView; record: OrderRecord | null; cardSubmittedAt: string | null }
+  | { type: "answered"; seq: number; now: number; invoice: InvoiceView | null; view: RegistrationView; record: OrderRecord | null; cardSubmittedAt: string | null; reserved: boolean }
   | { type: "record-changed"; record: OrderRecord | null; cardSubmittedAt: string | null }
   | { type: "read-failed" }
   | { type: "not-found" }
@@ -84,7 +86,7 @@ export type OrderEvent =
   | { type: "hold-ended" }
 
 export function initialState(reference: string, hold: Hold | null, reveal: Reveal | null = null): OrderState {
-  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null }
+  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null, reserved: false }
 }
 
 const start = (s: OrderState, action: Action): OrderState => ({ ...s, busy: action, note: null })
@@ -95,7 +97,8 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
   switch (e.type) {
     case "answered":
       if (e.seq <= s.seq) return s
-      return { ...s, seq: e.seq, now: e.now, invoice: e.invoice, view: e.view, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? e.view.label) }
+      return { ...s, seq: e.seq, now: e.now, invoice: e.invoice, view: e.view, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? e.view.label),
+        reserved: e.reserved }
     case "record-changed": return { ...s, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? null) }
     case "read-failed": return s
     case "not-found": return { ...s, gone: true }

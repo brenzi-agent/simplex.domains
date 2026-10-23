@@ -114,6 +114,8 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
   let codeChecked = false
   let sourceRead = false
   let unreadReads = 0
+  // whether a taken order's name is reserved now, searched once as the order is first seen taken
+  let reserved: boolean | null = null
   // forgetting the last answer makes the next read answer at once
   const forget = () => {
     invoice = null
@@ -214,7 +216,11 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
     if (answered !== drawn || recorded !== drawnRecord) {
       drawn = answered
       drawnRecord = recorded
-      dispatch({ type: "answered", seq, now: api.serviceNow(), invoice, view, record: record ?? null, cardSubmittedAt: cardSubmittedAt(invoice, record) })
+      if (view.phase === "taken" && reserved === null) {
+        reserved = await reservedNow(view, record ?? null)
+        if (!isRoute(mine)) return
+      }
+      dispatch({ type: "answered", seq, now: api.serviceNow(), invoice, view, record: record ?? null, cardSubmittedAt: cardSubmittedAt(invoice, record), reserved: reserved ?? false })
     }
     // a closed order that a balance paid part of reads that balance once, for what its new invoice will pay
     if (!sourceRead && closedCase(state) !== null && record?.balanceSource) {
@@ -254,6 +260,15 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
       again = true
     }
   }
+}
+
+// A taken order's register reverted on a name someone registered first, or on one reserved meanwhile, which a search
+// tells apart; one that could not be searched is taken as registered.
+async function reservedNow(view: api.RegistrationView, record: store.OrderRecord | null): Promise<boolean> {
+  const label = labelOf(view, record)
+  if (label === null) return false
+  const answer = await api.searchName(view.labelHash, label.length).catch(() => null)
+  return answer?.status === "reserved"
 }
 
 // Another order of the same buyer: one of this commitment, or of the code's wallet once it moved to another name.
@@ -1174,12 +1189,13 @@ function registeredLead(view: api.RegistrationView, record: store.OrderRecord | 
   return record ? `Registered until ${until}.` : `Registered until ${until} to ${shortAddress(view.owner)}. Its name code is not in this browser.`
 }
 
-function buildTakenWithCode({ view: taken, record }: OrderState): HTMLElement {
+function buildTakenWithCode({ view: taken, record, reserved }: OrderState): HTMLElement {
   const view = taken!
   const label = labelOf(view, record)
   const released = releasedCode(view, record)
-  return outcome({ tone: "info", icon: "key", title: "Someone registered it first",
-    text: [label ? nameText(label, view.tld) : "The name", " was registered just before ours. Your code was not spent: use it for another name."],
+  const name = label ? nameText(label, view.tld) : "The name"
+  return outcome({ tone: "info", icon: "key", title: reserved ? "The name was reserved meanwhile" : "Someone registered it first",
+    text: [name, reserved ? " can't be registered." : " was registered just before ours.", " Your code was not spent: use it for another name."],
     extra: released ? codeDisplay(released.code) : null,
     action: btn("Search another name", "", () => go("/#/")),
     reference: view.id })
@@ -1197,9 +1213,11 @@ function buildTaken(s: OrderState): HTMLElement {
     ? el("div", { class: "notice plain" }, el("b", {}, "What you paid is kept as your balance."),
       " Choose another name and pay only the difference, or ask for a refund. Your names shows the balance.")
     : el("div", { class: "notice plain" }, el("b", {}, "What you paid went to your balance."), " It has been spent or refunded since; Your names shows it.")
-  return screen({ title: label ? [gradName(label, view.tld), " was\u00a0taken"] : "The name was taken", lead: "Someone registered it before your order could.",
+  const reserved = s.reserved
+  const title = label ? [gradName(label, view.tld), reserved ? " is\u00a0reserved" : " was\u00a0taken"] : reserved ? "The name is reserved" : "The name was taken"
+  return screen({ title, lead: reserved ? "It was reserved meanwhile, so it can't be registered." : "Someone registered it before your order could.",
     ...balanceActions(s) },
-    stages(["done", "done", "failed"], "Taken"),
+    stages(["done", "done", "failed"], reserved ? "Reserved" : "Taken"),
     note,
     record ? null : alertBox("info", "key", "The name code is not in this browser", "Add it in Check your code to use the balance."),
     referenceLine(invoice?.invoiceId ?? view.id))

@@ -3,7 +3,7 @@ import { walletOf } from "../src/flow.ts"
 import { labelHash } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import {
-  addNameCode, agreeToTerms, checkoutOwnerCode, contactLink, control, failedOrder, FIT_SIZES, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, savedToReview,
+  addNameCode, answersReserved, agreeToTerms, checkoutOwnerCode, contactLink, control, failedOrder, FIT_SIZES, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, savedToReview,
   offCentre, search, searchName, sevenLetters, shot, startOrder, takenHeading, takenOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
@@ -43,6 +43,19 @@ test("a name taken first keeps its payment as its balance, which pays for anothe
   await waitRegistered(page, next)
   const answer = await searchName(request, next)
   expect(answer.owner).toBe(checksumAddress(walletOf(ownerCode)!.address))
+})
+
+test("a paid order whose name was reserved meanwhile says so, and keeps its payment as its balance", async ({ page, request }) => {
+  const label = uniqueLabel("prs")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await answersReserved(page, label)
+  await control(request, "take", { label })
+  await control(request, `settle/${invoiceId}`)
+  await expect(page.getByRole("heading", { name: `${label}.simplex is reserved` })).toBeVisible({ timeout: REGISTRATION_MS })
+  await expect(onStep(page).locator(".lead")).toHaveText("It was reserved meanwhile, so it can't be registered.")
+  await expect(onStep(page).locator(".stage.failed")).toHaveText("Reserved")
+  await expect(onStep(page).locator(".notice", { hasText: "What you paid is kept as your balance." })).toBeVisible()
+  await expect(onStep(page).getByRole("button", { name: "Choose another name" })).toBeEnabled()
 })
 
 // a wait on moving the payment that ends while the search gone back to is still out, and that search's answer

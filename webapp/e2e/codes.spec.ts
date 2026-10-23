@@ -5,7 +5,7 @@ import { checksumAddress } from "../src/crypto/wallet.ts"
 import { walletOf } from "../src/flow.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, onStep, payButton, previewsShown, savedToReview,
+  answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, onStep, payButton, previewsShown, savedToReview,
   search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
@@ -433,6 +433,17 @@ test("a code order taken first gives its code back, ready for another name", asy
   await shot(page, "K9-code-released")
   await page.goto("/#/names")
   await expect(page.locator(".list-row", { hasText: code }).locator(".chip")).toHaveText("Unused")
+})
+
+test("a code order whose name was reserved meanwhile says so, and gives its code back", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  const label = uniqueLabel("crs")
+  await control(request, "take", { label })
+  await payWithCode(page, label, code)
+  await answersReserved(page, label)
+  await expect(page.getByRole("heading", { name: "The name was reserved meanwhile" })).toBeVisible({ timeout: 120_000 })
+  await expect(page.locator(".outcome .notice")).toHaveText(`${label}.simplex can't be registered. Your code was not spent: use it for another name.`)
+  await expect(page.locator(".outcome .code-text")).toHaveText(code)
 })
 
 test("a retry refused for a code used elsewhere says the code is gone and offers no Try again, also once reopened", async ({ page, request }) => {

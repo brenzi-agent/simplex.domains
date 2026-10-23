@@ -421,6 +421,10 @@ export async function failedOrder(page: Page, request: APIRequestContext, label:
   return { ...order, registrationId }
 }
 
+// The page's searches of a name answer that it is reserved, as for one the controller's owner reserved after an order's commit.
+export const answersReserved = (page: Page, label: string) =>
+  page.route(`**/api/name/${hex(labelHash(label))}*`, (route) => route.fulfill({ json: { status: "reserved", community: null } }))
+
 export async function waitRegistered(page: Page, label: string): Promise<void> {
   await expect(page.getByRole("heading", { name: `${label}.simplex is yours` })).toBeVisible({ timeout: REGISTRATION_MS })
 }
