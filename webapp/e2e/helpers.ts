@@ -175,15 +175,18 @@ export const brokenNames = (page: Page) => page.evaluate(([[laptop, phone], medi
 }).map((name) => name.textContent), [SMALL_HEADING_PX, PHONE_MEDIA] as const)
 
 // how far anything in the answer's row reaches past the row, what in it is too narrow for its own content, the row's
-// height and the lines its name takes
+// height, the room above and under its content inside its border, and the lines its name takes
 export const rowFit = (page: Page) => page.evaluate(() => {
-  const row = document.querySelector(".answer .row")!.getBoundingClientRect()
+  const shown = document.querySelector(".answer .row")!
+  const row = shown.getBoundingClientRect()
+  const parts = [...shown.children].map((n) => n.getBoundingClientRect()).filter((b) => b.height > 0)
   const inside = [...document.querySelectorAll(".answer .row *")].map((n) => n.getBoundingClientRect()).filter((b) => b.height > 0)
   const name = document.querySelector(".answer .row .name")!
   const rest = name.nextElementSibling!.getBoundingClientRect()
   const clipped = [...document.querySelectorAll<HTMLElement>(".answer .row *")].filter((n) => n.clientWidth > 0 && n.scrollWidth > n.clientWidth).map((n) => n.className)
   return { spill: Math.round(Math.max(0, ...inside.map((b) => Math.max(b.bottom - row.bottom, row.top - b.top, b.right - row.right, row.left - b.left)))), clipped,
-    height: Math.round(row.height), nameLines: Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight)),
+    height: Math.round(row.height), room: [Math.min(...parts.map((b) => b.top)) - row.top - shown.clientTop, row.bottom - shown.clientTop - Math.max(...parts.map((b) => b.bottom))].map(Math.round),
+    nameLines: Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight)),
     ownLine: Math.round(name.getBoundingClientRect().bottom) <= Math.round(rest.top) }
 })
 

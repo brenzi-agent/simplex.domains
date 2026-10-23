@@ -275,8 +275,9 @@ body > main { grid-area: main; display: flex; flex-direction: column; min-width:
 .search-field { padding: 0 5px 0 20px; }
 .search-field .tld { color: var(--faint); font-weight: 600; }
 .answer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; min-height: var(--room); }
-/* one row as the app lists a chat: the name, the chats it opens, and whose it is or its price */
-.row { display: flex; align-items: center; gap: 16px; min-height: 72px; padding: 12px 18px 12px 22px; }
+/* one row as the app lists a chat: the name, the chats it opens, and whose it is or its price; the same room above and
+   under them whether the name takes one line or four */
+.row { display: flex; align-items: center; gap: 16px; min-height: 72px; padding: 16px 18px 16px 22px; }
 .row .name { flex: 1 1 auto; min-width: 0; }
 /* only the name gives way to a row too narrow for all of it; its price, button and chats keep their size */
 .row > :not(.name) { flex-shrink: 0; }

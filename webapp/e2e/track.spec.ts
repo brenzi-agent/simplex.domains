@@ -379,12 +379,17 @@ const homeAnswers = (owner: string) => ({
 
 // a name of six letters that fits one row beside two chats on a phone, as most do
 const SHORT_NAME = "udumhd"
+// a row's least height, and the room above and under its content inside its border, whatever the name's length, as the
+// mockup draws them: a phone's buy row has less
+const ROW_MIN_HEIGHT = 72
+const ROW_ROOM = 16
+const PHONE_BUY_ROW_ROOM = 14
 
 // the service worker of a production build answers these pages before Playwright's routes in WebKit
 test.describe(() => {
   test.use({ serviceWorkers: "block" })
 
-  test("each home answer holds its name inside its row, and a name of six letters on one line, at a laptop's and a phone's size", async ({ page }) => {
+  test("each home answer holds its name inside its row with the same room above and under it, and a name of six letters on one line, at a laptop's and a phone's size", async ({ page }) => {
     for (const label of [SHORT_NAME, wideLabel(6), wideLabel(MAX_LABEL_LENGTH)]) {
       const { owner } = await keepOrder(page, "reg-rowfit", null, label)
       await page.route("**/api/registration/reg-rowfit*", (route) => route.fulfill({ status: 404, json: { error: "not_found" } }))
@@ -404,10 +409,13 @@ test.describe(() => {
           expect(await homeTops(page), `${at}: headline and search`).toEqual(empty)
           const fit = await rowFit(page)
           expect(fit.spill, `${at}: past its row`).toBe(0)
+          const room = state === "available" && size === FIT_SIZES[1] ? PHONE_BUY_ROW_ROOM : ROW_ROOM
+          expect(fit.room, `${at}: the room above and under its content`).toEqual([room, room])
+          expect(fit.height, `${at}: the row's height`).toBeGreaterThanOrEqual(ROW_MIN_HEIGHT)
           expect(fit.clipped, `${at}: too narrow for their content`).toEqual([])
           expect(await brokenNames(page), `${at}: broken though it fits its line`).toEqual([])
           if (label.length < 8) expect(fit.nameLines, `${at}: the name's lines`).toBe(1)
-          if (label === SHORT_NAME && state !== "available") expect(fit.height, `${at}: the row's height`).toBe(72)
+          if (label === SHORT_NAME && state !== "available") expect(fit.height, `${at}: the row's height`).toBe(ROW_MIN_HEIGHT)
           // a name too long for its row takes a line of its own, its chats and whose it is under it
           if (label.length === MAX_LABEL_LENGTH) expect(fit.ownLine, `${at}: the name's own line`).toBe(state !== "available" || size === FIT_SIZES[1])
           expect(await overflow(page), at).toBe(0)
