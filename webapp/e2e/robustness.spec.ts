@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  brokenNames, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, failedOrder, FIT_SIZES, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, rowFit, savedToReview, search, shot,
+  agreeToTerms, brokenNames, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, failedOrder, FIT_SIZES, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, rowFit, savedToReview, search, shot,
   shownCode, startOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
@@ -182,6 +182,7 @@ test("a failed retarget shows one message below the result, however often it is 
   await page.route("**/api/registration/*/name", (route) => route.fulfill({ status: 503, json: { error: "provider_unavailable" } }))
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("rtf2"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
+  await agreeToTerms(page)
   for (let i = 0; i < 2; i++) {
     await page.getByRole("button", { name: "Register with your payment" }).click()
     await expect(page.getByText("That did not go through")).toHaveCount(1)
@@ -204,6 +205,7 @@ test("a retarget refused for a name taken meanwhile says the name is no longer a
   await page.route("**/api/registration/*/name", (route) => route.fulfill({ status: 409, json: { error: "name_taken" } }))
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("rtt2"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
+  await agreeToTerms(page)
   await page.getByRole("button", { name: "Register with your payment" }).click()
   await expect(page.getByText("This name is no longer available. Search another one.")).toBeVisible()
 })

@@ -2,7 +2,7 @@ import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
   agreeToTerms, AVAILABLE_BRIEF, brokenNames, CHAIN, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
-  lineStarts, offCentre, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, rowFit, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, test, toCodeStep,
+  lineStarts, offCentre, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, rowFit, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, TERMS, test, toCodeStep,
   TAKEN_BRIEF, toFullReview, toReview, uniqueLabel, useCode, waitRegistered, withStripeKey,
 } from "./helpers.ts"
 
@@ -314,7 +314,7 @@ async function routedCardOrder(page: Page, o: CardOrder): Promise<() => Promise<
     registration, clientSecret: "pi_cardfit_secret" }
   await page.route(`**/api/invoice/${CARD_INVOICE}*`, (route) => route.fulfill({ json: invoice }))
   await page.route(`**/api/registration/${CARD_REGISTRATION}*`, (route) => route.fulfill({ json: registration }))
-  await page.route("**/api/name/**", (route) => route.fulfill({ json: o.taken ? { status: "registered", entities: [], tld: "simplex" } : homeAnswers(order.owner).available }))
+  await page.route("**/api/name/**", (route) => route.fulfill({ json: o.taken ? { status: "registered", entities: [], tld: "simplex", community: null } : homeAnswers(order.owner).available }))
   if (o.forgetful) await page.addInitScript(() => {
     const keep = Storage.prototype.setItem
     Storage.prototype.setItem = function (key: string, value: string) {
@@ -526,9 +526,9 @@ const linked = (kind: "contact" | "channel") => ({ type: kind === "contact" ? "a
   subscribers: kind === "channel" ? 12 : null, link: kind === "contact" ? contactLink("H1") : channelLink("H2"), deepLink: "simplex:/a#x", profile: "ok" })
 // the search's answers for a name: available, taken with two chats, and this browser's, of `owner`, with two chats
 const homeAnswers = (owner: string) => ({
-  available: { status: "available", price: 10000, currency: "usd", years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, ...CHAIN },
-  taken: { status: "registered", entities: [linked("contact"), linked("channel")], owner: `0x${"00".repeat(19)}01`, tld: "simplex" },
-  yours: { status: "registered", entities: [linked("contact"), linked("channel")], owner, tld: "simplex" },
+  available: { status: "available", price: 10000, currency: "usd", years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, ...CHAIN, community: null, terms: TERMS },
+  taken: { status: "registered", entities: [linked("contact"), linked("channel")], owner: `0x${"00".repeat(19)}01`, tld: "simplex", community: null },
+  yours: { status: "registered", entities: [linked("contact"), linked("channel")], owner, tld: "simplex", community: null },
 })
 
 // a name of six letters that fits one row beside two chats on a phone, as most do

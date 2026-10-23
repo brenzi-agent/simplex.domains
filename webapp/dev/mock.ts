@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { isIP } from "node:net"
 import { takeCodeToken } from "./mock/limits.ts"
 import {
-  cancelInvoice, checkCode, controlCredit, controlInvoice, controlLate, controlRate, controlRefund, controlRegistration, controlSearch, controlTake, createInvoice, dump, editRecords, find,
+  cancelInvoice, checkCode, controlCommunity, controlCredit, controlInvoice, controlLate, controlRate, controlRefund, controlRegistration, controlSearch, controlTake, controlTerms, createInvoice, dump, editRecords, find,
   HttpError, issueCode, oneOrderAtATime, setCodeState, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retry, reveal, search, spend,
 } from "./mock/service.ts"
 
@@ -54,6 +54,8 @@ const routes: [string, RegExp, Handler, Limit?][] = [
   ["POST", /^\/control\/refund\/([^/]+)$/, (m, b) => controlRefund(m[1], b.cents)],
   ["POST", /^\/control\/rate$/, (_, b) => controlRate(b)],
   ["POST", /^\/control\/search$/, (_, b) => controlSearch(b)],
+  ["POST", /^\/control\/terms$/, (_, b) => controlTerms(b)],
+  ["POST", /^\/control\/community$/, (_, b) => controlCommunity(b)],
   ["POST", /^\/control\/code\/state$/, (_, b) => setCodeState(b.code, b.state)],
   ["POST", /^\/control\/code$/, (_, b) => ({ code: issueCode(Number(b.minLength), Number(b.years ?? 2), (b.state ?? "unused") as never) })],
   ["GET", /^\/control\/state$/, () => dump()],

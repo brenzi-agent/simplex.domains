@@ -1,5 +1,5 @@
 // This tab's checkout in progress, which ends with the tab.
-import type { Balance, ChainInfo, Method, SignedOrder, SpendRequest } from "./api.ts"
+import type { Balance, ChainInfo, Community, Method, SignedOrder, SpendRequest, Terms } from "./api.ts"
 import type { CheckoutStep } from "./screens/routes.ts"
 
 export interface AppliedCode {
@@ -31,6 +31,8 @@ export interface Checkout {
   years: number
   termStart: number
   chain: ChainInfo
+  terms: Terms
+  community: Community | null
   contact: string
   channel: string
   method: Method
@@ -43,6 +45,7 @@ export interface Checkout {
   saved: boolean
   // the buyer ticked that they agree to the name terms, which the order waits for
   agreed: boolean
+  termsChanged?: boolean
   // the history entry of the search the checkout started from
   searchAt: number
   // the step last opened, where Your names continues the checkout
@@ -97,10 +100,10 @@ export const setScrolled = (at: number, y: number) => write(SCROLLED, { ...scrol
 export const seen = <T>(): Record<string, T> => read<Record<string, T>>(SEEN) ?? {}
 export const setSeen = (rows: object) => write(SEEN, rows)
 
-// a checkout without its name, chain or term is a leftover, not one to continue; one kept without its step opens the review, which sends it on
+// a checkout without its name, chain, term or terms is a leftover, not one to continue; one kept without its step opens the review, which sends it on
 export function checkout(): Checkout | null {
   const c = read<Checkout>(CHECKOUT)
-  return c?.label && c.chain && typeof c.termStart === "number" ? { ...c, step: c.step ?? "review", balance: c.balance ?? null } : null
+  return c?.label && c.chain && c.terms && typeof c.termStart === "number" ? { ...c, step: c.step ?? "review", balance: c.balance ?? null } : null
 }
 export const setCheckout = (c: Checkout | null) => write(CHECKOUT, c)
 

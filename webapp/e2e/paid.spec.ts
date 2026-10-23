@@ -1159,7 +1159,7 @@ test("on a phone, a long name wraps beside its chats on Check your order, the ch
 const NAME_CHECK_MINUTES = 5
 const AVAILABLE = /^The name is available \(checked at \d\d:\d\d\)\. If someone registers it before you pay and the registration succeeds, what you paid is kept as your balance for another name, or refunded on request\.$/
 const TAKEN = /^Someone has registered this name \(checked at \d\d:\d\d\)\. Don't pay this invoice: cancel it and choose another name\.$/
-const takenAnswer = (route: Route) => route.fulfill({ json: { status: "registered", entities: [], tld: "simplex" } })
+const takenAnswer = (route: Route) => route.fulfill({ json: { status: "registered", entities: [], tld: "simplex", community: null } })
 // the heading, the note, the payment's details and the link under them: where each is and how tall
 const payPlaces = (page: Page) => page.evaluate(() => ["h1", ".name-check", ":is(.card.pay, .stripe)", ".actions-row .alt"]
   .map((s) => { const b = document.querySelector(`body > main ${s}`)!.getBoundingClientRect(); return `${s} ${Math.round(b.top)} ${Math.round(b.height)}` }))

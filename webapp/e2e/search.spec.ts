@@ -310,7 +310,7 @@ test("search shows an expired name of yours with when it ran out and when it can
     request: { labelHash: hash, length: label.length, owner, commitment: "0x01", sealed: "sealed" },
   })), { label, hash, owner: OWNER })
   await page.route("**/api/name/**", (route) => route.fulfill({ json: {
-    status: "registered", entities: [], owner: OWNER, records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt, gracePeriod: GRACE_S, tld: "simplex",
+    status: "registered", entities: [], owner: OWNER, records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt, gracePeriod: GRACE_S, tld: "simplex", community: null,
   } }))
   await page.goto(`/#/?name=${label}`)
   await expect(page.locator(".answer .row")).toContainText("Expired")

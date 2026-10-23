@@ -55,6 +55,11 @@ const CHAIN_FAILED = "The blockchain did not answer"
 // a contract's revert name is no message for a buyer
 const REFUSED = "The blockchain refused the transaction"
 const SEALED_MAX = 11095
+// the terms an order signs: the version, with COMMUNITY_TERMS after it for a community name
+const SIGNED_TERMS = /^[A-Za-z0-9._/-]{1,48}$/
+const COMMUNITY_TERMS = "/community"
+// a community name's text in the service's ini: one line of up to this many characters
+const COMMUNITY_TEXT_MAX = 200
 const SECP256K1_HALF_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n
 
 export type Phase = "unpaid" | "queued" | "committing" | "committed" | "registering" | "registered" | "taken" | "failed"
@@ -102,6 +107,8 @@ interface Registration {
   // the cents another order's balance paid when this order was made, and that order
   fromBalance: number
   balanceSource: string | null
+  // the terms the order signed when it was made or last moved
+  terms: string
 }
 
 interface Invoice {
@@ -336,13 +343,17 @@ export async function search(hash: string, lengthText: string | null): Promise<R
   if (!isHash(hash)) throw badRequest()
   const length = Number(lengthText)
   if (!Number.isInteger(length) || length < MIN_LABEL_LENGTH || length > MAX_LABEL_LENGTH) throw new HttpError(400, "invalid_name")
+  return { ...await answerFor(hash, length), community: communityOf(hash) }
+}
+
+async function answerFor(hash: Hex, length: number): Promise<Record<string, unknown>> {
   const found = await lookup(hash)
   const chain = { chainId: deployment.chainId, tld: deployment.tld }
   if (found.type === "reserved") return { status: "reserved" }
   if (found.type === "available") {
     if (registering(hash)) return { status: "registered", entities: [], tld: deployment.tld }
     const price = await priceOf(length, YEARS).catch(unavailable)
-    return { status: "available", price, currency: "usd", years: YEARS, termStart: TERM_START_S, resolver: deployment.resolver, sponsor: deployment.sponsor, ...chain }
+    return { status: "available", price, currency: "usd", years: YEARS, termStart: TERM_START_S, resolver: deployment.resolver, sponsor: deployment.sponsor, ...chain, terms: { ...terms } }
   }
   // Records are read only from the store's own resolver: calling whatever contract a name points at would let anyone
   // make the service run arbitrary code. A name pointed elsewhere is shown with its owner and no links.
@@ -369,6 +380,22 @@ function nodeOf(labelHash: Hex): Hex {
   return keccak256(`${namehash(deployment.tld)}${labelHash.slice(2)}` as Hex)
 }
 
+// --- terms and community names
+
+// The service's [names] terms_version and terms_url, and its [community] list keyed by label hash, which the service reads
+// at startup; /control/terms and /control/community change them as a restart with a new ini would. The e2e spec's
+// community name is bakers, whose text the service's contract run words otherwise.
+const terms = { version: "2026-10-23", url: "https://simplex.chat/" }
+const communities = new Map<Hex, string>([[keccak256(toHex("bakers")), "bakers and pastry chefs"]])
+
+const communityOf = (labelHash: Hex) => communities.has(labelHash) ? { for: communities.get(labelHash)! } : null
+const termsFor = (labelHash: Hex) => communities.has(labelHash) ? `${terms.version}${COMMUNITY_TERMS}` : terms.version
+
+// an order or a move signs the terms the service has now for its name, the community agreement included for a community name
+function checkTerms(o: Pick<OrderBody, "labelHash" | "terms">): void {
+  if (o.terms !== termsFor(o.labelHash)) throw new HttpError(409, "terms_changed", { terms: { ...terms }, community: communityOf(o.labelHash) })
+}
+
 // --- views
 
 // a failed chain read is the provider's, not the request's
@@ -392,7 +419,7 @@ async function registrationView(reg: Registration): Promise<Record<string, unkno
     id: reg.id, version: reg.version, moves: reg.moves, phase: reg.phase, labelHash: reg.labelHash, label: reg.label, owner: reg.owner, commitment: reg.commitment, sealed: reg.sealed,
     resolver: deployment.resolver, sponsor: deployment.sponsor, chainId: deployment.chainId, tld: deployment.tld, years: reg.years, duration: reg.duration, price: reg.paid,
     fromBalance: reg.fromBalance, balance: balanceView(reg.id), latePayment: latePayment(reg), commitTx: reg.commitTx, registerTx: reg.registerTx, revealAfter: reg.revealAfter, revealBefore: reg.revealBefore,
-    intentNonce, unread, expiresAt: reg.expiresAt, error: reg.error, linksRefused: reg.linksRefused,
+    intentNonce, unread, expiresAt: reg.expiresAt, error: reg.error, linksRefused: reg.linksRefused, community: communityOf(reg.labelHash), terms: reg.terms,
   }
 }
 
@@ -497,6 +524,7 @@ interface OrderBody {
   owner: Address
   commitment: Hex
   sealed: string
+  terms: string
 }
 
 function orderBody(body: Record<string, unknown>): OrderBody {
@@ -507,11 +535,12 @@ function orderBody(body: Record<string, unknown>): OrderBody {
 
 // an order's fields but its owner, which a spend takes from the order whose balance pays
 function orderFields(body: Record<string, unknown>): Omit<OrderBody, "owner"> {
-  const { labelHash, length, duration, commitment, sealed } = body
+  const { labelHash, length, duration, commitment, sealed, terms } = body
   if (!isHash(labelHash) || !isHash(commitment) || !Number.isInteger(duration)) throw badRequest()
   if (typeof sealed !== "string" || sealed.length > SEALED_MAX) throw badRequest()
+  if (typeof terms !== "string" || !SIGNED_TERMS.test(terms)) throw badRequest()
   if (typeof length !== "number" || !Number.isInteger(length) || length < MIN_LABEL_LENGTH || length > MAX_LABEL_LENGTH) throw new HttpError(400, "invalid_name")
-  return { labelHash, length, duration: duration as number, commitment, sealed }
+  return { labelHash, length, duration: duration as number, commitment, sealed, terms }
 }
 
 // the paid years and the free days until the term starts, as the page counts them by the service's clock
@@ -544,12 +573,12 @@ export function oneOrderAtATime<T>(f: () => Promise<T>): Promise<T> {
 
 // An order's own fields, tagged by its kind, as an exact resend repeats them.
 const orderHashOf = (kind: "invoice" | "register" | "balance", o: OrderBody, extra: unknown[]) =>
-  createHash("sha256").update(JSON.stringify([kind, o.labelHash, o.length, o.duration, o.owner, o.commitment, o.sealed, ...extra])).digest("hex")
+  createHash("sha256").update(JSON.stringify([kind, o.labelHash, o.length, o.duration, o.owner, o.commitment, o.sealed, o.terms, ...extra])).digest("hex")
 
 // The owner signs every order, so nobody can place one in another wallet's name; its age is checked only for a new order.
 async function checkOrderSigner(o: OrderBody, body: Record<string, unknown>): Promise<void> {
   if (!Number.isInteger(body.timestamp)) throw badRequest()
-  const message = `simplex.domains order ${o.labelHash} ${o.length} ${o.duration} ${o.commitment} ${sha256Hex(o.sealed)} ${body.timestamp}`
+  const message = `simplex.domains order ${o.labelHash} ${o.length} ${o.duration} ${o.commitment} ${sha256Hex(o.sealed)} ${o.terms} ${body.timestamp}`
   if (await recoverMessageAddress({ message, signature: checkSignature(body.signature) }) !== o.owner) throw badRequest()
 }
 
@@ -596,6 +625,7 @@ export async function createInvoice(body: Record<string, unknown>): Promise<Reco
   if (resent) return invoiceView(invoices.get(resent.invoiceId!)!)
   freshTimestamp(body.timestamp)
   checkDuration(order.duration, YEARS)
+  checkTerms(order)
   await nameFree(order.labelHash)
   const price = await chainPrice(order.length, YEARS)
   if (body.price !== price) throw new HttpError(409, "catalog_changed", { price })
@@ -695,6 +725,7 @@ export async function registerWithCode(body: Record<string, unknown>): Promise<R
   if (resent) return { registrationId: resent.id }
   freshTimestamp(body.timestamp)
   checkDuration(order.duration, row.years)
+  checkTerms(order)
   await nameFree(order.labelHash)
   const error = CODE_ERRORS[row.state]
   if (error) throw new HttpError(error === "code_invalid" ? 400 : 409, error)
@@ -980,10 +1011,15 @@ export async function reveal(registrationId: string, body: Record<string, unknow
 
 // --- signed requests from the owner code's key
 
-async function checkSigned(owner: Address, message: string, timestamp: unknown, signature: unknown): Promise<void> {
-  if (typeof timestamp !== "number" || Math.abs(nowSeconds() - timestamp) > SIGNED_REQUEST_SECONDS) throw badRequest()
+async function checkSigner(owner: Address, message: string, timestamp: unknown, signature: unknown): Promise<void> {
+  if (!Number.isInteger(timestamp)) throw badRequest()
   const signer = await recoverMessageAddress({ message, signature: checkSignature(signature) })
   if (signer !== owner) throw badRequest()
+}
+
+async function checkSigned(owner: Address, message: string, timestamp: unknown, signature: unknown): Promise<void> {
+  await checkSigner(owner, message, timestamp, signature)
+  freshTimestamp(timestamp)
 }
 
 const sha256Hex = (text: string) => "0x" + createHash("sha256").update(text, "ascii").digest("hex")
@@ -992,9 +1028,12 @@ export async function retarget(registrationId: string, body: Record<string, unkn
   const reg = registrations.get(registrationId)
   if (!reg) throw new HttpError(404, "not_found")
   const order = orderBody({ ...body, owner: reg.owner })
-  await checkSigned(reg.owner, `simplex.domains name ${reg.id} ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${sha256Hex(order.sealed)} ${body.timestamp}`, body.timestamp, body.signature)
+  await checkSigner(reg.owner, `simplex.domains name ${reg.id} ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${sha256Hex(order.sealed)} ${order.terms} ${body.timestamp}`, body.timestamp, body.signature)
   const current = reg.labelHash === order.labelHash && reg.length === order.length && reg.duration === order.duration && reg.commitment === order.commitment && reg.sealed === order.sealed
+    && reg.terms === order.terms
+  // a repeat is answered however old its signature, as the service answers it before the age
   if (current) return registrationView(reg)
+  freshTimestamp(body.timestamp)
   lapse(reg)
   // a failed order, or one whose reveal was refused for its links; a paid order taken first keeps its price as its balance
   const movable = reg.phase === "failed" || (reg.phase === "committed" && reg.linksRefused)
@@ -1003,6 +1042,7 @@ export async function retarget(registrationId: string, body: Record<string, unkn
   const version = reg.version
   existingOrder(order, null, reg)
   checkDuration(order.duration, reg.years)
+  checkTerms(order)
   await nameFree(order.labelHash)
   const price = reg.method === "code" ? 0 : await chainPrice(order.length, reg.years)
   if (price > reg.paid) throw new HttpError(409, "price_too_high", { price })
@@ -1014,7 +1054,7 @@ export async function retarget(registrationId: string, body: Record<string, unkn
   if (price < reg.paid) credit(reg.id, reg.paid - price)
   // the order now has the new name's price, which caps any later move
   Object.assign(reg, {
-    labelHash: order.labelHash, length: order.length, duration: order.duration, commitment: order.commitment, sealed: order.sealed, paid: price,
+    labelHash: order.labelHash, length: order.length, duration: order.duration, commitment: order.commitment, sealed: order.sealed, terms: order.terms, paid: price,
     moves: reg.moves + 1, phase: "queued", commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, error: null, linksRefused: false,
   })
   clearReveal(reg)
@@ -1044,13 +1084,14 @@ export async function spend(sourceId: string, body: Record<string, unknown>): Pr
   const source = registrations.get(sourceId)
   if (!source) throw new HttpError(404, "not_found")
   const order = { ...fields, owner: source.owner }
-  const message = `simplex.domains spend ${source.id} ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${sha256Hex(order.sealed)} ${body.timestamp}`
+  const message = `simplex.domains spend ${source.id} ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${sha256Hex(order.sealed)} ${order.terms} ${body.timestamp}`
   if (await recoverMessageAddress({ message, signature: checkSignature(body.signature) }) !== source.owner) throw badRequest()
   const orderHash = orderHashOf("balance", order, [source.id, price, balance, method ?? ""])
   const resent = existingOrder(order, orderHash)
   if (resent) return resent.invoiceId ? invoiceView(invoices.get(resent.invoiceId)!) : { registrationId: resent.id }
   freshTimestamp(body.timestamp)
   checkDuration(order.duration, YEARS)
+  checkTerms(order)
   spendable(source, balance as number)
   await nameFree(order.labelHash)
   const chain = await chainPrice(order.length, YEARS)
@@ -1361,6 +1402,26 @@ export function controlSearch(body: Record<string, unknown>): Record<string, unk
   const delays = body.fetchDelays
   if (typeof delays === "object" && delays !== null && Object.values(delays).every((ms) => Number.isInteger(ms) && ms >= 0)) control.fetchDelays = delays as Record<string, number>
   return { ok: true }
+}
+
+// The service's terms setting as a restart with a new ini sets it: another version, or another page.
+export function controlTerms(body: Record<string, unknown>): Record<string, unknown> {
+  const { version, url } = body
+  if (version !== undefined && (typeof version !== "string" || !/^[A-Za-z0-9._-]{1,32}$/.test(version))) throw badRequest()
+  if (url !== undefined && (typeof url !== "string" || !url.startsWith("https://"))) throw badRequest()
+  Object.assign(terms, version === undefined ? {} : { version }, url === undefined ? {} : { url })
+  return { terms }
+}
+
+// A name put on the community list with what it is for, or taken off it with null, as an edit of the ini and a restart would.
+export function controlCommunity(body: Record<string, unknown>): Record<string, unknown> {
+  const { label, for: text } = body
+  if (typeof label !== "string" || labelProblem(label) !== null) throw new HttpError(400, "invalid_name")
+  if (text !== null && (typeof text !== "string" || text.length === 0 || text.length > COMMUNITY_TEXT_MAX || /\p{Cc}/u.test(text))) throw badRequest()
+  const hash = keccak256(toHex(label))
+  if (text === null) communities.delete(hash)
+  else communities.set(hash, text)
+  return { community: communityOf(hash) }
 }
 
 export function dump(): unknown {

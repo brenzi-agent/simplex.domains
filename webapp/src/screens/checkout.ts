@@ -1,4 +1,4 @@
-import type { Balance, Method } from "../api.ts"
+import type { Balance, Community, Method, Terms } from "../api.ts"
 import type { LinkKind } from "../names.ts"
 import { appliedBalance, type Checkout } from "../session.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
@@ -39,6 +39,7 @@ export type CheckoutEvent =
   | { type: "order-refused"; reason: "code"; error: string }
   | { type: "order-refused"; reason: "method" | "failed" | "taken" }
   | { type: "price-changed"; price: number }
+  | { type: "terms-changed"; terms: Terms; community: Community | null }
   | { type: "balance-changed"; balance: Balance | null }
   | { type: "balance-read"; balance: Balance | null }
   | { type: "holder-seen"; holder: Holder | null }
@@ -53,12 +54,13 @@ export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial
   switch (e.type) {
     case "link-set": return e.kind === "contact" ? { contact: e.link } : { channel: e.link }
     case "saved": return { saved: e.saved }
-    case "agreed": return { agreed: e.agreed }
+    case "agreed": return { agreed: e.agreed, termsChanged: undefined }
     case "method-chosen": return e.method === checkout.method || e.method === checkout.unavailable ? null : { method: e.method }
     case "order-refused":
       if (e.reason === "code") return { code: null, codeError: e.error }
       return e.reason === "method" ? { unavailable: methodOf(checkout), method: FALLBACK_METHOD[methodOf(checkout)] } : null
     case "price-changed": return { price: e.price }
+    case "terms-changed": return { terms: e.terms, community: e.community, agreed: false, termsChanged: true }
     case "balance-changed":
     case "balance-read": return balanceNow(checkout, e.balance)
     default: return null
@@ -90,6 +92,7 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
     case "send-started": return { ...s, sending: true, busy: true }
     case "order-refused": return unsent(s, { checkout, refusal: e.reason === "failed" || e.reason === "taken" ? e.reason : null })
     case "price-changed": return unsent(s, { checkout, refusal: "price-changed" })
+    case "terms-changed": return unsent(s, { checkout })
     case "balance-changed": return unsent(s, { checkout })
     case "balance-read": return change ? { ...s, checkout, holder: balanceHeld(checkout) ? s.holder : null } : s
     case "holder-seen": return { ...s, holder: e.holder }

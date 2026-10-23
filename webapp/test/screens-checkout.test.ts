@@ -13,10 +13,13 @@ const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor:
 const CODE = { display: "SN6-AAAAA-BBBBB-CCCCC", minLength: 6, years: 3 }
 const WAITING = { registrationId: "reg-0", invoiceId: "inv-0" }
 const OPEN_ORDER = { invoiceId: "inv-9", confirming: false }
+const TERMS = { version: "2026-10-23", url: "https://simplex.chat/" }
+const NEWER = { version: "2026-11-01", url: "https://simplex.chat/terms" }
+const BAKERS = { for: "bakers and pastry chefs" }
 
 function checkout(change: Partial<Checkout> = {}): Checkout {
   return {
-    label: "alice1", price: 1500, years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, chain: CHAIN, contact: "", channel: "", method: "btc", code: null, balance: null, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF",
+    label: "alice1", price: 1500, years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, chain: CHAIN, terms: TERMS, community: null, contact: "", channel: "", method: "btc", code: null, balance: null, ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF",
     saved: true, agreed: false, searchAt: 0, step: "review", ...change,
   }
 }
@@ -130,6 +133,18 @@ describe("reduce", () => {
     const ticked = reduce(review, { type: "agreed", agreed: true })
     expect(ticked).toEqual({ ...review, checkout: { ...review.checkout, agreed: true } })
     expect(reduce(ticked, { type: "agreed", agreed: false })).toEqual(review)
+  })
+  it("terms-changed takes the terms and community entry the service gave, unticks the box and says the terms changed, ending the send", () => {
+    const sending = reduce({ ...s, checkout: { ...s.checkout, agreed: true } }, { type: "send-started" })
+    const changed = reduce(sending, { type: "terms-changed", terms: NEWER, community: BAKERS })
+    expect(changed).toEqual({ ...s, checkout: { ...s.checkout, terms: NEWER, community: BAKERS, agreed: false, termsChanged: true } })
+    expect(screenOf(changed)).toBe("review")
+  })
+  it("agreed after the terms changed ends the notice, which stays off if the box is unticked again", () => {
+    const changed = reduce(s, { type: "terms-changed", terms: NEWER, community: null })
+    const ticked = reduce(changed, { type: "agreed", agreed: true })
+    expect(ticked.checkout).toMatchObject({ terms: NEWER, agreed: true, termsChanged: undefined })
+    expect(reduce(ticked, { type: "agreed", agreed: false }).checkout).toMatchObject({ agreed: false, termsChanged: undefined })
   })
   it("opened keeps the code the tab's checkout carries, as Back and Register for the same name give it", () => {
     expect(reduce(s, opened(s, { checkout: checkout({ code: CODE }) }))).toEqual({ ...s, checkout: checkout({ code: CODE }) })

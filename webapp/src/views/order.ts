@@ -10,14 +10,16 @@ import {
   retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
+import { termsToSign } from "../screens/terms.ts"
 import { checkoutUrl, CODE_FROM_ORDER_URL } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
 import { seenRegistered } from "./names.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
+import { termsBox } from "./terms.ts"
 import {
-  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, go, historyPlace, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen,
+  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusOn, go, historyPlace, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen,
   searchLink, showRefund, useBalance, whenDropped, whenLeaving,
 } from "./shell.ts"
 
@@ -679,7 +681,47 @@ function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
   const kept = closedBalance(s)
   const replaced = kept === "replaced" ? el("p", { class: "note" }, "What reached this invoice is kept as your balance: you can cancel the new invoice and use the balance instead.") : null
   return outcome({ tone, icon: "alert", title: CLOSED_TITLE, text, reference: inv.invoiceId,
-    extra: [replaced, actionNote(s, reorders ? signal : null)], ...kept === "offer" ? balanceActions(s) : { action: closedAction(s, closed) } })
+    extra: [replaced, actionNote(s, reorders ? signal : null)], agreement: kept !== "offer" && reorders ? agreement(s, "reorder") : null,
+    ...kept === "offer" ? balanceActions(s) : { action: closedAction(s, closed) } })
+}
+
+function agreement({ ask, view, busy }: OrderState, focus: string): HTMLElement | null {
+  if (!ask) return null
+  const agree = (agreed: boolean) => dispatch({ type: "terms-agreed", agreed })
+  return termsBox({ ...ask, tld: view!.tld, disabled: busy !== null }, agree, focus)
+}
+
+const unagreed = ({ ask }: OrderState) => ask !== null && !ask.agreed
+
+// the box takes focus as it comes; the notice of changed terms takes the button's
+function askTerms(gen: number, label: string, quote: Pick<flow.Quote, "terms" | "community">, changed = state.ask?.label === label): void {
+  answer(gen, { type: "terms-asked", label, terms: quote.terms, community: quote.community, changed })
+  if (!changed && isOpen(gen)) focusOn("agreed")
+}
+
+function termsOrAsk(gen: number, record: store.OrderRecord, signed: string | null | undefined, quote: flow.Quote): string | null {
+  const terms = termsToSign(record.label, api.currentTerms(quote), signed, state.ask)
+  if (terms === null) askTerms(gen, record.label, quote)
+  return terms
+}
+
+async function signsHere(record: store.OrderRecord, invoice: api.InvoiceView): Promise<boolean> {
+  const by = newInvoiceBy(record, invoice)
+  if (by === "order") return true
+  const source = by === "find" ? await flow.balanceSourceOf(record) : record.balanceSource
+  return source != null && await balanceOf(source) !== null
+}
+
+// nothing is cancelled before the buyer has agreed to the terms the new invoice would sign
+async function agreedFirst(gen: number, record: store.OrderRecord, invoice: api.InvoiceView): Promise<boolean> {
+  try {
+    const quote = await flow.quoteOf(record.label)
+    if (!quote || !await signsHere(record, invoice)) return true
+    return termsOrAsk(gen, record, invoice.registration.terms ?? record.terms, quote) !== null
+  } catch (e) {
+    if (!holdOn(e, "The invoice is still open. ", gen)) answer(gen, { type: "reorder-failed", note: warning("The name could not be checked now. Try again in a moment.") })
+    return false
+  }
 }
 
 // a late credit the service cannot make by itself, which support makes by hand
@@ -738,13 +780,14 @@ async function orderAgain(record: store.OrderRecord): Promise<void> {
   if (balance) session.setActiveBalance(balance)
   session.setCheckout({
     label: record.label, price: quote.price, years: quote.years, termStart: quote.termStart, chain: flow.chainOf(quote), contact: record.contact, channel: record.channel,
+    terms: quote.terms, community: quote.community,
     method: record.method === "code" || record.method === "balance" ? "btc" : record.method, code: null, balance, ownerCode: record.ownerCode, saved: true, agreed: false, searchAt: historyPlace(), step: "review",
   })
   go(checkoutUrl("review"))
 }
 
 function newInvoiceButton(s: OrderState, cls: string, get: () => void): HTMLButtonElement {
-  const again = setAction(btn(spendCovers(s) ? "Register with your balance" : "Get a new invoice", cls, get), s.busy === "reorder", s.hold !== null)
+  const again = setAction(btn(spendCovers(s) ? "Register with your balance" : "Get a new invoice", cls, get), s.busy === "reorder", s.hold !== null || unagreed(s))
   again.dataset.focus = "reorder"
   return again
 }
@@ -757,14 +800,15 @@ function buildCardUnconfirmed(s: OrderState, signal: AbortSignal): HTMLElement {
   return outcome({ tone: "warn", icon: "alert", title: "Card payment not confirmed", reference: inv.invoiceId,
     text: formFailed ? "Stripe's form was blocked or failed to load. Nothing was charged."
       : "The payment has not been confirmed. This page keeps checking: come back to it later, or quote the reference below.",
-    extra: actionNote(s, formFailed && s.record !== null ? signal : null), action: cardAction(s, formFailed), alt: formFailed && s.record ? coinLinks(s) : null })
+    extra: actionNote(s, formFailed && s.record !== null ? signal : null), agreement: formFailed ? agreement(s, "reorder") : null, action: cardAction(s, formFailed),
+    alt: formFailed && s.record ? coinLinks(s) : null })
 }
 
 // a card form that did not load leaves the coins: each cancels the card invoice and orders the name again paid with it
 function coinLinks(s: OrderState): HTMLElement {
   const coin = (method: "btc" | "xmr") => {
     const pay = link(`Pay with ${methodName(method)}`, () => void reorderAfterCancel(method))
-    if (s.busy !== null || s.hold !== null) pay.setAttribute("aria-disabled", "true")
+    if (s.busy !== null || s.hold !== null || unagreed(s)) pay.setAttribute("aria-disabled", "true")
     return pay
   }
   return el("span", {}, coin("btc"), SEP, coin("xmr"))
@@ -777,11 +821,13 @@ function cardAction(s: OrderState, formFailed: boolean): HTMLButtonElement | nul
 }
 
 async function reorderAfterCancel(method: api.Method = "card"): Promise<void> {
-  if (state.busy || state.hold) return
+  if (state.busy || state.hold || unagreed(state)) return
   const gen = opened
   const invoice = state.invoice!
+  const record = store.orderByInvoice(invoice.invoiceId)
   dispatch({ type: "reorder-started" })
-  if (await cancelBeforeReorder(invoice, gen)) return newInvoice(invoice, store.orderByInvoice(invoice.invoiceId), gen, method)
+  if (record && !await agreedFirst(gen, record, invoice)) return
+  if (await cancelBeforeReorder(invoice, gen)) return newInvoice(invoice, record, gen, method)
   if (store.orderByInvoice(invoice.invoiceId)?.cancelled) reread(gen)
 }
 
@@ -858,6 +904,7 @@ function enterCardAgain(): void {
 }
 
 function reorder(): void {
+  if (unagreed(state)) return
   const gen = opened
   const { invoice, record } = state
   dispatch({ type: "reorder-started" })
@@ -889,16 +936,19 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
     // part of the price came from a balance, which pays again; a browser that adopted the order asks find which balance
     const by = newInvoiceBy(record, now)
     const source = by === "find" ? await flow.balanceSourceOf(record) : record.balanceSource
+    const signed = now.registration.terms ?? record.terms
     if (by !== "order") {
-      if (source) return await spendAgain(record, source, quote, gen, method)
+      if (source) return await spendAgain(record, source, quote, gen, method, signed)
       if (isOpen(gen)) go(searchLink(record.label))
       return
     }
-    const built = await flow.orderRequest(flow.draftAgain(record, quote))
+    const terms = termsOrAsk(gen, record, signed, quote)
+    if (terms === null) return
+    const built = await flow.orderRequest(flow.draftAgain(record, quote, terms))
     const res = await api.createOrder(built.request, method, invoice.amount)
     const next = store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id })
     // the old record is the stored owner code until the new one is stored too
-    store.saveOrder({ ...record, request: built.request, registrationId: res.registration.id, invoiceId: res.invoiceId, ...flow.paidWith(res), cancelled: false, cardSubmittedAt: undefined, replacedBy: undefined, createdAt: new Date(api.serviceNow()).toISOString() })
+    store.saveOrder({ ...record, request: built.request, terms, registrationId: res.registration.id, invoiceId: res.invoiceId, ...flow.paidWith(res), cancelled: false, cardSubmittedAt: undefined, replacedBy: undefined, createdAt: new Date(api.serviceNow()).toISOString() })
     // Your names lists the old order only while money it received needs its reference; its page leads to the new one
     if (res.registration.id !== record.registrationId) store.updateOrder(record.registrationId, { replacedBy: next })
     if (isOpen(gen)) go(next)
@@ -913,6 +963,7 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
       if (own && isOpen(gen)) return go(store.orderUrl(own))
     }
     if (e instanceof api.ApiError && e.code === "catalog_changed" && typeof e.body.price === "number") return dispatch({ type: "price-changed", price: e.body.price })
+    if (e instanceof api.TermsChanged) return askTerms(gen, record.label, e, true)
     if (e instanceof api.BalanceChanged) return dispatch({ type: "reorder-failed", note: warning("Your balance changed meanwhile. Nothing was charged. Try again.") })
     if (e instanceof api.ApiError && e.code === "provider_unavailable") {
       return dispatch({ type: "reorder-failed", note: { tone: "warn", icon: "alert", title: `${methodName(method)} is unavailable right now`,
@@ -925,7 +976,7 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
 
 // An invoice for the rest of a price that a balance paid part of is made again by a new spend of that balance as it is
 // now; once the balance is spent or refunded, the name's search opens instead, with the name's price.
-async function spendAgain(record: store.OrderRecord, source: string, quote: flow.Priced, gen: number, method: api.Method): Promise<void> {
+async function spendAgain(record: store.OrderRecord, source: string, quote: flow.Quote, gen: number, method: api.Method, signed: string | null | undefined): Promise<void> {
   const read = (await api.readRegistration(source)).balance
   const balance = session.appliedBalance(source, read)
   if (!isOpen(gen)) return
@@ -942,7 +993,9 @@ async function spendAgain(record: store.OrderRecord, source: string, quote: flow
     const by = holder ? `${holder.label}.${holder.tld}` : "another order"
     return dispatch({ type: "reorder-failed", note: warning(`Your balance is in use by ${by} ${heldWords(balance.heldUntil)}. Nothing was charged.`) })
   }
-  const next = await flow.spendBalance(paying, record.label, { contact: record.contact, channel: record.channel }, quote, balance.amount, method)
+  const terms = termsOrAsk(gen, record, signed, quote)
+  if (terms === null) return
+  const next = await flow.spendBalance(paying, record.label, { contact: record.contact, channel: record.channel }, quote, balance.amount, method, terms)
   replacedWith(record, store.orderUrl(next), gen)
 }
 
@@ -1056,7 +1109,7 @@ function onTheSecond(left: () => number, f: () => void, signal: AbortSignal): vo
 // name without them, or to another name.
 function buildLinksRefused(s: OrderState, signal: AbortSignal): HTMLElement {
   const view = s.view!
-  const move = setAction(btn("Register without links", "", () => void moveWithoutLinks()), s.busy === "move", s.hold !== null)
+  const move = setAction(btn("Register without links", "", () => void moveWithoutLinks()), s.busy === "move", s.hold !== null || unagreed(s))
   move.dataset.focus = "move"
   holdEnds(signal)(s.hold !== null)
   const title = view.phase === "failed" ? s.invoice ? "Paid, not registered" : "Not registered" : headingOf(s)
@@ -1064,7 +1117,8 @@ function buildLinksRefused(s: OrderState, signal: AbortSignal): HTMLElement {
     alertBox("warn", "alert", "The service refused this order's links",
       "They are part of the order, so they cannot be changed in it. Register the name without them and add links in Your names once it is registered, or choose another name."),
     actionNote(s, signal),
-    referenceLine(s.invoice?.invoiceId ?? view.id))
+    referenceLine(s.invoice?.invoiceId ?? view.id),
+    agreement(s, "move"))
 }
 
 // what a move refused for good says: the service bounds how often an order moves, and support settles it from there
@@ -1072,18 +1126,23 @@ export const moveLimitNote = (reference: string): Note => ({ tone: "warn", icon:
   text: "Write to SimpleX support with its reference, ", link: { text: CONTACT_EMAIL, href: `mailto:${CONTACT_EMAIL}`, after: `: ${reference}.` } })
 
 async function moveWithoutLinks(): Promise<void> {
+  if (unagreed(state)) return
   const gen = opened
   const record = state.record!
-  const reference = state.invoice?.invoiceId ?? state.view!.id
+  const view = state.view!
+  const reference = state.invoice?.invoiceId ?? view.id
   dispatch({ type: "move-started" })
   try {
     const quote = await flow.quoteOf(record.label)
     if (!quote) return answer(gen, { type: "move-failed", note: warning("This name is no longer available. Choose another name.") })
-    await flow.retargetOrder(record, record.label, { contact: "", channel: "" }, quote)
+    const terms = termsOrAsk(gen, record, view.terms ?? record.terms, quote)
+    if (terms === null) return
+    await flow.retargetOrder(record, record.label, { contact: "", channel: "" }, quote, terms)
     reread(gen)
   } catch (e) {
     if (holdOn(e, "Nothing changed. ", gen)) return
     const limit = e instanceof api.ApiError && e.code === "move_limit"
+    if (e instanceof api.TermsChanged) return askTerms(gen, record.label, e, true)
     // an order another request moved first is shown as it is now
     if (e instanceof api.ApiError && e.code === "registration_changed") return reread(gen)
     answer(gen, { type: "move-failed", note: limit ? moveLimitNote(reference) : warning("That did not go through. Nothing changed. Try again in a moment.") })

@@ -7,7 +7,7 @@ import {
 const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
 
 function checkout(label: string, ownerCode: string | null): Checkout {
-  return { label, price: 10000, years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, chain: CHAIN, contact: "", channel: "", method: "btc", code: null, balance: null, ownerCode, saved: false, agreed: false, searchAt: 0, step: "code" }
+  return { label, price: 10000, years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, chain: CHAIN, terms: { version: "2026-10-23", url: "https://simplex.chat/" }, community: null, contact: "", channel: "", method: "btc", code: null, balance: null, ownerCode, saved: false, agreed: false, searchAt: 0, step: "code" }
 }
 
 describe("orders on their way", () => {
@@ -52,6 +52,9 @@ describe("the tab's checkout", () => {
     expect(tabCheckout(), "one kept before balances pays with none").toEqual({ ...unbalanced, balance: null })
     setCheckout(checkout("newername", "SN-BBBBB"))
     expect(tabCheckout()!.step).toBe("code")
+    const { terms: ___, ...unagreeable } = checkout("noterms", "SN-AAAAA")
+    setCheckout(unagreeable as Checkout)
+    expect(tabCheckout(), "one kept before terms has nothing to ask the buyer to agree to, so it is a leftover").toBeNull()
     setCheckout(null)
     expect(tabCheckout()).toBeNull()
   })

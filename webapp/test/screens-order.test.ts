@@ -17,7 +17,8 @@ const WARN: Note = { tone: "warn", icon: "alert", title: null, text: "The invoic
 function registration(change: Partial<RegistrationView> = {}): RegistrationView {
   return {
     ...CHAIN, id: "reg-1", version: 1, phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box", years: 2, duration: 2 * 365 * 86400,
-    price: 1500, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, intentNonce: null, unread: [], expiresAt: null, error: null, linksRefused: false, latePayment: null, ...change,
+    price: 1500, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, intentNonce: null, unread: [], expiresAt: null, error: null, linksRefused: false, latePayment: null,
+    community: null, terms: "2026-10-23", ...change,
   }
 }
 
@@ -511,12 +512,45 @@ describe("wakeAt", () => {
   })
 })
 
+describe("the terms of the same name again", () => {
+  const TERMS = { version: "2026-11-01", url: "https://simplex.chat/" }
+  const BAKERS = { for: "bakers and pastry chefs" }
+
+  it("terms-asked ends a new invoice's or a move's work and asks for the name's terms, unticked", () => {
+    for (const started of ["reorder-started", "move-started"] as const) {
+      const s = reduce(STATES["status:closed"], { type: started })
+      expect(reduce(s, { type: "terms-asked", label: "alice", terms: TERMS, community: BAKERS, changed: false }), started).toMatchObject({ busy: null, ask: { label: "alice", terms: TERMS, community: BAKERS, agreed: false, changed: false } })
+    }
+  })
+  it("terms-agreed ticks the box and ends the notice that the terms changed", () => {
+    const s = reduce(STATES["status:closed"], { type: "terms-asked", label: "alice", terms: TERMS, community: null, changed: true })
+    const ticked = reduce(s, { type: "terms-agreed", agreed: true })
+    expect(ticked.ask).toEqual({ label: "alice", terms: TERMS, community: null, agreed: true, changed: false })
+    expect(reduce(ticked, { type: "terms-agreed", agreed: false }).ask).toEqual({ label: "alice", terms: TERMS, community: null, agreed: false, changed: false })
+  })
+  it("terms-agreed with nothing asked changes nothing", () => {
+    expect(reduce(STATES["status:closed"], { type: "terms-agreed", agreed: true })).toBe(STATES["status:closed"])
+  })
+  it("the ask stays while the order is read again", () => {
+    const s = reduce(STATES["status:closed"], { type: "terms-asked", label: "alice", terms: TERMS, community: null, changed: false })
+    expect(reduce(s, answered(s, STATES["status:closed"])).ask).toEqual(s.ask)
+  })
+  it("an order moved to another name meanwhile drops the ask, ticked or not, so the next press asks for that name's terms", () => {
+    const asked = reduce(STATES["status:closed"], { type: "terms-asked", label: "alice", terms: TERMS, community: null, changed: false })
+    const ticked = reduce(asked, { type: "terms-agreed", agreed: true })
+    const moved = { ...STATES["status:closed"], record: record({ label: "bob123" }) }
+    expect(reduce(ticked, answered(ticked, moved)).ask).toBeNull()
+    expect(reduce(ticked, { type: "record-changed", record: record({ label: "bob123" }), cardSubmittedAt: null }).ask).toBeNull()
+    expect(reduce(ticked, { type: "record-changed", record: record(), cardSubmittedAt: null }).ask).toEqual(ticked.ask)
+  })
+})
+
 describe("initialState", () => {
   it("starts with nothing read, holding as the tab does, and keeps a reveal carried over", () => {
     const reveal = { key: "reg-1 0x9c 4 1", sending: true, refusals: 1 }
     expect(initialState("inv-1", { until: NOW + 1000, lead: NO_LEAD }, reveal)).toEqual({
       reference: "inv-1", seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false,
-      reveal, busy: null, note: null, hold: { until: NOW + 1000, lead: NO_LEAD }, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null,
+      reveal, busy: null, note: null, hold: { until: NOW + 1000, lead: NO_LEAD }, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null,
     })
   })
 })
