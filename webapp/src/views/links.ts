@@ -30,13 +30,23 @@ const PREVIEW_RETRY_S = 3
 // a preview's place is held while it is asked for, so the page is laid out at its height from the start
 const previewPlace = () => el("div", { class: "entity skeleton", "aria-hidden": "true" })
 
+// a link's profile, named by its link, so that what a field shows can be told from what it holds
+function linkLine(link: string, profile: api.Profile, withKind: boolean): HTMLElement {
+  const line = profileLine(profile, withKind)
+  line.dataset.link = link
+  return line
+}
+
+// The place is the link's own: a field checking another link drops it rather than take it over, so a late answer
+// fills a place no longer shown.
 function linkPreview(link: string, withKind = false): HTMLElement {
   const known = previews.get(link)
-  if (known) return profileLine(known, withKind)
+  if (known) return linkLine(link, known, withKind)
   const place = previewPlace()
+  place.dataset.link = link
   void api.previewLink(link).then((profile) => {
     previews.set(link, profile)
-    place.replaceWith(inPlace(profileLine(profile, withKind)))
+    place.replaceWith(inPlace(linkLine(link, profile, withKind)))
   }, () => place.replaceWith(el("span", { class: "raw" }, link)))
   return place
 }
@@ -108,7 +118,8 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
   phone.addEventListener("change", placeholder, { signal: life.signal })
   const shown = () => !life.signal.aborted
   let seq = 0
-  const holdPreviewPlace = () => show(preview.querySelector(".skeleton") ?? previewPlace())
+  // the field's own place is kept from check to check, whose answers only the latest may fill; another link's is not
+  const holdPreviewPlace = () => show(preview.querySelector(".skeleton:not([data-link])") ?? previewPlace())
   const refuse = (text: string) => {
     box.className = "field bad"
     field.dataset.state = "bad"
@@ -155,7 +166,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
     }
     if (known) {
       accept()
-      return show(profileLine(known, true))
+      return show(linkLine(link, known, true))
     }
     holdPreviewPlace()
     try {
@@ -163,7 +174,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
       previews.set(link, profile)
       if (mine !== seq || !shown() || !field.isConnected) return
       accept()
-      show(inPlace(profileLine(profile, true)))
+      show(inPlace(linkLine(link, profile, true)))
     } catch (e) {
       if (mine !== seq || !shown() || !field.isConnected) return
       // the service refusing the link is about the link; a rate limit or no answer is not, and the field checks again

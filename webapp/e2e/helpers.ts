@@ -225,10 +225,13 @@ export async function toReview(page: Page, agree = true): Promise<void> {
   await savedToReview(page, agree)
 }
 
-// Each link field's profile, shown once focus has left the field, which shows its link alone while focused.
+// Each link field's profile of the link it holds, shown once focus has left the field, which shows its link alone while focused.
 export async function previewsShown(page: Page): Promise<void> {
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
-  for (const field of await onStep(page).locator(".link-field").all()) await expect(field.locator(".entity:not(.skeleton)")).toBeVisible()
+  for (const field of await onStep(page).locator(".link-field").all()) {
+    const link = (await field.locator("input").inputValue()).trim()
+    await expect(field.locator(".entity:not(.skeleton)").and(page.locator(`[data-link="${link}"]`))).toBeVisible()
+  }
 }
 
 // The Links step's two links: one in its Link field, the other kind in the field its text link adds.

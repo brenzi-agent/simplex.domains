@@ -393,6 +393,45 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await page.unrouteAll({ behavior: "wait" })
 })
 
+test("a link's late preview never fills the field once it holds another link, whose own preview it waits for", async ({ page, request }) => {
+  const first = contactLink("UnrA")
+  const second = contactLink("UnrB")
+  await search(page, uniqueLabel("stale"))
+  await page.getByRole("button", { name: "Register" }).click()
+  const link = onStep(page).getByRole("textbox", { name: "Link", exact: true })
+  await link.fill(first)
+  await previewsShown(page)
+  await onStep(page).getByRole("button", { name: "Continue" }).click()
+  await expect(onStep(page).getByRole("heading", { name: CODE_HEADING })).toBeVisible()
+  // the Links step drawn anew asks for the kept link's preview, held until the field asks for another link's, which the service takes long to fetch
+  await page.reload()
+  await control(request, "search", { fetchDelays: { [second]: 700 } })
+  let askedSecond: () => void = () => undefined
+  const secondAsked = new Promise<void>((resolve) => { askedSecond = resolve })
+  await page.route("**/api/link/preview", async (route) => {
+    const asked = route.request().postDataJSON().link as string
+    if (asked === second) askedSecond()
+    if (asked === first) await secondAsked
+    await route.continue()
+  })
+  const firstAnswered = page.waitForResponse((r) => r.url().endsWith("/api/link/preview") && r.request().postDataJSON().link === first)
+  await page.goBack()
+  await expect(link).toHaveValue(first)
+  // a field checking a link shows its place held, never another link's profile
+  await page.evaluate(() => {
+    const w = window as unknown as { __stale: boolean }
+    w.__stale = false
+    const look = () => { if (document.querySelector(".link-field[data-state=checking] .entity:not(.skeleton)")) w.__stale = true }
+    new MutationObserver(look).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-state"] })
+  })
+  await link.fill(second)
+  await firstAnswered
+  await previewsShown(page)
+  expect(await page.evaluate(() => (window as unknown as { __stale: boolean }).__stale), "the first link's profile drawn while the second was checked").toBe(false)
+  await page.unrouteAll({ behavior: "wait" })
+  await control(request, "search", { fetchDelays: {} })
+})
+
 test("Skip for now shows only while no link is given, and a link edited keeps its last good value until emptied", async ({ page }) => {
   await search(page, uniqueLabel("skip"))
   await page.getByRole("button", { name: "Register" }).click()
