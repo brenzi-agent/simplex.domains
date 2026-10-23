@@ -6,8 +6,8 @@ import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
-  closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedAlert, failedLead, finished, newInvoiceBy, spendCovers, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
-  retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
+  closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedAlert, failedLead, finished, newInvoiceBy, spendCovers, initialState, type Note, type OrderEvent, type OrderKind,
+  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
 import { termsToSign } from "../screens/terms.ts"
@@ -22,8 +22,6 @@ import {
   asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusOn, go, historyPlace, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen,
   searchLink, showRefund, useBalance, whenDropped, whenLeaving,
 } from "./shell.ts"
-
-export const RETRY_MS = 3000
 
 // the count stays with its word on one line; a payment taken on first sight waits for no confirmation at all
 const confirmations = (n: number) => (n === 1 ? "Waiting for 1\u00a0confirmation" : n > 1 ? `Waiting for ${n}\u00a0confirmations` : "Waiting for the payment to settle")
@@ -1056,6 +1054,7 @@ const leadOf = ({ record }: OrderState) => record ? ["Keep this page open until 
 const WAIT_NOTE = "Every new name waits a little, so nobody who sees your order can take the name first."
 const COMMIT_NOTE = "Placing your order. The wait starts once it is in."
 const REGISTERING_NOTE = "Registering the name. It is yours in a moment."
+const STALL_NOTE = "This is taking longer than usual. It continues by itself."
 
 function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
   const view = s.view!
@@ -1063,6 +1062,7 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
   sayStage(view, states)
   const refused = refusalsOf(s) >= REVEAL_ATTEMPTS
   const steps = stages(states)
+  const stalled = stalledAt(s)
   const clockNode = el("b", {})
   const note = el("span", {})
   const tryAgain = () => {
@@ -1079,6 +1079,7 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
       return say(note, WAIT_NOTE)
     }
     if (!clockNode.querySelector("svg")) clockNode.replaceChildren(icon("clock"))
+    if (stalled !== null && api.serviceNow() >= stalled) return say(note, STALL_NOTE)
     if (view.phase !== "committed") return say(note, view.phase === "registering" ? REGISTERING_NOTE : COMMIT_NOTE)
     waitsSeen.delete(view.id)
     if (view.label === null && refused) say(note, "The registration is not signed yet.")

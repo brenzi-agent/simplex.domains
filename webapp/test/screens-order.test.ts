@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
-  CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedAlert, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
-  reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, spendCovers, unreadDelay, wakeAt,
+  CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedAlert, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind,
+  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, spendCovers, STALL_MARGIN_MS, stalledAt, unreadDelay, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
 
@@ -145,7 +145,7 @@ describe("reduce", () => {
 
   it("answered takes the newer answer whole", () => {
     const next = read(crypto({ cryptoAmountPaid: "0.0001" }), undefined, { now: NOW + 5000, record: record({ contact: "https://smp8.simplex.im/a#x" }) })
-    expect(reduce(paying, answered(paying, next))).toEqual({ ...paying, seq: 2, now: NOW + 5000, invoice: next.invoice, view: next.view, record: next.record })
+    expect(reduce(paying, answered(paying, next))).toEqual({ ...paying, seq: 2, now: NOW + 5000, invoice: next.invoice, view: next.view, record: next.record, since: { stage: "reg-1 unpaid", at: NOW + 5000 } })
   })
   it("answered to an earlier read changes nothing", () => {
     const later = reduce(paying, answered(paying, STATES.confirming))
@@ -462,6 +462,40 @@ describe("a taken order's name", () => {
   })
 })
 
+describe("a stalled stage", () => {
+  const seen = (view: RegistrationView, at = NOW, from = initialState("reg-1", null)) => reduce(from, answered(from, read(null, view, { now: at })))
+  const committing = registration({ phase: "committing" })
+  it("is timed from the first answer that shows its stage, whatever else changes in it", () => {
+    const first = seen(committing)
+    expect(first.since).toEqual({ stage: "reg-1 committing", at: NOW })
+    expect(seen(registration({ phase: "committing", version: 2, commitTx: "0xc0" }), NOW + 5000, first).since, "a commit sent again").toEqual(first.since)
+    expect(seen(registration({ ...committed, version: 3 }), NOW + 9000, first).since).toEqual({ stage: "reg-1 committed", at: NOW + 9000 })
+  })
+  it("counts a signed registration, which the service registers, as a stage of its own", () => {
+    const waiting = seen(registration(committed))
+    expect(seen(registration({ ...committed, label: "alice" }), NOW + 2000, waiting).since).toEqual({ stage: "reg-1 committed signed", at: NOW + 2000 })
+  })
+  it("of a transaction stalls once the margin has gone by", () => {
+    expect(stalledAt(seen(committing))).toBe(NOW + STALL_MARGIN_MS)
+    expect(stalledAt(seen(registration({ ...committed, label: "alice" })))).toBe(NOW + STALL_MARGIN_MS)
+    expect(stalledAt(seen(registration({ ...committed, phase: "registering", label: "alice" })))).toBe(NOW + STALL_MARGIN_MS)
+  })
+  it("of the wait and the reveal stalls past the wait's end, the reveal's tries and the margin", () => {
+    const later = registration({ ...committed, revealAfter: NOW / 1000 + 30 })
+    expect(stalledAt(seen(later))).toBe(NOW + 30_000 + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS)
+    // a wait already over when the stage was first seen is timed from then
+    expect(stalledAt(seen(registration(committed)))).toBe(NOW + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS)
+  })
+  it("is not said on any other page, nor once the service refused the reveal, which the page says instead", () => {
+    for (const kind of ["registered", "taken", "failed", "links-refused", "not-on-device", "pay-crypto"] as const) {
+      const s = STATES[kind]
+      expect(stalledAt(reduce(s, answered(s, s))), kind).toBeNull()
+    }
+    const view = registration(committed)
+    expect(stalledAt({ ...seen(view), reveal: { key: revealKey(view), sending: false, refusals: REVEAL_ATTEMPTS } })).toBeNull()
+  })
+})
+
 describe("reveal helpers", () => {
   const view = registration(committed)
   const waiting = read(null, view)
@@ -575,7 +609,7 @@ describe("initialState", () => {
     expect(initialState("inv-1", { until: NOW + 1000, lead: NO_LEAD }, reveal)).toEqual({
       reference: "inv-1", seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false,
       reveal, busy: null, note: null, hold: { until: NOW + 1000, lead: NO_LEAD }, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null,
-      reserved: false,
+      reserved: false, since: null,
     })
   })
 })

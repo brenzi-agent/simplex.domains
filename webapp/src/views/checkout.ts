@@ -6,7 +6,7 @@ import { dateOf, dollars, freeDays, methodName, termEnd, termOf } from "../forma
 import { type Method, methodMark } from "../icons.ts"
 import type { LinkKind } from "../names.ts"
 import { CONFIRMING_READ_MS, heldWords, holderStill, holdWait } from "../screens/balance.ts"
-import { REVEAL_HOURS } from "../screens/order.ts"
+import { RETRY_MS, REVEAL_HOURS } from "../screens/order.ts"
 import {
   balanceHeld, changeOf, heldForThisName, methodOf, methodsFor, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
 } from "../screens/checkout.ts"
@@ -20,7 +20,7 @@ import {
 } from "./shell.ts"
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./hold.ts"
-import { openedInstead, RETRY_MS } from "./order.ts"
+import { openedInstead } from "./order.ts"
 import { rowName, termsBox } from "./terms.ts"
 
 const CHECKOUT_NOTE = "checkout-note"

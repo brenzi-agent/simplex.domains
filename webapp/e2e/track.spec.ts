@@ -1,5 +1,6 @@
 import { type APIRequestContext, expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
+import { STALL_MARGIN_MS } from "../src/screens/order.ts"
 import {
   agreeToTerms, AVAILABLE_BRIEF, brokenNames, CHAIN, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
   lineStarts, offCentre, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, rowFit, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, TERMS, test, toCodeStep,
@@ -633,6 +634,34 @@ test("the words under the registering page's clock are centred on its icon", asy
       const { icon, note } = await countdownMiddles(page)
       expect(Math.abs(icon - note), `the words' middle from the icon's at ${size.width}x${size.height}`).toBeLessThanOrEqual(1)
     }
+  })
+})
+
+// how far ahead the service's clock is put, past a stage's margin
+const AHEAD_MS = 2 * STALL_MARGIN_MS
+
+// where the registering page's parts stand: its heading, the countdown and its words' cell, and the reference under them
+const registeringPlaces = (page: Page) => page.locator("body > main").evaluate((main) => [
+  main.querySelector("h1")!, main.querySelector(".countdown")!, main.querySelector(".countdown p")!, main.querySelector(".screen-body > .ref")!,
+].map((n) => {
+  const r = n.getBoundingClientRect()
+  return [r.top, r.height]
+}))
+
+test("a commit that does not move on for longer than usual says so in its words' place, and nothing moves", async ({ page, request }) => {
+  await heldAtCommit(page, request, "stall", async () => {
+    const words = page.locator(".countdown p > :not(.sizer)")
+    await expect(words).toHaveText("Placing your order. The wait starts once it is in.")
+    const before = await registeringPlaces(page)
+    // the page reads the time by the service's Date header, which now says the commit has stood still past its margin
+    await page.route("**/api/registration/*", async (route) => {
+      const response = await route.fetch()
+      await route.fulfill({ response, headers: { ...response.headers(), date: new Date(Date.now() + AHEAD_MS).toUTCString() } })
+    })
+    await expect(words).toHaveText("This is taking longer than usual. It continues by itself.")
+    expect(await registeringPlaces(page), "the heading, the countdown, its words' cell and the reference").toEqual(before)
+    // a long poll the route still holds would fail once the test ends
+    await page.unrouteAll({ behavior: "ignoreErrors" })
   })
 })
 

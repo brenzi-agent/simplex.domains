@@ -10,6 +10,11 @@ export const CARD_SLOW_MS = 10 * 60 * 1000
 export const REVEAL_HOURS = 24
 // refusals of the signed registration after which the page stops signing and says so
 export const REVEAL_ATTEMPTS = 3
+// the pause before a request that did not go through, as a reveal, is sent again
+export const RETRY_MS = 3000
+// A working stage that has not moved on for its usual time and this much more is said to take longer than usual. A
+// commit's or a register's transaction, whose time the page cannot know, has this margin alone.
+export const STALL_MARGIN_MS = 60_000
 // A view whose chain reads failed is read again after these pauses, the last repeated while they fail: a held poll would
 // wait for a change that a failed read never makes.
 const UNREAD_PACING_MS = [5_000, 15_000, 30_000]
@@ -51,6 +56,8 @@ export interface OrderState {
   ask: TermsAsk | null
   // a search after the order was taken answered that the name is reserved
   reserved: boolean
+  // the registration's stage, and when this page first saw it, on the service's clock
+  since: { stage: string; at: number } | null
 }
 
 export type OrderEvent =
@@ -86,8 +93,13 @@ export type OrderEvent =
   | { type: "hold-ended" }
 
 export function initialState(reference: string, hold: Hold | null, reveal: Reveal | null = null): OrderState {
-  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null, reserved: false }
+  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null, reserved: false, since: null }
 }
+
+// A stage moves on with the phase, and once the owner's signature is in, as the service then registers; a transaction sent
+// again within it moves nothing on.
+const stageOf = (view: RegistrationView) => `${view.id} ${view.phase}${view.phase === "committed" && view.label !== null ? " signed" : ""}`
+const sinceOf = (since: OrderState["since"], view: RegistrationView, now: number) => since?.stage === stageOf(view) ? since : { stage: stageOf(view), at: now }
 
 const start = (s: OrderState, action: Action): OrderState => ({ ...s, busy: action, note: null })
 const askKept = (ask: TermsAsk | null, label: string | null) => ask && label !== null && label !== ask.label ? null : ask
@@ -98,7 +110,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "answered":
       if (e.seq <= s.seq) return s
       return { ...s, seq: e.seq, now: e.now, invoice: e.invoice, view: e.view, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? e.view.label),
-        reserved: e.reserved }
+        reserved: e.reserved, since: sinceOf(s.since, e.view, e.now) }
     case "record-changed": return { ...s, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? null) }
     case "read-failed": return s
     case "not-found": return { ...s, gone: true }
@@ -258,6 +270,17 @@ export function revealDue(s: OrderState): boolean {
   if (view?.phase !== "committed" || view.label !== null || view.intentNonce === null || !record || linksRefused(s)) return false
   if ((view.revealAfter ?? 0) * 1000 > s.now) return false
   return !(reveal?.key === revealKey(view) && reveal.sending) && refusalsOf(s) < REVEAL_ATTEMPTS
+}
+
+// When the registering page's stage counts as taking longer than usual: its usual time, the wait until revealAfter and
+// the reveal's tries for a registration to sign, then the margin. Never on another page, nor once the service refused
+// the reveal, which the page says instead.
+export function stalledAt(s: OrderState): number | null {
+  const { view, since } = s
+  if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS) return null
+  const signing = view.phase === "committed" && view.label === null
+  const usual = signing ? Math.max(since.at, (view.revealAfter ?? 0) * 1000) + REVEAL_ATTEMPTS * RETRY_MS : since.at
+  return usual + STALL_MARGIN_MS
 }
 
 // A moment counts as reached at its own millisecond, so a tick landing on it changes the page.
