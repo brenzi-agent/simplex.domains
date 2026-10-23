@@ -160,6 +160,31 @@ test("a phone's header is the symbol and a menu button, whose menu over the page
   await expect(menu).toBeHidden()
 })
 
+// WCAG's least contrast for text of the body's size
+const TEXT_CONTRAST = 4.5
+
+// The contrast of a field's placeholder, its colour laid over the field's ground, which is opaque.
+const placeholderContrast = (page: Page) => page.locator(".field input").first().evaluate((input) => {
+  const rgba = (css: string) => css.match(/[\d.]+/g)!.map(Number)
+  const [r, g, b, a = 1] = rgba(getComputedStyle(input, "::placeholder").color)
+  const ground = rgba(getComputedStyle(input.closest(".field")!).backgroundColor)
+  const shown = [r, g, b].map((c, i) => c * a + ground[i] * (1 - a))
+  const luminance = (rgb: number[]) => {
+    const [lr, lg, lb] = rgb.map((c) => c / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+    return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb
+  }
+  const [hi, lo] = [luminance(shown), luminance(ground)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+})
+
+test("a field's placeholder reads at the contrast of body text in either theme", async ({ page }) => {
+  await page.goto("/")
+  for (const dark of [false, true]) {
+    await page.evaluate((d) => document.documentElement.classList.toggle("dark", d), dark)
+    expect(await placeholderContrast(page), dark ? "dark" : "light").toBeGreaterThanOrEqual(TEXT_CONTRAST)
+  }
+})
+
 // the open menu's items, in their order
 const MENU_ITEMS = ["Find a name", "Check your code", "Your names", "Invest on Wefunder", "Trademark owners", "simplex.chat/contact", "Dark theme"]
 // the name of what has focus, and whether the open menu is the topmost thing at its middle, as a reader would see it
