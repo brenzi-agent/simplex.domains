@@ -42,6 +42,9 @@
   --column: 600px;
   --control-h: 44px;
   --field-h: 48px;
+  /* a screen's room above its heading, and a step's frame under it, which a page opening on a step holds before its draw */
+  --screen-top: 29px;
+  --step-h: 540px;
 
   --fast: 150ms;
   --ease: cubic-bezier(.22, .61, .36, 1);
@@ -159,6 +162,7 @@ html.dark .theme-switch .sun, html.dark .to-light { display: block; }
   background: var(--surface); font-size: var(--fs-small); font-weight: 600; white-space: nowrap; }
 .code-chip .unlink { width: 26px; height: 26px; }
 body > main { grid-area: main; display: flex; flex-direction: column; min-width: 0; }
+html.framed body > main:empty { min-height: calc(var(--step-h) + var(--screen-top)); }
 /* a phone's header, as simplex.chat's: the symbol, and a menu button that opens the menu over the page */
 @media (max-width: 520px) {
   .topbar { height: 54px; padding: 0 16px; }
@@ -234,9 +238,9 @@ body > main { grid-area: main; display: flex; flex-direction: column; min-width:
 /* Every screen is one centred column: its heading block, Back beside the heading as the badges store draws it, then its
    content and its actions' row. A step is a frame of one height, so Back, the heading and the main button stand at one
    place on every step; the content runs down from under the heading, so nothing above a change moves as it comes. */
-.screen { --back-w: 72px; --screen-top: 29px; --row-gap: 22px; width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: var(--screen-top) 16px 0; display: grid;
+.screen { --back-w: 72px; --row-gap: 22px; width: 100%; max-width: calc(var(--column) + 32px); margin-inline: auto; padding: var(--screen-top) 16px 0; display: grid;
   grid-template-columns: minmax(0, 1fr); align-content: start; row-gap: var(--row-gap); }
-.screen.step { --step-h: 540px; height: calc(var(--step-h) + var(--screen-top)); grid-template-rows: auto minmax(0, 1fr) 78px; }
+.screen.step { height: calc(var(--step-h) + var(--screen-top)); grid-template-rows: auto minmax(0, 1fr) 78px; }
 /* a step with no action gives the action row's room to its content */
 .screen.step:not(:has(> .actions-row)) { grid-template-rows: auto minmax(0, 1fr); }
 .screen-head { display: grid; grid-template-columns: var(--back-w) minmax(0, 1fr) var(--back-w); row-gap: 10px; }
@@ -616,9 +620,8 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 /* a phone: its heading smaller, Back above it on a line kept on every screen, and the main button across the column with
    its text link under it, the row the same height whether or not a step has the link */
 @media (max-width: 520px) {
-  :root { --fs-h1: 30px; --fs-lead: 15px; }
-  .screen { --screen-top: 20px; --row-gap: 16px; }
-  .screen.step { --step-h: 640px; }
+  :root { --fs-h1: 30px; --fs-lead: 15px; --screen-top: 20px; --step-h: 640px; }
+  .screen { --row-gap: 16px; }
   .screen-head { grid-template-columns: minmax(0, 1fr); grid-template-rows: 24px auto; row-gap: 8px; }
   .back { margin-top: -8px; }
   .screen-head h1 { grid-area: 2 / 1; }
