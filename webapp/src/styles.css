@@ -496,8 +496,8 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 /* the clock and the icon after it take the same room, a clock's "0:00" */
 .countdown b { display: inline-grid; place-items: center; min-height: 1em; min-width: 4ch; font: 700 22px/1 var(--body); color: var(--primary); font-variant-numeric: tabular-nums; }
 .countdown b svg.i { width: .8em; height: .8em; }
-.countdown p { display: grid; color: var(--ink-soft); font-size: var(--fs-small); }
-/* the words in view and the longest ones, hidden, share one cell */
+.countdown p { display: grid; align-items: center; color: var(--ink-soft); font-size: var(--fs-small); }
+/* the words in view and the longest ones, hidden, share one cell, whose middle is the icon's */
 .countdown p > *, .sized > * { grid-area: 1 / 1; }
 .sized { display: grid; }
 .sizer { visibility: hidden; }

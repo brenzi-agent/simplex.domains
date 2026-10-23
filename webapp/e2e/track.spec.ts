@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from "@playwright/test"
+import { type APIRequestContext, expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
   agreeToTerms, AVAILABLE_BRIEF, brokenNames, CHAIN, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
@@ -597,6 +597,43 @@ test("the registering page keeps its heading still on a phone from the commit to
   const frames = await recordedFrames<[number, string]>(page)
   expect(new Set(frames.map(([, note]) => note)).size, "the page went through more than one stage").toBeGreaterThan(1)
   expect([...new Set(frames.map(([top]) => top))], "the heading's top in each frame").toHaveLength(1)
+})
+
+// A code order held at its commit while no transaction goes out, until the mock's resends (MOCK_RESEND_MS × MOCK_RESENDS)
+// run out; `stuck` runs within them.
+async function heldAtCommit(page: Page, request: APIRequestContext, prefix: string, stuck: () => Promise<void>): Promise<void> {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  await useCode(page, code)
+  await search(page, uniqueLabel(prefix))
+  await toReview(page)
+  await control(request, "search", { unsentSeconds: REGISTRATION_MS / 1000 })
+  try {
+    await onStep(page).getByRole("button", { name: "Register with your code" }).click()
+    await expect(page.locator(".stage.active", { hasText: "Committing" })).toBeVisible()
+    await stuck()
+  } finally {
+    await control(request, "search", { unsentSeconds: 0 })
+  }
+}
+
+// The vertical middle of what the countdown shows: its icon, and the lines of its words in view, whose box is the whole
+// cell it shares with the hidden longest words.
+const countdownMiddles = (page: Page) => page.locator(".countdown").evaluate((box) => {
+  const words = document.createRange()
+  words.selectNodeContents(box.querySelector("p > :not(.sizer)")!)
+  const lines = [...words.getClientRects()]
+  const icon = box.querySelector("b > svg")!.getBoundingClientRect()
+  return { icon: (icon.top + icon.bottom) / 2, note: (Math.min(...lines.map((r) => r.top)) + Math.max(...lines.map((r) => r.bottom))) / 2 }
+})
+
+test("the words under the registering page's clock are centred on its icon", async ({ page, request }) => {
+  await heldAtCommit(page, request, "centre", async () => {
+    for (const size of FIT_SIZES) {
+      await page.setViewportSize(size)
+      const { icon, note } = await countdownMiddles(page)
+      expect(Math.abs(icon - note), `the words' middle from the icon's at ${size.width}x${size.height}`).toBeLessThanOrEqual(1)
+    }
+  })
 })
 
 // A name of the widest letters breaks its lines as early as any name of its length can; drawn at random from two
