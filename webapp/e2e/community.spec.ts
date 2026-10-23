@@ -46,24 +46,27 @@ const invoiceViewOf = async (request: APIRequestContext, invoiceId: string) => (
 // Where a community name's marker stands: its baseline against the name's, its gap after the name's TLD, its gap to the
 // right of the name's box, and its icon's middle against its word's, in pixels.
 const markerPlace = (name: Locator) => name.evaluate((n) => {
-  // a box of no size on the baseline of what it is put in, there and gone in one task
-  const baseline = (el: Element) => {
-    const probe = document.createElement("span")
-    probe.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline"
-    el.appendChild(probe)
-    const y = probe.getBoundingClientRect().bottom
-    probe.remove()
-    return y
-  }
   const tld = n.querySelector(".tld")!
   const mark = n.querySelector(".cmark")!
+  // Boxes of no size on the baselines of the name's last line and of the marker, read together in one task. The line's is
+  // put after the name's last letters, as one in the TLD can move the name's breaks in WebKit. The marker's takes back the
+  // flex gap it adds, so a name that fits its row exactly does not wrap under the probe.
+  const baselines = () => {
+    const probes = [n.querySelector(".nowrap")!, mark].map((el) => {
+      const probe = document.createElement("span")
+      probe.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline"
+      return el.appendChild(probe)
+    })
+    probes[1].style.marginLeft = `-${getComputedStyle(mark).columnGap}`
+    const [line, marker] = probes.map((p) => p.getBoundingClientRect().bottom)
+    for (const p of probes) p.remove()
+    return line - marker
+  }
   const word = document.createRange()
   word.selectNodeContents(mark.firstChild!)
   const [t, m, box, icon, w] = [tld.getBoundingClientRect(), mark.getBoundingClientRect(), n.getBoundingClientRect(), mark.querySelector("svg")!.getBoundingClientRect(), word.getBoundingClientRect()]
   const tenth = (x: number) => Math.round(x * 10) / 10
-  // the TLD's baseline is the line's, read at the end of the name's last letters: a probe in the TLD itself can move the
-  // name's breaks in WebKit
-  return { baseline: tenth(baseline(n.querySelector(".nowrap")!) - baseline(mark)), gap: tenth(m.left - t.right), right: tenth(box.right - m.right),
+  return { baseline: tenth(baselines()), gap: tenth(m.left - t.right), right: tenth(box.right - m.right),
     icon: tenth((icon.top + icon.bottom) / 2 - (w.top + w.bottom) / 2), fontSize: parseFloat(getComputedStyle(n).fontSize) }
 })
 
