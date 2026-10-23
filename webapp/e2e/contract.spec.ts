@@ -409,6 +409,21 @@ test("search splits a record set elsewhere on semicolons, trims each link, and a
   expect((answer.entities as Json[]).map((e) => [e.type, e.link])).toEqual([...contacts.slice(0, 5).map((link) => ["address", link]), ["channel", channelLink("K1")]])
 })
 
+test("search answers a link whose data was not read now as unread with its deep link, and one the chat core cannot parse as unavailable without one", async ({ request }) => {
+  const name = await registeredName(request, "cu")
+  const unread = contactLink("Unr")
+  const unparsed = "https://smp9.simplex.im/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm"
+  await ownerSetsText(name.draft.ownerCode, name.label, CONTACT_KEY, unread)
+  await ownerSetsText(name.draft.ownerCode, name.label, CHANNEL_KEY, unparsed)
+  const answer = (await call("GET", `/api/name/${name.labelHash}?length=${name.label.length}`)).json
+  const empty = { displayName: "", fullName: "", image: null, subscribers: null }
+  expect(answer.entities).toEqual([
+    { type: "address", kind: "contact", ...empty, profile: "unread", link: unread, deepLink: `simplex:/a#${unread.split("#")[1]}?h=smp8.simplex.im` },
+    { type: "channel", kind: "channel", ...empty, profile: "unavailable", link: unparsed, deepLink: null },
+  ])
+  expect((await call("POST", "/api/link/preview", { link: unread })).json, "a preview").toEqual({ type: "address", kind: "contact", ...empty, profile: "unread" })
+})
+
 // --- balances
 
 const NO_LINKS = { contact: "", channel: "" }

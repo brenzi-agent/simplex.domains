@@ -161,6 +161,16 @@ test("a code order's name code, entered in another browser before the reveal, le
   await other.close()
 })
 
+test("a name's link whose data cannot be read now shows as its kind's default picture, and opens by the chat core's form", async ({ page, request }) => {
+  const contact = contactLink("Unr")
+  const { label } = await registerWithCode(page, request, "cunread", { contact, channel: channelLink("CU") })
+  await waitRegistered(page, label)
+  await page.goto(`/#/?name=${label}`)
+  await page.locator(".answer").getByRole("button", { name: "Contact address", exact: true }).click()
+  const open = page.getByRole("dialog", { name: "Contact address" }).getByRole("link", { name: "Open in SimpleX" })
+  await expect(open).toHaveAttribute("href", `simplex:/a#${contact.split("#")[1]}?h=smp8.simplex.im`)
+})
+
 test("Edit links on a name registered with a code adds its links on chain, then changes one", async ({ page, request }) => {
   const { registrationId, label } = await registerWithCode(page, request, "cedit")
   await waitRegistered(page, label)

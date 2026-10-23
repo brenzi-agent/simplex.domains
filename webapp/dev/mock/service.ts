@@ -270,12 +270,14 @@ const MAX_ENTITIES_PER_KEY = 5
 
 // --- link cards
 
-// A link the chat core parses stands for a chat someone holds. A contact link's fragment says what profile the tests want
-// behind it: a business, a bot, a profile with a picture, or none, as for a host the service does not fetch.
+// A link the chat core parses stands for a chat someone holds. A link's fragment says what profile the tests want behind
+// it: a business, a bot, a profile with a picture, none as for a host the service does not fetch, or none read now, as
+// for a fetch that failed or timed out.
 const BUSINESS_TAG = "Biz"
 const BOT_TAG = "Bot"
 const PICTURE_TAG = "Pic"
 const UNFETCHED_TAG = "Off"
+const UNREAD_TAG = "Unr"
 // a profile picture as the app sends one, a small image in a data URI
 const PICTURE = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#C76A3B"/><circle cx="32" cy="26" r="12" fill="#F6E3C8"/><path d="M12 60c2-14 10-20 20-20s18 6 20 20z" fill="#F6E3C8"/></svg>').toString("base64")}`
 
@@ -284,8 +286,10 @@ function linkProfile(link: string): Profile | null {
   if (kind === null) return null
   const fragment = link.split("#")[1].slice(0, 6)
   const type = kind === "contact" ? "address" : "channel"
+  const empty = { type, kind, displayName: "", fullName: "", image: null, subscribers: null } as const
   // a link the chat core cannot parse, as the seeded names' links, names no server to fetch it from
-  if (deepLinkOf(link) === null || fragment.startsWith(UNFETCHED_TAG)) return { type, kind, displayName: "", fullName: "", image: null, subscribers: null, profile: "unavailable" }
+  if (deepLinkOf(link) === null || fragment.startsWith(UNFETCHED_TAG)) return { ...empty, profile: "unavailable" }
+  if (fragment.startsWith(UNREAD_TAG)) return { ...empty, profile: "unread" }
   const chat: ChatKind = kind === "channel" ? "channel" : fragment.startsWith(BUSINESS_TAG) ? "business" : fragment.startsWith(BOT_TAG) ? "bot" : "contact"
   // a channel's count, the same for the same link
   const subscribers = kind === "channel" ? [...fragment].reduce((n, c) => n * 7 + c.charCodeAt(0), 0) % 5000 : null
