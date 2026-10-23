@@ -364,13 +364,15 @@ const homeAnswers = (owner: string) => ({
   yours: { status: "registered", entities: [linked("contact"), linked("channel")], owner, tld: "simplex" },
 })
 
-// how far anything in the answer's row reaches past the row, the row's height and the lines its name takes
+// how far anything in the answer's row reaches past the row, what in it is too narrow for its own content, the row's
+// height and the lines its name takes
 const rowFit = (page: Page) => page.evaluate(() => {
   const row = document.querySelector(".answer .row")!.getBoundingClientRect()
   const inside = [...document.querySelectorAll(".answer .row *")].map((n) => n.getBoundingClientRect()).filter((b) => b.height > 0)
   const name = document.querySelector(".answer .row .name")!
   const rest = name.nextElementSibling!.getBoundingClientRect()
-  return { spill: Math.round(Math.max(0, ...inside.map((b) => Math.max(b.bottom - row.bottom, row.top - b.top, b.right - row.right, row.left - b.left)))),
+  const clipped = [...document.querySelectorAll<HTMLElement>(".answer .row *")].filter((n) => n.clientWidth > 0 && n.scrollWidth > n.clientWidth).map((n) => n.className)
+  return { spill: Math.round(Math.max(0, ...inside.map((b) => Math.max(b.bottom - row.bottom, row.top - b.top, b.right - row.right, row.left - b.left)))), clipped,
     height: Math.round(row.height), nameLines: Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight)),
     ownLine: Math.round(name.getBoundingClientRect().bottom) <= Math.round(rest.top) }
 })
@@ -401,6 +403,7 @@ test.describe(() => {
           expect(await homeTops(page), `${at}: headline and search`).toEqual(empty)
           const fit = await rowFit(page)
           expect(fit.spill, `${at}: past its row`).toBe(0)
+          expect(fit.clipped, `${at}: too narrow for their content`).toEqual([])
           if (label.length < 8) expect(fit.nameLines, `${at}: the name's lines`).toBe(1)
           if (label === SHORT_NAME && state !== "available") expect(fit.height, `${at}: the row's height`).toBe(72)
           // a name too long for its row takes a line of its own, its chats and whose it is under it
@@ -571,6 +574,7 @@ for (const length of [10, MAX_LABEL_LENGTH]) {
       await expect(page.locator(".answer").getByText("You already have an order for this name")).toBeVisible()
       expect(await homeTops(page), `headline and search at ${size.width}x${size.height}`).toEqual(before)
       expect(await overflow(page), `the page's overflow at ${size.width}x${size.height}`).toBe(0)
+      expect((await rowFit(page)).clipped, `the row's parts too narrow for their content at ${size.width}x${size.height}`).toEqual([])
     }
     await shot(page, `names-u1-home-own-order-${length}`)
   })

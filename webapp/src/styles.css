@@ -276,6 +276,8 @@ h1 .long { word-break: break-all; }
 /* one row as the app lists a chat: the name, the chats it opens, and whose it is or its price */
 .row { display: flex; align-items: center; gap: 16px; min-height: 72px; padding: 12px 18px 12px 22px; }
 .row .name { flex: 1 1 auto; min-width: 0; }
+/* only the name gives way to a row too narrow for all of it; its price, button and chats keep their size */
+.row > :not(.name) { flex-shrink: 0; }
 /* a name too long for the row takes its own line; its chats and whose it is move under it */
 .answer .row:not(.buy) { flex-wrap: wrap; row-gap: 6px; }
 .answer .row:not(.buy) > .name + * { margin-left: auto; }
