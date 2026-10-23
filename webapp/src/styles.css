@@ -625,6 +625,9 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .table { padding: 2px 16px 4px; }
   .method { height: 72px; font-size: 14px; }
   .review:has(.line) .order .name { font-size: 16px; }
+  /* the card page tighter still, so a lead of two lines, the name's note, the form and its note fit above Pay */
+  .screen-body:has(> .stripe) { gap: 6px; }
+  .screen-body:has(> .stripe) > .name-check { padding-block: 6px; line-height: 1.4; }
   /* a QR is for another device; a phone opens its wallet from the link under the address */
   .qr-grid { grid-template-columns: minmax(0, 1fr); }
   .qr-grid > .qr { display: none; }

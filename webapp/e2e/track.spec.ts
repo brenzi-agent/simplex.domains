@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
+  agreeToTerms, CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
   lineStarts, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, test, toCodeStep,
   toFullReview, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
@@ -201,6 +201,17 @@ test("the balance's steps fit both windows, their heading, main button and link 
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   await expect(page.locator(".name-check:not(.unchecked)")).toBeVisible()
   await fitsWindow(page, "b4-pay-difference", frames)
+  // the same difference by card, whose lead takes a second line on a phone
+  await onStep(page).getByRole("button", { name: "Cancel this invoice" }).click()
+  await onStep(page).getByRole("button", { name: "Order the name again" }).click()
+  await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await page.getByRole("radio", { name: "Card" }).click()
+  await agreeToTerms(page)
+  await payButton(page).click()
+  await expect(onStep(page).getByRole("heading", { name: "Pay by card" })).toBeVisible()
+  await expect(onStep(page).locator(".screen-head .lead")).toContainText("$100 from your balance")
+  await expect(page.locator(".name-check:not(.unchecked)")).toBeVisible()
+  await fitsWindow(page, "b5-pay-difference-card", frames)
   oneFrame(frames)
 })
 
