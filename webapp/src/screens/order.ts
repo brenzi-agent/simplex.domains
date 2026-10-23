@@ -162,6 +162,12 @@ export const failedLead = ({ view, invoice, codeRefused, codeKept, record }: Ord
   : codeRefused ? "Your code can no longer be used for it, so trying again cannot register it."
   : record?.prepaidCode && codeKept ? "Your code is kept. Trying again spends nothing more." : "Trying again spends nothing more."
 
+const NOT_REGISTERED_YET = "The name could not be registered yet"
+
+// The failed page's alert: the service's sentence for the buyer when it gave one, and whether Try again can still register
+// the name, which links or a code the service refused rule out.
+export const failedAlert = ({ view, codeRefused }: OrderState) => ({ title: view!.error ?? NOT_REGISTERED_YET, retry: !view!.linksRefused && !codeRefused })
+
 export const coinOf = (invoice: InvoiceView) => invoice.cryptoCurrency === "btc" || invoice.cryptoCurrency === "xmr" ? invoice.cryptoCurrency : null
 
 // How a closed invoice's order gets a new one: a new spend of the balance that paid part of it, once find names that

@@ -86,6 +86,10 @@ test("a failed registration is retried without paying again, and another tab fol
   await control(request, `fail/${await registrationOf(request, invoiceId)}`)
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByRole("heading", { name: "Paid, not registered" })).toBeVisible({ timeout: 60_000 })
+  // the service's own sentence, then what the buyer can do, with support's address for the reference below
+  const alert = onStep(page).locator(".notice", { hasText: "The blockchain did not take the commit" })
+  await expect(alert).toHaveText("The blockchain did not take the commitYour order is kept: try again. If it still fails, write to chat@simplex.chat with its reference.")
+  await expect(alert.getByRole("link", { name: "chat@simplex.chat" })).toHaveAttribute("href", "mailto:chat@simplex.chat")
   // the order's line centred under the heading and its lead, as it is when it is the lead
   for (const size of FIT_SIZES) {
     await page.setViewportSize(size)

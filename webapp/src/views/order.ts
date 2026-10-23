@@ -6,7 +6,7 @@ import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
-  closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedLead, finished, newInvoiceBy, spendCovers, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
+  closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedAlert, failedLead, finished, newInvoiceBy, spendCovers, initialState, type Note, type OrderEvent, type OrderKind, type OrderState, reduce, refusalsOf,
   retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, unreadDelay, wakeAt,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
@@ -1228,10 +1228,12 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   const action = view.linksRefused ? withoutRecord("") : s.codeRefused ? btn("Search a name", "quiet", () => go(searchLink(""))) : retry
   holdEnds(signal)(s.hold !== null)
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
+  const alert = failedAlert(s)
+  const support = [el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with its reference."]
   return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s), action },
     el("p", { class: "note center" }, ...orderLine(s)),
     stages(failedAt),
-    alertBox("danger", "alert", view.error ?? "The registration did not go through", "The service's own retries gave up."),
+    alertBox("danger", "alert", alert.title, alert.retry ? ["Your order is kept: try again. If it still fails, write to ", ...support] : ["Write to ", ...support]),
     actionNote(s, signal),
     referenceLine(invoice?.invoiceId ?? view.id))
 }

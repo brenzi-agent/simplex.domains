@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
-  CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
+  CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedAlert, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind, type OrderState,
   reduce, refusalsOf, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, spendCovers, unreadDelay, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
@@ -435,6 +435,21 @@ describe("failedLead", () => {
   })
   it("a browser without the order's code is promised nothing of it, even once the service says it is unspent", () => {
     expect(failedLead(failed(null, { record: null, codeKept: true }))).toBe("Trying again spends nothing more.")
+  })
+})
+
+describe("failedAlert", () => {
+  const failed = (change: Partial<RegistrationView> = {}, state: Partial<OrderState> = {}) => read(null, registration({ phase: "failed", ...change }), state)
+  it("names what happened in the service's own sentence for the buyer", () => {
+    expect(failedAlert(failed({ error: "The name was not signed in time" })).title).toBe("The name was not signed in time")
+  })
+  it("says the name is not registered yet when the service gave no sentence", () => {
+    expect(failedAlert(failed()).title).toBe("The name could not be registered yet")
+  })
+  it("offers Try again unless the order's links or its code were refused, which trying again cannot fix", () => {
+    expect(failedAlert(failed()).retry).toBe(true)
+    expect(failedAlert(failed({ linksRefused: true })).retry).toBe(false)
+    expect(failedAlert(failed({}, { codeRefused: true })).retry).toBe(false)
   })
 })
 
