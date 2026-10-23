@@ -223,12 +223,13 @@ body > main { grid-area: main; display: flex; flex-direction: column; min-width:
 .notice.warn { color: var(--warn-fg); background: var(--warn-bg); border-color: var(--warn-line); }
 .notice.danger { color: var(--danger-fg); background: var(--danger-bg); border-color: var(--danger-line); }
 .notice.info { color: var(--ink); background: var(--chip); border-color: var(--chip-line); }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600;
+/* a row's room for its widest chip is drawn as a chip, hidden */
+:is(.chip, .room > .sizer) { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600;
   background: var(--chip); color: var(--primary); }
 .chip.ok { background: var(--ok-bg); color: var(--ok-fg); }
 .chip.warn { background: var(--warn-bg); color: var(--warn-fg); }
 .chip.bad { background: var(--danger-bg); color: var(--danger-fg); }
-.chip .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+:is(.chip, .room > .sizer) .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
 
 /* Every screen is one centred column: its heading block, Back beside the heading as the badges store draws it, then its
    content and its actions' row. A step is a frame of one height, so Back, the heading and the main button stand at one
@@ -548,6 +549,9 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 .list-row .main { flex: 1 1 240px; min-width: 0; display: grid; gap: 2px; }
 .list-row .sub { color: var(--ink-soft); font-size: var(--fs-small); }
 .list-row .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: var(--fs-small); white-space: nowrap; }
+/* an order's chip and its hidden widest words share one cell, at its end */
+.list-row .room { display: inline-grid; justify-items: end; }
+.list-row .room > * { grid-area: 1 / 1; }
 /* a balance's words give way to its actions beside them, as the mockup draws Use and Refund, down to their own widest
    unbroken part, past which the actions go under them */
 .balance-row .main { flex-basis: 0; min-width: auto; }
@@ -643,6 +647,8 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   /* a name's line across the row, its chats and actions under it, the actions at the right */
   .list-row .acts { flex: 1 1 auto; justify-content: flex-end; }
   .list-row .acts > .chats { margin-right: auto; }
+  /* a phone's row wraps its chip with the actions, so a chip changing moves nothing */
+  .list-row .room > .sizer { display: none; }
   /* a code on one line across the row, its state beside its actions under it, at the right */
   .code-row .main { flex-basis: 100%; }
   .code-row .state { margin-left: auto; }

@@ -3,7 +3,7 @@ import type { InvoiceView, RegistrationView, SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
   balanceRows, changesOf, CODE_CHIPS, holderOf, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
-  initialList, initialRestore, lapsed, lateLine, listedOrders, nameRows, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
+  initialList, initialRestore, lapsed, lateLine, listedOrders, nameRows, ORDER_CHIP_WORDS, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
   againLine, ranOut, registrableAgain, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../src/screens/names.ts"
 import type { CodeRecord, OrderRecord, PendingCode } from "../src/store.ts"
@@ -110,7 +110,13 @@ describe("list helpers", () => {
       ["a name taken first", registration({ phase: "taken" }), null, record(), ["Taken first", "warn"]],
       ["a failed registration", registration({ phase: "failed" }), null, record(), ["Not registered", "bad"]],
     ]
-    for (const [what, view, inv, o, chip] of cases) expect(phaseChip(view, inv, o, NOW), what).toEqual(chip)
+    for (const [what, view, inv, o, chip] of cases) {
+      expect(phaseChip(view, inv, o, NOW), what).toEqual(chip)
+      expect(ORDER_CHIP_WORDS, `${what}: the words its row keeps room for`).toContain(chip[0])
+    }
+  })
+  it("ORDER_CHIP_WORDS holds the words of an order not read yet, or whose read failed, or a name past its expiry", () => {
+    expect(ORDER_CHIP_WORDS).toEqual(expect.arrayContaining(["Checking", "Not checked", "Expired"]))
   })
   it("CODE_CHIPS words every state a code can be in", () => {
     expect(Object.keys(CODE_CHIPS).sort()).toEqual(["expired", "reserved", "revoked", "unpaid", "unused", "used"])

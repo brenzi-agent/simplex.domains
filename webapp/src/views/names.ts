@@ -7,8 +7,8 @@ import type { IconName } from "../icons.ts"
 import { qrSvg } from "../qr.ts"
 import {
   balanceRows, type BalanceRow, CODE_CHIPS, holderOf, EDIT_RETRY_MS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
-  againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, nameRows, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
-  reduceList, reduceRestore, REFUSALS, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
+  againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, nameRows, ORDER_CHIP_WORDS, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
+  reduceList, reduceRestore, REFUSALS, ROW_CHIPS, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
 import { heldWords } from "../screens/balance.ts"
 import { checkoutUrl, CODE_URL } from "../screens/routes.ts"
@@ -287,14 +287,18 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
   // a registered name shows the chats it opens, as the home's answer does
   const chats = registered && seen.answer?.status === "registered" ? seen.answer.entities.map(chatPicture) : []
   const listed = seen ? seen.view.community !== null : api.communityAgreed(o.terms)
-  return row(id, rowName(label, tld, seen?.view.community ?? null, `${id}-community`, listed), seen ? subLine(o, seen, s.now) : paidLine(o, null, null), rowChip(s, o, seen),
+  const state = rowChip(s, o, seen)
+  return row(id, rowName(label, tld, seen?.view.community ?? null, `${id}-community`, listed), seen ? subLine(o, seen, s.now) : paidLine(o, null, null), state && chipRoom(state),
     [chats.length ? el("span", { class: "chats" }, chats) : null, ...acts], shown ? rowCode(code) : null)
 }
 
+// the chip in room kept for the widest an order's row can show, so its name and line keep their width as it changes
+const chipRoom = (shown: HTMLElement) => el("span", { class: "room" }, shown, ...ORDER_CHIP_WORDS.map((words) => el("span", { class: "sizer" }, el("span", { class: "dot" }), words)))
+
 function rowChip(s: ListState, o: store.OrderRecord, seen: RowSeen | undefined): HTMLElement | null {
-  if (s.unread.includes(o.registrationId)) return chip("Not checked", "warn")
-  if (!seen) return chip("Checking", "", true)
-  if (lapsed(seen, s.now)) return chip("Expired", "bad")
+  if (s.unread.includes(o.registrationId)) return chip(ROW_CHIPS.unchecked, "warn")
+  if (!seen) return chip(ROW_CHIPS.checking, "", true)
+  if (lapsed(seen, s.now)) return chip(ROW_CHIPS.lapsed, "bad")
   // a registered name says so by its date
   if (seen.view.phase === "registered") return null
   const [text, tone] = phaseChip(seen.view, seen.invoice, o, s.now)

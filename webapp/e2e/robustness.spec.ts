@@ -1,8 +1,9 @@
 import { expect, type Page } from "@playwright/test"
 import {
   agreeToTerms, brokenNames, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, failedOrder, FIT_SIZES, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, rowFit, savedToReview, search, shot,
-  shownCode, startOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered,
+  shownCode, startOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered, keepOrder, registrationView,
 } from "./helpers.ts"
+import { MAX_LABEL_LENGTH } from "../src/names.ts"
 
 test("a second tab's order survives a write from a tab opened earlier", async ({ browser, request }) => {
   const context = await browser.newContext()
@@ -624,4 +625,28 @@ test("a Continue checkout drawn before its checkout ended draws the list anew ra
   await expect(page.getByRole("button", { name: "Find the order" })).toBeVisible()
   await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
   expect(new URL(page.url()).hash).toBe("#/names")
+})
+
+// how long Your names waits for each order's read, long enough to measure its rows before the reads answer
+const ROW_READ_MS = 1500
+
+// each row's top and height, and the width of its name and line, under the list's heading
+const listRows = (page: Page) => page.locator("body > main").evaluate((main) => [...main.querySelectorAll(".list-row")].map((row) => {
+  const box = row.getBoundingClientRect()
+  return { top: box.top, height: box.height, main: row.querySelector(".main")!.getBoundingClientRect().width }
+}))
+
+test("Your names keeps each order's name and line in place as its chip changes with its read", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  const order = await keepOrder(page, "reg-still", null, "w".repeat(MAX_LABEL_LENGTH))
+  await page.route(`**/api/registration/${order.registrationId}*`, async (route) => {
+    await new Promise((wait) => setTimeout(wait, ROW_READ_MS))
+    await route.fulfill({ json: registrationView(order, { phase: "committed", commitTx: "0x02" }) })
+  })
+  await page.goto("/#/names")
+  const chip = page.locator(".list-row .chip")
+  await expect(chip).toHaveText("Checking")
+  const drawn = await listRows(page)
+  await expect(chip).toHaveText("Registering")
+  expect((await listRows(page))[0].main, "the row's name and line, from Checking to Registering").toBe(drawn[0].main)
 })

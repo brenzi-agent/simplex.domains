@@ -151,13 +151,21 @@ const PHASE_CHIPS: Record<Phase, [string, string]> = {
   registered: ["Registered", "ok"], taken: ["Taken first", "warn"], failed: ["Not registered", "bad"],
 }
 
+const CHIPS = {
+  sign: "Open to finish", cancelled: "Invoice cancelled", expired: "Invoice expired", late: "Paid late", confirming: "Confirming payment", rest: "Waiting for the rest",
+} as const
+// what an order's row says before its read answers, once its read failed, and for a name past its expiry
+export const ROW_CHIPS = { checking: "Checking", unchecked: "Not checked", lapsed: "Expired" } as const
+// every chip an order's row can show, the widest of which the row keeps room for
+export const ORDER_CHIP_WORDS = [...new Set([...Object.values(ROW_CHIPS), ...Object.values(PHASE_CHIPS).map(([words]) => words), ...Object.values(CHIPS)])]
+
 export function phaseChip(view: RegistrationView, invoice: InvoiceView | null, o: OrderRecord, now: number): [string, string] {
-  if (waitsToSign(view, now)) return ["Open to finish", "warn"]
+  if (waitsToSign(view, now)) return [CHIPS.sign, "warn"]
   if (view.phase !== "unpaid") return PHASE_CHIPS[view.phase]
-  if (invoice?.status === "expired") return o.cancelled && !holdsPayment(invoice) ? ["Invoice cancelled", "bad"] : ["Invoice expired", holdsPayment(invoice) ? "warn" : "bad"]
-  if (invoice?.status === "paid") return ["Paid late", "warn"]
-  if (invoice?.paidInFull || o.cardSubmittedAt) return ["Confirming payment", "warn"]
-  if (invoice?.amountPaid || Number(invoice?.cryptoAmountPaid ?? "0") > 0) return ["Waiting for the rest", "warn"]
+  if (invoice?.status === "expired") return o.cancelled && !holdsPayment(invoice) ? [CHIPS.cancelled, "bad"] : [CHIPS.expired, holdsPayment(invoice) ? "warn" : "bad"]
+  if (invoice?.status === "paid") return [CHIPS.late, "warn"]
+  if (invoice?.paidInFull || o.cardSubmittedAt) return [CHIPS.confirming, "warn"]
+  if (invoice?.amountPaid || Number(invoice?.cryptoAmountPaid ?? "0") > 0) return [CHIPS.rest, "warn"]
   return PHASE_CHIPS.unpaid
 }
 
