@@ -331,10 +331,12 @@ function balanceRow(b: BalanceRow, s: ListState): HTMLElement {
   const acts = b.held ? [holder ? small("Open that order", `${b.id}-holder`, () => go(store.orderUrl(holder))) : null]
     : b.amount > 0 ? [small("Use", `${b.id}-use`, () => useBalance({ source: b.id, amount: b.amount, held: false, heldUntil: null })),
       small("Refund", `${b.id}-refund`, () => showRefund(o.invoiceId ?? o.registrationId, `${b.id}-refund`), true)] : []
-  const sub = ["From ", nameText(view.label ?? o.label, view.tld), `, ${BALANCE_FROM[b.from]}`,
+  const sub = ["From ", nameText(view.label ?? o.label, view.tld), ", ", el("span", { class: "nowrap" }, BALANCE_FROM[b.from]),
     b.refunded ? `${SEP}refunded ${dollars(b.refunded)} by support` : null,
     b.held ? `${SEP}in use by another order ${heldWords(b.heldUntil)}` : null]
-  return row(`balance-${b.id}`, el("b", { class: "price" }, dollars(b.amount)), sub, b.held ? chip("In use", "brand", true) : null, acts)
+  const node = row(`balance-${b.id}`, el("b", { class: "price" }, dollars(b.amount)), sub, b.held ? chip("In use", "brand", true) : null, acts)
+  node.classList.add("balance-row")
+  return node
 }
 
 function codeRow(c: store.CodeRecord, s: ListState, signal: AbortSignal): HTMLElement {

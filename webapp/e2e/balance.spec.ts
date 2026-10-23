@@ -1,8 +1,8 @@
-import { expect, type Page } from "@playwright/test"
+import { expect, type Locator, type Page } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
 import {
-  addNameCode, control, MOCK, onStep, payButton, search, searchName, sevenLetters, shot, startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered,
+  addNameCode, control, FIT_SIZES, MOCK, onStep, payButton, search, searchName, sevenLetters, shot, startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 const balanceRow = (page: Page) => onStep(page).locator(".list-row[data-key^='balance-']")
@@ -14,6 +14,12 @@ async function yourNames(page: Page): Promise<void> {
   await expect(onStep(page).getByRole("heading", { name: "Your names" })).toBeVisible()
   await expect(onStep(page).locator(".chip", { hasText: "Checking" })).toHaveCount(0)
 }
+
+// whether a row's actions stand beside its words rather than under them, and how far their middle is from the row's
+const actionsBeside = (row: Locator) => row.evaluate((r) => {
+  const [box, words, acts] = [r, r.querySelector(".main")!, r.querySelector(".acts")!].map((n) => n.getBoundingClientRect())
+  return { beside: acts.left >= words.right, offMiddle: Math.round(Math.abs((acts.top + acts.bottom) / 2 - (box.top + box.bottom) / 2)) }
+})
 
 // a page moved on to another invoice than `from`, rather than to a page of none
 const otherInvoice = (from: string) => (url: URL) => url.searchParams.get("order") !== null && url.searchParams.get("order") !== from
@@ -30,6 +36,11 @@ test("a paid order taken first keeps its price as its balance, which a cheaper n
   // the order taken first is no name of this browser's: its balance alone stands for it
   await expect(onStep(page).locator(".list-row", { hasText: `${label}.simplex` })).toHaveCount(1)
   await shot(page, "B1-names-balance")
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    expect(await actionsBeside(balanceRow(page)), `Use and Refund beside the balance's words, centred on its row, at ${size.width}x${size.height}`).toEqual({ beside: true, offMiddle: 0 })
+  }
+  await page.setViewportSize(FIT_SIZES[0])
 
   // support refunds by hand, on a message quoting the reference
   await expect(balanceRow(page).getByRole("button", { name: "Refund" })).toHaveAttribute("aria-haspopup", "dialog")
