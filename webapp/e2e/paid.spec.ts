@@ -7,7 +7,7 @@ import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
   blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, LINKS_HEADING, MOCK, mockRegistration, onStep, oracleQuote, payButton, previewsShown, REGISTRATION_MS,
-  registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered,
+  registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
@@ -405,7 +405,7 @@ test("a link's late preview never fills the field once it holds another link, wh
   await expect(onStep(page).getByRole("heading", { name: CODE_HEADING })).toBeVisible()
   // the Links step drawn anew asks for the kept link's preview, held until the field asks for another link's, which the service takes long to fetch
   await page.reload()
-  await control(request, "search", { fetchDelays: { [second]: 700 } })
+  await control(request, "search", { fetchDelays: { [second]: SLOW_FETCH_MS } })
   let askedSecond: () => void = () => undefined
   const secondAsked = new Promise<void>((resolve) => { askedSecond = resolve })
   await page.route("**/api/link/preview", async (route) => {
@@ -429,6 +429,29 @@ test("a link's late preview never fills the field once it holds another link, wh
   await previewsShown(page)
   expect(await page.evaluate(() => (window as unknown as { __stale: boolean }).__stale), "the first link's profile drawn while the second was checked").toBe(false)
   await page.unrouteAll({ behavior: "wait" })
+  await control(request, "search", { fetchDelays: {} })
+})
+
+test("Continue pressed while a link is checked is busy where it stands, says so, and goes on once the check ends", async ({ page, request }) => {
+  const slow = contactLink("UnrE")
+  await control(request, "search", { fetchDelays: { [slow]: SLOW_FETCH_MS } })
+  await search(page, uniqueLabel("busy"))
+  await page.getByRole("button", { name: "Register" }).click()
+  // a link taken first keeps Continue on while the link typed over it is checked
+  const link = onStep(page).getByRole("textbox", { name: "Link", exact: true })
+  await link.fill(contactLink("E5"))
+  await expect(page.locator(".link-field").first()).toHaveAttribute("data-state", "ok")
+  await link.fill(slow)
+  await expect(page.locator(".link-field").first()).toHaveAttribute("data-state", "checking")
+  const next = onStep(page).locator(".btn[data-focus=continue]")
+  const before = await next.boundingBox()
+  await next.click()
+  await expect(next).toHaveAttribute("aria-busy", "true")
+  await expect(next).toHaveAccessibleName("Checking link…")
+  expect(await next.boundingBox(), "the busy button keeps its place and size").toEqual(before)
+  await expect(page.locator("body > .sr-only[role=status]")).toHaveText("Checking link…")
+  await expect(onStep(page).getByRole("heading", { name: CODE_HEADING })).toBeVisible()
+  expect(JSON.parse(await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)).contact, "the link checked last goes on").toBe(slow)
   await control(request, "search", { fetchDelays: {} })
 })
 

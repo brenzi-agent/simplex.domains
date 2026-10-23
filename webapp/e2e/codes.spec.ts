@@ -6,7 +6,7 @@ import { walletOf } from "../src/flow.ts"
 import { dateOf } from "../src/format.ts"
 import {
   blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fillLinks, LINKS_HEADING, MOCK, onStep, payButton, previewsShown, savedToReview,
-  search, searchName, shot, shownCode, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
+  search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
@@ -322,14 +322,23 @@ test("Save pressed in Edit links while a link is still checked waits for its che
   const second = contactLink("UnrD")
   const { registrationId, label } = await registerWithCode(page, request, "cwait", { contact: first, channel: channelLink("CW") })
   await waitRegistered(page, label)
-  await control(request, "search", { fetchDelays: { [second]: 700 } })
+  await control(request, "search", { fetchDelays: { [second]: SLOW_FETCH_MS } })
   await page.goto(`/#/edit/${registrationId}`)
   const link = onStep(page).getByRole("textbox", { name: "Link", exact: true })
   await expect(link).toHaveValue(first)
   await link.fill(second)
   await expect(page.locator(".link-field").first()).toHaveAttribute("data-state", "checking")
-  await onStep(page).getByRole("button", { name: "Save links" }).click()
+  const save = onStep(page).locator(".btn[data-focus=save]")
+  const before = await save.boundingBox()
+  await save.click()
+  // busy where it stands while the link is checked, and said so
+  await expect(save).toHaveAccessibleName("Checking link…")
+  await expect(save).toHaveAttribute("aria-busy", "true")
+  expect(await save.boundingBox(), "the busy button keeps its place and size").toEqual(before)
+  await expect(page.locator("body > .sr-only[role=status]")).toHaveText("Checking link…")
   await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
+  await expect(save).toHaveAccessibleName("Save links")
+  await expect(save).not.toHaveAttribute("aria-busy", "true")
   expect((await searchName(request, label)).records).toEqual({ contact: second, channel: channelLink("CW") })
   await control(request, "search", { fetchDelays: {} })
 })

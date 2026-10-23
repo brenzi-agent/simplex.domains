@@ -225,6 +225,9 @@ export async function toReview(page: Page, agree = true): Promise<void> {
   await savedToReview(page, agree)
 }
 
+// a link fetch the mock is told to slow down, long enough to act on the page while it runs
+export const SLOW_FETCH_MS = 1500
+
 // Each link field's profile of the link it holds, shown once focus has left the field, which shows its link alone while focused.
 export async function previewsShown(page: Page): Promise<void> {
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())

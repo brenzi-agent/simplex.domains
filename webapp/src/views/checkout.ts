@@ -1,6 +1,6 @@
 // The checkout's steps: the links the name opens, its name code, and Check your order with how it pays, and Pay.
 import * as api from "../api.ts"
-import { alertBox, btn, codeDisplay, el, line, link, nameText, nameTitle, setAction } from "../dom.ts"
+import { alertBox, announce, btn, codeDisplay, el, line, link, nameText, nameTitle, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, freeDays, methodName, termEnd, termOf } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
@@ -14,7 +14,7 @@ import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { CODE_ERRORS } from "./codes.ts"
-import { linkChat, linkFieldsFor, linksSettled } from "./links.ts"
+import { CHECKING_LINK, linkChat, linkFieldsFor, linksSettled } from "./links.ts"
 import {
   asStep, type Builder, currentRoute, draw, focusOn, go, goFrom, isRedraw, isRoute, kept, keptLive, limitScreen, outcome, redirect, refresh, screen, searchLink, whenLeaving,
 } from "./shell.ts"
@@ -123,6 +123,10 @@ async function watchBalance(source: string, signal: AbortSignal): Promise<void> 
 
 function dispatch(event: CheckoutEvent): void {
   state = reduce(state, event)
+  show()
+}
+
+function show(): void {
   if (!isRoute(pageRoute)) return
   const kind = screenOf(state)
   shown = kind
@@ -315,21 +319,26 @@ function payNote(s: CheckoutState, blocked: boolean, signal: AbortSignal): HTMLE
   return keptLive(CHECKOUT_NOTE, undefined, held && holdNotice(held, signal))
 }
 
-function continueButton(onclick: () => void, held = false): HTMLButtonElement {
-  const next = setAction(btn("Continue", "", onclick), false, held)
+function continueButton(onclick: () => void, held = false, busy = false): HTMLButtonElement {
+  const next = setAction(btn(busy ? CHECKING_LINK : "Continue", "", onclick), busy, held)
   next.dataset.focus = "continue"
   return next
 }
 
-// Continue waits for a link being checked, once; a link refused takes focus. Until the code is saved, the review opens
-// the name code step instead.
+// Continue waits for a link being checked, once, busy and saying so; a link refused takes focus. Until the code is saved,
+// the review opens the name code step instead.
 let awaitingChecks = false
 async function linksDone(fields: HTMLElement[]): Promise<void> {
   if (awaitingChecks) return
   const route = currentRoute()
-  awaitingChecks = true
-  const settled = await linksSettled(fields).finally(() => { awaitingChecks = false })
-  if (settled && isRoute(route)) go(checkoutUrl("review"))
+  const settled = await linksSettled(fields, () => {
+    awaitingChecks = true
+    announce(CHECKING_LINK)
+    show()
+  }).finally(() => { awaitingChecks = false })
+  if (!isRoute(route)) return
+  if (settled) go(checkoutUrl("review"))
+  else show()
 }
 
 function buildLinks(s: CheckoutState): HTMLElement {
@@ -342,7 +351,7 @@ function buildLinks(s: CheckoutState): HTMLElement {
   skip?.setAttribute("data-focus", "skip")
   return screen({ title: "What should your name open?", back: searchLink(c.label),
     lead: ["Paste your SimpleX contact address or channel link. ", el("span", { class: "nowrap" }, "You can change it later.")],
-    alt: skip, action: continueButton(() => void linksDone(links.fields()), !linked) },
+    alt: skip, action: continueButton(() => void linksDone(links.fields()), !linked, awaitingChecks) },
     el("span", { class: "label" }, "Link"), links.node)
 }
 

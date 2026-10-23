@@ -1,6 +1,6 @@
 // Your names: this browser's orders and codes, restoring an order with its name code, and editing a name's links.
 import * as api from "../api.ts"
-import { alertBox, btn, chip, codeDisplay, copyButton, el, type Kid, nameText, nameTitle, reducedMotion, setAction, waitOut } from "../dom.ts"
+import { alertBox, announce, btn, chip, codeDisplay, copyButton, el, type Kid, nameText, nameTitle, reducedMotion, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
@@ -17,7 +17,7 @@ import type { AppliedCode } from "../session.ts"
 import * as store from "../store.ts"
 import { chatPicture } from "./chats.ts"
 import { codeField, type CodeVerdict } from "./codes.ts"
-import { type LinkFields, linkFieldsFor, linksSettled } from "./links.ts"
+import { CHECKING_LINK, type LinkFields, linkFieldsFor, linksSettled } from "./links.ts"
 import {
   asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusHeading, focusOn, go, isRedraw, isRoute, kept, keptLive, redirect, screen, showRefund,
   useBalance, whenLeaving,
@@ -453,6 +453,10 @@ export function editPage(registrationId: string): void {
 
 function dispatchEdit(event: EditEvent): void {
   edit = reduceEdit(edit, event)
+  showEdit()
+}
+
+function showEdit(): void {
   if (!isRoute(editRoute)) return
   const kind = screenOfEdit(edit)
   draw(kind, (signal) => asStep(EDIT_BUILDERS[kind](edit, signal)))
@@ -526,15 +530,18 @@ function resultNode(f: EditForm, signal: AbortSignal): HTMLElement | null {
   }
 }
 
-// a Save pressed while a link is checked waits for its check, once
+// a Save pressed while a link is checked waits for its check, once, busy and saying so
 let awaitingChecks = false
 
 async function saveLinks(links: LinkFields): Promise<void> {
   if (awaitingChecks) return
   const route = editRoute
-  awaitingChecks = true
-  const settled = await linksSettled(links.fields()).finally(() => { awaitingChecks = false })
-  if (!settled || !isRoute(route)) return
+  const settled = await linksSettled(links.fields(), () => {
+    awaitingChecks = true
+    announce(CHECKING_LINK)
+    showEdit()
+  }).finally(() => { awaitingChecks = false })
+  if (!settled || !isRoute(route)) return showEdit()
   dispatchEdit({ type: "save-started" })
   const { record, read, form } = edit
   if (!form?.saving) return
@@ -567,7 +574,7 @@ function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {
   const f = s.form!
   // the fields check the links they open with as they are made, which is no change to send
   const links = kept("edit-links", () => linkFieldsFor(f.current, (kind, value) => dispatchEdit({ type: "field-changed", kind, value })))
-  const save = setAction(btn("Save links", "", () => void saveLinks(links)), f.saving, f.hold !== null || f.unanswered || f.settled)
+  const save = setAction(btn(awaitingChecks ? CHECKING_LINK : "Save links", "", () => void saveLinks(links)), f.saving || awaitingChecks, f.hold !== null || f.unanswered || f.settled)
   save.dataset.focus = "save"
   const answer = resultNode(f, signal)
   // Save, turned off by its answer, hands focus to the answer, which shares its key

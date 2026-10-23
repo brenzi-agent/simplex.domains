@@ -292,8 +292,13 @@ export function linkFieldsFor(links: api.Links, save: (kind: LinkKind, link: str
   }
 }
 
-// Waits for the links being checked, then gives focus to a field still refused or checking; true when none is.
-export async function linksSettled(fields: HTMLElement[]): Promise<boolean> {
+// what a Save or Continue waiting for a link's check says
+export const CHECKING_LINK = "Checking link…"
+
+// Waits for the links being checked, after telling `waiting` that it must, then gives focus to a field still refused or
+// checking; true when none is.
+export async function linksSettled(fields: HTMLElement[], waiting: () => void): Promise<boolean> {
+  if (fields.some((f) => f.dataset.state === "checking")) waiting()
   await Promise.all(fields.map((f) => checksEnded.get(f)?.()))
   const unsettled = fields.find((f) => f.dataset.state === "bad" || f.dataset.state === "checking")
   unsettled?.querySelector("input")!.focus()
