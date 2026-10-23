@@ -202,12 +202,27 @@ export function addCode(code: CodeRecord): void {
   put("code", code.code, code)
 }
 
+// What Your names last read of each order, so the list opened again, in this tab or another, draws the rows it knows in
+// their last shape at once. Its key is outside the records' prefix, so no tab takes a write of it for a record's change.
+const SEEN = "simplex-names-seen"
+export const seen = <T>(): Record<string, T> => read<Record<string, T>>(SEEN) ?? {}
+export function setSeen(rows: object): void {
+  const text = JSON.stringify(rows)
+  const s = storage()
+  if (!s) return void memory!.set(SEEN, text)
+  try {
+    s.setItem(SEEN, text)
+  } catch {
+    // a full storage keeps the rows read before; this page's reads draw them as they are now
+  }
+}
+
 // Storage is cleared even when this page has moved to memory, so nothing forgotten comes back on reload.
 export function forgetEverything(): void {
   memory?.clear()
   try {
     const s = window.localStorage
-    for (const key of stored(s)) s.removeItem(key)
+    for (const key of [...stored(s), SEEN]) s.removeItem(key)
   } catch {
     // nothing stored to clear
   }

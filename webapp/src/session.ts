@@ -61,7 +61,6 @@ const CHECKOUT = "simplex-names-checkout"
 const ACTIVE_CODE = "simplex-names-code"
 const ACTIVE_BALANCE = "simplex-names-balance"
 const SCROLLED = "simplex-names-scrolled"
-const SEEN = "simplex-names-seen"
 const memory = new Map<string, string>()
 // keys whose last write did not reach sessionStorage, which then holds an older value
 const unsaved = new Set<string>()
@@ -95,10 +94,6 @@ function write(key: string, value: unknown): void {
 // Each entry is written on its own so a page restored from the browser's cache, holding older places, keeps the others.
 export const scrolled = (): Record<number, number> => read<Record<number, number>>(SCROLLED) ?? {}
 export const setScrolled = (at: number, y: number) => write(SCROLLED, { ...scrolled(), [at]: y })
-
-// what Your names last read of each order, so the list loaded again draws the rows it knows in their last shape at once
-export const seen = <T>(): Record<string, T> => read<Record<string, T>>(SEEN) ?? {}
-export const setSeen = (rows: object) => write(SEEN, rows)
 
 // a checkout without its name, chain, term or terms is a leftover, not one to continue; one kept without its step opens the review, which sends it on
 export function checkout(): Checkout | null {

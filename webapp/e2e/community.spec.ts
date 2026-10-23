@@ -284,8 +284,9 @@ test("Your names marks a community name from its order's signed terms before the
   await listed(request, [long], async () => {
     await startOrder(page, long)
     for (const [width, height] of SIZES) {
-      // a tab of its own has read nothing yet; its read of the order waits
+      // a tab of its own, which no tab has told what Your names read before; its read of the order waits
       const fresh = await context.newPage()
+      await fresh.addInitScript(() => localStorage.removeItem("simplex-names-seen"))
       await fresh.setViewportSize({ width, height })
       let release: () => void = () => undefined
       const read = new Promise<void>((done) => { release = done })

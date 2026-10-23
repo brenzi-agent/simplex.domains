@@ -521,6 +521,18 @@ describe("store", () => {
     expect([tabA.orders(), tabA.codes()]).toEqual([[], []])
   })
 
+  it("keeps what Your names last read of each order for every tab, no record among the orders, until everything is forgotten", async () => {
+    const { store: tabA } = await modules()
+    vi.resetModules()
+    const tabB = await import("../src/store.ts")
+    expect(tabB.seen()).toEqual({})
+    tabA.setSeen({ "reg-1": { view: { phase: "registered" }, invoice: null } })
+    expect(tabB.seen<{ view: { phase: string } }>()["reg-1"].view.phase).toBe("registered")
+    expect(tabB.orders()).toEqual([])
+    tabB.forgetEverything()
+    expect(tabA.seen()).toEqual({})
+  })
+
   it("keeps serving what a full storage holds, moves new writes to memory, and forgets both", async () => {
     const { store } = await modules()
     const base = { invoiceId: null, label: "a", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, tld: "simplex",

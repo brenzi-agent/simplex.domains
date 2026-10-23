@@ -50,8 +50,8 @@ const readCodes = new Set<string>()
 
 // an order page that saw its name registered tells the list, which then draws the row registered from the start
 export function seenRegistered(view: api.RegistrationView, invoice: api.InvoiceView | null): void {
-  const seen = session.seen<RowSeen>()
-  session.setSeen({ ...seen, [view.id]: { ...seen[view.id], view, invoice } })
+  const seen = store.seen<RowSeen>()
+  store.setSeen({ ...seen, [view.id]: { ...seen[view.id], view, invoice } })
 }
 
 const storedNow = (): Stored => ({ orders: store.orders(), pending: store.pendingCodes(), codes: store.codes(), canPersist: store.canPersist() })
@@ -65,7 +65,7 @@ export function historyPage(): void {
   readIds.clear()
   retried.clear()
   readCodes.clear()
-  list = initialList(storedNow(), tabHold(), session.seen<RowSeen>(), lastChecked, api.serviceNow())
+  list = initialList(storedNow(), tabHold(), store.seen<RowSeen>(), lastChecked, api.serviceNow())
   showList()
 }
 
@@ -75,7 +75,7 @@ function dispatchList(event: ListEvent): void {
 }
 
 function showList(): void {
-  session.setSeen(list.seen)
+  store.setSeen(list.seen)
   lastChecked = list.checked
   if (!isRoute(listRoute)) return
   draw("names", (signal) => buildNames(list, signal))

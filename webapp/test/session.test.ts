@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
-  activeBalance, activeCode, appliedBalance, checkout as tabCheckout, dropActiveCode, isSending, scrolled, seen, setActiveBalance, setActiveCode, setCheckout, setScrolled,
-  setSeen, startSending, stopSending, type Checkout, updateActiveBalance,
+  activeBalance, activeCode, appliedBalance, checkout as tabCheckout, dropActiveCode, isSending, scrolled, setActiveBalance, setActiveCode, setCheckout, setScrolled,
+  startSending, stopSending, type Checkout, updateActiveBalance,
 } from "../src/session.ts"
 
 const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
@@ -57,14 +57,6 @@ describe("the tab's checkout", () => {
     expect(tabCheckout(), "one kept before terms has nothing to ask the buyer to agree to, so it is a leftover").toBeNull()
     setCheckout(null)
     expect(tabCheckout()).toBeNull()
-  })
-})
-
-describe("rows seen", () => {
-  it("keeps what Your names last read of each order for the tab, and nothing before it was written", () => {
-    expect(seen()).toEqual({})
-    setSeen({ "reg-1": { view: { phase: "registered" }, invoice: null } })
-    expect(seen<{ view: { phase: string } }>()["reg-1"].view.phase).toBe("registered")
   })
 })
 

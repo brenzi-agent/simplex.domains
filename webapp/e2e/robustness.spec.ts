@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  agreeToTerms, brokenNames, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, failedOrder, FIT_SIZES, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, rowFit, savedToReview, search, shot,
+  agreeToTerms, brokenNames, CHAIN, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, failedOrder, FIT_SIZES, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, rowFit, savedToReview, search, shot,
   shownCode, startOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered, keepOrder, registrationView,
 } from "./helpers.ts"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
@@ -629,6 +629,7 @@ test("a Continue checkout drawn before its checkout ended draws the list anew ra
 
 // how long Your names waits for each order's read, long enough to measure its rows before the reads answer
 const ROW_READ_MS = 1500
+const ROW_YEAR_S = 365 * 86400
 
 // each row's top and height, and the width of its name and line, under the list's heading
 const listRows = (page: Page) => page.locator("body > main").evaluate((main) => [...main.querySelectorAll(".list-row")].map((row) => {
@@ -636,17 +637,35 @@ const listRows = (page: Page) => page.locator("body > main").evaluate((main) => 
   return { top: box.top, height: box.height, main: row.querySelector(".main")!.getBoundingClientRect().width }
 }))
 
-test("Your names keeps each order's name and line in place as its chip changes with its read", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 })
-  const order = await keepOrder(page, "reg-still", null, "w".repeat(MAX_LABEL_LENGTH))
-  await page.route(`**/api/registration/${order.registrationId}*`, async (route) => {
-    await new Promise((wait) => setTimeout(wait, ROW_READ_MS))
-    await route.fulfill({ json: registrationView(order, { phase: "committed", commitTx: "0x02" }) })
-  })
-  await page.goto("/#/names")
-  const chip = page.locator(".list-row .chip")
-  await expect(chip).toHaveText("Checking")
-  const drawn = await listRows(page)
-  await expect(chip).toHaveText("Registering")
-  expect((await listRows(page))[0].main, "the row's name and line, from Checking to Registering").toBe(drawn[0].main)
+test("Your names opened again, in a new tab too, draws each order as last read, so its reads move no row", async ({ page, context }) => {
+  const sizes = { width: 1280, height: 800 }
+  const now = Math.floor(Date.now() / 1000)
+  const kept = [
+    [await keepOrder(page, "reg-still0", null, "studio42"), { phase: "registered", commitTx: "0x02", registerTx: "0x03", expiresAt: now + ROW_YEAR_S }],
+    [await keepOrder(page, "reg-still1", null, "w".repeat(MAX_LABEL_LENGTH)), { phase: "committed", commitTx: "0x02" }],
+    [await keepOrder(page, "reg-still2", null, "bakerypaid"), { phase: "queued" }],
+  ] as const
+  let answered = 0
+  for (const [order, change] of kept) {
+    await context.route(`**/api/registration/${order.registrationId}*`, async (route) => {
+      await new Promise((wait) => setTimeout(wait, ROW_READ_MS))
+      await route.fulfill({ json: registrationView(order, change) })
+      answered++
+    })
+  }
+  await context.route("**/api/name/**", (route) => route.fulfill({ json: { status: "registered", entities: [], owner: kept[0][0].owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId,
+    records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt: now + ROW_YEAR_S, tld: "simplex", community: null } }))
+  for (const tab of [page, await context.newPage()]) {
+    await tab.setViewportSize(sizes)
+    const before = answered
+    await tab.goto("/#/names")
+    await expect(onStep(tab).getByRole("heading", { name: "Your names" })).toBeVisible()
+    const drawn = await listRows(tab)
+    await expect.poll(() => answered, "the rows' reads").toBe(before + kept.length)
+    await tab.evaluate(() => new Promise(requestAnimationFrame))
+    const read = await listRows(tab)
+    // the first opening knows nothing yet: a row whose chip changes keeps its name and line's width
+    if (tab === page) expect(read[1].main, "the committed row's name and line, from Checking to Registering").toBe(drawn[1].main)
+    else expect(read, "each row once its read answered").toEqual(drawn)
+  }
 })
