@@ -363,8 +363,7 @@ test("another name or links: refused from an order with nothing to fix, a repeat
 })
 
 // the /name body of the registration's current fields, under its own terms or `terms`, signed anew
-async function nameBody(record: store.OrderRecord, view: api.RegistrationView, terms = view.terms!): Promise<Json> {
-  const timestamp = Math.floor(Date.now() / 1000)
+async function nameBody(record: store.OrderRecord, view: api.RegistrationView, terms = view.terms!, timestamp = Math.floor(Date.now() / 1000)): Promise<Json> {
   const sealedHash = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(view.sealed))))
   const length = record.label.length
   const message = `simplex.domains name ${view.id} ${view.labelHash} ${length} ${view.duration} ${view.commitment} ${sealedHash} ${terms} ${timestamp}`
@@ -949,4 +948,14 @@ test("a move signs the new name's terms: a community name needs the community wo
       expect([bumped.status, bumped.json.moves, bumped.json.terms, bumped.json.commitment]).toEqual([200, 2, "2026-11-01/community", failed.commitment])
     })
   })
+})
+
+test("a move repeat is answered however old its signature, while a move signed too long ago is bad_request", async ({ request }) => {
+  const { id, view } = await failedOrder(request, uniqueLabel("th"))
+  const record = store.orderByRegistration(id)!
+  const old = Math.floor(Date.now() / 1000) - 2 * SIGNED_WINDOW_S
+  const repeat = await call("POST", `/api/registration/${id}/name`, await nameBody(record, view, view.terms!, old))
+  expect([repeat.status, repeat.json.moves, repeat.json.version]).toEqual([200, 0, view.version])
+  const stale = await call("POST", `/api/registration/${id}/name`, await nameBody(record, view, COMMUNITY_TERMS, old))
+  expect([stale.status, stale.json]).toEqual([400, { error: "bad_request" }])
 })

@@ -1011,10 +1011,15 @@ export async function reveal(registrationId: string, body: Record<string, unknow
 
 // --- signed requests from the owner code's key
 
-async function checkSigned(owner: Address, message: string, timestamp: unknown, signature: unknown): Promise<void> {
-  if (typeof timestamp !== "number" || Math.abs(nowSeconds() - timestamp) > SIGNED_REQUEST_SECONDS) throw badRequest()
+async function checkSigner(owner: Address, message: string, timestamp: unknown, signature: unknown): Promise<void> {
+  if (!Number.isInteger(timestamp)) throw badRequest()
   const signer = await recoverMessageAddress({ message, signature: checkSignature(signature) })
   if (signer !== owner) throw badRequest()
+}
+
+async function checkSigned(owner: Address, message: string, timestamp: unknown, signature: unknown): Promise<void> {
+  await checkSigner(owner, message, timestamp, signature)
+  freshTimestamp(timestamp)
 }
 
 const sha256Hex = (text: string) => "0x" + createHash("sha256").update(text, "ascii").digest("hex")
@@ -1023,10 +1028,12 @@ export async function retarget(registrationId: string, body: Record<string, unkn
   const reg = registrations.get(registrationId)
   if (!reg) throw new HttpError(404, "not_found")
   const order = orderBody({ ...body, owner: reg.owner })
-  await checkSigned(reg.owner, `simplex.domains name ${reg.id} ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${sha256Hex(order.sealed)} ${order.terms} ${body.timestamp}`, body.timestamp, body.signature)
+  await checkSigner(reg.owner, `simplex.domains name ${reg.id} ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${sha256Hex(order.sealed)} ${order.terms} ${body.timestamp}`, body.timestamp, body.signature)
   const current = reg.labelHash === order.labelHash && reg.length === order.length && reg.duration === order.duration && reg.commitment === order.commitment && reg.sealed === order.sealed
     && reg.terms === order.terms
+  // a repeat is answered however old its signature, as the service answers it before the age
   if (current) return registrationView(reg)
+  freshTimestamp(body.timestamp)
   lapse(reg)
   // a failed order, or one whose reveal was refused for its links; a paid order taken first keeps its price as its balance
   const movable = reg.phase === "failed" || (reg.phase === "committed" && reg.linksRefused)
