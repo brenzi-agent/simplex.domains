@@ -368,6 +368,10 @@ test.describe(() => {
     await cardFits(page, new RegExp(`^${DECLINED}$`), await routedCardOrder(page, tenLetters), true)
     await expect(onStep(page).locator(".name-check")).toHaveClass(/\bdanger\b/)
   })
+
+  test("a card Stripe declines in a browser that cannot remember a card payment takes the warning's place, nothing on the page moving", async ({ page }) => {
+    await cardFits(page, new RegExp(`^${DECLINED}$`), await routedCardOrder(page, { ...tenLetters, forgetful: true }), true)
+  })
 })
 
 const FIT_INVOICE = "inv-fitall"

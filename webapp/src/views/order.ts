@@ -1,7 +1,7 @@
 // An order's page (?order=<invoice>) or a code registration's (?registration=<id>): payment, registration, and every ending.
 import * as api from "../api.ts"
 import { parseNameCode } from "../crypto/code.ts"
-import { alertBox, announce, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, refill, setAction, type Tone, waitOut } from "../dom.ts"
+import { alertBox, announce, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, setAction, type Tone, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
@@ -467,49 +467,50 @@ function stopWatchingName(): void {
   payDetails = null
 }
 
-// The note holds both sentences in one cell, the one not in force hidden, so it keeps its height as one replaces the
-// other; it is hidden until the first check answers. The card page's note is its one notice (cardWords).
+// The note holds its sentences in one cell, the ones not in force hidden, so it keeps its height as one replaces another;
+// it is hidden until the first check answers. The card page's note is its one notice (cardWords).
 function nameNote(s: OrderState): HTMLElement {
   if (checksName(s)) watchName(s)
-  const note = kept(NAME_NOTE, () => el("div", { class: "notice name-check unchecked", role: "status" }, el("span", {}), el("span", {})))
+  const note = kept(NAME_NOTE, () => el("div", { class: "notice name-check unchecked", role: "status" }))
   fillNameNote(note, s)
   return note
 }
 
-// What the card page says above its form, other than its name's check, by priority under a taken name: what an action
-// met, that this browser cannot remember a card payment, that an earlier try's invoice opened. It says one thing there,
+// What the card page can say above its form, other than its name's check, by priority under a taken name: what an action
+// met, that this browser cannot remember a card payment, that an earlier try's invoice opened. It says the first there,
 // in the room held for the name's note, so nothing reaches Pay.
-function cardWords(s: OrderState): { tone: Note["tone"] | null; words: Kid[] } | null {
-  if (s.note) return { tone: s.note.tone, words: [s.note.title && [el("b", {}, `${s.note.title}.`), " "], noteText(s.note)] }
-  if (!store.canPersist()) return { tone: "warn", words: [el("b", {}, "This browser cannot remember a card payment."), " After paying, keep this page open until it moves on. Reloading would show the card form again."] }
+function cardWords(s: OrderState): { tone: Note["tone"] | null; words: Kid[] }[] {
   const opened = insteadWords(s.invoice!)
-  return opened === null ? null : { tone: null, words: [opened] }
+  return [
+    s.note && { tone: s.note.tone, words: [s.note.title && [el("b", {}, `${s.note.title}.`), " "], noteText(s.note)] },
+    store.canPersist() ? null : { tone: "warn" as const, words: [el("b", {}, "This browser cannot remember a card payment."), " After paying, keep this page open until it moves on. Reloading would show the card form again."] },
+    opened === null ? null : { tone: null, words: [opened] },
+  ].filter((said) => said !== null)
 }
 
 function fillNameNote(note: HTMLElement, s: OrderState): void {
   const card = screenOf(s) === "pay-card"
-  const other = card ? cardWords(s) : null
-  const shown = JSON.stringify([nameCheck, other !== null, other && s.note, other?.tone ?? null])
+  const others = card ? cardWords(s) : []
+  const other = others[0] ?? null
+  const shown = JSON.stringify([nameCheck, card, others.length, card && s.note, other?.tone ?? null])
   if (note.dataset.shown === shown) return
   note.dataset.shown = shown
   const taken = nameTaken()
   const time = timeOf(nameCheck?.at ?? Date.now())
   const dontPay = "Don't pay this invoice: cancel it and choose another name."
-  const [free, gone] = note.children
   // the card page says them in brief, so Stripe's form fits above Pay with a name of 63 letters
-  if (card) {
-    if (other) refill(free, ...other.words)
-    else refill(free, el("b", {}, "Available"), ` at ${time}. If someone registers it first, you keep the payment as balance.`)
-    refill(gone, el("b", {}, "Taken"), ` at ${time}. ${dontPay}`)
-  } else {
-    const at = ` (checked at ${time}). `
-    refill(free, el("b", {}, "The name is available"), at,
-      "If someone registers it before you pay and the registration succeeds, what you paid is kept as your balance for another name, or refunded on request.")
-    refill(gone, el("b", {}, "Someone has registered this name"), at, dontPay)
-  }
+  const free: Kid[] = card ? [el("b", {}, "Available"), ` at ${time}. If someone registers it first, you keep the payment as balance.`]
+    : [el("b", {}, "The name is available"), ` (checked at ${time}). `,
+      "If someone registers it before you pay and the registration succeeds, what you paid is kept as your balance for another name, or refunded on request."]
+  const gone: Kid[] = card ? [el("b", {}, "Taken"), ` at ${time}. ${dontPay}`] : [el("b", {}, "Someone has registered this name"), ` (checked at ${time}). `, dontPay]
+  const said = taken ? gone : other?.words ?? free
+  // every sentence the page can say here holds its room, the ones not in force hidden, so one replacing another moves nothing
+  note.replaceChildren(...[free, gone, ...others.map((o) => o.words)].map((words) => {
+    const sentence = el("span", {}, ...words)
+    sentence.classList.toggle("sizer", words !== said)
+    return sentence
+  }))
   const tone = taken ? "danger" : other?.tone
-  free.classList.toggle("sizer", taken)
-  gone.classList.toggle("sizer", !taken)
   note.classList.toggle("danger", tone === "danger")
   note.classList.toggle("warn", tone === "warn")
   note.classList.toggle("unchecked", nameCheck === null && !other)
