@@ -137,6 +137,8 @@ test("a phone's header is the symbol and a menu button, whose menu over the page
   await expect(menu).toBeVisible()
   await expect(menu.getByRole("link")).toHaveText(["Find a name", "Check your code", "Your names", "Invest on Wefunder", "Trademark owners", "simplex.chat/contact"])
   await shot(page, "N0-phone-menu")
+  // a capture leaves the window a laptop's
+  await page.setViewportSize(PHONE)
   // the theme switches from the menu, which stays open
   await menu.getByRole("button", { name: "Dark theme" }).click()
   await expect(page.locator("html")).toHaveClass(/\bdark\b/)
