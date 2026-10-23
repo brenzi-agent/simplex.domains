@@ -333,7 +333,8 @@ function releasedCode(view: api.RegistrationView, record: store.OrderRecord | nu
 }
 
 // holdsFor is the screen's signal where the screen holds an action for the tab's wait
-export const noteBox = (note: Note) => alertBox(note.tone, note.icon, note.title, note.link ? [note.text, el("a", { href: note.link.href }, note.link.text), note.link.after] : note.text)
+const noteText = (note: Note): Kid => note.link ? [note.text, el("a", { href: note.link.href }, note.link.text), note.link.after] : note.text
+export const noteBox = (note: Note) => alertBox(note.tone, note.icon, note.title, noteText(note))
 
 function noteOf({ hold, note, codeCheckAt }: OrderState, holdsFor: AbortSignal | null): HTMLElement | null {
   if (holdsFor && hold) return holdNotice(hold, holdsFor)
@@ -387,8 +388,12 @@ const WALLET = "Open in wallet"
 let instead: { invoiceId: string; had: string; chosen: string } | null = null
 export const openedInstead = (opened: typeof instead) => { instead = opened }
 const methodWord = (method: string) => method === "card" ? "card" : methodName(method)
-const insteadLine = (invoice: api.InvoiceView) => instead?.invoiceId !== invoice.invoiceId ? null : el("p", { class: "note" },
-  `This name already has a ${methodWord(instead.had)} invoice from an earlier try, so it opened instead of ${instead.chosen === "code" ? "using your code" : instead.chosen === "balance" ? "using your balance" : `a new ${methodWord(instead.chosen)} one`}.`)
+const insteadWords = (invoice: api.InvoiceView) => instead?.invoiceId !== invoice.invoiceId ? null
+  : `This name already has a ${methodWord(instead.had)} invoice from an earlier try, so it opened instead of ${instead.chosen === "code" ? "using your code" : instead.chosen === "balance" ? "using your balance" : `a new ${methodWord(instead.chosen)} one`}.`
+const insteadLine = (invoice: api.InvoiceView) => {
+  const words = insteadWords(invoice)
+  return words && el("p", { class: "note" }, words)
+}
 
 function copyField(label: string, value: string): HTMLElement {
   // A long value, as an address, may break between any two letters, which the field's balance evens out: WebKit
@@ -448,43 +453,62 @@ function stopWatchingName(): void {
 }
 
 // The note holds both sentences in one cell, the one not in force hidden, so it keeps its height as one replaces the
-// other; it is hidden until the first check answers.
+// other; it is hidden until the first check answers. The card page's note is its one notice (cardWords).
 function nameNote(s: OrderState): HTMLElement {
-  watchName(s)
+  if (checksName(s)) watchName(s)
   const note = kept(NAME_NOTE, () => el("div", { class: "notice name-check unchecked", role: "status" }, el("span", {}), el("span", {})))
   fillNameNote(note, s)
   return note
 }
 
+// What the card page says above its form, other than its name's check, by priority under a taken name: what an action
+// met, that this browser cannot remember a card payment, that an earlier try's invoice opened. It says one thing there,
+// in the room held for the name's note, so nothing reaches Pay.
+function cardWords(s: OrderState): { tone: Note["tone"] | null; words: Kid[] } | null {
+  if (s.note) return { tone: s.note.tone, words: [s.note.title && [el("b", {}, `${s.note.title}.`), " "], noteText(s.note)] }
+  if (!store.canPersist()) return { tone: "warn", words: [el("b", {}, "This browser cannot remember a card payment."), " After paying, keep this page open until it moves on. Reloading would show the card form again."] }
+  const opened = insteadWords(s.invoice!)
+  return opened === null ? null : { tone: null, words: [opened] }
+}
+
 function fillNameNote(note: HTMLElement, s: OrderState): void {
-  const shown = JSON.stringify(nameCheck)
+  const card = screenOf(s) === "pay-card"
+  const other = card ? cardWords(s) : null
+  const shown = JSON.stringify([nameCheck, other !== null, other && s.note, other?.tone ?? null])
   if (note.dataset.shown === shown) return
   note.dataset.shown = shown
   const taken = nameTaken()
   const time = timeOf(nameCheck?.at ?? Date.now())
-  const at = ` (checked at ${time}). `
   const dontPay = "Don't pay this invoice: cancel it and choose another name."
   const [free, gone] = note.children
   // the card page says them in brief, so Stripe's form fits above Pay with a name of 63 letters
-  if (screenOf(s) === "pay-card") {
-    refill(free, el("b", {}, "Available"), ` at ${time}. If someone registers it first, you keep the payment as balance.`)
+  if (card) {
+    if (other) refill(free, ...other.words)
+    else refill(free, el("b", {}, "Available"), ` at ${time}. If someone registers it first, you keep the payment as balance.`)
     refill(gone, el("b", {}, "Taken"), ` at ${time}. ${dontPay}`)
   } else {
+    const at = ` (checked at ${time}). `
     refill(free, el("b", {}, "The name is available"), at,
       "If someone registers it before you pay and the registration succeeds, what you paid is kept as your balance for another name, or refunded on request.")
     refill(gone, el("b", {}, "Someone has registered this name"), at, dontPay)
   }
+  const tone = taken ? "danger" : other?.tone
   free.classList.toggle("sizer", taken)
   gone.classList.toggle("sizer", !taken)
-  note.classList.toggle("danger", taken)
-  note.classList.toggle("unchecked", nameCheck === null)
+  note.classList.toggle("danger", tone === "danger")
+  note.classList.toggle("warn", tone === "warn")
+  note.classList.toggle("unchecked", nameCheck === null && !other)
+}
+
+function refillNameNote(s: OrderState): void {
+  const note = document.querySelector<HTMLElement>("body > main .name-check")
+  if (note) fillNameNote(note, s)
 }
 
 // what a check answered shows in place, so the card form keeps what was typed
 function showNameCheck(): void {
   if (!isRoute(pageRoute) || !checksName(state)) return
-  const note = document.querySelector<HTMLElement>("body > main .name-check")
-  if (note) fillNameNote(note, state)
+  refillNameNote(state)
   if (payDetails) turnOff(payDetails, nameTaken())
   if (payButton) setAction(payButton, state.busy === "card", card === null || nameTaken())
 }
@@ -599,7 +623,7 @@ function showCard(): void {
   if (!payButton) return
   setAction(payButton, state.busy === "card", card === null || nameTaken())
   document.querySelector('body > main [data-focus="cancel"]')?.replaceWith(cancelLink(state))
-  actionNote(state, null)
+  refillNameNote(state)
 }
 
 async function payByCard(): Promise<void> {
@@ -623,17 +647,13 @@ function buildPayCard(s: OrderState): HTMLElement {
   const invoice = s.invoice!
   const form = kept("stripe-form", () => el("div", { class: "stripe" }))
   if (cardIn !== form) mountInto(form, invoice)
-  const note = checksName(s) ? nameNote(s) : null
+  const notice = nameNote(s)
   payDetails = turnOff(form, nameTaken())
   payButton = setAction(btn(`Pay ${dollars(invoice.amount)}`, "", () => void payByCard()), s.busy === "card", card === null || nameTaken())
   payButton.dataset.focus = "pay"
-  // a submitted card is remembered only in storage; without it, a reload would offer the form again
-  const forgetful = store.canPersist() ? null : alertBox("warn", "alert", "This browser cannot remember a card payment",
-    "After paying, keep this page open until it moves on. Reloading would show the card form again.")
-  // Stripe's note is under the form, or on a phone under Pay and Cancel, so the form fits above Pay (styles.css)
+  // Stripe's note is under Pay and Cancel, so the form fits above Pay
   const alt = el("span", {}, cancelLink(s), el("span", { class: "note stripe-note" }, STRIPE_NOTE))
-  return screen({ title: "Pay by card", lead: orderLine(s), action: payButton, alt }, note, insteadLine(invoice), forgetful, form,
-    el("p", { class: "note center stripe-note" }, STRIPE_NOTE), actionNote(s, null))
+  return screen({ title: "Pay by card", lead: orderLine(s), action: payButton, alt }, notice, form)
 }
 
 function cardStandIn(form: HTMLElement): void {

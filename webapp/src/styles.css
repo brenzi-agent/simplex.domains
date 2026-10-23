@@ -436,13 +436,11 @@ svg.qr { display: block; width: 132px; height: auto; }
 .notice.plain { display: block; padding: 10px 16px; line-height: 1.45; color: var(--ink-soft); background: var(--chip); border-color: var(--chip-line); }
 .notice.plain b { display: inline; font-weight: 600; color: var(--ink); }
 .notice.name-check { display: grid; align-items: center; padding: 10px 16px; line-height: 1.45; }
-.notice.name-check:not(.danger) { color: var(--ink-soft); background: var(--chip); border-color: var(--chip-line); }
+.notice.name-check:not(.danger, .warn) { color: var(--ink-soft); background: var(--chip); border-color: var(--chip-line); }
 .notice.name-check > * { grid-area: 1 / 1; }
 .notice.name-check b { display: inline; font-weight: 600; color: var(--ink); }
-.notice.name-check.danger b { color: inherit; }
+.notice.name-check:is(.danger, .warn) b { color: inherit; }
 .notice.name-check.unchecked { visibility: hidden; opacity: 0; }
-/* a phone's card page says Stripe's note under Pay */
-.actions-row .stripe-note { display: none; }
 html:not(.theming) .notice.name-check { transition: background-color 200ms, border-color 200ms, color 200ms, opacity 200ms, visibility 200ms; }
 .card.pay, .stripe { transition: opacity 200ms; }
 :is(.card.pay, .stripe).off { opacity: .45; }
@@ -462,13 +460,16 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 .field-copy.copied { color: var(--ok-fg); border-color: var(--ok-line); }
 .danger-link { color: var(--danger-fg); }
 .stripe { border-radius: 16px; }
-/* the card page is drawn tighter, so the name's note, Stripe's form and its note fit above Pay */
+/* the card page is drawn tighter, so its notice and Stripe's form fit above Pay, and Stripe's note goes under Cancel */
 .screen-body:has(> .stripe) { gap: 10px; }
+/* one line across the column, 355 px wide at 13 px, so it keeps clear of the invest note on the narrowest phone */
+.actions-row:has(.stripe-note) { container-type: inline-size; }
+.actions-row .stripe-note { display: block; margin-top: 4px; font-size: min(13px, 100cqi / 28); line-height: 1.3; white-space: nowrap; }
 /* Stripe's card form mounts after its step is drawn, so its box holds the form's height from the start: card only, with
-   Stripe.js dahlia, 221-230 px tall on the 600 px column and 306-320 px on a phone's, in Chromium and Firefox. The
-   column is whole from 632 px: 600 px and its 16 px gutters. */
+   Stripe.js dahlia, 221-230 px tall on the 600 px column and 306-320 px on a phone's, in Chromium and Firefox. A phone's
+   layout holds the phone's height; the column from 489 px is taken to draw as the 600 px one, unmeasured. */
 .stripe:not(:has(> .label)) { min-height: 320px; }
-@media (min-width: 632px) { .stripe:not(:has(> .label)) { min-height: 230px; } }
+@media (min-width: 521px) { .stripe:not(:has(> .label)) { min-height: 230px; } }
 /* the development stand-in, framed as the form it stands in for */
 .stripe:has(> .label) { padding: 18px; border: 1px dashed var(--surface-line); }
 .stripe .label { display: flex; justify-content: space-between; margin-bottom: 4px; }
@@ -639,12 +640,10 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .table { padding: 2px 16px 4px; }
   .method { height: 72px; font-size: 14px; }
   .review:has(.line) .order .name { font-size: 16px; }
-  /* the card page tighter still, so a lead of three lines, the name's note and Stripe's form fit above Pay, with Stripe's
-     note under Cancel in the room above the invest note */
+  /* the card page tighter still, so a lead of four lines, its notice and Stripe's form fit above Pay */
+  .screen:has(> .screen-body > .stripe) .lead { line-height: 1.3; }
   .screen-body:has(> .stripe) { gap: 6px; }
-  .screen-body:has(> .stripe) > .name-check { padding-block: 6px; line-height: 1.4; }
-  .screen-body > .stripe-note { display: none; }
-  .actions-row .stripe-note { display: block; margin-top: 6px; font-size: 13px; line-height: 1.4; text-wrap: balance; }
+  .screen-body:has(> .stripe) > .name-check { padding-block: 5px; line-height: 1.4; }
   /* a QR is for another device; a phone opens its wallet from the link under the address */
   .qr-grid { grid-template-columns: minmax(0, 1fr); }
   .qr-grid > .qr { display: none; }

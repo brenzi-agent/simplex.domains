@@ -211,8 +211,8 @@ export const payButton = (page: Page) => onStep(page).getByRole("button", { name
 export const AVAILABLE_BRIEF = /^Available at \d\d:\d\d\. If someone registers it first, you keep the payment as balance\.$/
 export const TAKEN_BRIEF = /^Taken at \d\d:\d\d\. Don't pay this invoice: cancel it and choose another name\.$/
 
-// a configured key makes the order's page load Stripe.js
-export const withStripeKey = (page: Page) => page.route(/\/\?order=/, async (route) => {
+// a configured key makes the order's page load Stripe.js, wherever the page is first opened
+export const withStripeKey = (page: Page) => page.route((url) => url.pathname === "/", async (route) => {
   const res = await route.fetch()
   await route.fulfill({ response: res, body: (await res.text()).replace('name="stripe-publishable-key" content=""', 'name="stripe-publishable-key" content="pk_test_e2e"') })
 })

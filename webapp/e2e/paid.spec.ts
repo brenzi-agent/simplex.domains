@@ -605,8 +605,7 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   // a whole amount has no cents, as the search and the order showed it
   await expect(onStep(page).locator(".screen-head .lead")).toContainText(/\u00b7 \$\d+ \/ 2 years$/)
   await expect(onStep(page).getByRole("button", { name: /^Pay \$\d+$/ })).toBeVisible()
-  // Stripe's note is drawn once, under the form here or under Pay on a phone
-  await expect(onStep(page).getByText("The card form is Stripe's. Nothing is charged until you pay.").filter({ visible: true })).toHaveCount(1)
+  await expect(onStep(page).getByText("The card form is Stripe's. Nothing is charged until you pay.")).toBeVisible()
   // the development stand-in says what it is, and the invoice can be cancelled from the form as from a crypto invoice
   await expect(onStep(page).getByText("Development: no card is checked.")).toBeVisible()
   await expect(onStep(page).getByRole("button", { name: "Cancel this invoice" })).toBeVisible()

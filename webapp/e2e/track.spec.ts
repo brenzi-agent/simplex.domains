@@ -1,9 +1,9 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  agreeToTerms, AVAILABLE_BRIEF, brokenNames, CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
+  agreeToTerms, AVAILABLE_BRIEF, brokenNames, CHAIN, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
   lineStarts, offCentre, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, rowFit, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, test, toCodeStep,
-  toFullReview, toReview, uniqueLabel, useCode, waitRegistered, withStripeKey,
+  TAKEN_BRIEF, toFullReview, toReview, uniqueLabel, useCode, waitRegistered, withStripeKey,
 } from "./helpers.ts"
 
 test("the purchase steps swap the whole page, one screen at a time rising in, and Back walks them in reverse", async ({ page }) => {
@@ -215,23 +215,36 @@ test("the balance's steps fit both windows, their heading, main button and link 
   oneFrame(frames)
 })
 
-// Stripe's card form at the column's full width, as tall as styles.css reserves for it (.stripe): Stripe.js dahlia
-// draws it 221-230 px tall on the 600 px column and 306-320 px on a phone's
-const STRIPE_FORM_PX = { laptop: 230, phone: 320 }
-// a Stripe.js whose card form comes when the test calls __loadCard, at Stripe's height for the window
-const STRIPE_FORM_ON_CUE = `window.Stripe = () => ({ elements: () => ({ create: () => {
-  const handlers = {}
-  return { on: (event, handler) => { handlers[event] = handler }, destroy: () => undefined, mount: (target) => {
-    window.__loadCard = () => {
-      const form = document.createElement("div")
-      form.style.height = matchMedia("(min-width: 632px)").matches ? "${STRIPE_FORM_PX.laptop}px" : "${STRIPE_FORM_PX.phone}px"
-      target.append(form)
-      handlers.ready?.()
-    }
-  } }
-} }) })`
-// the least room between Stripe's note under Cancel on a phone and the invest note under the step
-const ROOM_ABOVE_INVEST = 24
+// Stripe's card form as Stripe.js dahlia draws it, its least and greatest height: 221-230 px on the 600 px column and
+// 306-320 px on a phone's. A column from 489 px, a 521 px window's, is taken to draw as the 600 px one.
+const STRIPE_FORM_PX = { wide: [221, 230], narrow: [306, 320] } as const
+const STRIPE_WIDE_COLUMN = 489
+// Stripe's answer to a card it declines, which the page says as Stripe words it
+const DECLINED = "Your card was declined."
+// A Stripe.js whose card form comes when the test calls __loadCard, `at` (0 or 1) of Stripe's heights for the column;
+// it declines every card when asked to.
+const stripeOnCue = (at: number, declines = false) => `window.Stripe = () => ({
+  confirmPayment: async () => (${declines} ? { error: { type: "card_error", message: "${DECLINED}" } } : { paymentIntent: { status: "processing" } }),
+  elements: () => ({ create: () => {
+    const handlers = {}
+    return { on: (event, handler) => { handlers[event] = handler }, destroy: () => undefined, mount: (target) => {
+      window.__loadCard = () => {
+        const form = document.createElement("div")
+        form.style.height = (target.clientWidth >= ${STRIPE_WIDE_COLUMN} ? ${STRIPE_FORM_PX.wide[at]} : ${STRIPE_FORM_PX.narrow[at]}) + "px"
+        target.append(form)
+        handlers.ready?.()
+      }
+    } }
+  } }),
+})`
+const loadCard = (page: Page) => page.evaluate(() => (window as unknown as { __loadCard: () => void }).__loadCard())
+// the card page's windows: a laptop's, a narrow desktop window's, and two phones'
+const CARD_SIZES = [{ width: 1280, height: 800 }, { width: 600, height: 800 }, { width: 390, height: 844 }, { width: 360, height: 780 }]
+// the widest window drawn as a phone (styles.css)
+const PHONE_WIDTH = 520
+// the least room between Stripe's note under Cancel and the invest note under the step
+const ROOM_ABOVE_INVEST = 16
+const FORGETFUL = /^This browser cannot remember a card payment\. After paying, keep this page open until it moves on\. Reloading would show the card form again\.$/
 
 // where the card page draws each of its parts, the lines of its notes, and the room its step's rows keep between them
 const cardPage = (page: Page) => page.evaluate(() => {
@@ -240,62 +253,121 @@ const cardPage = (page: Page) => page.evaluate(() => {
     const b = shown(selector)?.getBoundingClientRect()
     return b ? { top: Math.round(b.top), bottom: Math.round(b.bottom) } : null
   }
-  const lines = (n: Element | null) => {
-    if (!n) return 0
-    const range = document.createRange()
-    range.selectNodeContents(n)
-    return new Set([...range.getClientRects()].map((r) => Math.round(r.bottom))).size
-  }
-  const invest = document.querySelector("body > .invest p")!.getBoundingClientRect()
+  const body = [...document.querySelectorAll("body > main .screen-body > *")].map((n) => n.getBoundingClientRect()).filter((b) => b.height > 0)
   return {
-    heading: box("h1"), lead: box(".screen-head .lead"), nameNote: box(".name-check"), form: box(".stripe"), button: box(".actions-row > .btn"), link: box(".actions-row > .alt"), cancel: box(".actions-row .alt a"),
-    stripeNote: box(".stripe-note"), stripeNoteUnderPay: shown(".actions-row .stripe-note") !== null, investTop: Math.round(invest.top),
-    nameNoteLines: lines(shown(".name-check > :not(.sizer)")), stripeNoteLines: lines(shown(".stripe-note")),
-    content: Math.round(Math.max(...[...document.querySelectorAll("body > main .screen-body > *")].map((n) => n.getBoundingClientRect()).filter((b) => b.height > 0).map((b) => b.bottom))),
-    rowGap: parseFloat(getComputedStyle(document.querySelector("body > main > section")!).rowGap),
+    heading: box("h1"), lead: box(".screen-head .lead"), notice: box(".name-check"), form: box(".stripe"), button: box(".actions-row > .btn"), link: box(".actions-row > .alt"),
+    cancel: box(".actions-row .alt a"), stripeNote: box(".actions-row .stripe-note"), investTop: Math.round(document.querySelector("body > .invest p")!.getBoundingClientRect().top),
+    parts: body.length, content: Math.round(Math.max(...body.map((b) => b.bottom))), rowGap: parseFloat(getComputedStyle(document.querySelector("body > main > section")!).rowGap),
   }
 })
 
-for (const length of [10, MAX_LABEL_LENGTH]) {
-  test(`the card page keeps still as Stripe's form loads at its full height, which fits above Pay at a laptop's and a phone's size, light and dark, for a name of ${length} letters`, async ({ page }) => {
-    const label = `${uniqueLabel("cardfit")}${wideLabel(MAX_LABEL_LENGTH)}`.slice(0, length)
-    await startOrder(page, label, { method: "card" })
-    await withStripeKey(page)
-    await page.route("https://js.stripe.com/**", (route) => route.fulfill({ contentType: "text/javascript", body: STRIPE_FORM_ON_CUE }))
-    for (const [i, size] of FIT_SIZES.entries()) {
-      const phone = size === FIT_SIZES[1]
-      const at = `${size.width}x${size.height}`
+// The card page at each window, its form loaded at Stripe's least and greatest height: nothing moves as it loads, in
+// light or dark; its one notice and the form end above Pay by the step's row gap; Pay and Cancel stand where every
+// step's are; Stripe's note is under Cancel, centred, clear of the invest note. With `declines`, Pay is pressed once
+// the form loads, and Stripe declines the card.
+async function cardFits(page: Page, notice: RegExp, open: () => Promise<void>, declines = false): Promise<void> {
+  for (const size of CARD_SIZES) {
+    for (const at of [0, 1]) {
+      const where = `${size.width}x${size.height}, a form of ${size.width > PHONE_WIDTH ? STRIPE_FORM_PX.wide[at] : STRIPE_FORM_PX.narrow[at]} px`
       await page.setViewportSize(size)
-      await page.reload()
-      await expect(onStep(page).locator(".name-check:not(.unchecked) > :not(.sizer)"), at).toHaveText(AVAILABLE_BRIEF)
-      await expect(payButton(page), `${at}: Pay waits for the form`).toBeDisabled()
-      const before = await cardPage(page)
-      await page.evaluate(() => (window as unknown as { __loadCard: () => void }).__loadCard())
-      await expect(payButton(page), `${at}: Pay once the form is ready`).toBeEnabled()
+      await page.unroute("https://js.stripe.com/**")
+      await page.route("https://js.stripe.com/**", (route) => route.fulfill({ contentType: "text/javascript", body: stripeOnCue(at, declines) }))
+      await open()
+      await expect(onStep(page).getByRole("heading", { name: "Pay by card" }), where).toBeVisible()
+      await expect(onStep(page).locator(".name-check:not(.unchecked)"), `${where}: the notice`).toBeVisible()
+      await page.evaluate(() => document.fonts.ready)
+      const drawn = await cardPage(page)
+      await loadCard(page)
+      await expect(onStep(page).locator(".stripe > div"), where).toHaveCount(1)
+      if (declines) await payButton(page).click()
+      await expect(onStep(page).locator(".name-check > :not(.sizer)"), `${where}: the notice`).toHaveText(notice)
       for (const dark of [false, true]) {
         await page.evaluate((d) => document.documentElement.classList.toggle("dark", d), dark)
-        expect(await cardPage(page), `${at}${dark ? ", dark" : ""}: every part where it was before the form loaded`).toEqual(before)
+        expect(await cardPage(page), `${where}${dark ? ", dark" : ""}: every part where it was before the form loaded`).toEqual(drawn)
       }
       await page.evaluate(() => document.documentElement.classList.remove("dark"))
-      const { form, button, link, cancel, stripeNote, stripeNoteUnderPay, investTop, nameNoteLines, stripeNoteLines, content, rowGap } = before
-      expect(form!.bottom - form!.top, `${at}: the room held for Stripe's form`).toBe(phone ? STRIPE_FORM_PX.phone : STRIPE_FORM_PX.laptop)
-      expect([button!.top, link!.top], `${at}: Pay and Cancel where every step's button and link are`).toEqual([MOCKUP_FRAMES[i].button, MOCKUP_FRAMES[i].link])
-      expect(content + rowGap, `${at}: the content above Pay, the step's row gap between`).toBeLessThanOrEqual(button!.top)
-      expect(nameNoteLines, `${at}: the name's note's lines`).toBe(phone ? 2 : 1)
-      expect(stripeNoteLines, `${at}: Stripe's note's lines`).toBe(1)
-      expect(stripeNoteUnderPay, `${at}: Stripe's note under Pay`).toBe(phone)
-      if (phone) {
-        expect(stripeNote!.top, `${at}: Stripe's note under Cancel`).toBeGreaterThanOrEqual(cancel!.bottom)
-        expect(investTop - stripeNote!.bottom, `${at}: the room between Stripe's note and the invest note`).toBeGreaterThanOrEqual(ROOM_ABOVE_INVEST)
-        expect(await offCentre(onStep(page).locator(".actions-row .stripe-note")), `${at}: Stripe's note centred`).toBeLessThanOrEqual(1)
-      } else {
-        expect(stripeNote!.top, `${at}: Stripe's note under the form`).toBeGreaterThan(form!.bottom)
-      }
-      expect(await overflow(page), at).toBe(0)
+      const { form, button, link, cancel, stripeNote, investTop, parts, content, rowGap } = drawn
+      const frame = MOCKUP_FRAMES[size.width > PHONE_WIDTH ? 0 : 1]
+      expect(parts, `${where}: the notice and the form, nothing else above Pay`).toBe(2)
+      expect(form!.bottom - form!.top, `${where}: the room held for Stripe's form`).toBe(size.width > PHONE_WIDTH ? STRIPE_FORM_PX.wide[1] : STRIPE_FORM_PX.narrow[1])
+      expect([button!.top, link!.top], `${where}: Pay and Cancel where every step's button and link are`).toEqual([frame.button, frame.link])
+      expect(content + rowGap, `${where}: the content above Pay, the step's row gap between`).toBeLessThanOrEqual(button!.top)
+      expect(stripeNote!.top, `${where}: Stripe's note under Cancel`).toBeGreaterThanOrEqual(cancel!.bottom)
+      expect(investTop - stripeNote!.bottom, `${where}: the room between Stripe's note and the invest note`).toBeGreaterThanOrEqual(ROOM_ABOVE_INVEST)
+      expect(await offCentre(onStep(page).locator(".stripe-note")), `${where}: Stripe's note centred`).toBeLessThanOrEqual(1)
+      if (FIT_SIZES.some((fit) => fit.width === size.width && fit.height === size.height)) expect(await overflow(page), where).toBe(0)
     }
-    await shot(page, `names-u1-5d-pay-card-stripe-${length}`)
-  })
+  }
 }
+
+const CARD_INVOICE = "inv-cardfit"
+const CARD_REGISTRATION = "reg-cardfit"
+interface CardOrder { label: string; price: number; fromBalance: number; taken?: boolean; forgetful?: boolean }
+
+// A card order of this browser's, answered by routes, whose page opens at `/?order=`; the name is available or taken,
+// and the browser can keep a record or not.
+async function routedCardOrder(page: Page, o: CardOrder): Promise<() => Promise<void>> {
+  const order = await keepOrder(page, CARD_REGISTRATION, CARD_INVOICE, o.label)
+  await page.evaluate((r) => localStorage.setItem(`simplex-names:order:${r.registrationId}`, JSON.stringify({ ...r, method: "card" })), order)
+  const registration = registrationView(order, { price: o.price, fromBalance: o.fromBalance })
+  const invoice = { invoiceId: CARD_INVOICE, status: "open", amount: o.price - o.fromBalance, currency: "usd", expiresAt: new Date(Date.now() + 3_600_000).toISOString(), kind: "name",
+    registration, clientSecret: "pi_cardfit_secret" }
+  await page.route(`**/api/invoice/${CARD_INVOICE}*`, (route) => route.fulfill({ json: invoice }))
+  await page.route(`**/api/registration/${CARD_REGISTRATION}*`, (route) => route.fulfill({ json: registration }))
+  await page.route("**/api/name/**", (route) => route.fulfill({ json: o.taken ? { status: "registered", entities: [], tld: "simplex" } : homeAnswers(order.owner).available }))
+  if (o.forgetful) await page.addInitScript(() => {
+    const keep = Storage.prototype.setItem
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (key === "simplex-names-probe") throw new DOMException("full", "QuotaExceededError")
+      return keep.call(this, key, value)
+    }
+  })
+  await withStripeKey(page)
+  return () => page.goto(`/?order=${CARD_INVOICE}`).then(() => undefined)
+}
+
+test("a card invoice opened in place of a new Bitcoin one says why in the card page's one notice, which fits above Pay", async ({ page }) => {
+  await search(page, uniqueLabel("cardinst"))
+  await toReview(page)
+  await page.getByRole("radio", { name: "Card" }).click()
+  const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  // a copy of the tab, with its checkout and name code, pays with Bitcoin, and the order's card invoice opens instead
+  const copy = await page.context().newPage()
+  await copy.addInitScript(([key, value]) => { if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, value) }, [CHECKOUT_KEY, checkout])
+  await withStripeKey(copy)
+  await cardFits(copy, /^This name already has a card invoice from an earlier try, so it opened instead of a new Bitcoin one\.$/, async () => {
+    await copy.goto("/#/checkout")
+    await copy.getByRole("radio", { name: "Bitcoin" }).click()
+    await payButton(copy).click()
+    await copy.waitForURL(/\?order=/)
+  })
+})
+
+// the service worker of a production build answers these pages before Playwright's routes in WebKit
+test.describe(() => {
+  test.use({ serviceWorkers: "block" })
+  const tenLetters = { label: "cardfitabc", price: 10000, fromBalance: 0 }
+  const longFromBalance = { label: "w".repeat(MAX_LABEL_LENGTH), price: 20000, fromBalance: 10000 }
+  const CARD_CASES: [string, CardOrder, RegExp][] = [
+    ["a name of 10 letters", tenLetters, AVAILABLE_BRIEF],
+    [`a name of ${MAX_LABEL_LENGTH} wide letters part paid from its balance`, longFromBalance, AVAILABLE_BRIEF],
+    [`a name of ${MAX_LABEL_LENGTH} wide letters part paid from its balance, taken meanwhile`, { ...longFromBalance, taken: true }, TAKEN_BRIEF],
+    ["a browser that cannot remember a card payment", { ...tenLetters, forgetful: true }, FORGETFUL],
+    ["a browser that cannot remember a card payment, the name taken meanwhile", { ...tenLetters, forgetful: true, taken: true }, TAKEN_BRIEF],
+  ]
+  for (const [name, order, notice] of CARD_CASES) {
+    test(`the card page fits Stripe's form above Pay and keeps still as it loads, its one notice in place, for ${name}`, async ({ page }) => {
+      await cardFits(page, notice, await routedCardOrder(page, order))
+    })
+  }
+
+  test("a card Stripe declines is said in the card page's one notice, nothing on the page moving", async ({ page }) => {
+    await cardFits(page, new RegExp(`^${DECLINED}$`), await routedCardOrder(page, tenLetters), true)
+    await expect(onStep(page).locator(".name-check")).toHaveClass(/\bdanger\b/)
+  })
+})
 
 const FIT_INVOICE = "inv-fitall"
 // an invoice of a kept order, as the service answers it, for a page to draw
