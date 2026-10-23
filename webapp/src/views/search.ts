@@ -10,7 +10,8 @@ import type { Hold } from "../screens/hold.ts"
 import { againLine, ranOut } from "../screens/names.ts"
 import { checkoutUrl } from "../screens/routes.ts"
 import {
-  type Answer, balanceHint, initialSearch, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent, type SearchKind, type SearchState,
+  type Answer, balanceHint, codeCover, initialSearch, keptWords, moveBar, moveHint, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent,
+  type SearchKind, type SearchState,
 } from "../screens/search.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
@@ -165,7 +166,6 @@ function holdEnded(): void {
 type Found = Extract<Answer, { kind: "found" }>
 type Available = Extract<api.SearchAnswer, { status: "available" }>
 
-const unaffordable = (s: SearchState, answer: Available) => s.retarget !== null && answer.price > s.retarget.paid
 // an order this browser has for the name, which the search found or the service named in refusing a second one
 const ownOrderOf = ({ ownOrder, register: { refusal } }: SearchState) => ownOrder ?? (refusal?.why === "other" ? refusal.url : null)
 
@@ -217,9 +217,11 @@ async function retarget(record: store.OrderRecord, label: string, quote: Availab
     // the code's own order for the new name is the one the move met
     const other = code === "order_exists" ? await flow.ownOrderFor(record.ownerCode, hex(labelHash(label))).catch(() => null) : null
     if (!onPage(page)) return
-    dispatch({ type: "register-refused", refusal: other ? { why: "other", url: store.orderUrl(other) } : { why: code === "name_taken" ? "taken" : code === "price_too_high" ? "dearer" : "failed" } })
+    dispatch({ type: "register-refused", refusal: other ? { why: "other", url: store.orderUrl(other) } : { why: REFUSALS[code ?? ""] ?? "failed" } })
   }
 }
+
+const REFUSALS: Record<string, "taken" | "dearer" | "uncovered"> = { name_taken: "taken", price_too_high: "dearer", code_not_covering: "uncovered" }
 
 const BUILDERS: Record<SearchKind, Builder<SearchState>> = {
   "search:plain": buildSearch,
@@ -273,10 +275,10 @@ function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
 }
 
 function openingLine(s: SearchState): HTMLElement | null {
-  if (s.moved) return alertBox("info", "info", "Your payment already went to another name.", el("a", { href: s.moved.url }, "Open ", nameText(s.moved.label, s.moved.tld)))
+  if (s.moved) return alertBox("info", "info", "Your order already went to another name.", el("a", { href: s.moved.url }, "Open ", nameText(s.moved.label, s.moved.tld)))
   if (!s.retarget) return null
-  const worth = dollars(s.retarget.paid)
-  return alertBox("info", "wallet", `Your payment is kept: ${worth}.`, `Choose another name of up to ${worth}; nothing more is charged.`)
+  const [kept, choose] = keptWords(s.retarget)
+  return alertBox("info", codeCover(s.retarget) ? "key" : "wallet", kept, choose)
 }
 
 function answerOf(s: SearchState, retry: () => void, signal: AbortSignal): Kid {
@@ -314,24 +316,25 @@ const codeFor = (s: SearchState, label: string) => {
 
 function availableAnswer(s: SearchState, label: string, answer: Available, signal: AbortSignal): Kid[] {
   const retarget = s.retarget
-  const unpayable = unaffordable(s, answer)
-  // a cheaper name keeps the rest as the order's balance, which is said before the buyer chooses it
-  const cheaper = retarget && answer.price < retarget.paid ? `Uses ${dollars(answer.price)} of your ${dollars(retarget.paid)}; the rest stays as your balance.` : null
-  const covers = retarget && (unpayable ? `This name costs more than the ${dollars(retarget.paid)} your order is worth.` : cheaper ?? "Covered by your payment")
+  const cover = retarget && codeCover(retarget)
+  const unpayable = retarget !== null && moveBar(retarget, label, answer.price) !== null
+  const hint = retarget && moveHint(retarget, label, answer.price)
   const own = ownOrderOf(s)
   const code = codeFor(s, label)
+  const free = code ?? (cover && !unpayable ? cover : null)
   const short = usesCode(s) ? session.activeCode() : null
   const asks = retarget !== null && !unpayable && own === null
-  const button = setAction(btn(retarget ? "Register with your payment" : "Register", "small", register), s.register.busy, unpayable || own !== null || s.hold !== null || (asks && !s.agreed))
+  const words = !retarget ? "Register" : cover ? "Register with your code" : "Register with your payment"
+  const button = setAction(btn(words, "small", register), s.register.busy, unpayable || own !== null || s.hold !== null || (asks && !s.agreed))
   button.dataset.focus = "register"
-  const deal = code ? [el("b", { class: "price" }, "Free"), el("span", { class: "soft" }, ` / ${code.years} years`)]
+  const deal = free ? [el("b", { class: "price" }, "Free"), el("span", { class: "soft" }, ` / ${free.years} years`)]
     : [el("b", { class: "price" }, dollars(answer.price)), el("span", { class: "soft" }, ` / ${answer.years} years`)]
   return [
     el("div", { class: "card row buy" }, rowName(label, answer.tld, answer.community, "community"), el("div", { class: "offer" }, el("span", { class: "deal" }, deal), button)),
     !code && short ? el("p", { class: "hint" }, `Your code allows you to register a free name of ${short.minLength} or more letters. `,
       el("span", { class: "nowrap" }, `This name has ${label.length}.`)) : null,
     s.balance ? balanceLine(s.balance, answer.price) : null,
-    covers ? line("", "wallet", covers) : null,
+    hint ? line("", cover ? "key" : "wallet", hint[0], hint[1] ? [" ", el("span", { class: "nowrap" }, hint[1])] : null) : null,
     own ? line("", "info", "You already have an order for this name. ", el("a", { class: "nowrap", href: own }, "Open that order")) : null,
     // under the box, so nothing above it moves
     asks ? moveAgreement(s, label, answer) : null,
@@ -355,7 +358,8 @@ function registerNote({ hold, register: { refusal } }: SearchState, signal: Abor
   if (!refusal) return null
   if (refusal.why === "limit") return noteBox(moveLimitNote(refusal.reference))
   const words = refusal.why === "taken" ? "This name is no longer available. Search another one."
-    : refusal.why === "dearer" ? "This name now costs more than your order is worth. Search another one." : "Nothing changed. Try again in a moment."
+    : refusal.why === "dearer" ? "This name now costs more than your order is worth. Search another one."
+    : refusal.why === "uncovered" ? "Your code does not pay for this name. Search another one." : "Nothing changed. Try again in a moment."
   return alertBox("danger", "alert", "That did not go through", words)
 }
 

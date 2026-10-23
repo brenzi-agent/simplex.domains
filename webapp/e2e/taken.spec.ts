@@ -4,7 +4,7 @@ import { labelHash } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import {
   addNameCode, agreeToTerms, checkoutOwnerCode, contactLink, control, failedOrder, FIT_SIZES, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, savedToReview,
-  offCentre, search, searchName, shot, startOrder, takenHeading, takenOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
+  offCentre, search, searchName, sevenLetters, shot, startOrder, takenHeading, takenOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
 test("a name taken first keeps its payment as its balance, which pays for another name owned by the same code", async ({ page, request }) => {
@@ -278,4 +278,46 @@ test("a failed order's move to a cheaper name says the rest stays as its balance
   await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("cheap"))
   await page.getByLabel("Name", { exact: true }).press("Enter")
   await expect(page.locator(".answer .line", { hasText: "Uses" })).toHaveText("Uses $100 of your $200; the rest stays as your balance.")
+})
+
+// shorter than any unique label, which is the order's first name and the name it moves to
+const CODE_MIN_LENGTH = 10
+
+test("a code order whose links the service refuses moves to another name its code pays for, which costs it nothing", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: CODE_MIN_LENGTH }) as { code: string }
+  await useCode(page, code)
+  await search(page, uniqueLabel("cmv"))
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await onStep(page).getByRole("textbox", { name: "Link", exact: true }).fill(contactLink("CM"))
+  await previewsShown(page)
+  await onStep(page).getByRole("button", { name: "Continue" }).click()
+  await savedToReview(page)
+  const ownerCode = await checkoutOwnerCode(page)
+  await control(request, "search", { refuseLinks: true })
+  try {
+    await onStep(page).getByRole("button", { name: "Register with your code" }).click()
+    await expect(page.getByText("The service refused this order's links")).toBeVisible({ timeout: REGISTRATION_MS })
+  } finally {
+    await control(request, "search", { refuseLinks: false })
+  }
+  await onStep(page).getByRole("button", { name: "Choose another name" }).click()
+  await expect(page.locator(".notice", { hasText: "Your code is kept." })).toHaveText(`Your code is kept.It pays for another name of ${CODE_MIN_LENGTH} or more letters, for 2 years.`)
+
+  const short = sevenLetters()
+  await page.getByLabel("Name", { exact: true }).fill(short)
+  await page.getByLabel("Name", { exact: true }).press("Enter")
+  await expect(page.locator(".answer .line", { hasText: "Your code" })).toHaveText(`Your code pays for a name of ${CODE_MIN_LENGTH} or more letters. This name has 7.`)
+  await expect(page.getByRole("button", { name: "Register with your code" })).toBeDisabled()
+
+  const next = uniqueLabel("cmn")
+  await page.getByLabel("Name", { exact: true }).fill(next)
+  await page.getByLabel("Name", { exact: true }).press("Enter")
+  await expect(page.locator(".answer .line", { hasText: "Covered by your code" })).toBeVisible()
+  await expect(page.locator(".answer .deal")).toHaveText("Free / 2 years")
+  await expect(page.locator("body > main"), "a code is no payment").not.toContainText("$0")
+  await shot(page, "N8a3-code-move")
+  await agreeToTerms(page)
+  await page.getByRole("button", { name: "Register with your code" }).click()
+  await waitRegistered(page, next)
+  expect((await searchName(request, next)).owner, "the order's name code owns the name it moved to").toBe(checksumAddress(walletOf(ownerCode)!.address))
 })

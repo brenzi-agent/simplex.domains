@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
-  balanceHint, initialSearch, type Opening, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent, type SearchKind, type SearchState, screenOf,
+  balanceHint, codeCover, initialSearch, keptWords, moveBar, moveHint, type Opening, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent, type SearchKind, type SearchState, screenOf,
 } from "../src/screens/search.ts"
 import { timeOf } from "../src/format.ts"
 import type { OrderRecord } from "../src/store.ts"
@@ -358,5 +358,42 @@ describe("a balance", () => {
     const until = "2026-10-17T12:30:00Z"
     expect(balanceHint({ ...BALANCE, held: true, heldUntil: until }, 4000)).toEqual([`Your balance is in use by another order until ${timeOf(Date.parse(until))}.`, null])
     expect(balanceHint({ ...BALANCE, held: true, heldUntil: null }, 4000)).toEqual(["Your balance is in use by another order while its payment is being confirmed.", null])
+  })
+})
+
+describe("a move", () => {
+  const PREPAID = "SN9-BJTBP-29596-R3HJ8-25YM5"
+  const coded = (change: Partial<OrderRecord> = {}) => record({ invoiceId: null, method: "code", paid: 0, prepaidCode: PREPAID, label: "alice1bakes", ...change })
+  it("of a code order is paid by its code, for names of the code's length or more and the order's years", () => {
+    expect(codeCover(coded())).toEqual({ minLength: 9, years: 2 })
+    expect(codeCover(coded({ years: 5 }))).toEqual({ minLength: 9, years: 5 })
+  })
+  it("of a code order restored without its code is paid for names at least as long as the order's own", () => {
+    expect(codeCover(coded({ prepaidCode: undefined }))).toEqual({ minLength: "alice1bakes".length, years: 2 })
+  })
+  it("of a paid order has no code to pay for it", () => {
+    expect(codeCover(record())).toBeNull()
+    expect(codeCover(record({ method: "balance" }))).toBeNull()
+  })
+  it("of a code order is barred only for a name shorter than its code covers, whatever the name costs", () => {
+    expect(moveBar(coded(), "alice1bak", 10000)).toBeNull()
+    expect(moveBar(coded(), "alice1ba", 1)).toBe("uncovered")
+  })
+  it("of a paid order is barred only for a name dearer than the order is worth, whatever its length", () => {
+    expect(moveBar(record(), "alice2", 1500)).toBeNull()
+    expect(moveBar(record(), "alice2", 1501)).toBe("dearer")
+  })
+  it("of a code order says its code pays, or why it does not, never naming money", () => {
+    expect(moveHint(coded(), "alice1bak", 10000)).toEqual(["Covered by your code", null])
+    expect(moveHint(coded(), "alice2", 20000)).toEqual(["Your code pays for a name of 9 or more letters.", "This name has 6."])
+  })
+  it("of a paid order says what its payment covers", () => {
+    expect(moveHint(record(), "alice2", 1500)).toEqual(["Covered by your payment", null])
+    expect(moveHint(record(), "alice2", 1000)).toEqual(["Uses $10 of your $15; the rest stays as your balance.", null])
+    expect(moveHint(record(), "alice2", 2000)).toEqual(["This name costs more than the $15 your order is worth.", null])
+  })
+  it("opens saying what the order keeps: its code, or its payment", () => {
+    expect(keptWords(coded())).toEqual(["Your code is kept.", "It pays for another name of 9 or more letters, for 2 years."])
+    expect(keptWords(record())).toEqual(["Your payment is kept: $15.", "Choose another name of up to $15; nothing more is charged."])
   })
 })
