@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
+  CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
   lineStarts, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, test, toCodeStep,
   toFullReview, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
@@ -32,9 +32,6 @@ test("the purchase steps swap the whole page, one screen at a time rising in, an
   await page.goBack()
   await expect(page.getByLabel("Name", { exact: true })).toBeVisible()
 })
-
-// the sizes a purchase step must fit without scrolling, a laptop's and a phone's
-const FIT_SIZES = [{ width: 1280, height: 800 }, { width: 390, height: 844 }]
 
 // Where the heading of the screen in view starts, once it has risen in.
 async function headingAt(page: Page): Promise<{ x: number; y: number }> {

@@ -5,7 +5,7 @@ import { checksumAddress } from "../src/crypto/wallet.ts"
 import { walletOf } from "../src/flow.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fillLinks, LINKS_HEADING, MOCK, onStep, payButton, previewsShown, savedToReview,
+  blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, onStep, payButton, previewsShown, savedToReview,
   search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
@@ -117,6 +117,20 @@ test("a prepaid code from Check your code shows a name as Free and registers it 
   await page.goto("/#/names")
   const row = page.locator(".list-row", { hasText: `${label}.simplex` })
   await expect(row.locator(".sub"), "a registered name says its date alone").toHaveText(/^Until \d+\u00a0\w+ \d{4}$/)
+  const codeRow = page.locator(".code-row")
+  await expect(codeRow.locator(".chip")).toHaveText("Used")
+  // the code on one line, its chip on its actions' line just before them, as the mockup's code rows end with their action
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    const drawn = await codeRow.evaluate((r) => {
+      const [code, chip, acts] = [".main .mono", ".state", ".acts"].map((s) => r.querySelector(s)!)
+      const [c, a] = [chip.getBoundingClientRect(), acts.getBoundingClientRect()]
+      return { codeLines: new Set([...code.getClientRects()].map((b) => Math.round(b.top))).size, chipLine: Math.round(c.top + c.height / 2) === Math.round(a.top + a.height / 2),
+        chipBefore: c.right <= a.left, atEnd: Math.round(a.right) === Math.round(r.getBoundingClientRect().right - parseFloat(getComputedStyle(r).paddingRight)) }
+    })
+    expect(drawn, `the code's row at ${size.width}x${size.height}`).toEqual({ codeLines: 1, chipLine: true, chipBefore: true, atEnd: true })
+  }
+  await page.setViewportSize(FIT_SIZES[0])
   await shot(page, "K10-names-paid-with-code")
 
   // the code is spent

@@ -612,6 +612,10 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   /* a name's line across the row, its chats and actions under it, the actions at the right */
   .list-row .acts { flex: 1 1 auto; justify-content: flex-end; }
   .list-row .acts > .chats { margin-right: auto; }
+  /* a code on one line across the row, its state beside its actions under it, at the right */
+  .code-row .main { flex-basis: 100%; }
+  .code-row .state { margin-left: auto; }
+  .code-row .acts { flex: none; }
   /* a name code on one line over its buttons, its 38 characters 23 em wide at most */
   .code-display { container-type: inline-size; flex-wrap: wrap; justify-content: center; padding: 12px 6px; letter-spacing: 0; }
   .code-display .code-text { flex-basis: 100%; text-align: center; white-space: nowrap; font-size: min(14px, 100cqi / 23); }

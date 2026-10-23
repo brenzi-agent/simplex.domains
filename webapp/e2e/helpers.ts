@@ -15,6 +15,8 @@ const SLOT = Number(process.env.TEST_PARALLEL_INDEX ?? "0")
 export const MOCK = process.env.MOCK_URL ?? mockUrl(SLOT)
 const DESKTOP = { width: 1280, height: 800 }
 const PHONE = { width: 390, height: 844 }
+// the sizes a page must fit without scrolling, a laptop's and a phone's
+export const FIT_SIZES = [DESKTOP, PHONE]
 // commit age plus mining, signing and the register transaction, with room for a slow chain
 export const REGISTRATION_MS = 120_000
 
