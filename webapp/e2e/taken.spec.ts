@@ -3,8 +3,8 @@ import { walletOf } from "../src/flow.ts"
 import { labelHash } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import {
-  addNameCode, checkoutOwnerCode, contactLink, control, failedOrder, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, savedToReview,
-  search, searchName, shot, startOrder, takenHeading, takenOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
+  addNameCode, checkoutOwnerCode, contactLink, control, failedOrder, FIT_SIZES, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, savedToReview,
+  offCentre, search, searchName, shot, startOrder, takenHeading, takenOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 test("a name taken first keeps its payment as its balance, which pays for another name owned by the same code", async ({ page, request }) => {
@@ -85,6 +85,12 @@ test("a failed registration is retried without paying again, and another tab fol
   await control(request, `fail/${await registrationOf(request, invoiceId)}`)
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByRole("heading", { name: "Paid, not registered" })).toBeVisible({ timeout: 60_000 })
+  // the order's line centred under the heading and its lead, as it is when it is the lead
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    expect(await offCentre(onStep(page).locator(".screen-body > .note").first()), `the order's line at ${size.width}x${size.height}`).toBeLessThanOrEqual(1)
+  }
+  await page.setViewportSize(FIT_SIZES[0])
   await shot(page, "N9-failed")
   const other = await page.context().newPage()
   await other.goto(`/?order=${invoiceId}`)

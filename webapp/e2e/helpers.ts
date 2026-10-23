@@ -136,6 +136,23 @@ export async function shot(page: Page, name: string): Promise<void> {
   await page.setViewportSize(DESKTOP)
 }
 
+// How far the middle of the furthest line of what an element draws, its words or its picture, stands from the middle of
+// its parent's content box, in pixels.
+export const offCentre = (node: Locator) => node.evaluate((n) => {
+  const range = document.createRange()
+  range.selectNodeContents(n)
+  const lines = new Map<number, { left: number; right: number }>()
+  for (const r of range.getClientRects()) {
+    const line = lines.get(Math.round(r.bottom))
+    lines.set(Math.round(r.bottom), { left: Math.min(r.left, line?.left ?? r.left), right: Math.max(r.right, line?.right ?? r.right) })
+  }
+  const parent = n.parentElement!
+  const box = parent.getBoundingClientRect()
+  const style = getComputedStyle(parent)
+  const middle = (box.left + parseFloat(style.paddingLeft) + box.right - parseFloat(style.paddingRight)) / 2
+  return Math.max(...[...lines.values()].map((l) => Math.abs((l.left + l.right) / 2 - middle)))
+})
+
 export async function search(page: Page, label: string): Promise<void> {
   await page.goto("/")
   await page.getByLabel("Name", { exact: true }).fill(label)

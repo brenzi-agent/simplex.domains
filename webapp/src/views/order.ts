@@ -1138,7 +1138,7 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   holdEnds(signal)(s.hold !== null)
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
   return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s), action },
-    el("p", { class: "note" }, ...orderLine(s)),
+    el("p", { class: "note center" }, ...orderLine(s)),
     stages(failedAt),
     alertBox("danger", "alert", view.error ?? "The registration did not go through", "The service's own retries gave up."),
     actionNote(s, signal),
