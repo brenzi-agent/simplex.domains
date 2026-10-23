@@ -355,7 +355,7 @@ function toggleTheme(): void {
 
 export const OFFLINE_NOTE = "You are offline. Searches, payments and order updates need the connection."
 
-// Over the footer at the window's foot, out of the flow, so it moves nothing; it stays and only its words change, which a reader hears.
+// In the invest note's place, or at the window's foot above a longer page; it stays and only its words change, which a reader hears.
 const offlineText = el("span", {})
 const offline = el("div", { class: "offline", role: "status" }, el("div", { class: "offline-note" }, icon("offline"), offlineText))
 function showConnection(): void {

@@ -519,14 +519,26 @@ test("Check your code keeps its heading and main button still as a verdict comes
   }
 })
 
+// the page's height, and what of it shows under the offline note
+const underNote = (page: Page) => page.evaluate(() => {
+  const note = document.querySelector(".offline-note")!.getBoundingClientRect()
+  const under = [...document.querySelectorAll("body > :is(main, .invest, footer) :is(a, button, h1, p, span, svg)")].filter((n) => {
+    const b = n.getBoundingClientRect()
+    return n.checkVisibility({ visibilityProperty: true }) && b.width > 0 && b.left < note.right && b.right > note.left && b.top < note.bottom && b.bottom > note.top
+  })
+  return { height: document.scrollingElement!.scrollHeight, under: under.map((n) => n.textContent!.trim() || n.tagName) }
+})
+
 test("going offline and back moves neither the home's heading nor the review's, and scrolls neither, at both sizes", async ({ page, context }) => {
   const offlineAndBack = async (where: string) => {
     const before = await headingAt(page)
+    const { height } = await underNote(page)
     await context.setOffline(true)
     try {
       await expect(page.locator(".offline-note")).toBeVisible()
       expect(await headingAt(page), `${where}'s heading offline`).toEqual(before)
       expect(await overflow(page), `${where}'s overflow offline`).toBe(0)
+      expect(await underNote(page), `${where}'s height, and what shows under the note`).toEqual({ height, under: [] })
     } finally {
       await context.setOffline(false)
     }

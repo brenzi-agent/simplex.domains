@@ -70,15 +70,16 @@ test("offline, the footer scrolls clear of the note, and its last link takes a c
     const lastLink = page.locator("body > footer").getByRole("link", { name: "Trademark owners" })
     for (const size of NOTE_SIZES) {
       await page.setViewportSize(size)
-      // how far each of the footer's items reaches past the note's top, scrolled to the end once the window has its new
+      // how far each of the footer's items reaches into the note, scrolled to the end once the window has its new
       // size (Firefox takes it after Playwright's call returns), the note has its own and the frame has caught up
       const overlaps = () => page.evaluate(({ width, height: windowHeight }) => {
         const bottom = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().bottom + scrollY
         // the window holds the page down to its invest note once its size has reached the page's layout
         const settled = innerWidth === width && innerHeight === windowHeight && Math.abs(bottom("body > .invest") - windowHeight) < 1
         scrollTo(0, document.documentElement.scrollHeight)
-        const noteTop = document.querySelector(".offline-note")!.getBoundingClientRect().top
-        return { settled, overlaps: [...document.querySelectorAll("body > footer > *")].map((n) => Math.max(0, Math.ceil(n.getBoundingClientRect().bottom - noteTop))) }
+        const note = document.querySelector(".offline-note")!.getBoundingClientRect()
+        return { settled, overlaps: [...document.querySelectorAll("body > footer > *")].map((n) => n.getBoundingClientRect())
+          .map((b) => Math.max(0, Math.ceil(Math.min(b.bottom, note.bottom) - Math.max(b.top, note.top)))) }
       }, size)
       await expect.poll(overlaps, { message: `the footer's items under the note at ${size.width}x${size.height}` }).toEqual({ settled: true, overlaps: [0, 0] })
       // WebKit hit-tests a mouse event against the last frame it drew, so the scroll is drawn first
