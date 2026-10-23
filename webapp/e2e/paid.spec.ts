@@ -6,8 +6,8 @@ import { dateOf } from "../src/format.ts"
 import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
-  blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, LINKS_HEADING, MOCK, mockRegistration, onStep, oracleQuote, payButton, previewsShown, REGISTRATION_MS,
-  registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered,
+  blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, mockRegistration, onStep, oracleQuote, payButton, previewsShown, REGISTRATION_MS,
+  offCentre, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
@@ -225,6 +225,11 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   await expect(row.locator(".row-code svg.qr")).toBeVisible()
   await expect(toggle).toHaveAttribute("aria-expanded", "true")
   await expect(toggle).toBeFocused()
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    expect(await offCentre(row.locator(".row-code > .qr")), `the name code's QR at ${size.width}x${size.height}`).toBeLessThanOrEqual(1)
+  }
+  await page.setViewportSize(FIT_SIZES[0])
   await shot(page, "N12g-history-code")
   await page.keyboard.press("Enter")
   await expect(row.locator(".row-code")).toHaveCount(0)

@@ -526,6 +526,7 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 .list-row .sub { color: var(--ink-soft); font-size: var(--fs-small); }
 .list-row .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: var(--fs-small); white-space: nowrap; }
 .row-code { flex-basis: 100%; display: grid; gap: 12px; }
+.row-code > .qr { justify-self: center; }
 .danger-link { font-size: var(--fs-small); }
 /* Forget's question comes into view with room below it; its answers are an equal pair, side by side when each gets the
    220 px that holds "Forget everything" */
