@@ -299,6 +299,25 @@ test("a code checked is listed in Your names, used again from there, and forgott
   await expect(page.getByRole("link", { name: "Add a name code" })).toHaveAttribute("href", "/#/code")
 })
 
+// The service's code check answers a rate limit with this wait the first `times` it is asked, and the page's checks are counted.
+async function limitCodeChecks(page: Page, times: number, waitSeconds: number): Promise<() => number> {
+  let checks = 0
+  await page.route("**/api/code/check", (route) => ++checks <= times
+    ? route.fulfill({ status: 429, headers: { "retry-after": String(waitSeconds) }, json: { error: "rate_limited" } }) : route.continue())
+  return () => checks
+}
+
+test("a code row in Your names whose check meets the rate limit counts down its wait and is checked again, as often as it is met", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 7 }) as { code: string }
+  await useCode(page, code)
+  const checks = await limitCodeChecks(page, 2, 3)
+  await page.goto("/#/names")
+  const state = page.locator(".list-row", { hasText: code }).locator(".chip")
+  await expect(state).toHaveText(/^Checking again in [1-3] seconds?$/)
+  await expect(state, "checked again after each wait").toHaveText("Unused", { timeout: 15_000 })
+  expect(checks(), "two refused checks and the one after them").toBe(3)
+})
+
 test("an owner code made at checkout is kept in Your names until its order exists", async ({ page }) => {
   const label = uniqueLabel("pend")
   await page.goto("/")
@@ -427,6 +446,21 @@ test("a failed code order is drawn before its code is checked, and says the code
   answer()
   await expect(lead, "the lead says the code is kept once the check answers").toHaveText("Your code is kept. Trying again spends nothing more.")
   await page.unrouteAll({ behavior: "wait" })
+})
+
+test("a failed code order whose code check meets the rate limit counts down its wait, then says the code is kept", async ({ page, request }) => {
+  const { registrationId } = await registerWithCode(page, request, "climit")
+  await control(request, `fail/${registrationId}`)
+  await expect(page.getByRole("heading", { name: "Not registered" })).toBeVisible({ timeout: 60_000 })
+  const checks = await limitCodeChecks(page, 1, 3)
+  await page.reload()
+  const notice = onStep(page).locator(".notice", { hasText: "Too many checks just now" })
+  await expect(notice.locator("span[aria-hidden=true]")).toHaveText(/^Your code may be fine\. Checking again in [1-3] seconds?\.$/)
+  await expect(page.locator(".screen-head .lead")).toHaveText("Trying again spends nothing more.")
+  await expect(page.locator(".screen-head .lead")).toHaveText("Your code is kept. Trying again spends nothing more.", { timeout: 15_000 })
+  await expect(notice).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Try again" })).toBeEnabled()
+  expect(checks(), "the refused check and the one after its wait").toBe(2)
 })
 
 test("a code held by this browser's failed order says it is in use and links to the order; a revoked code says SimpleX withdrew it", async ({ page, request }) => {

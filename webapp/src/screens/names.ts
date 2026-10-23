@@ -15,6 +15,8 @@ export interface ListState extends Stored {
   seen: Record<string, RowSeen>
   unread: string[]
   checked: Record<string, CodeCheck>
+  // when a code whose check met a rate limit is checked again, on the service's clock
+  checkAgainAt: Record<string, number>
   finding: Record<string, Finding>
   asking: boolean
   shownCode: string | null
@@ -26,7 +28,7 @@ export type ListEvent =
   | { type: "row-answered"; id: string; answer: SearchAnswer | null }
   | { type: "row-unread"; id: string }
   | { type: "code-toggled"; id: string }
-  | { type: "code-read"; code: string; state: CodeCheck }
+  | { type: "code-read"; code: string; state: CodeCheck; checkAgainAt?: number }
   | { type: "find-started"; ownerCode: string }
   | { type: "find-ended"; ownerCode: string; outcome: "none" | "unchecked" }
   | { type: "find-held"; ownerCode: string; until: number }
@@ -41,7 +43,7 @@ const idsOf = (s: Stored) => s.orders.map((o) => o.registrationId)
 export function initialList(stored: Stored, hold: Hold | null, seen: Record<string, RowSeen>, checked: Record<string, CodeCheck>, now: number): ListState {
   const known = stored.codes.map((c) => c.code).filter((c) => checked[c] !== "unchecked")
   const unreplaced = stored.orders.filter((o) => !o.replacedBy).map((o) => o.registrationId)
-  return { ...stored, hold, now, seen: keep(seen, unreplaced), unread: [], checked: keep(checked, known), finding: {}, asking: false, shownCode: null }
+  return { ...stored, hold, now, seen: keep(seen, unreplaced), unread: [], checked: keep(checked, known), checkAgainAt: {}, finding: {}, asking: false, shownCode: null }
 }
 
 export const hasRecords = (s: Stored) => s.orders.length > 0 || s.pending.length > 0 || s.codes.length > 0
@@ -55,7 +57,7 @@ export function reduceList(s: ListState, e: ListEvent): ListState {
       const unreplaced = new Set(s.orders.filter((o) => !o.replacedBy).map((o) => o.registrationId))
       const ids = idsOf(stored).filter((id) => !(unreplaced.has(id) && stored.orders.find((o) => o.registrationId === id)?.replacedBy))
       return { ...s, ...stored, seen: keep(s.seen, ids), unread: s.unread.filter((id) => ids.includes(id)),
-        checked: keep(s.checked, stored.codes.map((c) => c.code)), finding: keep(s.finding, stored.pending.map((p) => p.ownerCode)), asking: s.asking && hasRecords(stored),
+        checked: keep(s.checked, stored.codes.map((c) => c.code)), checkAgainAt: keep(s.checkAgainAt, stored.codes.map((c) => c.code)), finding: keep(s.finding, stored.pending.map((p) => p.ownerCode)), asking: s.asking && hasRecords(stored),
         shownCode: s.shownCode !== null && ids.includes(s.shownCode) ? s.shownCode : null }
     }
     case "row-read": {
@@ -68,7 +70,11 @@ export function reduceList(s: ListState, e: ListEvent): ListState {
     case "row-answered": return s.seen[e.id] ? { ...s, seen: { ...s.seen, [e.id]: { ...s.seen[e.id], answer: e.answer } } } : s
     case "row-unread": return ordered(e.id) && !s.unread.includes(e.id) ? { ...s, unread: [...s.unread, e.id] } : s
     case "code-toggled": return { ...s, shownCode: s.shownCode === e.id ? null : ordered(e.id) ? e.id : s.shownCode }
-    case "code-read": return s.codes.some((c) => c.code === e.code) ? { ...s, checked: { ...s.checked, [e.code]: e.state } } : s
+    case "code-read": {
+      if (!s.codes.some((c) => c.code === e.code)) return s
+      const { [e.code]: _, ...checkAgainAt } = s.checkAgainAt
+      return { ...s, checked: { ...s.checked, [e.code]: e.state }, checkAgainAt: e.checkAgainAt === undefined ? checkAgainAt : { ...checkAgainAt, [e.code]: e.checkAgainAt } }
+    }
     case "find-started": return pendingFor(e.ownerCode) ? { ...s, finding: { ...s.finding, [e.ownerCode]: "finding" } } : s
     case "find-ended": return pendingFor(e.ownerCode) ? { ...s, finding: { ...s.finding, [e.ownerCode]: e.outcome } } : s
     case "find-held": {
@@ -78,7 +84,7 @@ export function reduceList(s: ListState, e: ListEvent): ListState {
     case "hold-ended": return { ...s, hold: null }
     case "forget-asked": return hasRecords(s) ? { ...s, asking: true } : s
     case "forget-kept": return { ...s, asking: false }
-    case "forget-confirmed": return { ...s, orders: [], pending: [], codes: [], seen: {}, unread: [], checked: {}, finding: {}, asking: false, shownCode: null }
+    case "forget-confirmed": return { ...s, orders: [], pending: [], codes: [], seen: {}, unread: [], checked: {}, checkAgainAt: {}, finding: {}, asking: false, shownCode: null }
   }
 }
 

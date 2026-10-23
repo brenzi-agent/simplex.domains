@@ -268,6 +268,14 @@ describe("reduce", () => {
       expect(reduce(checked, answered(checked, STATES.failed)).codeKept).toBe(true)
       expect(reduce(checked, answered(checked, STATES.registering)).codeKept).toBe(false)
     })
+    it("a code check refused for a rate limit keeps when it is checked again, until the check answers or the order moves on", () => {
+      const due = reduce(STATES.failed, { type: "code-check-due", at: NOW + 30_000 })
+      expect(due).toEqual({ ...STATES.failed, codeCheckAt: NOW + 30_000 })
+      expect(reduce(due, { type: "code-checked" })).toMatchObject({ codeKept: true, codeCheckAt: null })
+      expect(reduce(due, { type: "code-check-due", at: null }).codeCheckAt).toBeNull()
+      expect(reduce(due, answered(due, STATES.failed)).codeCheckAt, "a read of the same failed order").toBe(NOW + 30_000)
+      expect(reduce(due, answered(due, STATES.registering)).codeCheckAt, "another screen").toBeNull()
+    })
     it("a code refused belongs to the failed screen: another tab's retry that moves the order on forgets it", () => {
       const refused = { ...STATES.failed, codeRefused: true }
       expect(reduce(refused, answered(refused, STATES.registering)).codeRefused).toBe(false)
@@ -508,7 +516,7 @@ describe("initialState", () => {
     const reveal = { key: "reg-1 0x9c 4 1", sending: true, refusals: 1 }
     expect(initialState("inv-1", { until: NOW + 1000, lead: NO_LEAD }, reveal)).toEqual({
       reference: "inv-1", seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false,
-      reveal, busy: null, note: null, hold: { until: NOW + 1000, lead: NO_LEAD }, price: null, gone: false, codeRefused: false, codeKept: false, sourceBalance: null,
+      reveal, busy: null, note: null, hold: { until: NOW + 1000, lead: NO_LEAD }, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null,
     })
   })
 })

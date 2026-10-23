@@ -1,7 +1,7 @@
 // An order's page (?order=<invoice>) or a code registration's (?registration=<id>): payment, registration, and every ending.
 import * as api from "../api.ts"
 import { parseNameCode } from "../crypto/code.ts"
-import { alertBox, announce, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, refill, setAction, type Tone } from "../dom.ts"
+import { alertBox, announce, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameText, refill, setAction, type Tone, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
@@ -221,11 +221,21 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
       if (!isRoute(mine)) return
       dispatch({ type: "source-read", balance })
     }
-    // A failed order is drawn before its code is checked, saying nothing of the code until the check answers.
+    // A failed order is drawn before its code is checked, saying nothing of the code until the check answers; a rate
+    // limit is waited out, counting down, as often as it is met.
     if (view.phase === "failed" && !codeChecked && !invoice && record?.prepaidCode && !record.codeRefusal) {
       codeChecked = true
-      const spent = await codeSpent(record.prepaidCode)
+      let spent = await codeSpent(record.prepaidCode)
+      while (typeof spent === "object" && spent !== null) {
+        if (!isRoute(mine)) return
+        const wait = spent.checkAgainIn * 1000
+        dispatch({ type: "code-check-due", at: api.serviceNow() + wait })
+        await sleep(wait)
+        if (!isRoute(mine)) return
+        spent = await codeSpent(record.prepaidCode)
+      }
       if (!isRoute(mine)) return
+      if (state.codeCheckAt !== null && spent !== false) dispatch({ type: "code-check-due", at: null })
       if (spent) {
         store.updateOrder(record.registrationId, { codeRefusal: "code_used" })
         record = store.orderByRegistration(record.registrationId) ?? record
@@ -325,9 +335,13 @@ function releasedCode(view: api.RegistrationView, record: store.OrderRecord | nu
 // holdsFor is the screen's signal where the screen holds an action for the tab's wait
 export const noteBox = (note: Note) => alertBox(note.tone, note.icon, note.title, note.link ? [note.text, el("a", { href: note.link.href }, note.link.text), note.link.after] : note.text)
 
-function noteOf({ hold, note }: OrderState, holdsFor: AbortSignal | null): HTMLElement | null {
+function noteOf({ hold, note, codeCheckAt }: OrderState, holdsFor: AbortSignal | null): HTMLElement | null {
   if (holdsFor && hold) return holdNotice(hold, holdsFor)
-  return note && noteBox(note)
+  if (note || !holdsFor || codeCheckAt === null) return note && noteBox(note)
+  const line = el("span", {})
+  const notice = alertBox("warn", "clock", "Too many checks just now", line)
+  waitOut(line, Math.max(1, Math.ceil((codeCheckAt - api.serviceNow()) / 1000)), (left) => `Your code may be fine. Checking again in ${left}.`, () => undefined, holdsFor)
+  return notice
 }
 
 const actionNote = (s: OrderState, holdsFor: AbortSignal | null) => keptLive(ORDER_NOTE, undefined, noteOf(s, holdsFor))
@@ -1141,9 +1155,17 @@ function keepRefusal(gen: number, error: store.CodeRefusal): void {
 
 // Another order may have spent the code since this one failed, which a retry would only find out. A code revoked or
 // expired may still be held by this registration, whose retry the service then takes, so only a spent one is refused.
-// A code the service does not know (code_invalid), or revoked, was not spent; null when the service did not answer.
-const codeSpent = (code: string) => api.checkCode(code).then(({ state }) => state === "used",
-  (e) => e instanceof api.ApiError && e.code === "code_invalid" ? false : null)
+// A code the service does not know (code_invalid), or revoked, was not spent; null when the service did not answer, and
+// the seconds to wait when it refused the check for its rate limit.
+async function codeSpent(code: string): Promise<boolean | null | { checkAgainIn: number }> {
+  try {
+    return (await api.checkCode(code)).state === "used"
+  } catch (e) {
+    if (!(e instanceof api.ApiError)) return null
+    if (e.code === "code_invalid") return false
+    return e.code === "rate_limited" ? { checkAgainIn: e.retryAfter ?? api.LIMITED_WAIT_S } : null
+  }
+}
 
 async function retryRegistration(): Promise<void> {
   const gen = opened

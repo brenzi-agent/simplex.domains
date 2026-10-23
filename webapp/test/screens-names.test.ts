@@ -319,6 +319,14 @@ describe("list", () => {
     expect(reduceList(one, { type: "code-read", code: "SN6-A", state: "reserved" }).checked).toEqual({ "SN6-A": "reserved" })
     expect(reduceList(one, { type: "code-read", code: "SN6-A", state: "unchecked" }).checked).toEqual({ "SN6-A": "unchecked" })
   })
+  it("a code read refused for a rate limit keeps when it is checked again, until a read answers it or the code goes", () => {
+    const limited = reduceList(one, { type: "code-read", code: "SN6-A", state: "unchecked", checkAgainAt: NOW + 30_000 })
+    expect(limited).toMatchObject({ checked: { "SN6-A": "unchecked" }, checkAgainAt: { "SN6-A": NOW + 30_000 } })
+    expect(reduceList(limited, { type: "code-read", code: "SN6-A", state: "unused" })).toMatchObject({ checked: { "SN6-A": "unused" }, checkAgainAt: {} })
+    expect(reduceList(limited, { type: "stored", hold: null, ...stored({ orders: [record()] }) }).checkAgainAt).toEqual({})
+    expect(reduceList(limited, { type: "forget-confirmed" }).checkAgainAt).toEqual({})
+    expect(initialList(stored({ codes: [code("SN6-A")] }), null, {}, limited.checked, NOW).checkAgainAt, "a page opened again checks at once").toEqual({})
+  })
   it("find-started marks the lookup at work; find-ended keeps what it found", () => {
     const finding = reduceList(one, { type: "find-started", ownerCode: "SN-P" })
     expect(finding.finding).toEqual({ "SN-P": "finding" })

@@ -43,6 +43,8 @@ export interface OrderState {
   codeRefused: boolean
   // the service said the order's code is unspent, which the failed page waits for before saying so
   codeKept: boolean
+  // when the code, whose check met a rate limit, is checked again, on the service's clock
+  codeCheckAt: number | null
   // the balance that paid part of the order, as its own order reads now, which a new invoice spends again
   sourceBalance: Balance | null
 }
@@ -72,12 +74,13 @@ export type OrderEvent =
   | { type: "retry-started" }
   | { type: "retry-failed"; note: Note; codeRefused: boolean }
   | { type: "code-checked" }
+  | { type: "code-check-due"; at: number | null }
   | { type: "source-read"; balance: Balance | null }
   | { type: "hold-started"; until: number; lead: string }
   | { type: "hold-ended" }
 
 export function initialState(reference: string, hold: Hold | null, reveal: Reveal | null = null): OrderState {
-  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, sourceBalance: null }
+  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null }
 }
 
 const start = (s: OrderState, action: Action): OrderState => ({ ...s, busy: action, note: null })
@@ -110,7 +113,8 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "move-failed": return end(s, "move", { note: e.note })
     case "retry-started": return start(s, "retry")
     case "retry-failed": return end(s, "retry", { note: e.note, codeRefused: e.codeRefused })
-    case "code-checked": return { ...s, codeKept: true }
+    case "code-checked": return { ...s, codeKept: true, codeCheckAt: null }
+    case "code-check-due": return { ...s, codeCheckAt: e.at }
     case "source-read": return s.busy === "reorder" ? end(s, "reorder", { sourceBalance: e.balance }) : { ...s, sourceBalance: e.balance }
     case "hold-started": return { ...s, busy: null, note: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: e.lead } }
     case "hold-ended": return { ...s, hold: null }
@@ -142,7 +146,7 @@ function keptRefusal(s: OrderState): OrderState {
 export function reduce(state: OrderState, event: OrderEvent): OrderState {
   const next = apply(state, event)
   if (next === state || screenOf(next) === screenOf(state)) return keptRefusal(next)
-  return keptRefusal({ ...next, busy: null, note: null, codeRefused: false, codeKept: false, hold: next.hold && { ...next.hold, lead: NO_LEAD } })
+  return keptRefusal({ ...next, busy: null, note: null, codeRefused: false, codeKept: false, codeCheckAt: null, hold: next.hold && { ...next.hold, lead: NO_LEAD } })
 }
 
 // The code is said to be kept only once the service says so; a browser that restored the order has not got its code.

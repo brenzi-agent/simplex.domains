@@ -111,6 +111,13 @@ async function readCode(code: string, route: number): Promise<void> {
     answerList(route, { type: "code-read", code, state: answer.state })
   } catch (e) {
     if (e instanceof api.ApiError && e.code === "code_invalid") return answerList(route, { type: "code-read", code, state: "revoked" })
+    // a rate limit is waited out as often as it is met, the row counting down to its next check
+    if (e instanceof api.ApiError && e.code === "rate_limited") {
+      const wait = (e.retryAfter ?? api.LIMITED_WAIT_S) * 1000
+      answerList(route, { type: "code-read", code, state: "unchecked", checkAgainAt: api.serviceNow() + wait })
+      if (isRoute(route)) after(wait, () => void readCode(code, route), listStop)
+      return
+    }
     answerList(route, { type: "code-read", code, state: "unchecked" })
     retryOnce(e, code, route, () => void readCode(code, route))
   }
@@ -220,7 +227,7 @@ function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   return screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME },
     el("div", { class: "card list" }, names.length ? names : el("p", { class: "note" }, "No names in this browser yet.")),
     balances.length ? [el("h2", { class: "label" }, "Balance"), el("div", { class: "card list" }, balances.map((b) => balanceRow(b, s)))] : null,
-    s.codes.length ? [el("h2", { class: "label" }, "Codes"), el("div", { class: "card list" }, s.codes.map((c) => codeRow(c, s)))] : null,
+    s.codes.length ? [el("h2", { class: "label" }, "Codes"), el("div", { class: "card list" }, s.codes.map((c) => codeRow(c, s, signal)))] : null,
     el("div", { class: "end-links" }, el("a", { href: CODE_URL }, "Add a code"), s.asking || !hasRecords(s) ? null : forgetLink()),
     forgetQuestion(s))
 }
@@ -330,16 +337,20 @@ function balanceRow(b: BalanceRow, s: ListState): HTMLElement {
   return row(`balance-${b.id}`, el("b", { class: "price" }, dollars(b.amount)), sub, b.held ? chip("In use", "brand", true) : null, acts)
 }
 
-function codeRow(c: store.CodeRecord, s: ListState): HTMLElement {
+function codeRow(c: store.CodeRecord, s: ListState, signal: AbortSignal): HTMLElement {
   const check = s.checked[c.code]
+  const checkAgainAt = s.checkAgainAt[c.code]
   const copy = copyButton(c.code, "text-link")
   copy.dataset.focus = `${c.code}-copy`
   const [text, tone] = check === undefined ? ["Checking", ""] : check === "unchecked" ? ["Not checked", "warn"] : CODE_CHIPS[check]
   // an unused code registers the names this tab finds from now on
   const use = check === "unused" ? small("Use", `${c.code}-use`, () => { session.setActiveCode({ display: c.code, minLength: c.minLength, years: c.years }); go(HOME) }) : null
+  const state = checkAgainAt === undefined ? chip(text, tone, check === undefined || check === "unused") : chip("", "warn")
   const node = row(c.code, el("b", { class: "mono" }, c.code), `A free name of ${c.minLength} or more letters, for ${c.years} years${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000)}`,
-    chip(text, tone, check === undefined || check === "unused"), [use, copy])
+    state, [use, copy])
   node.classList.add("code-row")
+  // the count goes in once the chip is in its row, as a held row's does
+  if (checkAgainAt !== undefined) waitOut(state, Math.max(1, Math.ceil((checkAgainAt - api.serviceNow()) / 1000)), (left) => `Checking again in ${left}`, () => undefined, signal)
   return node
 }
 
