@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test"
 import { labelHash } from "../src/crypto/registration.ts"
 import { hex } from "../src/crypto/wallet.ts"
 import {
-  CHAIN, channelLink, codeField, contactLink, control, keepOrder, LINKS_HEADING, onStep, previewsShown, registrationView, search, test, toReview, uniqueLabel, useCode,
+  brokenNames, CHAIN, channelLink, codeField, contactLink, control, keepOrder, LINKS_HEADING, onStep, previewsShown, registrationView, search, test, toReview, uniqueLabel, useCode,
 } from "./helpers.ts"
 
 const PHONE = { width: 390, height: 844 }
@@ -194,29 +194,26 @@ test("Check your code checks a code from its button: a code cut short is not a c
   await expect(onStep(page).getByRole("button", { name: "Find a name" })).toBeEnabled()
 })
 
-// a heading holding a name of more letters than this is drawn smaller
-const LONG_HEADING_NAME = 20
+// Names whose letters fit a heading's line whole at both sizes, at a laptop's only, and at neither, with the heading's
+// size each draws at a laptop's and a phone's: the full size, or the smaller one of a name too long for a line at it.
+const HEADING_NAMES: [string, string[]][] = [["bakeryhouse", ["40px", "30px"]], ["w".repeat(12), ["40px", "22px"]], ["w".repeat(20), ["26px", "22px"]]]
 
-test("a heading holding a name of more than 20 letters is drawn smaller, across the column, its TLD on its last letters' line", async ({ page }) => {
-  const sizes: Record<string, [string, string]> = { [LAPTOP.width]: ["40px", "26px"], [PHONE.width]: ["30px", "22px"] }
-  for (const length of [LONG_HEADING_NAME, LONG_HEADING_NAME + 1]) {
-    const label = uniqueLabel("h").padEnd(length, "w").slice(0, length)
-    const order = await keepOrder(page, `reg-h${length}`, null, label)
-    await page.route(`**/api/registration/reg-h${length}*`, (route) => route.fulfill({ json: registrationView(order, { phase: "registered", commitTx: "0x02", registerTx: "0x03", expiresAt: EXPIRES_AT }) }))
-    await page.goto(`/?registration=reg-h${length}`)
+test("a heading's name too long for a line at the heading's size draws it smaller, across the column, its TLD on its last letters' line", async ({ page }) => {
+  for (const [i, [label, sizes]] of HEADING_NAMES.entries()) {
+    const order = await keepOrder(page, `reg-h${i}`, null, label)
+    await page.route(`**/api/registration/reg-h${i}*`, (route) => route.fulfill({ json: registrationView(order, { phase: "registered", commitTx: "0x02", registerTx: "0x03", expiresAt: EXPIRES_AT }) }))
+    await page.goto(`/?registration=reg-h${i}`)
     const heading = page.getByRole("heading", { name: `${label}.simplex is yours` })
     await expect(heading).toBeVisible()
-    for (const size of [LAPTOP, PHONE]) {
+    for (const [j, size] of [LAPTOP, PHONE].entries()) {
       await page.setViewportSize(size)
       const drawn = await heading.evaluate((h) => {
         const tail = h.querySelector(".nowrap")!
-        return { size: getComputedStyle(h).fontSize, width: Math.round(h.getBoundingClientRect().width), column: Math.round(h.parentElement!.getBoundingClientRect().width),
+        return { size: getComputedStyle(h).fontSize, across: Math.round(h.getBoundingClientRect().width) === Math.round(h.parentElement!.getBoundingClientRect().width),
           tailLines: new Set([...tail.getClientRects()].map((r) => Math.round(r.top))).size }
       })
-      const long = length > LONG_HEADING_NAME
-      expect(drawn.size, `${length} letters at ${size.width}`).toBe(sizes[size.width][long ? 1 : 0])
-      expect(drawn.tailLines, `${length} letters at ${size.width}: the name's end with its TLD`).toBe(1)
-      if (size === LAPTOP) expect(drawn.width === drawn.column, `${length} letters at ${size.width}: across the column`).toBe(long)
+      expect(drawn, `${label} at ${size.width}`).toEqual({ size: sizes[j], across: true, tailLines: 1 })
+      expect(await brokenNames(page), `${label} at ${size.width}: broken though it fits its line`).toEqual([])
     }
     await page.setViewportSize(LAPTOP)
   }

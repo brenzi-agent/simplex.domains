@@ -153,6 +153,40 @@ export const offCentre = (node: Locator) => node.evaluate((n) => {
   return Math.max(...[...lines.values()].map((l) => Math.abs((l.left + l.right) / 2 - middle)))
 })
 
+// the size of a heading drawn smaller for a long name, as the mockup's, on a laptop and on a phone
+const SMALL_HEADING_PX = [26, 22]
+const PHONE_MEDIA = "(max-width: 520px)"
+
+// The names in rows and headings drawn over more than one line, though their letters together would fit the line whole:
+// a row's, or the column a heading spans, at its smaller size.
+export const brokenNames = (page: Page) => page.evaluate(([[laptop, phone], media]) => [...document.querySelectorAll("body > main :is(.row > .name, h1 .nt)")].filter((name) => {
+  const line = name.closest(".row, .screen-head")!
+  const style = getComputedStyle(line)
+  const room = line.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+  const scale = line.matches(".row") ? 1 : (matchMedia(media).matches ? phone : laptop) / parseFloat(getComputedStyle(name).fontSize)
+  const range = document.createRange()
+  const walker = document.createTreeWalker(name, NodeFilter.SHOW_TEXT)
+  const parts: DOMRect[] = []
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    range.selectNodeContents(text)
+    parts.push(...range.getClientRects())
+  }
+  return new Set(parts.map((p) => Math.round(p.bottom))).size > 1 && parts.reduce((sum, p) => sum + p.width, 0) * scale <= room
+}).map((name) => name.textContent), [SMALL_HEADING_PX, PHONE_MEDIA] as const)
+
+// how far anything in the answer's row reaches past the row, what in it is too narrow for its own content, the row's
+// height and the lines its name takes
+export const rowFit = (page: Page) => page.evaluate(() => {
+  const row = document.querySelector(".answer .row")!.getBoundingClientRect()
+  const inside = [...document.querySelectorAll(".answer .row *")].map((n) => n.getBoundingClientRect()).filter((b) => b.height > 0)
+  const name = document.querySelector(".answer .row .name")!
+  const rest = name.nextElementSibling!.getBoundingClientRect()
+  const clipped = [...document.querySelectorAll<HTMLElement>(".answer .row *")].filter((n) => n.clientWidth > 0 && n.scrollWidth > n.clientWidth).map((n) => n.className)
+  return { spill: Math.round(Math.max(0, ...inside.map((b) => Math.max(b.bottom - row.bottom, row.top - b.top, b.right - row.right, row.left - b.left)))), clipped,
+    height: Math.round(row.height), nameLines: Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight)),
+    ownLine: Math.round(name.getBoundingClientRect().bottom) <= Math.round(rest.top) }
+})
+
 export async function search(page: Page, label: string): Promise<void> {
   await page.goto("/")
   await page.getByLabel("Name", { exact: true }).fill(label)

@@ -1,5 +1,5 @@
 // The page's frame: theme switch and navigation between views; index.html draws the header and footer.
-import { alertBox, announce, btn, copyButton, el, icon, type Kid, liveRegion, reducedMotion, refill, type Tone, waitOut } from "../dom.ts"
+import { alertBox, announce, btn, copyButton, el, fitNames, icon, type Kid, liveRegion, reducedMotion, refill, type Tone, waitOut } from "../dom.ts"
 import type { IconName } from "../icons.ts"
 import type { Hold } from "../screens/hold.ts"
 import * as session from "../session.ts"
@@ -189,6 +189,7 @@ export function draw(kind: string, build: (signal: AbortSignal) => HTMLElement):
   const next = build(screenStop.signal)
   for (const [node, key] of arrivals(next)) if (!drawn || drawn.has(key)) node.classList.add(SHOWN)
   main.replaceChildren(next)
+  fitNames(next)
   if (!redrawn && !first) next.classList.add(ENTER)
   shownScreen = next
   main.inert = false
@@ -375,5 +376,9 @@ function frame(): HTMLElement {
   document.body.addEventListener("transitionend", (e) => { if (e.target === document.body && e.pseudoElement === "::after") themed() })
   paintBars()
   document.body.append(offline)
+  // the names on show fit their lines again as the window changes their room, or a font that loads their letters' widths
+  const refit = () => { if (shownScreen) fitNames(shownScreen) }
+  addEventListener("resize", refit)
+  document.fonts.addEventListener("loadingdone", refit)
   return main
 }

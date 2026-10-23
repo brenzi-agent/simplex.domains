@@ -87,8 +87,6 @@ export function alertBox(tone: Tone, ic: IconName, title: string | null, text: K
 const TAIL = 3
 const nameHead = (label: string) => label.slice(0, -TAIL)
 const nameTail = (label: string) => label.slice(-TAIL)
-// a heading with a name longer than this is drawn smaller as a whole
-const LONG_NAME = 20
 
 // `after` is the punctuation that follows the name, kept on its line
 export function nameText(label: string, tld: string, after = ""): HTMLSpanElement {
@@ -100,7 +98,33 @@ export function nameTitle(label: string, cls = "name", tld = "simplex"): HTMLDiv
 }
 
 export function gradName(label: string, tld = "simplex"): HTMLSpanElement {
-  return el("span", { class: label.length > LONG_NAME ? "grad nt long" : "grad nt" }, nameHead(label), el("span", { class: "nowrap" }, `${nameTail(label)}.${tld}`))
+  return el("span", { class: "grad nt" }, nameHead(label), el("span", { class: "nowrap" }, `${nameTail(label)}.${tld}`))
+}
+
+// what a name's letters take on one line, which the parts of a name broken over lines still add up to
+function lettersWidth(name: Element): number {
+  const range = document.createRange()
+  const walker = document.createTreeWalker(name, NodeFilter.SHOW_TEXT)
+  let width = 0
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    range.selectNodeContents(text)
+    for (const part of range.getClientRects()) width += part.width
+  }
+  return width
+}
+
+const WHOLE = "whole"
+
+// Marks each name in a row or a heading that fits its line whole; a heading's at the heading's own size, which styles.css
+// draws smaller for a name that does not.
+export function fitNames(root: Element): void {
+  for (const name of root.querySelectorAll(".row > .name, h1 .nt")) {
+    const line = name.closest(".row, h1")!
+    const style = getComputedStyle(line)
+    const room = line.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+    const scale = line.tagName === "H1" ? parseFloat(getComputedStyle(line.closest(".screen")!).getPropertyValue("--fs-h1")) / parseFloat(getComputedStyle(name).fontSize) : 1
+    name.classList.toggle(WHOLE, lettersWidth(name) * scale <= room)
+  }
 }
 
 export function liveRegion(cls?: string): HTMLDivElement {

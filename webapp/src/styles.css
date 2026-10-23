@@ -245,10 +245,11 @@ body > main { grid-area: main; display: flex; flex-direction: column; min-width:
   color: var(--primary); }
 .back svg.i { width: 22px; height: 22px; }
 .back:hover { text-decoration: none; color: var(--accent); }
-/* a heading with a long name in it is drawn smaller as a whole, across the column */
-.screen-head:has(h1 .long) { --fs-h1: 26px; }
-.screen-head h1:has(.long) { grid-column: 1 / -1; line-height: 1.2; }
-h1 .long { word-break: break-all; }
+/* A heading with a name spans the column, as only screens without Back carry one. A name that does not fit a line whole
+   at the heading's size draws the heading smaller, where the name breaks only if it is still too long. */
+.screen-head h1:has(.nt) { grid-column: 1 / -1; }
+.screen-head:has(h1 .nt:not(.whole)) { --fs-h1: 26px; }
+.screen-head h1:has(.nt:not(.whole)) { line-height: 1.2; }
 .screen-head .lead { grid-area: 2 / 1 / auto / -1; max-width: 52ch; margin-inline: auto; text-align: center; text-wrap: balance; }
 .screen-body { --body-gap: 14px; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: var(--body-gap); }
 /* the main button centred, its text-link alternative under it */
@@ -279,11 +280,17 @@ h1 .long { word-break: break-all; }
 .row .name { flex: 1 1 auto; min-width: 0; }
 /* only the name gives way to a row too narrow for all of it; its price, button and chats keep their size */
 .row > :not(.name) { flex-shrink: 0; }
-/* a name too long for the row takes its own line; its chats and whose it is move under it */
-.answer .row:not(.buy) { flex-wrap: wrap; row-gap: 6px; }
-.answer .row:not(.buy) > .name + * { margin-left: auto; }
+/* A name too long for the row takes its own line, the rest moving under it, so a name that fits a line whole is never
+   broken (fitNames marks it whole). One longer than a line breaks beside a buy row's price or the order's chats, as the
+   mockup draws a name of 63 letters. */
+.row { flex-wrap: wrap; row-gap: 6px; }
+.row > .name + * { margin-left: auto; }
+.order > .row > .name:not(.whole) { flex-basis: 0; }
+@media (min-width: 521px) { .row.buy > .name:not(.whole) { flex-basis: 0; } }
 .row .soft, .row > a { font-size: 15px; white-space: nowrap; }
 .deal { white-space: nowrap; }
+/* a buy row's price and button, which move under its name together, the button under the price where both do not fit */
+.offer { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
 .price { font-weight: 700; font-variant-numeric: tabular-nums; }
 .chats { display: inline-flex; gap: 2px; }
 .chat { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 50%; background: none; cursor: pointer; }
@@ -592,7 +599,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .back { margin-top: -8px; }
   .screen-head h1 { grid-area: 2 / 1; }
   .screen-head .lead { grid-row: 3; }
-  .screen-head:has(h1 .long) { --fs-h1: 22px; }
+  .screen-head:has(h1 .nt:not(.whole)) { --fs-h1: 22px; }
   .invest { padding-bottom: 20px; }
   .actions-row > .btn { width: 100%; min-width: 0; }
   .home { --room: 178px; padding-top: 48px; }
@@ -607,7 +614,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .chats { gap: 0; }
   .name { font-size: 19px; }
   .row.buy .name { flex-basis: 100%; }
-  .row.buy .deal { margin-right: auto; }
+  .row.buy .offer { flex-basis: 100%; justify-content: space-between; }
   .list-row { padding: 12px 16px; }
   .list > .note { padding-inline: 16px; }
   /* a name's line across the row, its chats and actions under it, the actions at the right */

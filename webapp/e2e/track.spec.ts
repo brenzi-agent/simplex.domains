@@ -1,8 +1,8 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  agreeToTerms, CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
-  lineStarts, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, test, toCodeStep,
+  agreeToTerms, brokenNames, CHAIN, channelLink, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
+  lineStarts, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, rowFit, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, test, toCodeStep,
   toFullReview, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
@@ -57,13 +57,13 @@ const INVEST_GAP = 48
 // the height of a payment method's tile at each size, as the mockup draws it, whatever else the review holds
 const METHOD_TILES = [66, 72]
 
-// The screen in view fits the window at each size, its content above its actions' row and its methods' tiles at their
-// height; a step's heading and actions' row stand where every step's do, which the caller compares. Captured for review
-// when shots are asked for.
+// The screen in view fits the window at each size, its content above its actions' row, its methods' tiles at their
+// height and no name broken that fits its line whole; a step's heading and actions' row stand where every step's do,
+// which the caller compares. Captured for review when shots are asked for.
 async function fitsWindow(page: Page, name: string, frames?: Record<string, Frame[]>): Promise<void> {
   for (const [i, size] of FIT_SIZES.entries()) {
     await page.setViewportSize(size)
-    const measured = () => page.evaluate((tile) => {
+    const measured = async () => ({ broken: await brokenNames(page), ...await page.evaluate((tile) => {
       const shown = document.querySelector("body > main > section")!
       // a step with no action gives its content the action row's room, down to the step's foot; one with only a link,
       // the empty place of a main button above it
@@ -80,8 +80,8 @@ async function fitsWindow(page: Page, name: string, frames?: Record<string, Fram
         split: split.map((n) => n.textContent),
         tiles: [...shown.querySelectorAll(".method")].map((m) => Math.round(m.getBoundingClientRect().height)).filter((h) => h !== tile),
       }
-    }, METHOD_TILES[i])
-    await expect.poll(measured, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ overflow: 0, overlap: 0, split: [], tiles: [] })
+    }, METHOD_TILES[i]) })
+    await expect.poll(measured, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ broken: [], overflow: 0, overlap: 0, split: [], tiles: [] })
     if (frames) {
       const at = await page.evaluate(() => {
         const top = (selector: string) => {
@@ -377,18 +377,6 @@ const homeAnswers = (owner: string) => ({
   yours: { status: "registered", entities: [linked("contact"), linked("channel")], owner, tld: "simplex" },
 })
 
-// how far anything in the answer's row reaches past the row, what in it is too narrow for its own content, the row's
-// height and the lines its name takes
-const rowFit = (page: Page) => page.evaluate(() => {
-  const row = document.querySelector(".answer .row")!.getBoundingClientRect()
-  const inside = [...document.querySelectorAll(".answer .row *")].map((n) => n.getBoundingClientRect()).filter((b) => b.height > 0)
-  const name = document.querySelector(".answer .row .name")!
-  const rest = name.nextElementSibling!.getBoundingClientRect()
-  const clipped = [...document.querySelectorAll<HTMLElement>(".answer .row *")].filter((n) => n.clientWidth > 0 && n.scrollWidth > n.clientWidth).map((n) => n.className)
-  return { spill: Math.round(Math.max(0, ...inside.map((b) => Math.max(b.bottom - row.bottom, row.top - b.top, b.right - row.right, row.left - b.left)))), clipped,
-    height: Math.round(row.height), nameLines: Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight)),
-    ownLine: Math.round(name.getBoundingClientRect().bottom) <= Math.round(rest.top) }
-})
 // a name of six letters that fits one row beside two chats on a phone, as most do
 const SHORT_NAME = "udumhd"
 
@@ -417,6 +405,7 @@ test.describe(() => {
           const fit = await rowFit(page)
           expect(fit.spill, `${at}: past its row`).toBe(0)
           expect(fit.clipped, `${at}: too narrow for their content`).toEqual([])
+          expect(await brokenNames(page), `${at}: broken though it fits its line`).toEqual([])
           if (label.length < 8) expect(fit.nameLines, `${at}: the name's lines`).toBe(1)
           if (label === SHORT_NAME && state !== "available") expect(fit.height, `${at}: the row's height`).toBe(72)
           // a name too long for its row takes a line of its own, its chats and whose it is under it

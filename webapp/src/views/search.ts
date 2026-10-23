@@ -321,7 +321,7 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
   const deal = code ? [el("b", { class: "price" }, "Free"), el("span", { class: "soft" }, ` / ${code.years} years`)]
     : [el("b", { class: "price" }, dollars(answer.price)), el("span", { class: "soft" }, ` / ${answer.years} years`)]
   return [
-    el("div", { class: "card row buy" }, nameTitle(label, "name", answer.tld), el("span", { class: "deal" }, deal), button),
+    el("div", { class: "card row buy" }, nameTitle(label, "name", answer.tld), el("div", { class: "offer" }, el("span", { class: "deal" }, deal), button)),
     !code && short ? el("p", { class: "hint" }, `Your code allows you to register a free name of ${short.minLength} or more letters. `,
       el("span", { class: "nowrap" }, `This name has ${label.length}.`)) : null,
     s.balance ? balanceLine(s.balance, answer.price) : null,

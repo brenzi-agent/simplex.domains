@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, failedOrder, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, savedToReview, search, shot,
+  brokenNames, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, failedOrder, FIT_SIZES, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, rowFit, savedToReview, search, shot,
   shownCode, startOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
@@ -187,6 +187,14 @@ test("a failed retarget shows one message below the result, however often it is 
     await expect(page.getByText("That did not go through")).toHaveCount(1)
   }
   await expect(page.locator(".answer .row .notice"), "the message stays out of the name's row").toHaveCount(0)
+  // the name whole on its own line where the long button leaves it too little room beside it
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    expect(await brokenNames(page), `the names broken at ${size.width}x${size.height}`).toEqual([])
+    const { spill, clipped } = await rowFit(page)
+    expect({ spill, clipped }, `the row's parts past it or too narrow at ${size.width}x${size.height}`).toEqual({ spill: 0, clipped: [] })
+  }
+  await page.setViewportSize(FIT_SIZES[0])
   await shot(page, "N8a2-retarget-failed")
 })
 
