@@ -78,7 +78,7 @@ const places = (page: Page, selectors: string[]) => page.evaluate((all) => all.m
 
 const DESKTOP_GAP = 16
 const DESKTOP_SIZE = 22
-const PHONE_SIZE = 20
+const PHONE_SIZE = 19
 // layout rounds to device pixels, which a measure across two boxes can be off by
 const PIXEL = 1
 
@@ -349,7 +349,7 @@ test("a taken community name's chats say so in their popup", async ({ page, requ
 })
 
 // The marker on the name's baseline with its icon centred on its word: 16 px after the name on a desktop; on a phone at
-// the right end of the name's last line, at 20 px names; in light and dark, for a short and a 63-letter name.
+// the right end of the name's last line, at the size of other names; in light and dark, for a short and a 63-letter name.
 const SIZES = [[1280, 900], [390, 844]] as const
 
 async function expectMarkerPlaces(page: Page, surface: string, label: string, name: Locator, fontSize = true): Promise<void> {

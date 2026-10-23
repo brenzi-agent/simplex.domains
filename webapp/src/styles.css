@@ -634,7 +634,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .chats { gap: 0; }
   .name { font-size: 19px; }
   /* the marker ends the name's last line on the right: justify spreads that line at the space before it */
-  .name.comm { display: block; font-size: 20px; text-align-last: justify; }
+  .name.comm { display: block; text-align-last: justify; }
   .cmark { font-size: 13px; margin-left: 0; }
   .row.buy .name { flex-basis: 100%; }
   .row.buy .offer { flex-basis: 100%; justify-content: space-between; }
