@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ApiError, BalanceChanged, checkCode, findRegistrations, previewLink, readInvoice, readRegistration, retryDelay, searchName, seenOf, spend } from "../src/api.ts"
+import {
+  ApiError, BalanceChanged, checkCode, createOrder, currentTerms, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
+  termsFor,
+} from "../src/api.ts"
 
 const HASH = "ab".repeat(32)
 
@@ -69,14 +72,15 @@ describe("service errors", () => {
     }
   })
 
+  const TERMS = { version: "2026-10-23", url: "https://simplex.chat/terms" }
   const PROFILE = { type: "channel", kind: "channel", displayName: "Alice", fullName: "Alice's news", image: null, subscribers: 12, profile: "ok" }
 
   it("passes a search answer the page can draw", async () => {
-    const available = { status: "available", price: 10000, currency: "usd", years: 2, termStart: 1798761600, resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex" }
+    const available = { status: "available", price: 10000, currency: "usd", years: 2, termStart: 1798761600, resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex", community: null, terms: TERMS }
     answerWith(200, JSON.stringify(available))
     expect(await searchName("ab".repeat(32), 8)).toEqual(available)
     const entity = { ...PROFILE, link: "https://simplex.chat/c#x", deepLink: "simplex:/c#x" }
-    answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [entity] }))
+    answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [entity], community: null }))
     expect(await searchName("ab".repeat(32), 8)).toMatchObject({ status: "registered", entities: [entity] })
   })
 
@@ -85,22 +89,22 @@ describe("service errors", () => {
     const changes = [{ kind: undefined }, { kind: "group" }, { fullName: undefined }, { subscribers: undefined }, { subscribers: -1 }, { subscribers: "many" },
       { type: "address" }, { kind: "contact" }, { profile: undefined }, { profile: "lost" }, { deepLink: undefined }, { deepLink: 5 }]
     for (const change of changes) {
-      answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [{ ...PROFILE, ...link, ...change }] }))
+      answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [{ ...PROFILE, ...link, ...change }], community: null }))
       expect((await errorOf()).code, JSON.stringify(change)).toBe("network")
     }
     // a link whose data the service did not read is still a chat, drawn without its profile
     for (const profile of ["unread", "unavailable"]) {
       const entity = { ...PROFILE, ...link, displayName: "", fullName: "", subscribers: null, profile }
-      answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [entity] }))
+      answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [entity], community: null }))
       expect(await searchName("ab".repeat(32), 8), profile).toMatchObject({ entities: [entity] })
     }
     // a link the chat core cannot parse has no deep link, and its own text is opened
     const unparsed = { ...PROFILE, ...link, deepLink: null, displayName: "", fullName: "", subscribers: null, profile: "unavailable" }
-    answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [unparsed] }))
+    answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [unparsed], community: null }))
     expect(await searchName("ab".repeat(32), 8)).toMatchObject({ entities: [unparsed] })
     for (const kind of ["contact", "business", "bot"]) {
       const entity = { ...PROFILE, ...link, type: "address", kind, subscribers: null }
-      answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [entity] }))
+      answerWith(200, JSON.stringify({ status: "registered", tld: "simplex", entities: [entity], community: null }))
       expect(await searchName("ab".repeat(32), 8), kind).toMatchObject({ entities: [entity] })
     }
   })
@@ -123,7 +127,7 @@ describe("service errors", () => {
   const REGISTRATION = {
     id: "r1", version: 4, unread: [], moves: 0, phase: "unpaid", labelHash: `0x${"ab".repeat(32)}`, label: null, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`,
     sealed: "sealed", years: 2, duration: 2 * 365 * 86400, price: 10000, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, linksRefused: false, latePayment: null,
-    resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex",
+    resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex", community: null, terms: "2026-10-23",
   }
   const INVOICE = { invoiceId: "inv1", status: "open", amount: 10000, currency: "usd", expiresAt: "2026-10-16T12:00:00Z", kind: "name", registration: REGISTRATION, cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bc1q" }
 
@@ -176,7 +180,7 @@ describe("service errors", () => {
     }
   })
 
-  const SPEND = { labelHash: `0x${"ab".repeat(32)}`, length: 8, duration: 2 * 365 * 86400, commitment: `0x${"cd".repeat(32)}`, sealed: "sealed", price: 20000, balance: 10000, method: "btc" as const, timestamp: 1, signature: "0x" }
+  const SPEND = { labelHash: `0x${"ab".repeat(32)}`, length: 8, duration: 2 * 365 * 86400, commitment: `0x${"cd".repeat(32)}`, sealed: "sealed", price: 20000, balance: 10000, method: "btc" as const, terms: "2026-10-23", timestamp: 1, signature: "0x" }
 
   it("posts a spend for the paying order and answers the new order, without an invoice or with the difference's", async () => {
     const fetched = vi.fn(async () => new Response(JSON.stringify({ registrationId: "r2" }), { status: 200 }))
@@ -246,5 +250,81 @@ describe("service errors", () => {
     }
     answerWith(200, JSON.stringify({ state: "unused", minLength: -3, years: -1 }))
     expect(((await checkCode("SN6-X").then(() => null, (e: unknown) => e)) as ApiError).code).toBe("network")
+  })
+
+  describe("terms and community names", () => {
+    const COMMUNITY = { for: "bakers and pastry chefs" }
+    const AVAILABLE = { status: "available", price: 10000, currency: "usd", years: 2, termStart: 1798761600, resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex", community: COMMUNITY, terms: TERMS }
+    const ORDER = { labelHash: `0x${"ab".repeat(32)}`, length: 6, duration: 2 * 365 * 86400, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`, sealed: "sealed", terms: "2026-10-23/community", timestamp: 1, signature: "0x" }
+
+    it("signs the terms version for a name not on the community list, and the version with the community agreement for one on it", () => {
+      expect(termsFor(TERMS, null)).toBe("2026-10-23")
+      expect(termsFor(TERMS, COMMUNITY)).toBe("2026-10-23/community")
+      expect(currentTerms(AVAILABLE as never)).toBe("2026-10-23/community")
+    })
+
+    it("passes a community entry in every search answer, and the terms in the available one", async () => {
+      for (const body of [
+        AVAILABLE, { status: "reserved", community: COMMUNITY }, { status: "registered", entities: [], tld: "simplex", community: COMMUNITY },
+        { status: "registered", entities: [], records: null, owner: "0x1", resolver: "0x2", recordsNonce: null, expiresAt: 1, gracePeriod: 2, chainId: 1, tld: "simplex", community: null },
+      ]) {
+        answerWith(200, JSON.stringify(body))
+        expect(await searchName(HASH, 6), body.status).toEqual(body)
+      }
+    })
+
+    it("takes an answer without its community, or the available one without terms it can sign and link, as no answer", async () => {
+      for (const body of [
+        { ...AVAILABLE, community: undefined }, { ...AVAILABLE, community: "bakers" }, { ...AVAILABLE, community: { for: 5 } }, { ...AVAILABLE, community: { for: "" } },
+        { ...AVAILABLE, terms: undefined }, { ...AVAILABLE, terms: null }, { ...AVAILABLE, terms: { url: TERMS.url } }, { ...AVAILABLE, terms: { ...TERMS, version: "" } },
+        { ...AVAILABLE, terms: { ...TERMS, version: "2026 10 23" } }, { ...AVAILABLE, terms: { ...TERMS, version: "2026-10-23/community" } }, { ...AVAILABLE, terms: { ...TERMS, version: "v".repeat(33) } },
+        { ...AVAILABLE, terms: { ...TERMS, url: "http://simplex.chat/terms" } }, { ...AVAILABLE, terms: { ...TERMS, url: "javascript:alert(1)" } },
+        { status: "reserved" }, { status: "registered", entities: [], tld: "simplex" },
+      ]) {
+        answerWith(200, JSON.stringify(body))
+        expect((await errorOf()).code, JSON.stringify(body)).toBe("network")
+      }
+    })
+
+    it("passes an order's community entry and the terms it signed, null for an order stored without them", async () => {
+      for (const change of [{ community: COMMUNITY, terms: "2026-10-23/community" }, { community: null, terms: null }, { terms: "v1.2_3" }]) {
+        answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
+        expect(await readRegistration("r1"), JSON.stringify(change)).toMatchObject(change)
+      }
+      for (const change of [{ community: undefined }, { community: { for: 1 } }, { terms: undefined }, { terms: 5 }, { terms: "" }, { terms: "a b" }, { terms: "t".repeat(49) }]) {
+        answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
+        const e = await readRegistration("r1").then(() => null, (e: unknown) => e)
+        expect((e as ApiError).code, JSON.stringify(change)).toBe("network")
+      }
+    })
+
+    const SENDS: [string, () => Promise<unknown>][] = [
+      ["an order", () => createOrder(ORDER, "btc", 10000)],
+      ["a code order", () => registerWithCode(ORDER, "SN6-X")],
+      ["a move", () => retarget("r1", ORDER)],
+      ["a spend", () => spend("r1", { ...SPEND, terms: ORDER.terms })],
+    ]
+
+    it.each(SENDS)("sends %s with the terms the buyer agreed to", async (_, send) => {
+      const fetched = vi.fn(async () => new Response(JSON.stringify({ error: "name_taken" }), { status: 409 }))
+      vi.stubGlobal("fetch", fetched)
+      await send().catch(() => undefined)
+      const [, init] = fetched.mock.calls[0] as unknown as [string, RequestInit]
+      expect(JSON.parse(String(init.body)).terms).toBe(ORDER.terms)
+    })
+
+    it.each(SENDS)("gives %s refused for changed terms the terms and the community entry as they are now", async (_, send) => {
+      for (const community of [COMMUNITY, null]) {
+        answerWith(409, JSON.stringify({ error: "terms_changed", terms: { version: "2026-11-01", url: TERMS.url }, community }))
+        const e = await send().then(() => null, (e: unknown) => e)
+        expect(e).toBeInstanceOf(TermsChanged)
+        expect(e).toMatchObject({ code: "terms_changed", status: 409, terms: { version: "2026-11-01", url: TERMS.url }, community })
+      }
+      for (const body of [{ error: "terms_changed" }, { error: "terms_changed", terms: TERMS }, { error: "terms_changed", terms: { ...TERMS, url: "ftp://x" }, community: null }]) {
+        answerWith(409, JSON.stringify(body))
+        const e = await send().then(() => null, (e: unknown) => e)
+        expect((e as ApiError).code, JSON.stringify(body)).toBe("network")
+      }
+    })
   })
 })

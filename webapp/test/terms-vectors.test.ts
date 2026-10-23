@@ -1,10 +1,11 @@
 // Contract Appendix C: the order, name and spend messages with `terms`, built from the contract's formats rather than
-// src/flow.ts, so the page's builders are checked against these values and not the other way round.
+// src/flow.ts, so the page's builders are checked against these values and not the other way round. The builders then
+// sign the same inputs, which only the same message bytes give the same signatures for.
 import { hashMessage, recoverMessageAddress, type Hex } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { formatOwnerCode } from "../src/crypto/code.ts"
-import { commitmentSecret, labelHash, makeCommitment } from "../src/crypto/registration.ts"
+import { commitmentSecret, labelHash, makeCommitment, YEAR_S } from "../src/crypto/registration.ts"
 import { seal, unseal } from "../src/crypto/seal.ts"
 import { checksumAddress, hex, personalDigest, signDigest, walletFromEntropy } from "../src/crypto/wallet.ts"
 
@@ -110,5 +111,68 @@ describe("Appendix C vectors", () => {
     expect(await account.signMessage({ message: text })).toBe(signature)
     expect(hex(signDigest(WALLET.privateKey, personalDigest(text)))).toBe(signature)
     expect(await recoverMessageAddress({ message: text, signature })).toBe(OWNER)
+  })
+})
+
+describe("the page's builders reproduce Appendix C", () => {
+  const YEARS = 2
+  const CHAIN = { resolver: RESOLVER, sponsor: "0x9a676e781a523b5d0c0e43731313a708cb607508", chainId: 31337, tld: "simplex" }
+  // the term's start that leaves the vector's free days at its timestamp
+  const TERM_START = TIMESTAMP + DURATION - YEARS * YEAR_S
+  const NO_LINKS = { contact: "", channel: "" }
+  const vector = (kind: Kind, terms: string) => VECTORS.find((v) => v.kind === kind && v.terms === terms)!
+  const TERMS = [...new Set(VECTORS.map((v) => v.terms))]
+  let sent: Record<string, unknown>[]
+
+  // the vector's clock and zero IV, storage for the order kept, and a service that answers a move with its view
+  async function builders() {
+    vi.useFakeTimers({ toFake: ["Date"], now: TIMESTAMP * 1000 })
+    vi.spyOn(crypto, "getRandomValues").mockImplementation((array) => array)
+    const data = new Map<string, string>()
+    vi.stubGlobal("window", { localStorage: {
+      get length() { return data.size }, key: (i: number) => [...data.keys()][i] ?? null, getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, v), removeItem: (k: string) => void data.delete(k),
+    } })
+    sent = []
+    vi.stubGlobal("fetch", async (_: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>
+      sent.push(body)
+      return new Response(JSON.stringify({
+        id: REGISTRATION_ID, version: 2, moves: 1, phase: "queued", label: null, owner: OWNER, years: YEARS, price: 10000, fromBalance: 0, balance: null, latePayment: null,
+        commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, unread: [], expiresAt: null, error: null, linksRefused: false,
+        community: null, ...CHAIN, ...body,
+      }), { status: 200 })
+    })
+    vi.resetModules()
+    return { flow: await import("../src/flow.ts"), store: await import("../src/store.ts") }
+  }
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  const draft = (terms: string) => ({ label: LABEL, links: NO_LINKS, chain: CHAIN, years: YEARS, termStart: TERM_START, ownerCode: OWNER_CODE, terms })
+  const quote = { status: "available" as const, price: 10000, currency: "usd", years: YEARS, termStart: TERM_START, community: null, terms: { version: "2026-10-23", url: "https://simplex.chat/" }, ...CHAIN }
+
+  it.each(TERMS)("order with terms %s", async (terms) => {
+    const { flow } = await builders()
+    const { request } = await flow.orderRequest(draft(terms))
+    expect(request).toEqual({ labelHash: LABEL_HASH, length: LABEL.length, duration: DURATION, owner: OWNER, commitment: COMMITMENT, sealed: SEALED, terms, timestamp: TIMESTAMP, signature: vector("order", terms).signature })
+  })
+
+  it.each(TERMS)("name with terms %s", async (terms) => {
+    const { flow, store } = await builders()
+    const built = await flow.orderRequest(draft(terms))
+    const record = flow.recordFor(draft(terms), built, "btc", 10000, { registrationId: REGISTRATION_ID, invoiceId: "inv" })
+    store.saveOrder(record)
+    await flow.retargetOrder(record, LABEL, NO_LINKS, quote, terms)
+    expect(sent[0]).toEqual({ labelHash: LABEL_HASH, length: LABEL.length, duration: DURATION, commitment: COMMITMENT, sealed: SEALED, terms, timestamp: TIMESTAMP, signature: vector("name", terms).signature })
+  })
+
+  it.each(TERMS)("spend with terms %s", async (terms) => {
+    const { flow } = await builders()
+    const source = { registrationId: REGISTRATION_ID, ownerCode: OWNER_CODE }
+    const { spend } = await flow.spendRequest(source, flow.spendDraft(source, LABEL, NO_LINKS, quote, terms), 10000, 20000, "btc")
+    expect(spend).toEqual({ labelHash: LABEL_HASH, length: LABEL.length, duration: DURATION, commitment: COMMITMENT, sealed: SEALED, price: 10000, balance: 20000, terms, timestamp: TIMESTAMP, signature: vector("spend", terms).signature })
   })
 })

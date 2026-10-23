@@ -18,6 +18,7 @@ import { type Builder, CONTACT_EMAIL, currentRoute, draw, go, historyPlace, isRe
 import { chatButton } from "./chats.ts"
 import { moveLimitNote, noteBox } from "./order.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
+import { termsChangedLine, termsCheck } from "./terms.ts"
 
 // word joiners keep "a–z" and "0–9" whole: a line may otherwise break after their dash
 const RANGES = "a\u2060–\u2060z, 0\u2060–\u20609"
@@ -180,10 +181,11 @@ function register(): void {
   const balance = source ? s.balance : null
   const ownerCode = source ? source.ownerCode : null
   const started = session.checkout()
-  const quote = { price: answer.price, years: answer.years, termStart: answer.termStart, chain }
+  const quote = { price: answer.price, years: answer.years, termStart: answer.termStart, chain, terms: answer.terms, community: answer.community }
   const sameCode = !ownerCode || started?.ownerCode == null || started.ownerCode === ownerCode
   if (started && started.label === label && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started) && sameCode) {
-    session.updateCheckout(label, { ...quote, searchAt: historyPlace(), code, codeError: undefined, balance, balanceChange: undefined, ownerCode: ownerCode ?? started.ownerCode })
+    const agreed = started.agreed && api.currentTerms(started) === api.currentTerms(answer)
+    session.updateCheckout(label, { ...quote, agreed, termsChanged: undefined, searchAt: historyPlace(), code, codeError: undefined, balance, balanceChange: undefined, ownerCode: ownerCode ?? started.ownerCode })
     return go(checkoutUrl("links"))
   }
   session.setCheckout({
@@ -195,11 +197,12 @@ function register(): void {
 
 async function retarget(record: store.OrderRecord, label: string, quote: Available): Promise<void> {
   const page = opens
+  if (!state.agreed) return
   dispatch({ type: "register-started" })
   try {
     // links the service refused at the reveal would be refused again
     const links = record.linksRefused ? { contact: "", channel: "" } : { contact: record.contact, channel: record.channel }
-    await flow.retargetOrder(record, label, links, quote)
+    await flow.retargetOrder(record, label, links, quote, api.currentTerms(quote))
     if (onPage(page)) go(store.orderUrl(record))
   } catch (e) {
     const read = await readOrder(record)
@@ -208,6 +211,7 @@ async function retarget(record: store.OrderRecord, label: string, quote: Availab
     if (read?.synced.label === label) return go(store.orderUrl(record))
     if (read && !movable(read.view, read.synced)) return dispatch({ type: "retarget-read", record: read.synced, moved: movedOf(read.view, read.synced) })
     if (limited) return dispatch({ type: "register-held", until: holdEnd() })
+    if (e instanceof api.TermsChanged) return dispatch({ type: "terms-changed", label, terms: e.terms, community: e.community })
     const code = e instanceof api.ApiError ? e.code : null
     if (code === "move_limit") return dispatch({ type: "register-refused", refusal: { why: "limit", reference: record.invoiceId ?? record.registrationId } })
     // the code's own order for the new name is the one the move met
@@ -317,7 +321,9 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
   const own = ownOrderOf(s)
   const code = codeFor(s, label)
   const short = usesCode(s) ? session.activeCode() : null
-  const button = setAction(btn(retarget ? "Register with your payment" : "Register", "small", register), s.register.busy, unpayable || own !== null || s.hold !== null)
+  const asks = retarget !== null && !unpayable && own === null
+  const button = setAction(btn(retarget ? "Register with your payment" : "Register", "small", register), s.register.busy, unpayable || own !== null || s.hold !== null || (asks && !s.agreed))
+  button.dataset.focus = "register"
   const deal = code ? [el("b", { class: "price" }, "Free"), el("span", { class: "soft" }, ` / ${code.years} years`)]
     : [el("b", { class: "price" }, dollars(answer.price)), el("span", { class: "soft" }, ` / ${answer.years} years`)]
   return [
@@ -327,8 +333,16 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
     s.balance ? balanceLine(s.balance, answer.price) : null,
     covers ? line("", "wallet", covers) : null,
     own ? line("", "info", "You already have an order for this name. ", el("a", { class: "nowrap", href: own }, "Open that order")) : null,
+    // under the box, so nothing above it moves
+    asks ? moveAgreement(s, label, answer) : null,
+    asks && s.termsChanged ? termsChangedLine("register") : null,
     unpayable || own ? null : registerNote(s, signal),
   ]
+}
+
+function moveAgreement(s: SearchState, label: string, answer: Available): HTMLLabelElement {
+  const agree = (agreed: boolean) => dispatch({ type: "agreed", agreed })
+  return termsCheck({ terms: answer.terms, community: answer.community, agreed: s.agreed, changed: s.termsChanged, label, tld: answer.tld, disabled: s.register.busy }, agree)
 }
 
 function balanceLine(balance: session.AppliedBalance, price: number): HTMLElement {

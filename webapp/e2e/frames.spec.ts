@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 import {
   agreeToTerms, CODE_HEADING, contactLink, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, REGISTRATION_MS, SAVED, search, startOrder,
-  takenHeading, test, toFullReview, uniqueLabel,
+  takenHeading, TERMS, test, toFullReview, toReview, uniqueLabel,
 } from "./helpers.ts"
 
 // the swaps run at full length, as for a reader who has not asked for less movement
@@ -138,6 +138,20 @@ test("a name taken first, its balance's search and Your names swap without a nea
     await page.locator("body > header").getByRole("link", { name: "Your names" }).click()
     await expect(onStep(page).locator(".list-row[data-key^='balance-']")).toBeVisible()
   })
+})
+
+test("terms changed while ordering show their notice without a near-empty frame", async ({ page, request }) => {
+  await search(page, uniqueLabel("frterms"))
+  await toReview(page)
+  await control(request, "terms", { version: "2026-11-01" })
+  try {
+    await expectNoEmptyFrame(page, "review to its terms notice", async () => {
+      await payButton(page).click()
+      await expect(onStep(page).getByText("The terms changed. Agree to them again.")).toBeVisible()
+    })
+  } finally {
+    await control(request, "terms", { version: TERMS.version })
+  }
 })
 
 // a profile's name of letters past Latin-1, which the page has drawn in no font face yet

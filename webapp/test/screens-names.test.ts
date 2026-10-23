@@ -19,7 +19,8 @@ const CHANNEL = "https://smp9.simplex.im/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2J"
 function registration(change: Partial<RegistrationView> = {}): RegistrationView {
   return {
     ...CHAIN, id: "reg-1", version: 1, phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: "0x9c11", sealed: "sealed-box", years: 2,
-    duration: 2 * YEAR_S, price: 1500, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, intentNonce: null, unread: [], expiresAt: null, error: null, linksRefused: false, latePayment: null, ...change,
+    duration: 2 * YEAR_S, price: 1500, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, intentNonce: null, unread: [], expiresAt: null, error: null, linksRefused: false, latePayment: null,
+    community: null, terms: "2026-10-23", ...change,
   }
 }
 
@@ -43,8 +44,8 @@ const pending = (ownerCode: string): PendingCode => ({ ownerCode, label: "bob", 
 // the registrar's GRACE_PERIOD, as the search answer gives it
 const GRACE_S = 90 * 86_400
 const registered = (records: { contact: string; channel: string } | null = { contact: CONTACT, channel: "" }, change: Partial<Extract<SearchAnswer, { status: "registered" }>> = {}): SearchAnswer =>
-  ({ status: "registered", entities: [], records, owner: OWNER, recordsNonce: 3, expiresAt: NOW / 1000 + 2 * YEAR_S, gracePeriod: GRACE_S, tld: "simplex", ...change })
-const available: SearchAnswer = { status: "available", price: 1500, currency: "usd", years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, ...CHAIN }
+  ({ status: "registered", entities: [], records, owner: OWNER, recordsNonce: 3, expiresAt: NOW / 1000 + 2 * YEAR_S, gracePeriod: GRACE_S, tld: "simplex", community: null, ...change })
+const available: SearchAnswer = { status: "available", price: 1500, currency: "usd", years: 2, termStart: Date.UTC(2027, 0, 1) / 1000, community: null, terms: { version: "2026-10-23", url: "https://simplex.chat/" }, ...CHAIN }
 const registeredView = (change: Partial<RegistrationView> = {}) => registration({ phase: "registered", label: "alice", registerTx: "0xe9", expiresAt: NOW / 1000 + 2 * YEAR_S, ...change })
 
 const stored = (change: Partial<Stored> = {}): Stored => ({ orders: [], pending: [], codes: [], canPersist: true, ...change })
@@ -423,7 +424,7 @@ describe("edit", () => {
     "edit-expired": answered(opened, available),
     "edit-in-app": answered(opened, registered(undefined, { owner: APP })),
     "edit-elsewhere": answered(opened, registered(null)),
-    "edit-not-registered": answered(opened, { status: "reserved" }, registration({ phase: "committed" })),
+    "edit-not-registered": answered(opened, { status: "reserved", community: null }, registration({ phase: "committed" })),
     edit: editing,
   }
 

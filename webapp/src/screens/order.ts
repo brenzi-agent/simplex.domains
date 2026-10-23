@@ -1,7 +1,8 @@
-import { type Balance, holdsPayment, type InvoiceView, type RegistrationView } from "../api.ts"
+import { type Balance, type Community, holdsPayment, type InvoiceView, type RegistrationView, type Terms } from "../api.ts"
 import type { IconName } from "../icons.ts"
 import type { CodeRefusal, OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
+import { askFor, type TermsAsk } from "./terms.ts"
 
 // a card payment Stripe has not confirmed after this long gets the "not confirmed" page
 export const CARD_SLOW_MS = 10 * 60 * 1000
@@ -47,6 +48,7 @@ export interface OrderState {
   codeCheckAt: number | null
   // the balance that paid part of the order, as its own order reads now, which a new invoice spends again
   sourceBalance: Balance | null
+  ask: TermsAsk | null
 }
 
 export type OrderEvent =
@@ -76,22 +78,25 @@ export type OrderEvent =
   | { type: "code-checked" }
   | { type: "code-check-due"; at: number | null }
   | { type: "source-read"; balance: Balance | null }
+  | { type: "terms-asked"; label: string; terms: Terms; community: Community | null; changed: boolean }
+  | { type: "terms-agreed"; agreed: boolean }
   | { type: "hold-started"; until: number; lead: string }
   | { type: "hold-ended" }
 
 export function initialState(reference: string, hold: Hold | null, reveal: Reveal | null = null): OrderState {
-  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null }
+  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null }
 }
 
 const start = (s: OrderState, action: Action): OrderState => ({ ...s, busy: action, note: null })
+const askKept = (ask: TermsAsk | null, label: string | null) => ask && label !== null && label !== ask.label ? null : ask
 const end = (s: OrderState, action: Action, change: Partial<OrderState>): OrderState => s.busy === action ? { ...s, busy: null, ...change } : s
 
 function apply(s: OrderState, e: OrderEvent): OrderState {
   switch (e.type) {
     case "answered":
       if (e.seq <= s.seq) return s
-      return { ...s, seq: e.seq, now: e.now, invoice: e.invoice, view: e.view, record: e.record, cardSubmittedAt: e.cardSubmittedAt }
-    case "record-changed": return { ...s, record: e.record, cardSubmittedAt: e.cardSubmittedAt }
+      return { ...s, seq: e.seq, now: e.now, invoice: e.invoice, view: e.view, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? e.view.label) }
+    case "record-changed": return { ...s, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? null) }
     case "read-failed": return s
     case "not-found": return { ...s, gone: true }
     case "tick": return { ...s, now: e.now }
@@ -116,6 +121,8 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "code-checked": return { ...s, codeKept: true, codeCheckAt: null }
     case "code-check-due": return { ...s, codeCheckAt: e.at }
     case "source-read": return s.busy === "reorder" ? end(s, "reorder", { sourceBalance: e.balance }) : { ...s, sourceBalance: e.balance }
+    case "terms-asked": return { ...s, busy: null, ask: askFor(e.label, e.terms, e.community, e.changed) }
+    case "terms-agreed": return s.ask ? { ...s, ask: { ...s.ask, agreed: e.agreed, changed: false } } : s
     case "hold-started": return { ...s, busy: null, note: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: e.lead } }
     case "hold-ended": return { ...s, hold: null }
   }

@@ -21,13 +21,12 @@ import {
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./hold.ts"
 import { openedInstead, RETRY_MS } from "./order.ts"
+import { termsBox } from "./terms.ts"
 
 const CHECKOUT_NOTE = "checkout-note"
 const SAVED_LABEL = "I have saved my name code"
 // the dApp that registers a name paid for in ETH
 const DAPP_URL = "https://app.simplex.domains"
-// the placeholder for the name terms, until their own page exists
-const TERMS_URL = "https://simplex.chat/"
 // the service takes a signed order's timestamp within this many seconds; an older one is signed anew
 const SIGNED_WINDOW_S = 600
 
@@ -304,13 +303,9 @@ function payButton(s: CheckoutState, blocked: boolean): HTMLButtonElement {
   return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !s.checkout.agreed || payWaits(s))
 }
 
-// every order waits for the buyer to agree to the name terms; the terms open beside the order
-function termsBox(s: CheckoutState): HTMLElement {
-  const box = el("input", { type: "checkbox", checked: s.checkout.agreed, disabled: s.sending, "data-focus": "agreed" })
-  box.addEventListener("change", () => { if (!state.sending && !act({ type: "agreed", agreed: box.checked })) refresh() })
-  return el("div", { class: "mid" }, el("label", { class: "check terms" }, box, el("span", { class: "box" }),
-    el("span", {}, "I agree to ", el("a", { class: "nowrap", href: TERMS_URL, target: "_blank", rel: "noopener" }, "SimpleX name terms"),
-      " and do not knowingly violate any trademarks.")))
+function agreement({ checkout: c, sending }: CheckoutState): HTMLElement {
+  const agree = (agreed: boolean) => { if (!state.sending && !act({ type: "agreed", agreed })) refresh() }
+  return termsBox({ terms: c.terms, community: c.community, agreed: c.agreed, changed: c.termsChanged === true, label: c.label, tld: c.chain.tld, disabled: sending }, agree, "pay")
 }
 
 function payNote(s: CheckoutState, blocked: boolean, signal: AbortSignal): HTMLElement {
@@ -379,7 +374,7 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
       c.code || covered(c) ? null : blocked ? waitingNotice(blocked) : methodsBlock(s),
       c.code || covered(c) || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours. `, eth))),
     payNote(s, blocked !== null, signal),
-    termsBox(s))
+    agreement(s))
 }
 
 function buildPriceChanged({ checkout: c }: CheckoutState): HTMLElement {
@@ -439,8 +434,9 @@ async function sendOrder(): Promise<void> {
   if (c.balance && !source) return balanceChanged(c, null)
   dispatch({ type: "send-started" })
   const links = { contact: c.contact, channel: c.channel }
-  const draft: flow.Draft = source ? flow.spendDraft(source, c.label, links, { ...c.chain, price: c.price, years: years(c), termStart: c.termStart })
-    : { label: c.label, links, chain: c.chain, years: years(c), termStart: c.termStart, ownerCode: c.ownerCode! }
+  const terms = api.termsFor(c.terms, c.community)
+  const draft: flow.Draft = source ? flow.spendDraft(source, c.label, links, { ...c.chain, price: c.price, years: years(c), termStart: c.termStart }, terms)
+    : { label: c.label, links, chain: c.chain, years: years(c), termStart: c.termStart, ownerCode: c.ownerCode!, terms }
   // The order is kept whatever the buyer did meanwhile. Its checkout ends, and the order opens, only while this checkout
   // is still the tab's: the buyer may have started another name, by Back and Forward too.
   const mine = currentRoute()
@@ -523,6 +519,7 @@ async function showOwnOrder(): Promise<void> {
 
 function orderError(e: unknown, c: session.Checkout): void {
   if (e instanceof api.BalanceChanged) return balanceChanged(c, e.balance)
+  if (e instanceof api.TermsChanged) return void act({ type: "terms-changed", terms: e.terms, community: e.community })
   const code = e instanceof api.ApiError ? e.code : "network"
   if (code === "name_taken") {
     // no order was made, so the name code made for it owns nothing to find later

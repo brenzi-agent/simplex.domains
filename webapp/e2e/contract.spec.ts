@@ -3,7 +3,7 @@
 import { expect, type APIRequestContext } from "@playwright/test"
 import type { Hex } from "viem"
 import { CODE_LIMIT } from "../dev/mock/limits.ts"
-import type * as api from "../src/api.ts"
+import * as api from "../src/api.ts"
 import { CHANNEL_KEY, CONTACT_KEY, labelHash, namehash, setTextDigest, YEAR_S } from "../src/crypto/registration.ts"
 import { checksumAddress, fromHex, hex, personalDigest, signDigest } from "../src/crypto/wallet.ts"
 import * as flow from "../src/flow.ts"
@@ -42,6 +42,7 @@ const TERM_SLACK_S = 3600
 const PHASE_MS = 120_000
 // a resolver that is not the store's, for a name pointed elsewhere
 const ELSEWHERE: Hex = "0x000000000000000000000000000000000000dEaD"
+const NO_LINKS = { contact: "", channel: "" }
 
 type Quote = Extract<api.SearchAnswer, { status: "available" }>
 
@@ -53,13 +54,25 @@ async function quote(label: string): Promise<Quote> {
 
 async function draftOf(label: string, links = { contact: "", channel: "" }): Promise<flow.Draft> {
   const q = await quote(label)
-  return { label, links, chain: flow.chainOf(q), years: q.years, termStart: q.termStart, ownerCode: flow.newOwnerCode() }
+  return { label, links, chain: flow.chainOf(q), years: q.years, termStart: q.termStart, ownerCode: flow.newOwnerCode(), terms: api.currentTerms(q) }
+}
+
+// the order moved to another name, or the same with other links, under the terms the service has for that name now
+async function moveOf(record: store.OrderRecord, to: string, links = NO_LINKS): Promise<api.RegistrationView> {
+  const q = await quote(to)
+  return flow.retargetOrder(record, to, links, q, api.currentTerms(q))
+}
+
+// another name paid from the record's balance as read, under the terms the service has for it now
+async function spendOn(record: store.OrderRecord, label: string, balance: number): Promise<store.OrderRecord> {
+  const q = await quote(label)
+  return flow.spendBalance(record, label, NO_LINKS, q, balance, "btc", api.currentTerms(q))
 }
 
 // the order signed again by its owner at another time
 async function signedAt(ownerCode: string, request: api.SignedOrder, timestamp: number): Promise<api.SignedOrder> {
   const sealedHash = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(request.sealed))))
-  const message = `simplex.domains order ${request.labelHash} ${request.length} ${request.duration} ${request.commitment} ${sealedHash} ${timestamp}`
+  const message = `simplex.domains order ${request.labelHash} ${request.length} ${request.duration} ${request.commitment} ${sealedHash} ${request.terms} ${timestamp}`
   return { ...request, timestamp, signature: hex(signDigest(flow.walletOf(ownerCode)!.privateKey, personalDigest(message))) }
 }
 
@@ -325,7 +338,7 @@ test("another name or links: refused from an order with nothing to fix, a repeat
   const id = (paid.json.registration as Json).id as string
   store.saveOrder(flow.recordFor(draft, built, "btc", q.price, { registrationId: id, invoiceId: paid.json.invoiceId as string }))
   await control(request, `settle/${paid.json.invoiceId}`)
-  const move = async (to: string) => flow.retargetOrder(store.orderByRegistration(id)!, to, { contact: "", channel: "" }, await quote(to))
+  const move = async (to: string) => moveOf(store.orderByRegistration(id)!, to)
   await untilPhase(id, ["committed"])
   await expect(move(uniqueLabel("cm2")), "a committed order whose links were not refused").rejects.toMatchObject({ code: "bad_request" })
   // the service refuses the links at the reveal, which records the refusal and wakes the order's polls
@@ -349,13 +362,13 @@ test("another name or links: refused from an order with nothing to fix, a repeat
   await expect(move(uniqueLabel("cm4"))).rejects.toMatchObject({ code: "move_limit", body: { registration: { id, moves: 3, phase: "failed" } } })
 })
 
-// the /name body of the registration's current fields, signed anew
-async function nameBody(record: store.OrderRecord, view: api.RegistrationView): Promise<Json> {
+// the /name body of the registration's current fields, under its own terms or `terms`, signed anew
+async function nameBody(record: store.OrderRecord, view: api.RegistrationView, terms = view.terms!): Promise<Json> {
   const timestamp = Math.floor(Date.now() / 1000)
   const sealedHash = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(view.sealed))))
   const length = record.label.length
-  const message = `simplex.domains name ${view.id} ${view.labelHash} ${length} ${view.duration} ${view.commitment} ${sealedHash} ${timestamp}`
-  return { labelHash: view.labelHash, length, duration: view.duration, commitment: view.commitment, sealed: view.sealed, timestamp,
+  const message = `simplex.domains name ${view.id} ${view.labelHash} ${length} ${view.duration} ${view.commitment} ${sealedHash} ${terms} ${timestamp}`
+  return { labelHash: view.labelHash, length, duration: view.duration, commitment: view.commitment, sealed: view.sealed, terms, timestamp,
     signature: hex(signDigest(flow.walletOf(record.ownerCode)!.privateKey, personalDigest(message))) }
 }
 
@@ -426,7 +439,6 @@ test("search answers a link whose data was not read now as unread with its deep 
 
 // --- balances
 
-const NO_LINKS = { contact: "", channel: "" }
 // the dev oracle's prices for 2 years: 6 letters, 7 letters, 8 or more
 const PRICE = { six: 40000, seven: 20000, long: 10000 }
 
@@ -458,9 +470,9 @@ const orderOf = async (src: Paying, label: string, change: Partial<flow.Draft> =
   (await flow.orderRequest({ ...await draftOf(label), ownerCode: src.draft.ownerCode, ...change })).request
 
 async function spendBody(src: Paying, request: api.SignedOrder, money: Json, timestamp = request.timestamp, ownerCode = src.draft.ownerCode): Promise<Json> {
-  const message = `simplex.domains spend ${src.id} ${request.labelHash} ${request.length} ${request.duration} ${request.commitment} ${await sha256Of(request.sealed)} ${timestamp}`
+  const message = `simplex.domains spend ${src.id} ${request.labelHash} ${request.length} ${request.duration} ${request.commitment} ${await sha256Of(request.sealed)} ${request.terms} ${timestamp}`
   return {
-    labelHash: request.labelHash, length: request.length, duration: request.duration, commitment: request.commitment, sealed: request.sealed, ...money, timestamp,
+    labelHash: request.labelHash, length: request.length, duration: request.duration, commitment: request.commitment, sealed: request.sealed, ...money, terms: request.terms, timestamp,
     signature: hex(signDigest(flow.walletOf(ownerCode)!.privateKey, personalDigest(message))),
   }
 }
@@ -487,13 +499,13 @@ test("a balance pays a cheaper name at once and keeps the rest, an exact price s
   const src = await lateBalance(request, shortLabel(7))
   expect(await balanceOf(src.id), "a late payment kept as the closed order's balance").toEqual(free(PRICE.seven))
   const first = uniqueLabel("sa")
-  const covered = await flow.spendBalance(src.record, first, NO_LINKS, await quote(first), PRICE.seven, "btc")
+  const covered = await spendOn(src.record, first, PRICE.seven)
   const view = await viewOf(covered.registrationId)
   expect([view.price, view.fromBalance, view.owner, view.balance]).toEqual([PRICE.long, PRICE.long, src.record.owner, null])
   expect(view.phase, "queued at once, and on its way").not.toBe("unpaid")
   expect(await balanceOf(src.id)).toEqual(free(PRICE.seven - PRICE.long))
   const second = uniqueLabel("sb")
-  const exact = await flow.spendBalance(src.record, second, NO_LINKS, await quote(second), PRICE.seven - PRICE.long, "btc")
+  const exact = await spendOn(src.record, second, PRICE.seven - PRICE.long)
   expect(await balanceOf(src.id)).toEqual(free(0))
   expect(await findOf(src.draft.ownerCode)).toMatchObject([
     { registrationId: exact.registrationId, invoiceId: null }, { registrationId: covered.registrationId, invoiceId: null }, { registrationId: src.id, invoiceId: src.invoiceId },
@@ -645,7 +657,7 @@ test("support's refund takes the whole balance by invoice id or registration id,
   store.saveOrder(flow.recordFor(draft, built, "btc", PRICE.six, { registrationId: id, invoiceId: paid.json.invoiceId as string }))
   await control(request, `settle/${paid.json.invoiceId}`)
   await failAtRegister(request, id)
-  const move = async (to: string) => flow.retargetOrder(store.orderByRegistration(id)!, to, NO_LINKS, await quote(to))
+  const move = async (to: string) => moveOf(store.orderByRegistration(id)!, to)
   expect((await move(shortLabel(7))).balance).toEqual(free(PRICE.six - PRICE.seven))
   expect((await refund(id)).json).toMatchObject({ registrationId: id, cents: PRICE.six - PRICE.seven })
   await failAtRegister(request, id)
@@ -658,13 +670,13 @@ test("support's refund takes the whole balance by invoice id or registration id,
 test("a paid order taken first keeps its whole price as a balance of its own, also when a balance paid it, moves no more, and its refund names what paid it", async ({ request }) => {
   const src = await lateBalance(request)
   const label = uniqueLabel("st")
-  const next = await flow.spendBalance(src.record, label, NO_LINKS, await quote(label), PRICE.long, "btc")
+  const next = await spendOn(src.record, label, PRICE.long)
   await control(request, "take", { label })
   await flow.revealOrder(await untilRevealable(next.registrationId), next)
   const view = await untilPhase(next.registrationId, ["taken"])
   expect([view.fromBalance, view.balance]).toEqual([PRICE.long, free(PRICE.long)])
   const other = uniqueLabel("st2")
-  await expect(flow.retargetOrder(next, other, NO_LINKS, await quote(other)), "a taken order keeps its balance and moves no more").rejects.toMatchObject({ code: "bad_request" })
+  await expect(moveOf(next, other), "a taken order keeps its balance and moves no more").rejects.toMatchObject({ code: "bad_request" })
   expect(await balanceOf(src.id), "the paying order's balance untouched").toEqual(free(0))
   expect((await call("POST", `/control/refund/${next.registrationId}`, {})).json).toEqual({ registrationId: next.registrationId, cents: PRICE.long, chain: [
     { registrationId: next.registrationId, invoiceId: null, method: "balance", fromBalance: PRICE.long, invoiced: 0, late: 0 },
@@ -817,4 +829,124 @@ test("a spend whose difference is below the card's least charge refuses the card
   expect(await spendFor("card")).toEqual({ status: 400, json: { error: "bad_request" } })
   const coin = await spendFor("btc")
   expect([coin.status, coin.json.amount], "the difference in Bitcoin").toEqual([200, PRICE.long - amount])
+})
+
+// --- terms and community names
+
+// the e2e spec's community name, which the service's contract run lists too
+const COMMUNITY_LABEL = "bakers"
+const TERMS_VERSION = "2026-10-23"
+const COMMUNITY_TERMS = `${TERMS_VERSION}/community`
+
+// The service's terms at another version while `f` runs, as after a restart with a new terms_version.
+async function atVersion<T>(request: APIRequestContext, version: string, f: () => Promise<T>): Promise<T> {
+  await control(request, "terms", { version })
+  try {
+    return await f()
+  } finally {
+    await control(request, "terms", { version: TERMS_VERSION })
+  }
+}
+
+// A name of its own on the community list while `f` runs.
+async function listed<T>(request: APIRequestContext, label: string, f: () => Promise<T>): Promise<T> {
+  await control(request, "community", { label, for: "test bakers" })
+  try {
+    return await f()
+  } finally {
+    await control(request, "community", { label, for: null })
+  }
+}
+
+const termsChanged = (version: string, community: Json | null) => ({ error: "terms_changed", terms: { version, url: expect.stringMatching(/^https:\/\//) }, community })
+
+test("every search answer carries the name's community entry, and the available one the terms to agree to", async () => {
+  const listed = (await call("GET", `/api/name/${hex(labelHash(COMMUNITY_LABEL))}?length=${COMMUNITY_LABEL.length}`)).json
+  expect(listed).toMatchObject({ status: "available", community: { for: expect.any(String) }, terms: { version: TERMS_VERSION, url: expect.stringMatching(/^https:\/\//) } })
+  const other = uniqueLabel("ta")
+  expect((await call("GET", `/api/name/${hex(labelHash(other))}?length=${other.length}`)).json).toMatchObject({ status: "available", community: null, terms: { version: TERMS_VERSION } })
+  for (const [name, status] of [["bakery", "registered"], ["support", "reserved"]]) {
+    const answer = (await call("GET", `/api/name/${hex(labelHash(name))}?length=${name.length}`)).json
+    expect([answer.status, answer.community], name).toEqual([status, null])
+  }
+})
+
+test("an order signs the terms for its name: another variant or an old version is terms_changed with the terms and community now, a malformed one bad_request", async ({ request }) => {
+  const community = await quote(COMMUNITY_LABEL)
+  const plain = { ...await draftOf(COMMUNITY_LABEL), terms: TERMS_VERSION }
+  const refused = await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(plain)).request, "btc", community.price))
+  expect([refused.status, refused.json]).toEqual([409, termsChanged(TERMS_VERSION, community.community as Json | null)])
+  const label = uniqueLabel("tb")
+  const q = await quote(label)
+  const claimed = await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest({ ...await draftOf(label), terms: COMMUNITY_TERMS })).request, "btc", q.price))
+  expect([claimed.status, claimed.json]).toEqual([409, termsChanged(TERMS_VERSION, null)])
+  const draft = await draftOf(label)
+  const { request: signed } = await flow.orderRequest(draft)
+  for (const terms of [undefined, "", "2026 10 23", "t".repeat(49), 5]) {
+    const res = await call("POST", "/api/invoice", invoiceBody({ ...signed, terms } as never, "btc", q.price))
+    expect([res.status, res.json], String(terms)).toEqual([400, { error: "bad_request" }])
+  }
+  await atVersion(request, "2026-11-01", async () => {
+    // a stale timestamp is checked before the terms
+    const stale = await signedAt(draft.ownerCode, signed, signed.timestamp - SIGNED_WINDOW_S - 100)
+    expect((await call("POST", "/api/invoice", invoiceBody(stale, "btc", q.price))).json, "a stale timestamp").toEqual({ error: "bad_request" })
+    const res = await call("POST", "/api/invoice", invoiceBody(signed, "btc", q.price))
+    expect([res.status, res.json]).toEqual([409, termsChanged("2026-11-01", null)])
+  })
+  const ok = await call("POST", "/api/invoice", invoiceBody(signed, "btc", q.price))
+  expect(ok.status, JSON.stringify(ok.json)).toBe(200)
+  expect((ok.json.registration as Json).terms).toBe(TERMS_VERSION)
+})
+
+test("an exact resend is answered after the terms changed, and two orders differing only in terms are different orders", async ({ request }) => {
+  const label = uniqueLabel("tc")
+  const q = await quote(label)
+  const draft = await draftOf(label)
+  const built = await flow.orderRequest(draft)
+  const first = await call("POST", "/api/invoice", invoiceBody(built.request, "btc", q.price))
+  expect(first.status).toBe(200)
+  await atVersion(request, "2026-11-01", async () => {
+    const again = await call("POST", "/api/invoice", invoiceBody(built.request, "btc", q.price))
+    expect([again.status, again.json.invoiceId]).toEqual([200, first.json.invoiceId])
+    const other = await signedAt(draft.ownerCode, { ...built.request, terms: "2026-11-01" }, built.request.timestamp)
+    expect((await call("POST", "/api/invoice", invoiceBody(other, "btc", q.price))).json).toEqual({ error: "order_exists" })
+  })
+})
+
+test("a code order meets changed terms before the code's state, and a spend before its balance", async ({ request }) => {
+  const label = uniqueLabel("td")
+  const { code } = await control(request, "code", { minLength: 6, state: "used" }) as { code: string }
+  const coded = await call("POST", "/api/name/register", { ...(await flow.orderRequest({ ...await draftOf(label), terms: COMMUNITY_TERMS })).request, code })
+  expect([coded.status, coded.json]).toEqual([409, termsChanged(TERMS_VERSION, null)])
+  const src = await lateBalance(request)
+  const spent = await spendCall(src.id, await spendBody(src, await orderOf(src, shortLabel(7), { terms: COMMUNITY_TERMS }), { price: PRICE.seven, balance: PRICE.long - 1, method: "btc" }))
+  expect([spent.status, spent.json]).toEqual([409, termsChanged(TERMS_VERSION, null)])
+  const covered = await spendCall(src.id, await spendBody(src, await orderOf(src, uniqueLabel("te")), { price: PRICE.long, balance: PRICE.long }))
+  expect(covered.status, JSON.stringify(covered.json)).toBe(200)
+  expect((await viewOf(covered.json.registrationId as string)).terms).toBe(TERMS_VERSION)
+})
+
+test("a move signs the new name's terms: a community name needs the community wording, which is stored; the same body again is a repeat, also after the terms changed, and one differing only in terms a move", async ({ request }) => {
+  const label = uniqueLabel("tf")
+  await listed(request, label, async () => {
+    const { id, view } = await failedOrder(request, uniqueLabel("tg"))
+    expect([view.terms, view.community]).toEqual([TERMS_VERSION, null])
+    const q = await quote(label)
+    expect(q.community).toEqual({ for: "test bakers" })
+    await expect(flow.retargetOrder(store.orderByRegistration(id)!, label, NO_LINKS, q, TERMS_VERSION)).rejects.toMatchObject({ code: "terms_changed", terms: { version: TERMS_VERSION }, community: { for: "test bakers" } })
+    const moved = await flow.retargetOrder(store.orderByRegistration(id)!, label, NO_LINKS, q, COMMUNITY_TERMS)
+    expect([moved.moves, moved.terms, moved.community]).toEqual([1, COMMUNITY_TERMS, { for: "test bakers" }])
+    const record = store.orderByRegistration(id)!
+    expect(record.terms).toBe(COMMUNITY_TERMS)
+    const repeat = await call("POST", `/api/registration/${id}/name`, await nameBody(record, moved))
+    expect([repeat.status, repeat.json.moves, repeat.json.version], "a repeat answers the view unchanged").toEqual([200, 1, (await viewOf(id)).version])
+    const failed = await failAtRegister(request, id)
+    await atVersion(request, "2026-11-01", async () => {
+      // the current fields under the terms they were signed with are still a repeat, answered before the terms
+      const again = await call("POST", `/api/registration/${id}/name`, await nameBody(record, failed))
+      expect([again.status, again.json.moves, again.json.phase]).toEqual([200, 1, "failed"])
+      const bumped = await call("POST", `/api/registration/${id}/name`, await nameBody(record, failed, "2026-11-01/community"))
+      expect([bumped.status, bumped.json.moves, bumped.json.terms, bumped.json.commitment]).toEqual([200, 2, "2026-11-01/community", failed.commitment])
+    })
+  })
 })

@@ -426,6 +426,8 @@ export async function waitRegistered(page: Page, label: string): Promise<void> {
 }
 
 export const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
+// the terms an available name's answer asks the buyer to agree to, as the mock's start sets them
+export const TERMS = { version: "2026-10-23", url: "https://simplex.chat/" }
 
 export interface KeptOrder { registrationId: string; invoiceId: string | null; label: string; ownerCode: string; owner: string; request: { labelHash: string; commitment: string } }
 
@@ -444,7 +446,8 @@ export async function keepOrder(page: Page, registrationId: string, invoiceId: s
 // The service's view of a kept order's registration, as its API answers it.
 export const registrationView = (o: KeptOrder, change: Record<string, unknown> = {}) => ({
   ...CHAIN, id: o.registrationId, version: 1, unread: [], moves: 0, phase: "unpaid", labelHash: o.request.labelHash, label: o.label, owner: o.owner, commitment: o.request.commitment, sealed: "sealed",
-  years: 2, duration: 2 * YEAR_S, price: 10000, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, linksRefused: false, latePayment: null, ...change,
+  years: 2, duration: 2 * YEAR_S, price: 10000, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, linksRefused: false, latePayment: null,
+  community: null, terms: TERMS.version, ...change,
 })
 
 // A registered name of this browser's code, as the service answers it, holding `links` until `records` answers otherwise.
@@ -456,7 +459,7 @@ export async function fakeRegisteredName(page: Page, label: string, links: { con
   await page.route("**/api/name/**", (route) => {
     const now = records()
     return route.fulfill({ json: { status: "registered", entities: [], owner: order.owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId, records: now.links, recordsNonce: now.nonce,
-      expiresAt, tld: "simplex" } })
+      expiresAt, tld: "simplex", community: null } })
   })
   return order
 }

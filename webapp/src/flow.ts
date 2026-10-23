@@ -35,9 +35,10 @@ export interface Draft {
   years: number
   termStart: number
   ownerCode: string
+  terms: string
 }
 
-type Quote = Extract<api.SearchAnswer, { status: "available" }>
+export type Quote = Extract<api.SearchAnswer, { status: "available" }>
 export const chainOf = (q: api.ChainInfo): api.ChainInfo => ({ resolver: q.resolver, sponsor: q.sponsor, chainId: q.chainId, tld: q.tld })
 
 // The name's search answer as an order needs it, or null when it can no longer be ordered.
@@ -47,8 +48,8 @@ export async function quoteOf(label: string): Promise<Quote | null> {
 }
 
 // An order of a record's name and links again, as a new order of its code: a new commitment for the term from now.
-export const draftAgain = (record: store.OrderRecord, quote: Quote): Draft =>
-  ({ label: record.label, links: { contact: record.contact, channel: record.channel }, chain: chainOf(quote), years: record.years, termStart: quote.termStart, ownerCode: record.ownerCode })
+export const draftAgain = (record: store.OrderRecord, quote: Quote, terms: string): Draft =>
+  ({ label: record.label, links: { contact: record.contact, channel: record.channel }, chain: chainOf(quote), years: record.years, termStart: quote.termStart, ownerCode: record.ownerCode, terms })
 
 export type BuiltOrder = { request: api.SignedOrder; owner: string }
 
@@ -60,8 +61,8 @@ export async function orderRequest(draft: Draft): Promise<BuiltOrder> {
   const r = registrationOf(draft.label, wallet.address, commitmentSecret(wallet.seed, draft.label), draft.links, draft.chain, duration)
   const sealed = await seal(wallet.seed, { label: draft.label, ...draft.links })
   const owner = checksumAddress(wallet.address)
-  const order = { labelHash: hex(labelHash(draft.label)), length: draft.label.length, duration: Number(duration), owner, commitment: hex(makeCommitment(r)), sealed }
-  const message = `simplex.domains order ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${await sha256Hex(sealed)} ${timestamp}`
+  const order = { labelHash: hex(labelHash(draft.label)), length: draft.label.length, duration: Number(duration), owner, commitment: hex(makeCommitment(r)), sealed, terms: draft.terms }
+  const message = `simplex.domains order ${order.labelHash} ${order.length} ${order.duration} ${order.commitment} ${await sha256Hex(sealed)} ${order.terms} ${timestamp}`
   return { request: { ...order, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) }, owner }
 }
 
@@ -71,7 +72,7 @@ export const paidWith = (res: api.InvoiceView): { method: api.Method; paid: numb
 export function recordFor(draft: Draft, built: BuiltOrder, method: store.OrderRecord["method"], paid: number, ids: { registrationId: string; invoiceId: string | null }): store.OrderRecord {
   return {
     ...ids, label: draft.label, ownerCode: draft.ownerCode, owner: built.owner, ...draft.links, method, paid, years: draft.years,
-    request: built.request, tld: draft.chain.tld, createdAt: new Date(api.serviceNow()).toISOString(),
+    request: built.request, terms: draft.terms, tld: draft.chain.tld, createdAt: new Date(api.serviceNow()).toISOString(),
   }
 }
 
@@ -94,15 +95,15 @@ async function sha256Hex(text: string): Promise<string> {
 
 // Another name, or other links, for a failed order or one whose links were refused, on the same wallet so the same code
 // owns it, at the new name's price, which caps any later move.
-export async function retargetOrder(record: store.OrderRecord, label: string, links: api.Links, quote: Quote): Promise<api.RegistrationView> {
-  const draft: Draft = { label, links, chain: chainOf(quote), years: record.years, termStart: quote.termStart, ownerCode: record.ownerCode }
+export async function retargetOrder(record: store.OrderRecord, label: string, links: api.Links, quote: Quote, terms: string): Promise<api.RegistrationView> {
+  const draft: Draft = { label, links, chain: chainOf(quote), years: record.years, termStart: quote.termStart, ownerCode: record.ownerCode, terms }
   const built = await orderRequest(draft)
   const wallet = walletOf(record.ownerCode)!
   const timestamp = now()
   const { labelHash: lh, length, duration, commitment, sealed } = built.request
-  const message = `simplex.domains name ${record.registrationId} ${lh} ${length} ${duration} ${commitment} ${await sha256Hex(sealed)} ${timestamp}`
-  const view = await api.retarget(record.registrationId, { labelHash: lh, length, duration, commitment, sealed, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) })
-  store.saveOrder({ ...record, label, ...links, paid: view.price, request: built.request, linksRefused: undefined })
+  const message = `simplex.domains name ${record.registrationId} ${lh} ${length} ${duration} ${commitment} ${await sha256Hex(sealed)} ${terms} ${timestamp}`
+  const view = await api.retarget(record.registrationId, { labelHash: lh, length, duration, commitment, sealed, terms, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) })
+  store.saveOrder({ ...record, label, ...links, paid: view.price, request: built.request, terms, linksRefused: undefined })
   return view
 }
 
@@ -114,8 +115,8 @@ export type BuiltSpend = BuiltOrder & { spend: api.SpendRequest }
 export type BalanceSource = Pick<store.OrderRecord, "registrationId" | "ownerCode">
 
 // the order of another name under the record's code, as the service makes the paying order's owner the new order's
-export const spendDraft = (record: BalanceSource, label: string, links: api.Links, quote: Priced): Draft =>
-  ({ label, links, chain: chainOf(quote), years: quote.years, termStart: quote.termStart, ownerCode: record.ownerCode })
+export const spendDraft = (record: BalanceSource, label: string, links: api.Links, quote: Priced, terms: string): Draft =>
+  ({ label, links, chain: chainOf(quote), years: quote.years, termStart: quote.termStart, ownerCode: record.ownerCode, terms })
 
 // Another name paid from the record's balance as the page read it, `draft` being spendDraft's: the order and the spend,
 // signed by the record's code. When the balance does not cover the price, all of it pays and an invoice in `method` is
@@ -124,11 +125,11 @@ export async function spendRequest(record: BalanceSource, draft: Draft, price: n
   const built = await orderRequest(draft)
   const wallet = walletOf(record.ownerCode)!
   const timestamp = now()
-  const { labelHash: lh, length, duration, commitment, sealed } = built.request
-  const message = `simplex.domains spend ${record.registrationId} ${lh} ${length} ${duration} ${commitment} ${await sha256Hex(sealed)} ${timestamp}`
+  const { labelHash: lh, length, duration, commitment, sealed, terms } = built.request
+  const message = `simplex.domains spend ${record.registrationId} ${lh} ${length} ${duration} ${commitment} ${await sha256Hex(sealed)} ${terms} ${timestamp}`
   const covered = price <= balance
   return { ...built, spend: {
-    labelHash: lh, length, duration, commitment, sealed, price, balance, ...covered ? {} : { method }, timestamp,
+    labelHash: lh, length, duration, commitment, sealed, price, balance, ...covered ? {} : { method }, terms, timestamp,
     signature: hex(signDigest(wallet.privateKey, personalDigest(message))),
   } }
 }
@@ -145,8 +146,8 @@ export async function sendSpend(record: BalanceSource, draft: Draft, built: Buil
   return next
 }
 
-export async function spendBalance(record: BalanceSource, label: string, links: api.Links, quote: Priced, balance: number, method: api.Method): Promise<store.OrderRecord> {
-  const draft = spendDraft(record, label, links, quote)
+export async function spendBalance(record: BalanceSource, label: string, links: api.Links, quote: Priced, balance: number, method: api.Method, terms: string): Promise<store.OrderRecord> {
+  const draft = spendDraft(record, label, links, quote, terms)
   return sendSpend(record, draft, await spendRequest(record, draft, quote.price, balance, method))
 }
 
@@ -171,18 +172,25 @@ export async function balanceSourceOf(record: store.OrderRecord): Promise<string
 type RestoreResult = { record: store.OrderRecord; view: api.RegistrationView }
 
 // The order's name and links, unsealed with the code, after checking that they rebuild the order's commitment.
-async function openOrder(wallet: Wallet, view: api.RegistrationView): Promise<Pick<store.OrderRecord, "label" | "contact" | "channel" | "request">> {
+async function openOrder(wallet: Wallet, view: api.RegistrationView): Promise<Pick<store.OrderRecord, "label" | "contact" | "channel" | "request" | "terms">> {
   const opened = await unseal(wallet.seed, view.sealed)
   if (!opened) throw new Error("the code does not open this order")
   const r = registrationOf(opened.label, wallet.address, commitmentSecret(wallet.seed, opened.label), opened, view, BigInt(view.duration))
   if (hex(makeCommitment(r)) !== view.commitment) throw new Error("the order's commitment does not match the code")
   const request = { labelHash: view.labelHash, length: opened.label.length, duration: view.duration, owner: checksumAddress(wallet.address), commitment: view.commitment, sealed: view.sealed }
-  return { label: opened.label, contact: opened.contact, channel: opened.channel, request }
+  return { label: opened.label, contact: opened.contact, channel: opened.channel, request, terms: view.terms ?? undefined }
 }
 
-// An order moved to another name elsewhere (another browser, or a retarget whose answer was lost) is read back from the service.
+// An order moved to another name elsewhere (another browser, or a retarget whose answer was lost) is read back from the
+// service; a move with other terms alone keeps the commitment.
 export async function syncRecord(record: store.OrderRecord, view: api.RegistrationView): Promise<store.OrderRecord | null> {
-  if (view.commitment === record.request.commitment) return record
+  if (view.commitment === record.request.commitment) {
+    const terms = view.terms ?? undefined
+    if (terms === record.terms) return record
+    const synced = { ...record, terms }
+    store.saveOrder(synced)
+    return synced
+  }
   try {
     const synced = { ...record, ...await openOrder(walletOf(record.ownerCode)!, view), paid: view.price }
     store.saveOrder(synced)

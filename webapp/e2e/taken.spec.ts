@@ -3,7 +3,7 @@ import { walletOf } from "../src/flow.ts"
 import { labelHash } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import {
-  addNameCode, checkoutOwnerCode, contactLink, control, failedOrder, FIT_SIZES, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, savedToReview,
+  addNameCode, agreeToTerms, checkoutOwnerCode, contactLink, control, failedOrder, FIT_SIZES, MOCK, mockRegistration, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, savedToReview,
   offCentre, search, searchName, shot, startOrder, takenHeading, takenOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
@@ -63,6 +63,7 @@ test("a wait on moving the payment that ends while Back checks the name again se
   await page.getByLabel("Name", { exact: true }).press("Enter")
   await expect(page.getByText("Covered by your payment")).toBeVisible()
   await page.route("**/name", (route) => route.request().method() === "POST" ? route.fulfill({ status: 429, headers: { "retry-after": String(MOVE_WAIT_S) }, json: { error: "rate_limited" } }) : route.continue())
+  await agreeToTerms(page)
   await page.getByRole("button", { name: "Register with your payment" }).click()
   await expect(page.getByText("Too many attempts")).toBeVisible()
   let searches = 0

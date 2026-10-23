@@ -1,4 +1,4 @@
-import type { SearchAnswer } from "../api.ts"
+import { type Community, currentTerms, type SearchAnswer, type Terms } from "../api.ts"
 import { dollars } from "../format.ts"
 import { heldWords } from "./balance.ts"
 import { foldLabel, type LabelProblem, labelProblem } from "../names.ts"
@@ -35,6 +35,8 @@ export interface SearchState {
   paused: boolean
   ownOrder: string | null
   register: { busy: boolean; refusal: RegisterRefusal | null }
+  agreed: boolean
+  termsChanged: boolean
 }
 
 export type SearchEvent =
@@ -51,13 +53,15 @@ export type SearchEvent =
   | { type: "register-started" }
   | { type: "register-refused"; refusal: RegisterRefusal }
   | { type: "register-held"; until: number }
+  | { type: "agreed"; agreed: boolean }
+  | { type: "terms-changed"; label: string; terms: Terms; community: Community | null }
 
 const IDLE = { busy: false, refusal: null }
 export const REGISTER_LEAD = "Nothing changed. "
 
 export const initialSearch = (): SearchState => ({
   opening: "plain", name: "", typed: "", searched: null, seq: 0, searching: null, answer: null, bad: false,
-  retarget: null, balance: null, moved: null, hold: null, paused: false, ownOrder: null, register: IDLE,
+  retarget: null, balance: null, moved: null, hold: null, paused: false, ownOrder: null, register: IDLE, agreed: false, termsChanged: false,
 })
 
 // An available name this browser has an order for, under its TLD, is checked again rather than offered while the order is read.
@@ -92,17 +96,29 @@ function searched(s: SearchState, e: Extract<SearchEvent, { type: "searched" }>)
   return { ...started, searching: { label: e.label } }
 }
 
+const termsOf = (a: SearchAnswer) => a.status === "available" ? currentTerms(a) : null
+
+function answered(s: SearchState, e: Extract<SearchEvent, { type: "answered" }>): SearchState {
+  if (e.seq !== s.seq) return s
+  const before = s.answer?.kind === "found" && s.answer.label === e.label ? s.answer : null
+  const same = before !== null
+  const agreed = same && s.agreed && termsOf(before.answer) === termsOf(e.answer)
+  return { ...s, searching: null, answer: { kind: "found", label: e.label, answer: e.answer, mine: e.mine, now: e.now }, ownOrder: same ? s.ownOrder : null, agreed, termsChanged: same && s.termsChanged }
+}
+
+function termsChanged(s: SearchState, e: Extract<SearchEvent, { type: "terms-changed" }>): SearchState {
+  if (s.answer?.kind !== "found" || s.answer.label !== e.label || s.answer.answer.status !== "available") return s
+  const answer = { ...s.answer, answer: { ...s.answer.answer, terms: e.terms, community: e.community } }
+  return { ...s, answer, agreed: false, termsChanged: true, register: IDLE }
+}
+
 export function reduce(s: SearchState, e: SearchEvent): SearchState {
   switch (e.type) {
     case "opened": return opened(s, e)
     case "balance-read": return { ...s, balance: e.balance }
     case "typed": return { ...s, typed: e.text, bad: false }
     case "searched": return searched(s, e)
-    case "answered": {
-      if (e.seq !== s.seq) return s
-      const same = s.answer?.kind === "found" && s.answer.label === e.label
-      return { ...s, searching: null, answer: { kind: "found", label: e.label, answer: e.answer, mine: e.mine, now: e.now }, ownOrder: same ? s.ownOrder : null }
-    }
+    case "answered": return answered(s, e)
     case "unanswered": return e.seq === s.seq ? { ...s, searching: null, answer: { kind: "unchecked" } } : s
     case "search-held": return e.seq === s.seq ? { ...s, searching: null, answer: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: NO_LEAD }, paused: true } : s
     case "hold-ended": return { ...s, hold: null, paused: false, answer: s.paused && foldLabel(s.typed) ? { kind: "checking" } : s.answer }
@@ -113,6 +129,8 @@ export function reduce(s: SearchState, e: SearchEvent): SearchState {
     case "register-started": return { ...s, register: { busy: true, refusal: null } }
     case "register-refused": return { ...s, register: { busy: false, refusal: e.refusal } }
     case "register-held": return { ...s, register: IDLE, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: REGISTER_LEAD } }
+    case "agreed": return { ...s, agreed: e.agreed, termsChanged: e.agreed ? false : s.termsChanged }
+    case "terms-changed": return termsChanged(s, e)
   }
 }
 

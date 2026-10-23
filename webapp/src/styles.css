@@ -519,11 +519,19 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 .check .box::after { content: ""; display: block; width: 5px; height: 10px; margin: 1px auto 0; border: solid var(--primary-ink); border-width: 0 2px 2px 0; rotate: 45deg; opacity: 0; }
 .check .box { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--line-strong); background: var(--surface); flex: none; }
 .check input:checked + .box::after { opacity: 1; }
-/* Check your order's terms, centred in the room between the order and the main button, which takes in the gaps on each side */
+/* Check your order's terms, centred in the room between the order and the main button, which takes in the gaps on each
+   side; a notice of changed terms takes the room above, so the box stays put */
 .screen-body:has(> .mid) { display: flex; flex-direction: column; }
-.mid { flex: 1; display: grid; place-items: center; margin-block: calc(-1 * var(--body-gap)) calc(-1 * var(--row-gap)); }
+.mid { flex: 1; display: grid; grid-template-rows: 1fr auto 1fr; place-items: center; margin-block: calc(-1 * var(--body-gap)) calc(-1 * var(--row-gap)); }
+.mid > .check { grid-row: 2; }
+.mid > .line { grid-row: 1; align-self: end; margin-bottom: 6px; }
+/* an empty status keeps the room it had in an order page's grid */
+.screen-body:has(> .mid):not(:has(> .review)) > [role="status"]:empty { margin-top: 0; }
 .check.terms { align-items: flex-start; font-size: var(--fs-small); font-weight: 500; line-height: 1.45; }
 .check.terms .box { margin-top: 1px; }
+.cinfo { all: unset; cursor: pointer; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 2px; vertical-align: -3px; border-radius: 50%; color: var(--primary); }
+.cinfo svg.i { width: 17px; height: 17px; }
+.cinfo:focus-visible { outline: 2px solid var(--accent); }
 
 /* Your names: a card of names and one of codes, a row per name or code with its actions as text links */
 .card.list { padding: 0; }
@@ -569,6 +577,7 @@ html.dark .monero-base { fill: #fff; }
   .btn.quiet:not([disabled], [aria-busy="true"]):hover { background: var(--chip); filter: none; }
   .method[aria-checked="false"]:not([aria-disabled]):hover { border-color: var(--line-strong); background: color-mix(in srgb, var(--surface), var(--primary) 4%); }
   .check:hover .box { border-color: var(--primary); }
+  .cinfo:hover { background: var(--chip); }
 }
 /* after the hover rules and as specific as the quiet one, as a button pressed with a mouse still matches them */
 :is(.btn, .btn.quiet):not([disabled], [aria-busy="true"]):active { filter: brightness(.94); }
