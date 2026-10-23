@@ -535,8 +535,9 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 .list-row .main { flex: 1 1 240px; min-width: 0; display: grid; gap: 2px; }
 .list-row .sub { color: var(--ink-soft); font-size: var(--fs-small); }
 .list-row .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: var(--fs-small); white-space: nowrap; }
-/* a balance's words give way to its actions beside them, keeping half the row, as the mockup draws Use and Refund */
-.balance-row .main { flex-basis: 0; min-width: 50%; }
+/* a balance's words give way to its actions beside them, as the mockup draws Use and Refund, down to their own widest
+   unbroken part, past which the actions go under them */
+.balance-row .main { flex-basis: 0; min-width: auto; }
 .row-code { flex-basis: 100%; display: grid; gap: 12px; }
 .row-code > .qr { justify-self: center; }
 .danger-link { font-size: var(--fs-small); }

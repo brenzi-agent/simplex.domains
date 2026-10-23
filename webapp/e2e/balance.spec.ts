@@ -1,8 +1,9 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { walletOf } from "../src/flow.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
+import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  addNameCode, control, FIT_SIZES, MOCK, onStep, payButton, search, searchName, sevenLetters, shot, startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered,
+  addNameCode, control, FIT_SIZES, keepOrder, MOCK, onStep, payButton, search, searchName, sevenLetters, shot, startOrder, takenOrder, registrationView, test, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
 const balanceRow = (page: Page) => onStep(page).locator(".list-row[data-key^='balance-']")
@@ -20,6 +21,20 @@ const actionsBeside = (row: Locator) => row.evaluate((r) => {
   const [box, words, acts] = [r, r.querySelector(".main")!, r.querySelector(".acts")!].map((n) => n.getBoundingClientRect())
   return { beside: acts.left >= words.right, offMiddle: Math.round(Math.abs((acts.top + acts.bottom) / 2 - (box.top + box.bottom) / 2)) }
 })
+
+// The least room between a line of a row's words, as drawn, and a chip or action level with it; Infinity when none is.
+const wordsRoom = (row: Locator) => row.evaluate((r) => {
+  const range = document.createRange()
+  range.selectNodeContents(r.querySelector(".main")!)
+  const words = [...range.getClientRects()]
+  const beside = [...r.querySelectorAll(":scope > .state, :scope > .acts > *")].map((n) => n.getBoundingClientRect()).filter((b) => b.width > 0)
+  const level = words.flatMap((w) => beside.filter((b) => Math.min(w.bottom, b.bottom) > Math.max(w.top, b.top)).map((b) => b.left - w.right))
+  return Math.round(Math.min(Infinity, ...level))
+})
+// the windows a balance row is drawn in: a laptop's and three phones', down to the narrowest
+const ROW_SIZES = [{ width: 1280, height: 800 }, { width: 390, height: 844 }, { width: 360, height: 780 }, { width: 320, height: 640 }]
+// the room a list row keeps between its parts (styles.css .list-row .acts)
+const ROW_GAP = 14
 
 // a page moved on to another invoice than `from`, rather than to a page of none
 const otherInvoice = (from: string) => (url: URL) => url.searchParams.get("order") !== null && url.searchParams.get("order") !== from
@@ -522,4 +537,29 @@ test("a difference below the card's least charge is offered in Bitcoin and Moner
   await payButton(page).click()
   await page.waitForURL(/\?order=/)
   await expect(onStep(page).getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+})
+
+// the service worker of a production build answers these pages before Playwright's routes in WebKit
+test.describe(() => {
+  test.use({ serviceWorkers: "block" })
+  for (const held of [false, true]) {
+    test(`a balance of a name of ${MAX_LABEL_LENGTH} wide letters keeps its words clear of its ${held ? "chip and the order holding it" : "Use and Refund"}, beside them or above, down to a 320 px phone`, async ({ page }) => {
+      const order = await keepOrder(page, "reg-balrow", "inv-balrow", "w".repeat(MAX_LABEL_LENGTH))
+      const view = registrationView(order, { phase: "taken", commitTx: "0x02",
+        balance: { amount: 10000, held, heldUntil: held ? new Date(Date.now() + 900_000).toISOString() : null, refunded: 0 } })
+      await page.route("**/api/**", (route) => route.fulfill({ status: 404, json: { error: "not_found" } }))
+      await page.route("**/api/registration/reg-balrow*", (route) => route.fulfill({ json: view }))
+      await page.route("**/api/invoice/inv-balrow*", (route) => route.fulfill({ json: { invoiceId: "inv-balrow", status: "paid", amount: 10000, currency: "usd",
+        expiresAt: new Date(Date.now() - 1000).toISOString(), kind: "name", registration: view, cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bcrt1q", paidInFull: true } }))
+      for (const size of ROW_SIZES) {
+        await page.setViewportSize(size)
+        await page.goto("/#/trademarks")
+        await page.goto("/#/names")
+        await expect(balanceRow(page)).toBeVisible()
+        await page.evaluate(() => document.fonts.ready)
+        expect(await wordsRoom(balanceRow(page)), `the room between the words and what is level with them at ${size.width}x${size.height}`).toBeGreaterThanOrEqual(ROW_GAP)
+        if (!held && size.width >= ROW_SIZES[1].width) expect(await actionsBeside(balanceRow(page)), `Use and Refund beside the words at ${size.width}x${size.height}`).toEqual({ beside: true, offMiddle: 0 })
+      }
+    })
+  }
 })
