@@ -54,12 +54,16 @@ const MOCKUP_FRAMES: Record<Place, number>[] = [{ heading: 125, actions: 587, bu
 // the least room on a laptop between a step's last link and the invest note under it
 const INVEST_GAP = 48
 
-// The screen in view fits the window at each size, its content above its actions' row; a step's heading and actions'
-// row stand where every step's do, which the caller compares. Captured for review when shots are asked for.
+// the height of a payment method's tile at each size, as the mockup draws it, whatever else the review holds
+const METHOD_TILES = [66, 72]
+
+// The screen in view fits the window at each size, its content above its actions' row and its methods' tiles at their
+// height; a step's heading and actions' row stand where every step's do, which the caller compares. Captured for review
+// when shots are asked for.
 async function fitsWindow(page: Page, name: string, frames?: Record<string, Frame[]>): Promise<void> {
   for (const [i, size] of FIT_SIZES.entries()) {
     await page.setViewportSize(size)
-    const measured = () => page.evaluate(() => {
+    const measured = () => page.evaluate((tile) => {
       const shown = document.querySelector("body > main > section")!
       // a step with no action gives its content the action row's room, down to the step's foot; one with only a link,
       // the empty place of a main button above it
@@ -74,9 +78,10 @@ async function fitsWindow(page: Page, name: string, frames?: Record<string, Fram
         overflow: Math.max(0, document.scrollingElement!.scrollHeight - innerHeight - footer),
         overlap: actions && content.length ? Math.max(0, Math.round(Math.max(...content.map((b) => b.bottom)) - actions.top)) : 0,
         split: split.map((n) => n.textContent),
+        tiles: [...shown.querySelectorAll(".method")].map((m) => Math.round(m.getBoundingClientRect().height)).filter((h) => h !== tile),
       }
-    })
-    await expect.poll(measured, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ overflow: 0, overlap: 0, split: [] })
+    }, METHOD_TILES[i])
+    await expect.poll(measured, { message: `${name} at ${size.width}x${size.height}` }).toEqual({ overflow: 0, overlap: 0, split: [], tiles: [] })
     if (frames) {
       const at = await page.evaluate(() => {
         const top = (selector: string) => {

@@ -373,7 +373,6 @@ h1 .long { word-break: break-all; }
 .review:has(.line) { gap: 8px; }
 .review:has(.line) .pay-with { --block-gap: 8px; }
 .review:has(.line) .trow { padding-block: 4px; }
-.review:has(.line) .method { height: 56px; }
 .screen-body:has(> .review .line) { --body-gap: 8px; }
 /* the balance's live region keeps its place in the review empty, taking no gap */
 .review > .balance-note:empty { margin-top: -14px; }
@@ -625,7 +624,6 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .order > .row { padding-inline: 16px 12px; }
   .table { padding: 2px 16px 4px; }
   .method { height: 72px; font-size: 14px; }
-  .review:has(.line) .method { height: 60px; }
   .review:has(.line) .order .name { font-size: 16px; }
   /* a QR is for another device; a phone opens its wallet from the link under the address */
   .qr-grid { grid-template-columns: minmax(0, 1fr); }
