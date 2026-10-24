@@ -8,7 +8,7 @@ import { qrSvg } from "../qr.ts"
 import {
   balanceRows, type BalanceRow, CODE_CHIPS, holderOf, EDIT_RETRY_MS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
   againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, nameRows, ORDER_CHIP_WORDS, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
-  reduceList, reduceRestore, REFUSALS, ROW_CHIPS, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
+  reduceList, reduceRestore, REFUSALS, ROW_CHIPS, rowShown, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
 import { heldWords } from "../screens/balance.ts"
 import { checkoutUrl, CODE_URL } from "../screens/routes.ts"
@@ -87,7 +87,7 @@ function showList(): void {
   store.setSeen(list.seen)
   lastChecked = list.checked
   if (!isRoute(listRoute)) return
-  if (listWaited || nameRows(list).every((o) => readIn(list, o))) {
+  if (listWaited || nameRows(list).every((o) => rowShown(list, o))) {
     listWaited = true
     draw("names", (signal) => buildNames(list, signal))
   } else drawLoading(NAMES_TITLE, asStep)
@@ -231,17 +231,11 @@ const emptyNames = (s: ListState) => asStep(screen({ title: NAMES_TITLE, lead: l
   el("div", { class: "card none" }, el("b", {}, "No names in this browser yet"),
     el("p", { class: "note center" }, "A name you register here shows in this list. To see a name you registered in another browser, add its name code."))))
 
-// Rows are drawn in order, each once its read and its name's answer are in or have failed, so none moves once drawn.
-const readIn = (s: ListState, o: store.OrderRecord) => {
-  const seen = s.seen[o.registrationId]
-  return s.unread.includes(o.registrationId) || (seen !== undefined && (seen.view.phase !== "registered" || seen.answer !== undefined))
-}
-
 function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
   const open = session.checkout()
   const orders = nameRows(s)
-  const unread = orders.findIndex((o) => !readIn(s, o))
+  const unread = orders.findIndex((o) => !rowShown(s, o))
   const shown = unread < 0 ? orders : orders.slice(0, unread)
   const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...shown.map((o) => orderRow(o, s))]
   const balances = balanceRows(s)

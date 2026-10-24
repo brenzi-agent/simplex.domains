@@ -3,7 +3,7 @@ import type { InvoiceView, RegistrationView, SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
   balanceRows, changesOf, CODE_CHIPS, holderOf, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
-  initialList, initialRestore, lapsed, lateLine, listedOrders, nameRows, ORDER_CHIP_WORDS, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
+  initialList, initialRestore, lapsed, lateLine, listedOrders, nameRows, ORDER_CHIP_WORDS, rowShown, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
   againLine, ranOut, registrableAgain, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../src/screens/names.ts"
 import type { CodeRecord, OrderRecord, PendingCode } from "../src/store.ts"
@@ -184,7 +184,11 @@ describe("balances", () => {
   const BALANCE = { amount: 10000, held: false, heldUntil: null, refunded: 0 }
   const orders = [record({ registrationId: "reg-taken" }), record({ registrationId: "reg-late", invoiceId: "inv-2" }), record({ registrationId: "reg-moved", invoiceId: "inv-3" }),
     record({ registrationId: "reg-plain", invoiceId: "inv-4" })]
-  const read = (s: ListState, id: string, view: RegistrationView, inv: InvoiceView | null = null) => reduceList(s, { type: "row-read", id, view, invoice: inv, now: NOW })
+  // a registered name's row is complete with its name's answer
+  const read = (s: ListState, id: string, view: RegistrationView, inv: InvoiceView | null = null) => {
+    const r = reduceList(s, { type: "row-read", id, view, invoice: inv, now: NOW })
+    return view.phase === "registered" ? reduceList(r, { type: "row-answered", id, answer: registered() }) : r
+  }
   const all = () => {
     let s = list({ orders })
     s = read(s, "reg-taken", registration({ id: "reg-taken", phase: "taken", balance: BALANCE }))
@@ -542,5 +546,37 @@ describe("edit", () => {
       expect(notSaved(f({ changes: { channel: CHANNEL }, sent: [] }))).toBe("The links were not saved.")
       expect(notSaved(f({ changes: { channel: CHANNEL }, sent: ["channel"] }))).toBe("The links were not saved.")
     })
+  })
+})
+
+describe("a row shown", () => {
+  const order = record({ registrationId: "reg-1" })
+  const registering = registration({ phase: "registering", label: "alice" })
+  const readAs = (s: ListState, view: RegistrationView) => reduceList(s, { type: "row-read", id: "reg-1", view, invoice: null, now: NOW })
+  const answered = (s: ListState) => reduceList(s, { type: "row-answered", id: "reg-1", answer: registered() })
+  it("keeps its last state while a read that finds it registered waits for its name's answer, which then replaces it", () => {
+    const seen = { ...initialList(stored({ orders: [order] }), null, { "reg-1": { view: registering, invoice: null } }, {}, NOW) }
+    expect(rowShown(seen, order)).toBe(true)
+    const read = readAs(seen, registeredView())
+    expect(rowShown(read, order)).toBe(true)
+    expect(read.seen["reg-1"].view.phase, "still drawn as last seen").toBe("registering")
+    const done = answered(read)
+    expect(done.seen["reg-1"]).toEqual({ view: registeredView(), invoice: null, answer: registered() })
+    expect(rowShown(done, order)).toBe(true)
+  })
+  it("of a name never seen, registered, waits for its name's answer", () => {
+    const read = readAs(list({ orders: [order] }), registeredView())
+    expect(rowShown(read, order)).toBe(false)
+    expect(rowShown(answered(read), order)).toBe(true)
+  })
+  it("marked not read stays shown when a late read finds it registered, until its name's answer", () => {
+    const unread = reduceList(list({ orders: [order] }), { type: "row-unread", id: "reg-1" })
+    expect(rowShown(unread, order)).toBe(true)
+    const read = readAs(unread, registeredView())
+    expect(rowShown(read, order)).toBe(true)
+    expect(answered(read).unread).toEqual([])
+  })
+  it("of an order in progress is shown with its read alone", () => {
+    expect(rowShown(readAs(list({ orders: [order] }), registering), order)).toBe(true)
   })
 })

@@ -713,3 +713,34 @@ test("Your names moves no row once drawn as its reads answer, on a browser's fir
     await context.close()
   }
 })
+
+test("a row drawn from the last reads stays drawn as it was, until its name registered meanwhile comes with its answer", async ({ page }) => {
+  const order = await keepOrder(page, "reg-stays", null, "staysregistering")
+  const now = Math.floor(Date.now() / 1000)
+  const registering = registrationView(order, { phase: "registering", commitTx: "0x02", registerTx: "0x03" })
+  await page.evaluate(([id, view]) => localStorage.setItem("simplex-names-seen", JSON.stringify({ [id]: { view, invoice: null } })), [order.registrationId, registering] as const)
+  await page.route(`**/api/registration/${order.registrationId}*`, (route) => route.fulfill({ json: registrationView(order, { phase: "registered", commitTx: "0x02", registerTx: "0x03", expiresAt: now + ROW_YEAR_S }) }))
+  await page.route("**/api/name/**", async (route) => {
+    await new Promise((wait) => setTimeout(wait, ROW_READ_MS))
+    await route.fulfill({ json: { status: "registered", entities: [linkedChat("contact")], owner: order.owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId,
+      records: { contact: contactLink("R1"), channel: "" }, recordsNonce: 0, expiresAt: now + ROW_YEAR_S, tld: "simplex", community: null } })
+  })
+  // every frame from the first with the row, which a frame without it records as gone
+  await recordFrames(page, () => {
+    const w = window as unknown as { __rowSeen?: boolean }
+    const row = document.querySelector(".list-row")
+    w.__rowSeen ||= row !== null
+    if (!w.__rowSeen) return null
+    return [row ? row.querySelector(".chip")?.textContent ?? "no chip" : "gone", !!document.querySelector("body > main .end-links")]
+  }, true)
+  await page.goto("about:blank")
+  await page.goto("/#/names")
+  await expect(page.locator(".list-row .chats > *")).toHaveCount(1)
+  await page.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))))
+  const frames = await recordedFrames<[string, boolean]>(page)
+  // from the first frame with the row, every frame has it and the end links, first as "Registering", then registered with its chat
+  expect(frames.length, "frames with the row").toBeGreaterThan(1)
+  expect(frames.every(([, end]) => end), "the end links in every frame with the row").toBe(true)
+  expect([...new Set(frames.map(([chip]) => chip))], "the row's chip, frame by frame").toEqual(["Registering", "no chip"])
+})
+

@@ -13,6 +13,8 @@ export interface ListState extends Stored {
   hold: Hold | null
   now: number
   seen: Record<string, RowSeen>
+  // a read that found the name registered, kept until the name's answer comes with it
+  next: Record<string, RowSeen>
   unread: string[]
   checked: Record<string, CodeCheck>
   // when a code whose check met a rate limit is checked again, on the service's clock
@@ -43,7 +45,14 @@ const idsOf = (s: Stored) => s.orders.map((o) => o.registrationId)
 export function initialList(stored: Stored, hold: Hold | null, seen: Record<string, RowSeen>, checked: Record<string, CodeCheck>, now: number): ListState {
   const known = stored.codes.map((c) => c.code).filter((c) => checked[c] !== "unchecked")
   const unreplaced = stored.orders.filter((o) => !o.replacedBy).map((o) => o.registrationId)
-  return { ...stored, hold, now, seen: keep(seen, unreplaced), unread: [], checked: keep(checked, known), checkAgainAt: {}, finding: {}, asking: false, shownCode: null }
+  return { ...stored, hold, now, seen: keep(seen, unreplaced), next: {}, unread: [], checked: keep(checked, known), checkAgainAt: {}, finding: {}, asking: false, shownCode: null }
+}
+
+// A row is drawn once its read, and a registered name's answer, are in or have failed, and then stays drawn as it was last
+// seen until a new answer replaces it.
+export function rowShown(s: ListState, o: OrderRecord): boolean {
+  const seen = s.seen[o.registrationId]
+  return s.unread.includes(o.registrationId) || (seen !== undefined && (seen.view.phase !== "registered" || seen.answer !== undefined))
 }
 
 export const hasRecords = (s: Stored) => s.orders.length > 0 || s.pending.length > 0 || s.codes.length > 0
@@ -56,7 +65,7 @@ export function reduceList(s: ListState, e: ListEvent): ListState {
       const { type: _, ...stored } = e
       const unreplaced = new Set(s.orders.filter((o) => !o.replacedBy).map((o) => o.registrationId))
       const ids = idsOf(stored).filter((id) => !(unreplaced.has(id) && stored.orders.find((o) => o.registrationId === id)?.replacedBy))
-      return { ...s, ...stored, seen: keep(s.seen, ids), unread: s.unread.filter((id) => ids.includes(id)),
+      return { ...s, ...stored, seen: keep(s.seen, ids), next: keep(s.next, ids), unread: s.unread.filter((id) => ids.includes(id)),
         checked: keep(s.checked, stored.codes.map((c) => c.code)), checkAgainAt: keep(s.checkAgainAt, stored.codes.map((c) => c.code)), finding: keep(s.finding, stored.pending.map((p) => p.ownerCode)), asking: s.asking && hasRecords(stored),
         shownCode: s.shownCode !== null && ids.includes(s.shownCode) ? s.shownCode : null }
     }
@@ -64,10 +73,16 @@ export function reduceList(s: ListState, e: ListEvent): ListState {
       const o = s.orders.find((r) => r.registrationId === e.id)
       if (!o || (o.replacedBy && !moneyReached(e.invoice))) return s
       const last = s.seen[e.id]
-      const kept = last?.view.phase === "registered" && e.view.phase === "registered" ? { answer: last.answer } : {}
+      if (e.view.phase === "registered" && last?.view.phase !== "registered") return { ...s, now: e.now, next: { ...s.next, [e.id]: { view: e.view, invoice: e.invoice } } }
+      const kept = last?.view.phase === "registered" ? { answer: last.answer } : {}
       return { ...s, now: e.now, seen: { ...s.seen, [e.id]: { view: e.view, invoice: e.invoice, ...kept } }, unread: s.unread.filter((id) => id !== e.id) }
     }
-    case "row-answered": return s.seen[e.id] ? { ...s, seen: { ...s.seen, [e.id]: { ...s.seen[e.id], answer: e.answer } } } : s
+    case "row-answered": {
+      const { [e.id]: read, ...next } = s.next
+      const seen = read ?? s.seen[e.id]
+      if (!seen) return s
+      return { ...s, next, seen: { ...s.seen, [e.id]: { ...seen, answer: e.answer } }, unread: read ? s.unread.filter((id) => id !== e.id) : s.unread }
+    }
     case "row-unread": return ordered(e.id) && !s.unread.includes(e.id) ? { ...s, unread: [...s.unread, e.id] } : s
     case "code-toggled": return { ...s, shownCode: s.shownCode === e.id ? null : ordered(e.id) ? e.id : s.shownCode }
     case "code-read": {
