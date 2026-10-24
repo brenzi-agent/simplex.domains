@@ -819,6 +819,34 @@ test("a row drawn not read after the bound keeps its height on a phone when its 
   expect([...new Set(frames.map(([, height, end]) => `${height} ${end}`))], "the row's height and the end links' top").toHaveLength(1)
 })
 
+// what a code's row says after "added": a long date and a short one
+const CODE_DATES = ["2026-09-24T10:00:00Z", "2026-05-01T10:00:00Z"]
+
+test("a code's row keeps its lines and height as its chip turns from Checking to Used, for a long and a short date", async ({ page }) => {
+  for (const size of SIZES) for (const addedAt of CODE_DATES) {
+    await page.setViewportSize(size)
+    await page.goto("/#/trademarks")
+    await page.evaluate((at) => {
+      localStorage.clear()
+      localStorage.setItem("simplex-names:code:SN6-ROWFIT", JSON.stringify({ code: "SN6-8M7E3-SF9WP-JEBEZ-VFNC9", minLength: 6, years: 2, addedAt: at }))
+    }, addedAt)
+    await page.route("**/api/code/check", async (route) => {
+      await new Promise((wait) => setTimeout(wait, ROW_READ_MS))
+      await route.fulfill({ json: { minLength: 6, years: 2, state: "used" } })
+    })
+    await rowFrames(page)
+    await page.goto("about:blank")
+    await page.goto("/#/names")
+    await expect(page.locator(".list-row .chip")).toHaveText("Used")
+    await page.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))))
+    const frames = await recordedFrames<[string, number, number | null]>(page)
+    const at = `${size.width}x${size.height}, added ${addedAt.slice(0, 10)}`
+    expect([...new Set(frames.map(([chip]) => chip))], `${at}: the chip, frame by frame`).toEqual(["Checking", "Used"])
+    expect([...new Set(frames.map(([, height, end]) => `${height} ${end}`))], `${at}: the row's height and the end links' top`).toHaveLength(1)
+    await page.unrouteAll({ behavior: "wait" })
+  }
+})
+
 test("a read that does not answer leaves the row's place to the reading note, then draws it as last known and not read, and the list goes on", async ({ page }) => {
   // the newest row first, whose read the older one's waits behind
   await keepOrder(page, "reg-hung1", null, "neveranswered")

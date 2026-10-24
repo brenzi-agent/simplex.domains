@@ -30,6 +30,8 @@ const UNREAD_RETRY_MS = 5_000
 const HOME = "/#/"
 const NAMES_TITLE = "Your names"
 const READING = "Reading your names…"
+const CODE_CHECKING = "Checking"
+const CODE_CHIP_WORDS = [CODE_CHECKING, ROW_CHIPS.unchecked, ...Object.values(CODE_CHIPS).map(([words]) => words)]
 const NAMES = "/#/names"
 
 // a row's action keeps focus over a redraw by its row's key and its own; one that opens a popup says so
@@ -305,7 +307,7 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
 }
 
 const sizer = (...kids: Kid[]) => el("span", { class: "sizer", "aria-hidden": "true" }, ...kids)
-const chipRoom = (shown: HTMLElement) => el("span", { class: "room" }, shown, ...ORDER_CHIP_WORDS.map((words) => sizer(el("span", { class: "dot" }), words)))
+const chipRoom = (shown: HTMLElement, words = ORDER_CHIP_WORDS) => el("span", { class: "room" }, shown, ...words.map((w) => sizer(el("span", { class: "dot" }), w)))
 
 function rowChip(s: ListState, o: store.OrderRecord, seen: RowSeen | undefined): HTMLElement | null {
   if (s.unread.includes(o.registrationId) || !seen) return chip(ROW_CHIPS.unchecked, "warn")
@@ -361,12 +363,12 @@ function codeRow(c: store.CodeRecord, s: ListState, signal: AbortSignal): HTMLEl
   const checkAgainAt = s.checkAgainAt[c.code]
   const copy = copyButton(c.code, "text-link")
   copy.dataset.focus = `${c.code}-copy`
-  const [text, tone] = check === undefined ? ["Checking", ""] : check === "unchecked" ? ["Not checked", "warn"] : CODE_CHIPS[check]
+  const [text, tone] = check === undefined ? [CODE_CHECKING, ""] : check === "unchecked" ? [ROW_CHIPS.unchecked, "warn"] : CODE_CHIPS[check]
   // an unused code registers the names this tab finds from now on
   const use = check === "unused" ? small("Use", `${c.code}-use`, () => { session.setActiveCode({ display: c.code, minLength: c.minLength, years: c.years }); go(HOME) }) : null
   const state = checkAgainAt === undefined ? chip(text, tone, check === undefined || check === "unused") : chip("", "warn")
   const node = row(c.code, el("b", { class: "mono" }, c.code), `A free name of ${c.minLength} or more letters, for ${c.years} years${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000)}`,
-    state, [use, copy])
+    chipRoom(state, CODE_CHIP_WORDS), [use, copy])
   node.classList.add("code-row")
   // the count goes in once the chip is in its row, as a held row's does
   if (checkAgainAt !== undefined) waitOut(state, Math.max(1, Math.ceil((checkAgainAt - api.serviceNow()) / 1000)), (left) => `Checking again in ${left}`, () => undefined, signal)
