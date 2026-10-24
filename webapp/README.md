@@ -109,7 +109,7 @@ SLOTS=3 npx playwright test
 FIREFOX_158=<Firefox 158 executable> SLOTS=3 npx playwright test --project=firefox158
 ```
 
-`ulimit -c 0`, in each shell, keeps a browser or chain that crashes from leaving a core file. Slot i has its chain on port 8545+i, its deployment in `dev/local-chain-i.json` and its mock on 8099+i; Playwright starts its page server on 5173+i, or uses one already there. `SLOTS` sets the workers too (4 by default); against a single backend, such as Docker Compose's, run with `SLOTS=1`. A slot takes about 1 GB of memory with its browser. A long run grows each chain's memory, so restart `start.sh` between full runs.
+`ulimit -c 0`, in each shell, keeps a browser or chain that crashes from leaving a core file. Slot i has its chain on port 8545+i, its deployment in `dev/local-chain-i.json` and its mock on 8099+i; Playwright starts its page server on 5173+i, or uses one already there. `SLOTS` sets the workers too (4 by default; WebKit's at most 2, as its frames are drawn on the CPU); against a single backend, such as Docker Compose's, run with `SLOTS=1`. A slot takes about 1 GB of memory with its browser. A long run grows each chain's memory, so restart `start.sh` between full runs.
 
 `npx playwright test` runs the `chromium`, `firefox` and `webkit` projects in one pool; `--project=chromium` (or `firefox`, `webkit`) runs one browser. Where memory is short, run the three one after another.
 

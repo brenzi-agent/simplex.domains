@@ -11,6 +11,7 @@ const FIREFOX = { ...devices["Desktop Firefox"], viewport: { width: 1280, height
 const SAFARI = { ...devices["Desktop Safari"], viewport: { width: 1280, height: 900 } }
 
 const FRAMES = /frames\.spec\.ts$/
+const WEBKIT_WORKERS = 2
 // A Firefox 158 or later, named by FIREFOX_158. It reports its own version rather than the one Playwright's device names,
 // and finds its own libraries, which the library path set for Playwright's bundled browsers would replace.
 const FIREFOX_158 = process.env.FIREFOX_158
@@ -31,7 +32,8 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: CHROME },
     { name: "firefox", testIgnore: FRAMES, use: FIREFOX },
-    { name: "webkit", testIgnore: FRAMES, use: SAFARI },
+    // WebKit draws its frames on the CPU, and three or more workers at once starve the frames its motion checks count
+    { name: "webkit", testIgnore: FRAMES, workers: WEBKIT_WORKERS, use: SAFARI },
     ...FIREFOX_158_PROJECT,
   ],
   webServer: BASE_URL ? undefined : Array.from({ length: SLOTS }, (_, slot) => ({
