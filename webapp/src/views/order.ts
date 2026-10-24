@@ -1253,7 +1253,7 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s), action },
     el("p", { class: "note center" }, ...orderLine(s)),
     stages(failedAt),
-    alertBox("danger", "alert", alert.title, alert.retry ? ["Your order is kept: try again. If it still fails, write to ", ...support] : ["Write to ", ...support]),
+    alertBox("danger", "alert", alert.title, alert.retry ? ["If Try again still fails, write to ", ...support] : ["Write to ", ...support]),
     actionNote(s, signal),
     referenceLine(invoice?.invoiceId ?? view.id))
 }
