@@ -270,7 +270,15 @@ test("Register without links that loses a race follows the order as it is now, s
   await expect(onStep(page).getByText("That did not go through. Nothing changed. Try again in a moment.")).toBeVisible()
   await expect(onStep(page).getByRole("button", { name: "Register without links" })).toBeEnabled()
 
-  // another browser moved the order on first: the page follows the view the refusal carries, and says nothing failed
+  // the order lapsed first, failed with its links still refused, which keeps the same screen
+  await page.unrouteAll({ behavior: "wait" })
+  const lapsed = { ...view, version: view.version + 1, phase: "failed", error: "The name was not signed in time" }
+  await page.route("**/api/registration/*/name", (route) => route.fulfill({ status: 409, json: { error: "registration_changed", registration: lapsed } }))
+  await onStep(page).getByRole("button", { name: "Register without links" }).click()
+  await expect(onStep(page).getByRole("heading", { name: "Paid, not registered" })).toBeVisible()
+  await expect(onStep(page).getByRole("button", { name: "Register without links" })).toBeEnabled()
+  await expect(onStep(page).getByRole("button", { name: "Register without links" })).not.toHaveAttribute("aria-busy", "true")
+
   await page.unrouteAll({ behavior: "wait" })
   const moved = { ...view, version: view.version + 1, moves: 1, phase: "queued", linksRefused: false, label: null, revealAfter: null, revealBefore: null, commitTx: null }
   await page.route("**/api/registration/*/name", (route) => route.fulfill({ status: 409, json: { error: "registration_changed", registration: moved } }))

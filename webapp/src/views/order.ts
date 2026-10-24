@@ -1157,8 +1157,11 @@ async function moveWithoutLinks(): Promise<void> {
     const limit = e instanceof api.ApiError && e.code === "move_limit"
     if (e instanceof api.TermsChanged) return askTerms(gen, record.label, e, true)
     const now = e instanceof api.ApiError && e.code === "registration_changed" ? api.changedView(e) : null
-    if (now && !sameStep(view, now)) return answer(gen, { type: "answered", seq: ++reads, now: api.serviceNow(), invoice: state.invoice && { ...state.invoice, registration: now },
-      view: now, record: state.record, cardSubmittedAt: state.cardSubmittedAt, reserved: state.reserved })
+    if (now && !sameStep(view, now)) {
+      answer(gen, { type: "answered", seq: ++reads, now: api.serviceNow(), invoice: state.invoice && { ...state.invoice, registration: now },
+        view: now, record: state.record, cardSubmittedAt: state.cardSubmittedAt, reserved: state.reserved })
+      return answer(gen, { type: "move-failed", note: null })
+    }
     answer(gen, { type: "move-failed", note: limit ? moveLimitNote(reference) : warning("That did not go through. Nothing changed. Try again in a moment.") })
     if (now) reread(gen)
   }

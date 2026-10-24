@@ -627,3 +627,11 @@ describe("sameStep", () => {
     expect(sameStep(refused, { ...refused, moves: 1 })).toBe(false)
   })
 })
+
+describe("a move ended without a note", () => {
+  it("ends the move's busy state on the same screen", () => {
+    const moving = reduce(read(null, registration({ ...committed, linksRefused: true })), { type: "move-started" })
+    expect(moving.busy).toBe("move")
+    expect(reduce(moving, { type: "move-failed", note: null })).toMatchObject({ busy: null, note: null })
+  })
+})

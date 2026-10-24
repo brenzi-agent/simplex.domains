@@ -79,7 +79,7 @@ export type OrderEvent =
   | { type: "reorder-failed"; note: Note }
   | { type: "price-changed"; price: number }
   | { type: "move-started" }
-  | { type: "move-failed"; note: Note }
+  | { type: "move-failed"; note: Note | null }
   | { type: "retry-started" }
   | { type: "retry-failed"; note: Note; codeRefused: boolean }
   | { type: "code-checked" }
