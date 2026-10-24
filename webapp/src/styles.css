@@ -357,7 +357,7 @@ html.framed body > main:empty { min-height: calc(var(--step-h) + var(--screen-to
 .link-fields > a { justify-self: start; font-size: 15px; }
 .link-fields > a::before { content: "+ "; }
 .link-field .field { height: 52px; padding-inline: 18px 8px; }
-.link-field .field:has(.entity:not(.skeleton)):not(:focus-within) > svg.i { display: none; }
+.link-field .field:has(.entity):not(:focus-within) > svg.i { display: none; }
 .unlink { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--ink-soft); cursor: pointer; }
 .unlink svg.i { width: 12px; height: 12px; }
 .unlink:hover { background: var(--chip); }
@@ -378,9 +378,10 @@ html.framed body > main:empty { min-height: calc(var(--step-h) + var(--screen-to
    A link whose profile could not be read is already in the field, so its text is not shown again. */
 .link-field .preview { display: flex; flex: 0 1 auto; max-width: 50%; min-width: 0; }
 .link-field .preview > .raw { display: none; }
-/* a link whose profile shows is drawn as that profile, its text coming back in its place while the field is focused */
-.link-field .field:has(.entity:not(.skeleton)):not(:focus-within) input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
-.link-field .field:has(.entity:not(.skeleton)):not(:focus-within) .preview { flex: 1; max-width: none; margin-left: -6px; }
+/* a link whose profile shows, or is read, is drawn as that profile, its text coming back in its place while the field is focused */
+.link-field .field:has(.entity):not(:focus-within) input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
+.link-field .field:has(.entity):not(:focus-within) .preview { flex: 1; max-width: none; margin-left: -6px; }
+.link-field .entity.skeleton { width: auto; height: 28px; border-radius: 14px; }
 .preview .entity { flex: 1; }
 /* while the field is focused its link shows alone, from its start, at the field's whole width */
 .link-field .field:focus-within .preview { display: none; }

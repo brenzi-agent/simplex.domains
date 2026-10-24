@@ -437,6 +437,31 @@ test("a link's late preview never fills the field once it holds another link, wh
   await control(request, "search", { fetchDelays: {} })
 })
 
+test("a link's profile comes in the very box its place held while it was read, at a laptop's and a phone's width", async ({ page, request }) => {
+  const box = async (locator: Locator) => {
+    await expect(locator).toBeVisible()
+    const b = (await locator.boundingBox())!
+    return [b.x, b.y, b.width, b.height].map(Math.round)
+  }
+  for (const [i, size] of FIT_SIZES.entries()) {
+    // a link no earlier run has had read, as the service keeps a read profile for minutes
+    const link = contactLink(`Vf${i}${Date.now().toString(36)}`)
+    await page.setViewportSize(size)
+    await search(page, uniqueLabel("place"))
+    await page.getByRole("button", { name: "Register" }).click()
+    await control(request, "search", { fetchDelays: { [link]: SLOW_FETCH_MS } })
+    try {
+      const field = onStep(page).getByRole("textbox", { name: "Link", exact: true })
+      await field.fill(link)
+      await field.blur()
+      const held = await box(onStep(page).locator(".link-field .entity.skeleton"))
+      expect(await box(onStep(page).locator(".link-field .entity:not(.skeleton)")), `${size.width}x${size.height}`).toEqual(held)
+    } finally {
+      await control(request, "search", { fetchDelays: {} })
+    }
+  }
+})
+
 test("Continue pressed while a link is checked is busy where it stands, says so, and goes on once the check ends", async ({ page, request }) => {
   const slow = contactLink("UnrE")
   await control(request, "search", { fetchDelays: { [slow]: SLOW_FETCH_MS } })
