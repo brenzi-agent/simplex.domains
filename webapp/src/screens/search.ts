@@ -147,38 +147,36 @@ export function balanceHint({ amount, held, heldUntil }: AppliedBalance, price: 
   return ["Paid from your balance.", price < amount ? `${dollars(amount - price)} stays in it.` : null]
 }
 
-export interface CodeCover { minLength: number; years: number }
+// minLength is null for a code order restored without its code, which only the service can judge
+export interface CodeCover { minLength: number | null; years: number }
 
-// What a code order's code pays for: a name of the code's length or more, for the order's years. A browser that restored
-// the order has not got its code, which pays at least for the order's own name. An order paid with money has none.
 export function codeCover(record: OrderRecord): CodeCover | null {
   if (record.method !== "code") return null
   const code = record.prepaidCode ? parseNameCode(record.prepaidCode) : null
-  return { minLength: code?.kind === "prepaid" ? code.minLength : record.label.length, years: record.years }
+  return { minLength: code?.kind === "prepaid" ? code.minLength : null, years: record.years }
 }
 
-// Why an order cannot move to an available name: its code does not pay for one so short, or the name costs more than
-// the order is worth.
+const tooShort = (cover: CodeCover, label: string) => cover.minLength !== null && label.length < cover.minLength
+
 export function moveBar(record: OrderRecord, label: string, price: number): "uncovered" | "dearer" | null {
   const cover = codeCover(record)
-  if (cover) return label.length < cover.minLength ? "uncovered" : null
+  if (cover) return tooShort(cover, label) ? "uncovered" : null
   return price > record.paid ? "dearer" : null
 }
 
-// What pays for an available name an order moves to, in one or two sentences, the second kept on one line; a cheaper
-// name keeps the rest as the order's balance, which is said before the buyer chooses it.
+// the second sentence is kept on one line
 export function moveHint(record: OrderRecord, label: string, price: number): [string, string | null] {
   const cover = codeCover(record)
-  if (cover) return label.length < cover.minLength ? [`Your code pays for a name of ${cover.minLength} or more letters.`, `This name has ${label.length}.`] : ["Covered by your code", null]
+  if (cover?.minLength === null) return ["Free with your code, if it covers a name this long", null]
+  if (cover) return tooShort(cover, label) ? [`Your code pays for a name of ${cover.minLength} or more letters.`, `This name has ${label.length}.`] : ["Covered by your code", null]
   const paid = dollars(record.paid)
   if (price > record.paid) return [`This name costs more than the ${paid} your order is worth.`, null]
   return [price < record.paid ? `Uses ${dollars(price)} of your ${paid}; the rest stays as your balance.` : "Covered by your payment", null]
 }
 
-// what a moving order keeps, and which names it can move to
 export function keptWords(record: OrderRecord): [string, string] {
   const cover = codeCover(record)
-  if (cover) return ["Your code is kept.", `It pays for another name of ${cover.minLength} or more letters, for ${cover.years} years.`]
+  if (cover) return ["Your code is kept.", `It pays for another name ${cover.minLength === null ? "it covers" : `of ${cover.minLength} or more letters`}, for ${cover.years} years.`]
   const worth = dollars(record.paid)
   return [`Your payment is kept: ${worth}.`, `Choose another name of up to ${worth}; nothing more is charged.`]
 }

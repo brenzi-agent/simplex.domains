@@ -368,8 +368,12 @@ describe("a move", () => {
     expect(codeCover(coded())).toEqual({ minLength: 9, years: 2 })
     expect(codeCover(coded({ years: 5 }))).toEqual({ minLength: 9, years: 5 })
   })
-  it("of a code order restored without its code is paid for names at least as long as the order's own", () => {
-    expect(codeCover(coded({ prepaidCode: undefined }))).toEqual({ minLength: "alice1bakes".length, years: 2 })
+  it("of a code order restored without its code states no length, offers every name and leaves the cover to the service", () => {
+    const restored = coded({ prepaidCode: undefined })
+    expect(codeCover(restored)).toEqual({ minLength: null, years: 2 })
+    expect(moveBar(restored, "alice2", 20000)).toBeNull()
+    expect(moveHint(restored, "alice2", 20000)).toEqual(["Free with your code, if it covers a name this long", null])
+    expect(keptWords(restored)).toEqual(["Your code is kept.", "It pays for another name it covers, for 2 years."])
   })
   it("of a paid order has no code to pay for it", () => {
     expect(codeCover(record())).toBeNull()
