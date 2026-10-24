@@ -327,22 +327,27 @@ async function routedCardOrder(page: Page, o: CardOrder): Promise<() => Promise<
   return () => page.goto(`/?order=${CARD_INVOICE}`).then(() => undefined)
 }
 
-test("a card invoice opened in place of a new Bitcoin one says why in the card page's one notice, which fits above Pay", async ({ page }) => {
-  await search(page, uniqueLabel("cardinst"))
-  await toReview(page)
-  await page.getByRole("radio", { name: "Card" }).click()
-  const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
-  await payButton(page).click()
-  await page.waitForURL(/\?order=/)
-  // a copy of the tab, with its checkout and name code, pays with Bitcoin, and the order's card invoice opens instead
-  const copy = await page.context().newPage()
-  await copy.addInitScript(([key, value]) => { if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, value) }, [CHECKOUT_KEY, checkout])
-  await withStripeKey(copy)
-  await cardFits(copy, /^This name already has a card invoice from an earlier try, so it opened instead of a new Bitcoin one\.$/, async () => {
-    await copy.goto("/#/checkout")
-    await copy.getByRole("radio", { name: "Bitcoin" }).click()
-    await payButton(copy).click()
-    await copy.waitForURL(/\?order=/)
+// a production build's service worker answers the page itself, past the route that gives it a Stripe key
+test.describe(() => {
+  test.use({ serviceWorkers: "block" })
+
+  test("a card invoice opened in place of a new Bitcoin one says why in the card page's one notice, which fits above Pay", async ({ page }) => {
+    await search(page, uniqueLabel("cardinst"))
+    await toReview(page)
+    await page.getByRole("radio", { name: "Card" }).click()
+    const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
+    await payButton(page).click()
+    await page.waitForURL(/\?order=/)
+    // a copy of the tab, with its checkout and name code, pays with Bitcoin, and the order's card invoice opens instead
+    const copy = await page.context().newPage()
+    await copy.addInitScript(([key, value]) => { if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, value) }, [CHECKOUT_KEY, checkout])
+    await withStripeKey(copy)
+    await cardFits(copy, /^This name already has a card invoice from an earlier try, so it opened instead of a new Bitcoin one\.$/, async () => {
+      await copy.goto("/#/checkout")
+      await copy.getByRole("radio", { name: "Bitcoin" }).click()
+      await payButton(copy).click()
+      await copy.waitForURL(/\?order=/)
+    })
   })
 })
 
