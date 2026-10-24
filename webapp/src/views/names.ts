@@ -58,8 +58,7 @@ export function seenRegistered(view: api.RegistrationView, invoice: api.InvoiceV
 const storedNow = (): Stored => ({ orders: store.orders(), pending: store.pendingCodes(), codes: store.codes(), canPersist: store.canPersist() })
 const storedEvent = (): ListEvent => ({ type: "stored", ...storedNow(), hold: tabHold() })
 
-// how long Your names keeps the screen before it while its orders are read
-const LIST_WAIT_MS = 3000
+const LIST_READS_WAIT_MS = 3000
 let listWaited = false
 
 export function historyPage(): void {
@@ -72,7 +71,7 @@ export function historyPage(): void {
   readCodes.clear()
   list = initialList(storedNow(), tabHold(), store.seen<RowSeen>(), lastChecked, api.serviceNow())
   listWaited = false
-  after(LIST_WAIT_MS, () => {
+  after(LIST_READS_WAIT_MS, () => {
     listWaited = true
     showList()
   }, reads.signal)

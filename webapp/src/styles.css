@@ -378,7 +378,7 @@ html.framed body > main:empty { min-height: calc(var(--step-h) + var(--screen-to
    A link whose profile could not be read is already in the field, so its text is not shown again. */
 .link-field .preview { display: flex; flex: 0 1 auto; max-width: 50%; min-width: 0; }
 .link-field .preview > .raw { display: none; }
-/* a link whose profile shows, or is read, is drawn as that profile, its text coming back in its place while the field is focused */
+/* a link whose profile shows is drawn as that profile, its text coming back in its place while the field is focused */
 .link-field .field:has(.entity):not(:focus-within) input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
 .link-field .field:has(.entity):not(:focus-within) .preview { flex: 1; max-width: none; margin-left: -6px; }
 .link-field .entity.skeleton { width: auto; height: 28px; border-radius: 14px; }
