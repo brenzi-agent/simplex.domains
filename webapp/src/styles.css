@@ -654,6 +654,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   .list-row .acts { flex: 1 1 auto; justify-content: flex-end; min-height: 32px; }
   .list-row .acts > .chats { margin-right: auto; }
   .list-row .room { justify-items: start; }
+  .code-row .room { justify-items: end; }
   /* a code on one line across the row, its state beside its actions under it, at the right */
   .code-row .main { flex-basis: 100%; }
   .code-row .state { margin-left: auto; }

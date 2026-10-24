@@ -847,6 +847,26 @@ test("a code's row keeps its lines and height as its chip turns from Checking to
   }
 })
 
+test("a phone draws each code's chip at its actions, whatever its word", async ({ page }) => {
+  await page.setViewportSize(SIZES[1])
+  await page.goto("/#/trademarks")
+  await page.evaluate(() => {
+    localStorage.clear()
+    for (const [code, at] of [["SN6-8M7E3-SF9WP-JEBEZ-VFNC9", "2026-05-01T10:00:00Z"], ["SN6-Q74DT-BX6MZ-DW6V5-83MGW", "2026-05-02T10:00:00Z"]]) {
+      localStorage.setItem(`simplex-names:code:${code}`, JSON.stringify({ code, minLength: 6, years: 2, addedAt: at }))
+    }
+  })
+  await page.route("**/api/code/check", async (route) => {
+    const { code } = route.request().postDataJSON() as { code: string }
+    await route.fulfill({ json: { minLength: 6, years: 2, state: code.startsWith("SN6-8M7E3") ? "used" : "unused" } })
+  })
+  await page.goto("/#/names")
+  await expect(page.locator(".code-row .chip")).toHaveText(["Used", "Unused"])
+  const gaps = await page.locator(".code-row").evaluateAll((rows) => rows.map((row) =>
+    Math.round(row.querySelector(".acts > :first-child")!.getBoundingClientRect().left - row.querySelector(".chip")!.getBoundingClientRect().right)))
+  expect(gaps[0], `the gap from each chip to its row's first action: ${gaps}`).toBe(gaps[1])
+})
+
 test("a read that does not answer leaves the row's place to the reading note, then draws it as last known and not read, and the list goes on", async ({ page }) => {
   // the newest row first, whose read the older one's waits behind
   await keepOrder(page, "reg-hung1", null, "neveranswered")
