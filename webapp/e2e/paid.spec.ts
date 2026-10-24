@@ -64,7 +64,8 @@ test("a stage with no timed wait, as the register transaction being mined, draws
   await page.reload()
   const mined = page.locator("body > main .stage.active")
   await expect(mined).toContainText("Registering")
-  expect(await drawnFill(mined), "the untimed stage's drawn fill").toBe(0)
+  // a node the page redraws between finding and reading it has no style; the stage drawn again is read again
+  await expect.poll(() => drawnFill(mined), { message: "the untimed stage's drawn fill" }).toBe(0)
   await page.unrouteAll({ behavior: "wait" })
 })
 
