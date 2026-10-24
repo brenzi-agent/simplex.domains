@@ -658,35 +658,38 @@ const listRows = (page: Page) => page.locator("body > main").evaluate((main) => 
   return { top: box.top, height: box.height, main: row.querySelector(".main")!.getBoundingClientRect().width }
 }))
 
-test("Your names opened again, in a new tab too, draws each order as last read, so its reads move no row", async ({ page, context }) => {
-  const sizes = { width: 1280, height: 800 }
-  const now = Math.floor(Date.now() / 1000)
-  const kept = [
-    [await keepOrder(page, "reg-still0", null, "studio42"), { phase: "registered", commitTx: "0x02", registerTx: "0x03", expiresAt: now + ROW_YEAR_S }],
-    [await keepOrder(page, "reg-still1", null, "w".repeat(MAX_LABEL_LENGTH)), { phase: "committed", commitTx: "0x02" }],
-    [await keepOrder(page, "reg-still2", null, "bakerypaid"), { phase: "queued" }],
-  ] as const
-  let answered = 0
-  for (const [order, change] of kept) {
-    await context.route(`**/api/registration/${order.registrationId}*`, async (route) => {
-      await new Promise((wait) => setTimeout(wait, ROW_READ_MS))
-      await route.fulfill({ json: registrationView(order, change) })
-      answered++
-    })
-  }
-  await context.route("**/api/name/**", (route) => route.fulfill({ json: { status: "registered", entities: [], owner: kept[0][0].owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId,
-    records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt: now + ROW_YEAR_S, tld: "simplex", community: null } }))
-  for (const tab of [page, await context.newPage()]) {
-    await tab.setViewportSize(sizes)
-    const before = answered
-    await tab.goto("/#/names")
-    await expect(onStep(tab).getByRole("heading", { name: "Your names" })).toBeVisible()
-    const drawn = await listRows(tab)
-    await expect.poll(() => answered, "the rows' reads").toBe(before + kept.length)
-    await tab.evaluate(() => new Promise(requestAnimationFrame))
-    const read = await listRows(tab)
-    // the first opening knows nothing yet: a row whose chip changes keeps its name and line's width
-    if (tab === page) expect(read[1].main, "the committed row's name and line, from Checking to Registering").toBe(drawn[1].main)
-    else expect(read, "each row once its read answered").toEqual(drawn)
+test("Your names moves no row as its reads answer, on a browser's first opening and in a new tab after it", async ({ browser }) => {
+  for (const size of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    const context = await browser.newContext({ viewport: size })
+    const page = await context.newPage()
+    const now = Math.floor(Date.now() / 1000)
+    const kept = [
+      [await keepOrder(page, "reg-still0", null, "studio42"), { phase: "registered", commitTx: "0x02", registerTx: "0x03", expiresAt: now + ROW_YEAR_S }],
+      [await keepOrder(page, "reg-still1", null, "w".repeat(MAX_LABEL_LENGTH)), { phase: "committed", commitTx: "0x02" }],
+      [await keepOrder(page, "reg-still2", null, "bakerypaid"), { phase: "queued" }],
+    ] as const
+    let answered = 0
+    for (const [order, change] of kept) {
+      await context.route(`**/api/registration/${order.registrationId}*`, async (route) => {
+        await new Promise((wait) => setTimeout(wait, ROW_READ_MS))
+        await route.fulfill({ json: registrationView(order, change) })
+        answered++
+      })
+    }
+    await context.route("**/api/name/**", (route) => route.fulfill({ json: { status: "registered", entities: [], owner: kept[0][0].owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId,
+      records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt: now + ROW_YEAR_S, tld: "simplex", community: null } }))
+    for (const [tab, opening] of [[page, "first opening"], [await context.newPage(), "new tab"]] as const) {
+      const before = answered
+      await tab.goto("/#/names")
+      await expect(onStep(tab).getByRole("heading", { name: "Your names" })).toBeVisible()
+      const drawn = await listRows(tab)
+      await expect.poll(() => answered, "the rows' reads").toBe(before + kept.length)
+      await tab.evaluate(() => new Promise(requestAnimationFrame))
+      const read = await listRows(tab)
+      expect(read.map(({ top, height }) => [top, height]), `${opening} at ${size.width}: each row once its read answered`).toEqual(drawn.map(({ top, height }) => [top, height]))
+      // a registered row's chip goes, and its actions take the room
+      expect(read.slice(0, 2).map((r) => r.main), `${opening} at ${size.width}: the name and line beside a chip that changed`).toEqual(drawn.slice(0, 2).map((r) => r.main))
+    }
+    await context.close()
   }
 })

@@ -47,6 +47,8 @@ let lastChecked: Record<string, CodeCheck> = {}
 const readIds = new Set<string>()
 const retried = new Set<string>()
 const readCodes = new Set<string>()
+// rows drawn before their read, which keep the room of what it can show for the rest of the opening
+const heldRows = new Set<string>()
 
 // an order page that saw its name registered tells the list, which then draws the row registered from the start
 export function seenRegistered(view: api.RegistrationView, invoice: api.InvoiceView | null): void {
@@ -65,6 +67,7 @@ export function historyPage(): void {
   readIds.clear()
   retried.clear()
   readCodes.clear()
+  heldRows.clear()
   list = initialList(storedNow(), tabHold(), store.seen<RowSeen>(), lastChecked, api.serviceNow())
   showList()
 }
@@ -288,12 +291,21 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
   const chats = registered && seen.answer?.status === "registered" ? seen.answer.entities.map(chatPicture) : []
   const listed = seen ? seen.view.community !== null : api.communityAgreed(o.terms)
   const state = rowChip(s, o, seen)
-  return row(id, rowName(label, tld, seen?.view.community ?? null, `${id}-community`, listed), seen ? subLine(o, seen, s.now) : paidLine(o, null, null), state && chipRoom(state),
+  if (!seen) heldRows.add(id)
+  const held = heldRows.has(id)
+  const sub = seen ? subLine(o, seen, s.now) : paidLine(o, null, null)
+  return row(id, rowName(label, tld, seen?.view.community ?? null, `${id}-community`, listed), held ? withRoom(sub, heldLines(o)) : sub, state || held ? chipRoom(state) : null,
     [chats.length ? el("span", { class: "chats" }, chats) : null, ...acts], shown ? rowCode(code) : null)
 }
 
-// the chip in room kept for the widest an order's row can show, so its name and line keep their width as it changes
-const chipRoom = (shown: HTMLElement) => el("span", { class: "room" }, shown, ...ORDER_CHIP_WORDS.map((words) => el("span", { class: "sizer" }, el("span", { class: "dot" }), words)))
+const sizer = (...kids: Kid[]) => el("span", { class: "sizer", "aria-hidden": "true" }, ...kids)
+const withRoom = (shown: Kid, longest: string[]) => el("span", { class: "sized" }, el("span", {}, shown), ...longest.map((line) => sizer(line)))
+const chipRoom = (shown: HTMLElement | null) => el("span", { class: "room" }, shown, ...ORDER_CHIP_WORDS.map((words) => sizer(el("span", { class: "dot" }), words)))
+
+function heldLines(o: store.OrderRecord): string[] {
+  const paid = continued(paidLine(o, null, null))
+  return [...Object.values(PROGRESS), "Open the order so this browser can sign it"].map((doing) => `${doing}${SEP}${paid}`)
+}
 
 function rowChip(s: ListState, o: store.OrderRecord, seen: RowSeen | undefined): HTMLElement | null {
   if (s.unread.includes(o.registrationId)) return chip(ROW_CHIPS.unchecked, "warn")
