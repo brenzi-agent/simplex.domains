@@ -53,11 +53,17 @@ export function rowShown(s: ListState, o: OrderRecord): boolean {
   return s.unread.includes(o.registrationId) || (seen !== undefined && (seen.view.phase !== "registered" || seen.answer !== undefined))
 }
 
+// a drawn order replaced by a newer one keeps its place until the newer one is shown
 export function rowsDrawn(s: ListState, drawn: Set<string>): { rows: OrderRecord[]; done: boolean } {
-  const orders = nameRows(s)
-  const first = orders.findIndex((o) => !rowShown(s, o))
-  if (first < 0) return { rows: orders, done: true }
-  return { rows: orders.filter((o, i) => i < first || drawn.has(o.registrationId)), done: false }
+  const rows: OrderRecord[] = []
+  let blocked = false
+  for (const o of nameRows(s)) {
+    const before = rowShown(s, o) ? null : s.orders.find((p) => p.replacedBy === orderUrl(o) && drawn.has(p.registrationId))
+    if (before) rows.push(before)
+    else if (!rowShown(s, o)) blocked = true
+    else if (!blocked || drawn.has(o.registrationId)) rows.push(o)
+  }
+  return { rows, done: !blocked }
 }
 
 export const unanswered = (s: ListState) => nameRows(s).filter((o) => !rowShown(s, o) || o.registrationId in s.next).map((o) => o.registrationId)

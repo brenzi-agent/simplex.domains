@@ -595,6 +595,15 @@ describe("rows drawn and unanswered", () => {
     expect(rows.map((o) => o.registrationId)).toEqual(["reg-b", "reg-c"])
     expect(done).toBe(false)
   })
+  it("keeps a drawn order's row in its place while the newer order that replaced it is read, then draws the newer one there", () => {
+    const older = record({ registrationId: "reg-a", invoiceId: "inv-a", replacedBy: "/?order=inv-new", createdAt: "2026-10-17T11:05:00Z" })
+    const newer = record({ registrationId: "reg-new", invoiceId: "inv-new", createdAt: "2026-10-17T11:07:00Z" })
+    const s = initialList(stored({ orders: [newer, older, b] }), null, { "reg-b": { view: progress, invoice: null } }, {}, NOW)
+    const drawn = new Set(["reg-a", "reg-b"])
+    expect(rowsDrawn(s, drawn)).toEqual({ rows: [older, b], done: true })
+    const read = reduceList(s, { type: "row-read", id: "reg-new", view: progress, invoice: null, now: NOW })
+    expect(rowsDrawn(read, drawn).rows.map((o) => o.registrationId)).toEqual(["reg-new", "reg-b"])
+  })
   it("names the rows whose read, or whose registered name's answer, is still out", () => {
     const s = initialList(stored({ orders: [a, b, c] }), null, { "reg-a": { view: registration({ phase: "registering" }), invoice: null } }, {}, NOW)
     const readA = reduceList(s, { type: "row-read", id: "reg-a", view: registeredView(), invoice: null, now: NOW })

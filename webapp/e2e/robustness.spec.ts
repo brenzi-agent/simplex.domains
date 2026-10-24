@@ -1,7 +1,7 @@
 import { expect, type Page, type Route } from "@playwright/test"
 import {
   agreeToTerms, brokenNames, CHAIN, channelLink, contactLink, recordedFrames, recordFrames, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, failedOrder, FIT_SIZES, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, rowFit, savedToReview, search, shot,
-  shownCode, startOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered, keepOrder, registrationView,
+  shownCode, startOrder, restoreOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered, keepOrder, registrationView,
 } from "./helpers.ts"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 
@@ -859,4 +859,47 @@ test("a read that does not answer leaves the row's place to the reading note, th
   await expect(page.locator(".list-row", { hasText: "neveranswered" }).locator(".chip")).toHaveText("Not checked", { timeout: 15_000 })
   await expect(page.locator("body > main .end-links")).toBeVisible()
   await expect(page.getByText("Reading your names…")).toHaveCount(0)
+})
+
+test("a drawn order that a newer order of its name replaces keeps its place until the newer one is read, and the end links stay", async ({ page, browser, request }) => {
+  const older = uniqueLabel("gapold")
+  await startOrder(page, older, { method: "btc" })
+  const label = uniqueLabel("gapnew")
+  const { invoiceId, ownerCode } = await startOrder(page, label, { method: "btc" })
+  const replaced = await registrationOf(request, invoiceId)
+  await page.goto("/#/names")
+  await expect(page.locator("body > main .end-links")).toBeVisible()
+  // another browser restores the order, which then expires there and is ordered again
+  const other = await browser.newContext()
+  const restored = await other.newPage()
+  await restoreOrder(restored, ownerCode, label)
+  await control(request, `expire/${invoiceId}`)
+  await restored.goto(`/?order=${invoiceId}`)
+  await restored.getByRole("button", { name: "Get a new invoice" }).click()
+  await restored.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
+  const second = new URL(restored.url()).searchParams.get("order")!
+  await other.close()
+  await page.route(`**/api/invoice/${second}*`, async (route) => {
+    await new Promise((wait) => setTimeout(wait, ROW_READ_MS))
+    await route.fallback()
+  })
+  await recordFrames(page, () => {
+    const main = document.querySelector("body > main")!
+    if (main.querySelector("h1")?.textContent !== "Your names") return null
+    const rows = [...main.querySelectorAll<HTMLElement>(".list-row")].map((r) => [r.dataset.key!, Math.round(r.getBoundingClientRect().top)] as const)
+    return [rows, !!main.querySelector(".end-links"), !!main.querySelector(".note.reading")]
+  }, true)
+  await page.goto("about:blank")
+  await page.goto("/#/names")
+  const successor = await registrationOf(request, second)
+  await expect(page.locator(`.list-row[data-key="${successor}"]`)).toBeVisible()
+  await page.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))))
+  const frames = await recordedFrames<[[string, number][], boolean, boolean]>(page)
+  const shown = frames.findIndex(([, end]) => end)
+  const after = frames.slice(shown)
+  expect(after.every(([, end, reading]) => end && !reading), "the end links, and no reading note, in every frame once they were drawn").toBe(true)
+  expect([...new Set(after.map(([rows]) => rows.length))], "rows in each frame").toEqual([2])
+  const tops = (key: (k: string) => boolean) => [...new Set(after.flatMap(([rows]) => rows.filter(([k]) => key(k)).map(([, top]) => top)))]
+  expect(tops((k) => k !== replaced && k !== successor), "the older name's row, frame by frame").toHaveLength(1)
+  expect(new Set([...tops((k) => k === replaced), ...tops((k) => k === successor)]).size, "the replaced row and its successor in one place").toBe(1)
 })

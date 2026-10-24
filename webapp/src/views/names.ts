@@ -63,6 +63,9 @@ const storedEvent = (): ListEvent => ({ type: "stored", ...storedNow(), hold: ta
 
 const ROW_READ_BOUND_MS = 10_000
 const drawnRows = new Set<string>()
+// what each drawn row showed, for an order the list replaced while its successor is read
+const drawnSeen = new Map<string, RowSeen>()
+let listDone = false
 
 export function historyPage(): void {
   listRoute = currentRoute()
@@ -73,6 +76,8 @@ export function historyPage(): void {
   retried.clear()
   readCodes.clear()
   drawnRows.clear()
+  drawnSeen.clear()
+  listDone = false
   list = initialList(storedNow(), tabHold(), store.seen<RowSeen>(), lastChecked, api.serviceNow())
   after(ROW_READ_BOUND_MS, () => {
     for (const id of unanswered(list)) dispatchList({ type: "row-unread", id })
@@ -234,9 +239,16 @@ function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
   const open = session.checkout()
   const orders = nameRows(s)
-  const { rows, done } = rowsDrawn(s, drawnRows)
-  for (const o of rows) drawnRows.add(o.registrationId)
-  const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...rows.map((o) => orderRow(o, s))]
+  const { rows, done: read } = rowsDrawn(s, drawnRows)
+  listDone ||= read
+  const done = listDone
+  for (const o of rows) {
+    drawnRows.add(o.registrationId)
+    const seen = s.seen[o.registrationId]
+    if (seen) drawnSeen.set(o.registrationId, seen)
+  }
+  const asDrawn = (o: store.OrderRecord) => s.seen[o.registrationId] || !drawnSeen.has(o.registrationId) ? s : { ...s, seen: { ...s.seen, [o.registrationId]: drawnSeen.get(o.registrationId)! } }
+  const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...rows.map((o) => orderRow(o, asDrawn(o)))]
   const balances = balanceRows(s)
   if (!names.length && !orders.length && !balances.length && !s.codes.length) return emptyNames(s)
   return screen({ title: NAMES_TITLE, lead: leadOf(s.canPersist), back: HOME },
