@@ -179,7 +179,7 @@ export function moveHint(record: OrderRecord, label: string, price: number): [st
 
 export function keptWords(record: OrderRecord): [string, string] {
   const cover = codeCover(record)
-  if (cover?.minLength === null) return ["Your code is kept.", `It pays for another name of ${record.label.length} or more letters, for ${cover.years} years, and maybe a shorter one.`]
+  if (cover?.minLength === null) return ["Your code is kept.", `It pays for another name of ${record.label.length} or more letters, for ${cover.years} years.`]
   if (cover) return ["Your code is kept.", `It pays for another name of ${cover.minLength} or more letters, for ${cover.years} years.`]
   const worth = dollars(record.paid)
   return [`Your payment is kept: ${worth}.`, `Choose another name of up to ${worth}; nothing more is charged.`]

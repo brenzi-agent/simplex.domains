@@ -375,7 +375,7 @@ describe("a move", () => {
     expect(moveHint(restored, "alice2", 20000), "shorter than the order's own name").toEqual(["Free with your code, if it covers a name this long", null])
     expect(moveHint(restored, "alice1bakes", 20000), "as long as the order's own name, which the code covers").toEqual(["Covered by your code", null])
     expect(moveHint(restored, "alice1bakery", 20000)).toEqual(["Covered by your code", null])
-    expect(keptWords(restored)).toEqual(["Your code is kept.", "It pays for another name of 11 or more letters, for 2 years, and maybe a shorter one."])
+    expect(keptWords(restored)).toEqual(["Your code is kept.", "It pays for another name of 11 or more letters, for 2 years."])
   })
   it("of a paid order has no code to pay for it", () => {
     expect(codeCover(record())).toBeNull()
