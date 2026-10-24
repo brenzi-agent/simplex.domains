@@ -17,6 +17,7 @@ const POPUP_END = "Its owner agrees to use it for this community, not as the nam
 // what the tests put a name on the list for
 const LISTED_FOR = "test bakers"
 const MARKER = "Community name: about it"
+const SLOW_READ_MS = 1500
 // the longest name, of letters as wide as most
 const longLabel = () => `${uniqueLabel("cm")}${"m".repeat(63)}`.slice(0, 63)
 
@@ -287,10 +288,15 @@ test("Your names draws a community name's row with its marker on the name's last
       const fresh = await context.newPage()
       await fresh.addInitScript(() => localStorage.removeItem("simplex-names-seen"))
       await fresh.setViewportSize({ width, height })
+      // the order's read takes a while, so a row drawn before it would be pressed first
+      await fresh.route("**/api/invoice/*", async (route) => {
+        await new Promise((wait) => setTimeout(wait, SLOW_READ_MS))
+        await route.continue()
+      })
       await fresh.goto("/#/names")
       const name = fresh.locator(".list-row .name.comm", { hasText: `${long.slice(-3)}.simplex` })
       await name.getByRole("button", { name: MARKER }).click()
-      await expect(fresh.getByRole("dialog").locator("p")).toContainText(POPUP_END)
+      await expect(fresh.getByRole("dialog").locator("p")).toHaveText(`This name is for ${LISTED_FOR}. ${POPUP_END}`)
       await fresh.getByRole("dialog").getByRole("button", { name: "Close" }).click()
       expect(Math.abs((await markerPlace(name)).baseline), `the marker on the name's last line at ${width} px`).toBeLessThanOrEqual(PIXEL)
       await fresh.close()
