@@ -3,7 +3,7 @@ import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
   CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedAlert, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind,
-  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, spendCovers, STALL_MARGIN_MS, stalledAt, TX_STALL_MS, unreadDelay, wakeAt,
+  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, sameStep, screenOf, spendCovers, STALL_MARGIN_MS, stalledAt, TX_STALL_MS, unreadDelay, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
 
@@ -612,5 +612,18 @@ describe("initialState", () => {
       reveal, busy: null, note: null, hold: { until: NOW + 1000, lead: NO_LEAD }, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null,
       reserved: false, since: null,
     })
+  })
+})
+
+describe("sameStep", () => {
+  const refused = registration({ ...committed, linksRefused: true })
+  it("finds nothing changed in a view another request wrote without moving the order on", () => {
+    expect(sameStep(refused, { ...refused, version: refused.version + 1 })).toBe(true)
+  })
+  it("finds the order moved on when its phase, its name, its refused links or its moves differ", () => {
+    expect(sameStep(refused, { ...refused, phase: "registered" })).toBe(false)
+    expect(sameStep(refused, { ...refused, label: "alice" })).toBe(false)
+    expect(sameStep(refused, { ...refused, linksRefused: false })).toBe(false)
+    expect(sameStep(refused, { ...refused, moves: 1 })).toBe(false)
   })
 })

@@ -245,7 +245,7 @@ test("an order whose links the service refuses at its reveal registers without t
   expect(answer.records).toEqual({ contact: "", channel: "" })
 })
 
-test("Register without links that loses a race to another change of the order says nothing changed, rather than nothing at all", async ({ page, request }) => {
+test("Register without links that loses a race follows the order as it is now, saying nothing changed only when nothing did", async ({ page, request }) => {
   const label = uniqueLabel("lrr")
   await search(page, label)
   await onStep(page).getByRole("button", { name: "Register" }).click()
@@ -269,6 +269,15 @@ test("Register without links that loses a race to another change of the order sa
   await onStep(page).getByRole("button", { name: "Register without links" }).click()
   await expect(onStep(page).getByText("That did not go through. Nothing changed. Try again in a moment.")).toBeVisible()
   await expect(onStep(page).getByRole("button", { name: "Register without links" })).toBeEnabled()
+
+  // another browser moved the order on first: the page follows the view the refusal carries, and says nothing failed
+  await page.unrouteAll({ behavior: "wait" })
+  const moved = { ...view, version: view.version + 1, moves: 1, phase: "queued", linksRefused: false, label: null, revealAfter: null, revealBefore: null, commitTx: null }
+  await page.route("**/api/registration/*/name", (route) => route.fulfill({ status: 409, json: { error: "registration_changed", registration: moved } }))
+  await onStep(page).getByRole("button", { name: "Register without links" }).click()
+  await expect(onStep(page).getByRole("heading", { name: `Registering ${label}.simplex` })).toBeVisible()
+  await expect(onStep(page).getByText("The service refused this order's links")).toHaveCount(0)
+  await expect(page.getByText("Nothing changed")).toHaveCount(0)
 })
 
 test("an order failed with links the service refused offers no Try again, which the service refuses, in another browser too, and registers without them", async ({ page, browser, request }) => {

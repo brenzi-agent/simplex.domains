@@ -177,6 +177,8 @@ const NOT_REGISTERED_YET = "The name could not be registered yet"
 
 export const failedAlert = ({ view, codeRefused }: OrderState) => ({ title: view!.error ?? NOT_REGISTERED_YET, retry: !view!.linksRefused && !codeRefused })
 
+export const sameStep = (a: RegistrationView, b: RegistrationView) => a.phase === b.phase && a.label === b.label && a.linksRefused === b.linksRefused && a.moves === b.moves
+
 export const coinOf = (invoice: InvoiceView) => invoice.cryptoCurrency === "btc" || invoice.cryptoCurrency === "xmr" ? invoice.cryptoCurrency : null
 
 // How a closed invoice's order gets a new one: a new spend of the balance that paid part of it, once find names that

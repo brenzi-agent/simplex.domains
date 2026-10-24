@@ -7,7 +7,7 @@ import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from ".
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
   closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedAlert, failedLead, finished, newInvoiceBy, spendCovers, initialState, type Note, type OrderEvent, type OrderKind,
-  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt,
+  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, sameStep, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
 import { termsToSign } from "../screens/terms.ts"
@@ -1156,8 +1156,11 @@ async function moveWithoutLinks(): Promise<void> {
     if (holdOn(e, "Nothing changed. ", gen)) return
     const limit = e instanceof api.ApiError && e.code === "move_limit"
     if (e instanceof api.TermsChanged) return askTerms(gen, record.label, e, true)
+    const now = e instanceof api.ApiError && e.code === "registration_changed" ? api.changedView(e) : null
+    if (now && !sameStep(view, now)) return answer(gen, { type: "answered", seq: ++reads, now: api.serviceNow(), invoice: state.invoice && { ...state.invoice, registration: now },
+      view: now, record: state.record, cardSubmittedAt: state.cardSubmittedAt, reserved: state.reserved })
     answer(gen, { type: "move-failed", note: limit ? moveLimitNote(reference) : warning("That did not go through. Nothing changed. Try again in a moment.") })
-    if (e instanceof api.ApiError && e.code === "registration_changed") reread(gen)
+    if (now) reread(gen)
   }
 }
 

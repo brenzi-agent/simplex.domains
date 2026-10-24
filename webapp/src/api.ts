@@ -345,6 +345,9 @@ export function readRegistration(registrationId: string, seenVersion?: number, s
   return checked<RegistrationView>(call("GET", `/api/registration/${encodeURIComponent(registrationId)}${held ? `?seenVersion=${seenVersion}` : ""}`, undefined, signal, held ? null : REQUEST_TIMEOUT_MS), isRegistration)
 }
 
+// the order as it is now, which a 409 registration_changed carries
+export const changedView = (e: ApiError): RegistrationView | null => isRegistration(e.body.registration) ? e.body.registration as RegistrationView : null
+
 export const reveal = (registrationId: string, body: { label: string; secret: string; records: { contact: string[]; channel: string[] }; nonce: number; deadline: number; signature: string }) =>
   call<Record<string, never>>("POST", `/api/registration/${encodeURIComponent(registrationId)}/reveal`, body)
 export const retarget = (registrationId: string, body: Omit<SignedOrder, "owner">) =>
