@@ -13,7 +13,7 @@ export type CodeVerdict =
   | { kind: "owner"; found: flow.CodeOrder; line: string }
   | { kind: "refused"; title: string; line: string; link?: string; checkAgainIn?: number }
 
-const STATE_LINES: Record<Exclude<api.CodeState, "unused">, [string, string]> = {
+export const STATE_LINES: Record<Exclude<api.CodeState, "unused">, [string, string]> = {
   reserved: ["This code is being used for a name now", "Each code registers one name; this one is held by an unfinished registration."],
   used: ["This code was already used", "Each code registers one name."],
   revoked: ["This code is not valid: SimpleX withdrew it", ""],

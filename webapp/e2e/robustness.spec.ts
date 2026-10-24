@@ -211,6 +211,27 @@ test("a retarget refused for a name taken meanwhile says the name is no longer a
   await expect(page.getByText("This name is no longer available. Search another one.")).toBeVisible()
 })
 
+test("a move refused for its code says what happened to the code and where to write, never to try again", async ({ page, request }) => {
+  const { registrationId } = await failedOrder(page, request, uniqueLabel("rtc"))
+  const cases: [string, number, string][] = [
+    ["code_used", 409, "This code was already used"], ["code_reserved", 409, "This code is being used for a name now"],
+    ["code_expired", 409, "This code has expired"], ["code_invalid", 400, "This code is not valid: SimpleX withdrew it"],
+  ]
+  for (const [error, status, title] of cases) {
+    await page.unrouteAll({ behavior: "wait" })
+    await page.route("**/api/registration/*/name", (route) => route.fulfill({ status, json: { error } }))
+    await page.goto(`/#/?retarget=${registrationId}`)
+    await page.getByLabel("Name", { exact: true }).fill(uniqueLabel("rtc2"))
+    await page.getByLabel("Name", { exact: true }).press("Enter")
+    await agreeToTerms(page)
+    await page.getByRole("button", { name: "Register with your payment" }).click()
+    const note = page.locator(".answer .notice", { hasText: title })
+    await expect(note, error).toContainText(`Write to SimpleX support with this order's reference, chat@simplex.chat: `)
+    await expect(note.getByRole("link", { name: "chat@simplex.chat" })).toHaveAttribute("href", "mailto:chat@simplex.chat")
+    await expect(page.getByText("Try again in a moment"), error).toHaveCount(0)
+  }
+})
+
 test("a partly paid invoice offers no cancel", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("part"), { method: "btc" })
   await expect(page.getByText("Cancel this invoice")).toBeVisible()

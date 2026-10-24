@@ -11,12 +11,14 @@ import { againLine, ranOut } from "../screens/names.ts"
 import { checkoutUrl } from "../screens/routes.ts"
 import {
   type Answer, balanceHint, codeCover, initialSearch, keptWords, moveBar, moveHint, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent,
-  type SearchKind, type SearchState,
+  type SearchKind, type SearchState, type CodeLoss,
 } from "../screens/search.ts"
+import type { Note } from "../screens/order.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { type Builder, CONTACT_EMAIL, currentRoute, draw, go, historyPlace, isRedraw, isRoute, kept, keptLive, throughHistory } from "./shell.ts"
 import { chatButton } from "./chats.ts"
+import { STATE_LINES } from "./codes.ts"
 import { moveLimitNote, noteBox } from "./order.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
 import { rowName, termsChangedLine, termsCheck } from "./terms.ts"
@@ -213,7 +215,9 @@ async function retarget(record: store.OrderRecord, label: string, quote: Availab
     if (limited) return dispatch({ type: "register-held", until: holdEnd() })
     if (e instanceof api.TermsChanged) return dispatch({ type: "terms-changed", label, terms: e.terms, community: e.community })
     const code = e instanceof api.ApiError ? e.code : null
-    if (code === "move_limit") return dispatch({ type: "register-refused", refusal: { why: "limit", reference: record.invoiceId ?? record.registrationId } })
+    const reference = record.invoiceId ?? record.registrationId
+    if (code === "move_limit") return dispatch({ type: "register-refused", refusal: { why: "limit", reference } })
+    if (code && code in CODE_LOSSES) return dispatch({ type: "register-refused", refusal: { why: "code", state: CODE_LOSSES[code], reference } })
     // the code's own order for the new name is the one the move met
     const other = code === "order_exists" ? await flow.ownOrderFor(record.ownerCode, hex(labelHash(label))).catch(() => null) : null
     if (!onPage(page)) return
@@ -222,6 +226,7 @@ async function retarget(record: store.OrderRecord, label: string, quote: Availab
 }
 
 const REFUSALS: Record<string, "taken" | "dearer" | "uncovered"> = { name_taken: "taken", price_too_high: "dearer", code_not_covering: "uncovered" }
+const CODE_LOSSES: Record<string, CodeLoss> = { code_used: "used", code_reserved: "reserved", code_expired: "expired", code_invalid: "revoked" }
 
 const BUILDERS: Record<SearchKind, Builder<SearchState>> = {
   "search:plain": buildSearch,
@@ -357,10 +362,18 @@ function registerNote({ hold, register: { refusal } }: SearchState, signal: Abor
   if (hold) return holdNotice(hold, signal)
   if (!refusal) return null
   if (refusal.why === "limit") return noteBox(moveLimitNote(refusal.reference))
+  if (refusal.why === "code") return noteBox(codeLossNote(refusal.state, refusal.reference))
   const words = refusal.why === "taken" ? "This name is no longer available. Search another one."
     : refusal.why === "dearer" ? "This name now costs more than your order is worth. Search another one."
     : refusal.why === "uncovered" ? "Your code does not pay for this name. Search another one." : "Nothing changed. Try again in a moment."
   return alertBox("danger", "alert", "That did not go through", words)
+}
+
+// a code that can no longer pay leaves the order to support
+function codeLossNote(state: CodeLoss, reference: string): Note {
+  const [title, line] = STATE_LINES[state]
+  return { tone: "danger", icon: "key", title, text: `${line ? `${line} ` : ""}Write to SimpleX support with this order's reference, `,
+    link: { text: CONTACT_EMAIL, href: `mailto:${CONTACT_EMAIL}`, after: `: ${reference}.` } }
 }
 
 // One row as the app lists a chat: the name, the chats it opens as the app's own pictures, and whose it is.

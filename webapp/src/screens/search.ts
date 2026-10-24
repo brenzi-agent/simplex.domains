@@ -17,7 +17,9 @@ export type Answer =
   | { kind: "checking" }
 
 export type Moved = { url: string; label: string; tld: string }
+export type CodeLoss = "used" | "reserved" | "expired" | "revoked"
 type RegisterRefusal = { why: "taken" | "failed" | "dearer" | "uncovered" } | { why: "other"; url: string } | { why: "limit"; reference: string }
+  | { why: "code"; state: CodeLoss; reference: string }
 
 export interface SearchState {
   opening: Opening
