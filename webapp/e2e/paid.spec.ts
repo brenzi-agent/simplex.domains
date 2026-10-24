@@ -10,6 +10,11 @@ import {
   offCentre, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered, withStripeKey, AVAILABLE_BRIEF, TAKEN_BRIEF,
 } from "./helpers.ts"
 
+// the card form these tests pay with is the dev server's stand-in; a production build loads Stripe's own
+const STAND_IN_ONLY = "needs the dev server's card stand-in"
+// a production build's service worker answers the page's requests past Playwright's routes, in WebKit
+test.use({ serviceWorkers: "block" })
+
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
 const RING_ROOM_PX = 6
 
@@ -624,6 +629,7 @@ test("the owner code restores an order in another browser, and a bad code is ref
 })
 
 test("a card order waits for Stripe, blocks a second card order meanwhile, then registers", async ({ page, request }) => {
+  test.skip(!!process.env.BASE_URL, STAND_IN_ONLY)
   const label = uniqueLabel("card")
   const { invoiceId } = await startOrder(page, label, { method: "card" })
   await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
@@ -654,6 +660,7 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
 })
 
 test("a card payment Stripe has not confirmed, with nothing paid, can still be cancelled", async ({ page }) => {
+  test.skip(!!process.env.BASE_URL, STAND_IN_ONLY)
   await startOrder(page, uniqueLabel("cardcx"), { method: "card" })
   await onStep(page).getByRole("button", { name: /^Pay \$/ }).click()
   await expect(page.getByText("Waiting for Stripe to confirm")).toBeVisible()
@@ -664,6 +671,7 @@ test("a card payment Stripe has not confirmed, with nothing paid, can still be c
 
 // The Stripe frame reloads whenever its form is taken out of the page, so the card screen takes another tab's writes in place.
 test("the card form stays in place while another tab writes the order, the same record and a changed one", async ({ page }) => {
+  test.skip(!!process.env.BASE_URL, STAND_IN_ONLY)
   const { invoiceId } = await startOrder(page, uniqueLabel("cardstay"), { method: "card" })
   await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible()
   await page.evaluate(() => {
@@ -1245,6 +1253,7 @@ test("a Bitcoin page checks its name as it opens and every 5 minutes; taken mean
 })
 
 test("a card page whose name was taken meanwhile says so in brief and turns its form and Pay off, nothing on it moving", async ({ page }) => {
+  test.skip(!!process.env.BASE_URL, STAND_IN_ONLY)
   await startOrder(page, uniqueLabel("chkcard"), { method: "card" })
   const sentence = onStep(page).locator(".name-check:not(.unchecked) > :not(.sizer)")
   await expect(sentence).toHaveText(AVAILABLE_BRIEF)
