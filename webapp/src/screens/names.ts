@@ -53,7 +53,6 @@ export function rowShown(s: ListState, o: OrderRecord): boolean {
   return s.unread.includes(o.registrationId) || (seen !== undefined && (seen.view.phase !== "registered" || seen.answer !== undefined))
 }
 
-// a drawn order replaced by a newer one keeps its place until the newer one is shown
 export function rowsDrawn(s: ListState, drawn: Set<string>): { rows: OrderRecord[]; done: boolean } {
   const rows: OrderRecord[] = []
   let blocked = false
