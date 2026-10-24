@@ -28,6 +28,7 @@ import { rowName } from "./terms.ts"
 
 const UNREAD_RETRY_MS = 5_000
 const HOME = "/#/"
+const NAMES_TITLE = "Your names"
 const NAMES = "/#/names"
 
 // a row's action keeps focus over a redraw by its row's key and its own; one that opens a popup says so
@@ -47,8 +48,6 @@ let lastChecked: Record<string, CodeCheck> = {}
 const readIds = new Set<string>()
 const retried = new Set<string>()
 const readCodes = new Set<string>()
-// rows drawn before their read keep its room until the list is opened again
-const heldRows = new Set<string>()
 
 // an order page that saw its name registered tells the list, which then draws the row registered from the start
 export function seenRegistered(view: api.RegistrationView, invoice: api.InvoiceView | null): void {
@@ -59,6 +58,10 @@ export function seenRegistered(view: api.RegistrationView, invoice: api.InvoiceV
 const storedNow = (): Stored => ({ orders: store.orders(), pending: store.pendingCodes(), codes: store.codes(), canPersist: store.canPersist() })
 const storedEvent = (): ListEvent => ({ type: "stored", ...storedNow(), hold: tabHold() })
 
+// how long Your names keeps the screen before it while its orders are read
+const LIST_WAIT_MS = 3000
+let listWaited = false
+
 export function historyPage(): void {
   listRoute = currentRoute()
   const reads = new AbortController()
@@ -67,8 +70,12 @@ export function historyPage(): void {
   readIds.clear()
   retried.clear()
   readCodes.clear()
-  heldRows.clear()
   list = initialList(storedNow(), tabHold(), store.seen<RowSeen>(), lastChecked, api.serviceNow())
+  listWaited = false
+  after(LIST_WAIT_MS, () => {
+    listWaited = true
+    showList()
+  }, reads.signal)
   showList()
 }
 
@@ -81,7 +88,10 @@ function showList(): void {
   store.setSeen(list.seen)
   lastChecked = list.checked
   if (!isRoute(listRoute)) return
-  draw("names", (signal) => buildNames(list, signal))
+  if (listWaited || nameRows(list).every((o) => readIn(list, o))) {
+    listWaited = true
+    draw("names", (signal) => buildNames(list, signal))
+  } else drawLoading(NAMES_TITLE, asStep)
   readRows()
 }
 
@@ -217,22 +227,32 @@ function forgetQuestion(s: ListState): HTMLElement | null {
 }
 
 // nothing kept yet: the ways to a first name, as a step
-const emptyNames = (s: ListState) => asStep(screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME,
+const emptyNames = (s: ListState) => asStep(screen({ title: NAMES_TITLE, lead: leadOf(s.canPersist), back: HOME,
   action: btn("Find a name", "", () => go(HOME)), alt: el("a", { href: CODE_URL }, "Add a name code") },
   el("div", { class: "card none" }, el("b", {}, "No names in this browser yet"),
     el("p", { class: "note center" }, "A name you register here shows in this list. To see a name you registered in another browser, add its name code."))))
 
+// Rows are drawn in order, each once its read and its name's answer are in or have failed, so none moves once drawn.
+const readIn = (s: ListState, o: store.OrderRecord) => {
+  const seen = s.seen[o.registrationId]
+  return s.unread.includes(o.registrationId) || (seen !== undefined && (seen.view.phase !== "registered" || seen.answer !== undefined))
+}
+
 function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
   const open = session.checkout()
-  const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...nameRows(s).map((o) => orderRow(o, s))]
+  const orders = nameRows(s)
+  const unread = orders.findIndex((o) => !readIn(s, o))
+  const shown = unread < 0 ? orders : orders.slice(0, unread)
+  const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...shown.map((o) => orderRow(o, s))]
   const balances = balanceRows(s)
-  if (!names.length && !balances.length && !s.codes.length) return emptyNames(s)
-  return screen({ title: "Your names", lead: leadOf(s.canPersist), back: HOME },
-    el("div", { class: "card list" }, names.length ? names : el("p", { class: "note" }, "No names in this browser yet.")),
-    balances.length ? [el("h2", { class: "label" }, "Balance"), el("div", { class: "card list" }, balances.map((b) => balanceRow(b, s)))] : null,
-    s.codes.length ? [el("h2", { class: "label" }, "Codes"), el("div", { class: "card list" }, s.codes.map((c) => codeRow(c, s, signal)))] : null,
-    el("div", { class: "end-links" }, el("a", { href: CODE_URL }, "Add a code"), s.asking || !hasRecords(s) ? null : forgetLink()),
+  if (!names.length && !orders.length && !balances.length && !s.codes.length) return emptyNames(s)
+  const done = unread < 0
+  return screen({ title: NAMES_TITLE, lead: leadOf(s.canPersist), back: HOME },
+    names.length || done ? el("div", { class: "card list" }, names.length ? names : el("p", { class: "note" }, "No names in this browser yet.")) : null,
+    done && balances.length ? [el("h2", { class: "label" }, "Balance"), el("div", { class: "card list" }, balances.map((b) => balanceRow(b, s)))] : null,
+    done && s.codes.length ? [el("h2", { class: "label" }, "Codes"), el("div", { class: "card list" }, s.codes.map((c) => codeRow(c, s, signal)))] : null,
+    done ? el("div", { class: "end-links" }, el("a", { href: CODE_URL }, "Add a code"), s.asking || !hasRecords(s) ? null : forgetLink()) : null,
     forgetQuestion(s))
 }
 
@@ -291,25 +311,16 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
   const chats = registered && seen.answer?.status === "registered" ? seen.answer.entities.map(chatPicture) : []
   const listed = seen ? seen.view.community !== null : api.communityAgreed(o.terms)
   const state = rowChip(s, o, seen)
-  if (!seen) heldRows.add(id)
-  const held = heldRows.has(id)
-  const sub = seen ? subLine(o, seen, s.now) : paidLine(o, null, null)
-  return row(id, rowName(label, tld, seen?.view.community ?? null, `${id}-community`, listed), held ? withRoom(sub, heldLines(o)) : sub, state || held ? chipRoom(state) : null,
+  return row(id, rowName(label, tld, seen?.view.community ?? null, `${id}-community`, listed), seen ? subLine(o, seen, s.now) : paidLine(o, null, null), state && chipRoom(state),
     [chats.length ? el("span", { class: "chats" }, chats) : null, ...acts], shown ? rowCode(code) : null)
 }
 
 const sizer = (...kids: Kid[]) => el("span", { class: "sizer", "aria-hidden": "true" }, ...kids)
-const withRoom = (shown: Kid, longest: string[]) => el("span", { class: "sized" }, el("span", {}, shown), ...longest.map((line) => sizer(line)))
-const chipRoom = (shown: HTMLElement | null) => el("span", { class: "room" }, shown, ...ORDER_CHIP_WORDS.map((words) => sizer(el("span", { class: "dot" }), words)))
+const chipRoom = (shown: HTMLElement) => el("span", { class: "room" }, shown, ...ORDER_CHIP_WORDS.map((words) => sizer(el("span", { class: "dot" }), words)))
 
-function heldLines(o: store.OrderRecord): string[] {
-  const paid = continued(paidLine(o, null, null))
-  return [...Object.values(PROGRESS), "Open the order so this browser can sign it"].map((doing) => `${doing}${SEP}${paid}`)
-}
 
 function rowChip(s: ListState, o: store.OrderRecord, seen: RowSeen | undefined): HTMLElement | null {
-  if (s.unread.includes(o.registrationId)) return chip(ROW_CHIPS.unchecked, "warn")
-  if (!seen) return chip(ROW_CHIPS.checking, "", true)
+  if (s.unread.includes(o.registrationId) || !seen) return chip(ROW_CHIPS.unchecked, "warn")
   if (lapsed(seen, s.now)) return chip(ROW_CHIPS.lapsed, "bad")
   // a registered name says so by its date
   if (seen.view.phase === "registered") return null

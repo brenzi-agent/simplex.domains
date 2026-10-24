@@ -154,7 +154,7 @@ const PHASE_CHIPS: Record<Phase, [string, string]> = {
 const CHIPS = {
   sign: "Open to finish", cancelled: "Invoice cancelled", expired: "Invoice expired", late: "Paid late", confirming: "Confirming payment", rest: "Waiting for the rest",
 } as const
-export const ROW_CHIPS = { checking: "Checking", unchecked: "Not checked", lapsed: "Expired" } as const
+export const ROW_CHIPS = { unchecked: "Not checked", lapsed: "Expired" } as const
 export const ORDER_CHIP_WORDS = [...new Set([...Object.values(ROW_CHIPS), ...Object.values(PHASE_CHIPS).map(([words]) => words), ...Object.values(CHIPS)])]
 
 export function phaseChip(view: RegistrationView, invoice: InvoiceView | null, o: OrderRecord, now: number): [string, string] {

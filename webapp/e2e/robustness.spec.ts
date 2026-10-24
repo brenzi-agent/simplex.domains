@@ -1,6 +1,6 @@
-import { expect, type Page } from "@playwright/test"
+import { expect, type Page, type Route } from "@playwright/test"
 import {
-  agreeToTerms, brokenNames, CHAIN, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, failedOrder, FIT_SIZES, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, rowFit, savedToReview, search, shot,
+  agreeToTerms, brokenNames, CHAIN, channelLink, contactLink, recordedFrames, recordFrames, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, failedOrder, FIT_SIZES, mockRegistration, onStep, payButton, REGISTRATION_MS, registrationOf, rowFit, savedToReview, search, shot,
   shownCode, startOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered, keepOrder, registrationView,
 } from "./helpers.ts"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
@@ -648,47 +648,65 @@ test("a Continue checkout drawn before its checkout ended draws the list anew ra
   expect(new URL(page.url()).hash).toBe("#/names")
 })
 
-// how long Your names waits for each order's read, long enough to measure its rows before the reads answer
+// how long Your names waits for each order's read, long enough for frames to be drawn before the reads answer
 const ROW_READ_MS = 1500
 const ROW_YEAR_S = 365 * 86400
 
-// each row's top and height, and the width of its name and line, under the list's heading
-const listRows = (page: Page) => page.locator("body > main").evaluate((main) => [...main.querySelectorAll(".list-row")].map((row) => {
-  const box = row.getBoundingClientRect()
-  return { top: box.top, height: box.height, main: row.querySelector(".main")!.getBoundingClientRect().width }
-}))
+const linkedChat = (kind: "contact" | "channel") => ({ type: kind === "contact" ? "address" : "channel", kind, displayName: kind, fullName: "", image: null,
+  subscribers: kind === "channel" ? 12 : null, link: kind === "contact" ? contactLink("R1") : channelLink("R2"), deepLink: "simplex:/a#x", profile: "ok" })
 
-test("Your names moves no row as its reads answer, on a browser's first opening and in a new tab after it", async ({ browser }) => {
+test("Your names moves no row once drawn as its reads answer, on a browser's first opening and in a new tab after it", async ({ browser }) => {
   for (const size of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
     const context = await browser.newContext({ viewport: size })
     const page = await context.newPage()
     const now = Math.floor(Date.now() / 1000)
+    const registered = { phase: "registered", commitTx: "0x02", registerTx: "0x03", expiresAt: now + ROW_YEAR_S }
     const kept = [
-      [await keepOrder(page, "reg-still0", null, "studio42"), { phase: "registered", commitTx: "0x02", registerTx: "0x03", expiresAt: now + ROW_YEAR_S }],
-      [await keepOrder(page, "reg-still1", null, "w".repeat(MAX_LABEL_LENGTH)), { phase: "committed", commitTx: "0x02" }],
-      [await keepOrder(page, "reg-still2", null, "bakerypaid"), { phase: "queued" }],
+      [await keepOrder(page, "reg-still0", null, "studio42", { contact: contactLink("R1"), channel: channelLink("R2") }), registered],
+      [await keepOrder(page, "reg-still1", "inv-still1", "bakerypaidwithbitcoin"), registered],
+      [await keepOrder(page, "reg-still2", null, "w".repeat(MAX_LABEL_LENGTH)), { phase: "committed", commitTx: "0x02" }],
+      [await keepOrder(page, "reg-still3", null, "bakerycodeorder"), { phase: "queued" }],
     ] as const
     let answered = 0
-    for (const [order, change] of kept) {
-      await context.route(`**/api/registration/${order.registrationId}*`, async (route) => {
-        await new Promise((wait) => setTimeout(wait, ROW_READ_MS))
-        await route.fulfill({ json: registrationView(order, change) })
-        answered++
-      })
+    const slowly = async <T>(json: T, route: Route) => {
+      await new Promise((wait) => setTimeout(wait, ROW_READ_MS))
+      await route.fulfill({ json })
+      answered++
     }
-    await context.route("**/api/name/**", (route) => route.fulfill({ json: { status: "registered", entities: [], owner: kept[0][0].owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId,
-      records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt: now + ROW_YEAR_S, tld: "simplex", community: null } }))
+    for (const [order, change] of kept) {
+      const view = registrationView(order, change)
+      await context.route(`**/api/registration/${order.registrationId}*`, (route) => slowly(view, route))
+      if (order.invoiceId) await context.route(`**/api/invoice/${order.invoiceId}*`, (route) => slowly({ invoiceId: order.invoiceId, status: "paid", amount: 10000,
+        currency: "usd", expiresAt: new Date().toISOString(), kind: "name", registration: view, cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bcrt1q",
+        cryptoAmountPaid: "0.00156", paidInFull: true }, route))
+    }
+    // the first name has its two chats, the other none
+    await context.route("**/api/name/**", (route) => slowly({ status: "registered", entities: route.request().url().includes(kept[0][0].request.labelHash)
+      ? [linkedChat("contact"), linkedChat("channel")] : [], owner: kept[0][0].owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId,
+    records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt: now + ROW_YEAR_S, tld: "simplex", community: null }, route))
+    const reads = kept.length + 2
     for (const [tab, opening] of [[page, "first opening"], [await context.newPage(), "new tab"]] as const) {
       const before = answered
+      // once the web fonts are in, which move text by their own measure, and from the list's top
+      await recordFrames(tab, () => {
+        if (document.fonts.status !== "loaded") return null
+        const list = document.querySelector("body > main .card.list")?.getBoundingClientRect().top ?? 0
+        return [...document.querySelectorAll<HTMLElement>("body > main :is(.list-row, .end-links)")]
+          .map((n) => `${n.dataset.key ?? "end-links"} ${Math.round(n.getBoundingClientRect().top - list)} ${Math.round(n.getBoundingClientRect().height)}`)
+      }, true)
+      // a document of its own, which the sampler starts with
+      await tab.goto("about:blank")
       await tab.goto("/#/names")
-      await expect(onStep(tab).getByRole("heading", { name: "Your names" })).toBeVisible()
-      const drawn = await listRows(tab)
-      await expect.poll(() => answered, "the rows' reads").toBe(before + kept.length)
-      await tab.evaluate(() => new Promise(requestAnimationFrame))
-      const read = await listRows(tab)
-      expect(read.map(({ top, height }) => [top, height]), `${opening} at ${size.width}: each row once its read answered`).toEqual(drawn.map(({ top, height }) => [top, height]))
-      // a registered row's chip goes, and its actions take the room
-      expect(read.slice(0, 2).map((r) => r.main), `${opening} at ${size.width}: the name and line beside a chip that changed`).toEqual(drawn.slice(0, 2).map((r) => r.main))
+      await expect.poll(() => answered, "the rows' reads").toBe(before + reads)
+      await expect(tab.locator(".list-row")).toHaveCount(kept.length)
+      await tab.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))))
+      const places = new Map<string, Set<string>>()
+      for (const frame of await recordedFrames<string[]>(tab)) for (const part of frame) {
+        const [key, ...place] = part.split(" ")
+        places.set(key, (places.get(key) ?? new Set()).add(place.join(" ")))
+      }
+      const moved = [...places].filter(([, seen]) => seen.size > 1).map(([key, seen]) => `${key}: ${[...seen].join(", ")}`)
+      expect(moved, `${opening} at ${size.width}: each row's top and height in every frame since it was drawn`).toEqual([])
     }
     await context.close()
   }

@@ -551,10 +551,10 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 .list-row .main { flex: 1 1 240px; min-width: 0; display: grid; gap: 2px; }
 .list-row .sub { color: var(--ink-soft); font-size: var(--fs-small); }
 .list-row .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: var(--fs-small); white-space: nowrap; }
+/* a flex slot, so Firefox's baseline snapping gives it no line box to vary */
+.list-row .state { display: flex; }
 .list-row .room { display: inline-grid; justify-items: end; }
 .list-row .room > * { grid-area: 1 / 1; }
-/* a gone chip's room goes to the actions on a laptop and keeps the line's height on a phone */
-.list-row .room:not(:has(> .chip)) { display: none; }
 /* a balance's words give way to its actions beside them, as the mockup draws Use and Refund, down to their own widest
    unbroken part, past which the actions go under them */
 .balance-row .main { flex-basis: 0; min-width: auto; }
@@ -649,7 +649,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
   /* a name's line across the row, its chats and actions under it, the actions at the right */
   .list-row .acts { flex: 1 1 auto; justify-content: flex-end; }
   .list-row .acts > .chats { margin-right: auto; }
-  .list-row .room, .list-row .room:not(:has(> .chip)) { display: inline-grid; justify-items: start; }
+  .list-row .room { justify-items: start; }
   /* a code on one line across the row, its state beside its actions under it, at the right */
   .code-row .main { flex-basis: 100%; }
   .code-row .state { margin-left: auto; }

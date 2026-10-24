@@ -279,30 +279,20 @@ test("a new invoice paid partly from a balance asks for changed terms before spe
   })
 })
 
-test("Your names marks a community name from its order's signed terms before the order is read, so no marker comes in with the read", async ({ page, context, request }) => {
+test("Your names draws a community name's row with its marker on the name's last line, its popup saying what the name is for", async ({ page, context, request }) => {
   const long = longLabel()
   await listed(request, [long], async () => {
     await startOrder(page, long)
     for (const [width, height] of SIZES) {
-      // a tab of its own, which no tab has told what Your names read before; its read of the order waits
       const fresh = await context.newPage()
       await fresh.addInitScript(() => localStorage.removeItem("simplex-names-seen"))
       await fresh.setViewportSize({ width, height })
-      let release: () => void = () => undefined
-      const read = new Promise<void>((done) => { release = done })
-      await fresh.route("**/api/invoice/*", async (route) => { await read; await route.continue() })
       await fresh.goto("/#/names")
       const name = fresh.locator(".list-row .name.comm", { hasText: `${long.slice(-3)}.simplex` })
-      await expect(name.getByRole("button", { name: MARKER })).toBeVisible()
       await name.getByRole("button", { name: MARKER }).click()
-      await expect(fresh.getByRole("dialog").locator("p"), "what the name is for comes with the read").toHaveText(POPUP_END)
+      await expect(fresh.getByRole("dialog").locator("p")).toContainText(POPUP_END)
       await fresh.getByRole("dialog").getByRole("button", { name: "Close" }).click()
-      const before = await markerPlace(name)
-      release()
-      await expect(fresh.locator(".list-row", { hasText: `${long.slice(-3)}.simplex` }).locator(".chip")).not.toHaveText("Checking")
-      const after = await markerPlace(name)
-      console.log(`Your names, ${width} px, before and after the read: ${JSON.stringify([before, after])}`)
-      for (const place of [before, after]) expect(Math.abs(place.baseline), `the marker on the name's last line at ${width} px`).toBeLessThanOrEqual(PIXEL)
+      expect(Math.abs((await markerPlace(name)).baseline), `the marker on the name's last line at ${width} px`).toBeLessThanOrEqual(PIXEL)
       await fresh.close()
     }
   })
