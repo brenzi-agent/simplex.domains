@@ -168,7 +168,7 @@ export function moveBar(record: OrderRecord, label: string, price: number): "unc
 
 export function moveHint(record: OrderRecord, label: string, price: number): [string, string | null] {
   const cover = codeCover(record)
-  if (cover?.minLength === null) return ["Free with your code, if it covers a name this long", null]
+  if (cover?.minLength === null) return [label.length >= record.label.length ? "Free with your code" : "Free with your code, if it covers a name this long", null]
   if (cover) return tooShort(cover, label) ? [`Your code pays for a name of ${cover.minLength} or more letters.`, `This name has ${label.length}.`] : ["Covered by your code", null]
   const paid = dollars(record.paid)
   if (price > record.paid) return [`This name costs more than the ${paid} your order is worth.`, null]
