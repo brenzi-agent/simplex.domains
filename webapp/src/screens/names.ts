@@ -53,6 +53,16 @@ export function rowShown(s: ListState, o: OrderRecord): boolean {
   return s.unread.includes(o.registrationId) || (seen !== undefined && (seen.view.phase !== "registered" || seen.answer !== undefined))
 }
 
+// rows in order up to the first not shown, and those drawn before wherever they now stand; done once every row is shown
+export function rowsDrawn(s: ListState, drawn: Set<string>): { rows: OrderRecord[]; done: boolean } {
+  const orders = nameRows(s)
+  const first = orders.findIndex((o) => !rowShown(s, o))
+  if (first < 0) return { rows: orders, done: true }
+  return { rows: orders.filter((o, i) => i < first || drawn.has(o.registrationId)), done: false }
+}
+
+export const unanswered = (s: ListState) => nameRows(s).filter((o) => !rowShown(s, o) || o.registrationId in s.next).map((o) => o.registrationId)
+
 export const hasRecords = (s: Stored) => s.orders.length > 0 || s.pending.length > 0 || s.codes.length > 0
 
 export function reduceList(s: ListState, e: ListEvent): ListState {

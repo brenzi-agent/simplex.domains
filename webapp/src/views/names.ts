@@ -8,7 +8,7 @@ import { qrSvg } from "../qr.ts"
 import {
   balanceRows, type BalanceRow, CODE_CHIPS, holderOf, EDIT_RETRY_MS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
   againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, nameRows, ORDER_CHIP_WORDS, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
-  reduceList, reduceRestore, REFUSALS, ROW_CHIPS, rowShown, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
+  reduceList, reduceRestore, REFUSALS, ROW_CHIPS, rowsDrawn, unanswered, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
 import { heldWords } from "../screens/balance.ts"
 import { checkoutUrl, CODE_URL } from "../screens/routes.ts"
@@ -60,6 +60,7 @@ const storedNow = (): Stored => ({ orders: store.orders(), pending: store.pendin
 const storedEvent = (): ListEvent => ({ type: "stored", ...storedNow(), hold: tabHold() })
 
 const ROW_READ_BOUND_MS = 10_000
+const drawnRows = new Set<string>()
 
 export function historyPage(): void {
   listRoute = currentRoute()
@@ -69,9 +70,10 @@ export function historyPage(): void {
   readIds.clear()
   retried.clear()
   readCodes.clear()
+  drawnRows.clear()
   list = initialList(storedNow(), tabHold(), store.seen<RowSeen>(), lastChecked, api.serviceNow())
   after(ROW_READ_BOUND_MS, () => {
-    for (const o of nameRows(list)) if (!rowShown(list, o)) dispatchList({ type: "row-unread", id: o.registrationId })
+    for (const id of unanswered(list)) dispatchList({ type: "row-unread", id })
   }, reads.signal)
   showList()
 }
@@ -230,12 +232,11 @@ function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   holdEnder(signal, () => dispatchList({ type: "hold-ended" }))(s.hold !== null)
   const open = session.checkout()
   const orders = nameRows(s)
-  const unread = orders.findIndex((o) => !rowShown(s, o))
-  const shown = unread < 0 ? orders : orders.slice(0, unread)
-  const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...shown.map((o) => orderRow(o, s))]
+  const { rows, done } = rowsDrawn(s, drawnRows)
+  for (const o of rows) drawnRows.add(o.registrationId)
+  const names = [...s.pending.map((p) => pendingRow(p, s, open, signal)), ...rows.map((o) => orderRow(o, s))]
   const balances = balanceRows(s)
   if (!names.length && !orders.length && !balances.length && !s.codes.length) return emptyNames(s)
-  const done = unread < 0
   return screen({ title: NAMES_TITLE, lead: leadOf(s.canPersist), back: HOME },
     names.length || done ? el("div", { class: "card list" }, names.length ? names : el("p", { class: "note" }, "No names in this browser yet.")) : null,
     done ? null : el("p", { class: "note reading", role: "status" }, READING),

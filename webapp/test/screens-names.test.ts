@@ -3,7 +3,7 @@ import type { InvoiceView, RegistrationView, SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
   balanceRows, changesOf, CODE_CHIPS, holderOf, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
-  initialList, initialRestore, lapsed, lateLine, listedOrders, nameRows, ORDER_CHIP_WORDS, rowShown, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
+  initialList, initialRestore, lapsed, lateLine, listedOrders, nameRows, ORDER_CHIP_WORDS, rowShown, rowsDrawn, unanswered, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
   againLine, ranOut, registrableAgain, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../src/screens/names.ts"
 import type { CodeRecord, OrderRecord, PendingCode } from "../src/store.ts"
@@ -578,5 +578,27 @@ describe("a row shown", () => {
   })
   it("of an order in progress is shown with its read alone", () => {
     expect(rowShown(readAs(list({ orders: [order] }), registering), order)).toBe(true)
+  })
+})
+
+describe("rows drawn and unanswered", () => {
+  const [a, b, c] = ["reg-a", "reg-b", "reg-c"].map((registrationId, i) => record({ registrationId, createdAt: `2026-10-17T11:0${5 - i}:00Z` }))
+  const progress = registration({ phase: "committed" })
+  const seenAll = { "reg-a": { view: progress, invoice: null }, "reg-b": { view: progress, invoice: null }, "reg-c": { view: progress, invoice: null } }
+  it("draws rows in order up to the first not in, and every row drawn before, wherever it now stands", () => {
+    const s = initialList(stored({ orders: [a, b, c] }), null, seenAll, {}, NOW)
+    expect(rowsDrawn(s, new Set()).rows.map((o) => o.registrationId)).toEqual(["reg-a", "reg-b", "reg-c"])
+    // a newer order of a's name takes a's place, its read not in yet
+    const successor = record({ registrationId: "reg-new", createdAt: "2026-10-17T11:06:00Z" })
+    const replaced = initialList(stored({ orders: [successor, b, c] }), null, seenAll, {}, NOW)
+    const { rows, done } = rowsDrawn(replaced, new Set(["reg-a", "reg-b", "reg-c"]))
+    expect(rows.map((o) => o.registrationId)).toEqual(["reg-b", "reg-c"])
+    expect(done).toBe(false)
+  })
+  it("names the rows whose read, or whose registered name's answer, is still out", () => {
+    const s = initialList(stored({ orders: [a, b, c] }), null, { "reg-a": { view: registration({ phase: "registering" }), invoice: null } }, {}, NOW)
+    const readA = reduceList(s, { type: "row-read", id: "reg-a", view: registeredView(), invoice: null, now: NOW })
+    const readB = reduceList(readA, { type: "row-read", id: "reg-b", view: progress, invoice: null, now: NOW })
+    expect(unanswered(readB)).toEqual(["reg-a", "reg-c"])
   })
 })
