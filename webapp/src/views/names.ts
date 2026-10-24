@@ -59,7 +59,6 @@ export function seenRegistered(view: api.RegistrationView, invoice: api.InvoiceV
 const storedNow = (): Stored => ({ orders: store.orders(), pending: store.pendingCodes(), codes: store.codes(), canPersist: store.canPersist() })
 const storedEvent = (): ListEvent => ({ type: "stored", ...storedNow(), hold: tabHold() })
 
-// a row whose read has not answered by then is drawn as last known, marked as not read now
 const ROW_READ_BOUND_MS = 10_000
 
 export function historyPage(): void {

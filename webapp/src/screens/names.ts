@@ -13,7 +13,6 @@ export interface ListState extends Stored {
   hold: Hold | null
   now: number
   seen: Record<string, RowSeen>
-  // a read that found the name registered, kept until the name's answer comes with it
   next: Record<string, RowSeen>
   unread: string[]
   checked: Record<string, CodeCheck>
@@ -48,8 +47,7 @@ export function initialList(stored: Stored, hold: Hold | null, seen: Record<stri
   return { ...stored, hold, now, seen: keep(seen, unreplaced), next: {}, unread: [], checked: keep(checked, known), checkAgainAt: {}, finding: {}, asking: false, shownCode: null }
 }
 
-// A row is drawn once its read, and a registered name's answer, are in or have failed, and then stays drawn as it was last
-// seen until a new answer replaces it.
+// a row drawn stays as last seen until a whole new answer replaces it
 export function rowShown(s: ListState, o: OrderRecord): boolean {
   const seen = s.seen[o.registrationId]
   return s.unread.includes(o.registrationId) || (seen !== undefined && (seen.view.phase !== "registered" || seen.answer !== undefined))

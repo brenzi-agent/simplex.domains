@@ -57,7 +57,6 @@ function removeChip(): void {
   refresh()
 }
 
-// the header's and the menu's link to the page on show
 function markCurrent(): void {
   const here = location.search ? null : location.hash.split("?")[0] || "#/"
   for (const a of document.querySelectorAll<HTMLAnchorElement>(".top-links a, .menu a")) {
