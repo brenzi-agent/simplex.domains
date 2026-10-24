@@ -151,6 +151,7 @@ h2 { font: 700 var(--fs-h2)/1.2 var(--display); letter-spacing: -.01em; }
 html.dark .brand .logo-dark { display: block; }
 .top-links { display: flex; align-items: center; gap: 22px; font-size: 15px; }
 .top-links a { white-space: nowrap; }
+:is(.top-links, .menu) a[aria-current="page"] { color: var(--ink); }
 .theme-switch { display: inline-flex; align-items: center; gap: 12px; background: none; border: 0; cursor: pointer; padding: 6px; margin: -6px; color: var(--menu-ink); }
 .theme-switch svg { width: 22px; height: auto; display: block; overflow: visible; }
 .theme-switch svg path { fill: var(--toggle); }

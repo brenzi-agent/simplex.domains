@@ -57,9 +57,19 @@ function removeChip(): void {
   refresh()
 }
 
+// the header's and the menu's link to the page on show
+function markCurrent(): void {
+  const here = location.search ? null : location.hash.split("?")[0] || "#/"
+  for (const a of document.querySelectorAll<HTMLAnchorElement>(".top-links a, .menu a")) {
+    if (a.getAttribute("href")?.slice(1) === here) a.setAttribute("aria-current", "page")
+    else a.removeAttribute("aria-current")
+  }
+}
+
 export function setUpChrome(): void {
   chip().querySelector("button")!.addEventListener("click", removeChip)
   onDrawn(showChip)
+  onDrawn(markCurrent)
   menuButton().addEventListener("click", () => setMenu(menu().hidden))
   // a link in the menu leaves it closed behind the page it opens, as does any other page reached meanwhile
   menu().addEventListener("click", (e) => { if ((e.target as Element).closest("a")) closeMenu() })

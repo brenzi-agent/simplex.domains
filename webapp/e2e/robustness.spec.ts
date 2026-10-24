@@ -714,6 +714,46 @@ test("Your names moves no row once drawn as its reads answer, on a browser's fir
   }
 })
 
+// the service's added latency the press is measured under, and the most a press may take to show Your names
+const ADDED_LATENCY_MS = 300
+const PRESS_SHOWN_MS = 100
+
+test("a press on Your names shows its page at once, marked in the header or the phone's menu, while its rows are read", async ({ browser }) => {
+  for (const size of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    const context = await browser.newContext({ viewport: size })
+    const page = await context.newPage()
+    await keepOrder(page, "reg-press0", null, "pressedname")
+    await context.route("**/api/**", async (route) => {
+      await new Promise((wait) => setTimeout(wait, ADDED_LATENCY_MS))
+      await route.continue()
+    })
+    await page.goto("/")
+    await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
+    await page.evaluate(() => {
+      const w = window as unknown as { __pressed: number; __shown: number }
+      addEventListener("click", () => { w.__pressed = performance.now() }, { capture: true })
+      const look = () => {
+        const marked = document.querySelector('a[aria-current="page"][href="/#/names"]')
+        if (document.querySelector("body > main h1")?.textContent === "Your names" && marked && !w.__shown) w.__shown = performance.now()
+        else requestAnimationFrame(look)
+      }
+      requestAnimationFrame(look)
+    })
+    if (size.width > 520) await page.locator("body > header .top-links").getByRole("link", { name: "Your names" }).click()
+    else {
+      await page.getByRole("button", { name: "Menu" }).click()
+      await page.getByRole("navigation", { name: "Menu" }).getByRole("link", { name: "Your names" }).click()
+    }
+    await expect(page.getByRole("heading", { name: "Your names" })).toBeVisible()
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __shown?: number }).__shown ?? null), "a frame drawn with Your names").not.toBeNull()
+    const [pressed, shown] = await page.evaluate(() => [(window as unknown as { __pressed: number }).__pressed, (window as unknown as { __shown: number }).__shown])
+    expect(shown - pressed, `from the press to Your names shown at ${size.width}`).toBeLessThanOrEqual(PRESS_SHOWN_MS)
+    await expect(page.getByRole("navigation", { name: "Menu" })).toBeHidden()
+    await expect(page.locator(".list-row", { hasText: "pressedname" })).toBeVisible()
+    await context.close()
+  }
+})
+
 test("a row drawn from the last reads stays drawn as it was, until its name registered meanwhile comes with its answer", async ({ page }) => {
   const order = await keepOrder(page, "reg-stays", null, "staysregistering")
   const now = Math.floor(Date.now() / 1000)

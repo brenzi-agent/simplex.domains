@@ -58,9 +58,6 @@ export function seenRegistered(view: api.RegistrationView, invoice: api.InvoiceV
 const storedNow = (): Stored => ({ orders: store.orders(), pending: store.pendingCodes(), codes: store.codes(), canPersist: store.canPersist() })
 const storedEvent = (): ListEvent => ({ type: "stored", ...storedNow(), hold: tabHold() })
 
-const LIST_READS_WAIT_MS = 3000
-let listWaited = false
-
 export function historyPage(): void {
   listRoute = currentRoute()
   const reads = new AbortController()
@@ -70,11 +67,6 @@ export function historyPage(): void {
   retried.clear()
   readCodes.clear()
   list = initialList(storedNow(), tabHold(), store.seen<RowSeen>(), lastChecked, api.serviceNow())
-  listWaited = false
-  after(LIST_READS_WAIT_MS, () => {
-    listWaited = true
-    showList()
-  }, reads.signal)
   showList()
 }
 
@@ -87,10 +79,7 @@ function showList(): void {
   store.setSeen(list.seen)
   lastChecked = list.checked
   if (!isRoute(listRoute)) return
-  if (listWaited || nameRows(list).every((o) => rowShown(list, o))) {
-    listWaited = true
-    draw("names", (signal) => buildNames(list, signal))
-  } else drawLoading(NAMES_TITLE, asStep)
+  draw("names", (signal) => buildNames(list, signal))
   readRows()
 }
 
@@ -248,7 +237,6 @@ function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
     done ? el("div", { class: "end-links" }, el("a", { href: CODE_URL }, "Add a code"), s.asking || !hasRecords(s) ? null : forgetLink()) : null,
     forgetQuestion(s))
 }
-
 
 const PROGRESS: Partial<Record<api.Phase, string>> = {
   queued: "Paid, waiting to commit",
