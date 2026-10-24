@@ -648,7 +648,7 @@ test("a page loaded directly on a phone draws its invest note where its first fr
   test.skip(!process.env.BASE_URL, "the dev server styles the page from its script, so only the build paints a frame before the page is drawn")
   await page.setViewportSize(SHORT_PHONE)
   await recordFrames(page, () => document.querySelector("body > .invest")?.getBoundingClientRect().top ?? null, true)
-  for (const route of ["/", "/#/names", "/#/code", "/#/trademarks", "/#/edit/nosuchname", "/#/checkout/links", "/?order=nosuchorder"]) {
+  for (const route of ["/", "/#/names", "/#/namesx", "/#/code", "/#/codes", "/#/trademarks", "/#/edit/nosuchname", "/#/checkout/links", "/?order=nosuchorder", "/?order="]) {
     // a document of its own each time, as a route reached by its hash alone is drawn in the page already there
     await page.goto("about:blank")
     await page.goto(route)
