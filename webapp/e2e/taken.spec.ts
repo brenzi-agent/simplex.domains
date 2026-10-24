@@ -245,6 +245,32 @@ test("an order whose links the service refuses at its reveal registers without t
   expect(answer.records).toEqual({ contact: "", channel: "" })
 })
 
+test("Register without links that loses a race to another change of the order says nothing changed, rather than nothing at all", async ({ page, request }) => {
+  const label = uniqueLabel("lrr")
+  await search(page, label)
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await onStep(page).getByRole("textbox", { name: "Link", exact: true }).fill(contactLink("LRR"))
+  await previewsShown(page)
+  await onStep(page).getByRole("button", { name: "Continue" }).click()
+  await savedToReview(page)
+  await payButton(page).click()
+  await page.waitForURL(/\?order=/)
+  const invoiceId = new URL(page.url()).searchParams.get("order")!
+  await control(request, "search", { refuseLinks: true })
+  try {
+    await control(request, `settle/${invoiceId}`)
+    await expect(page.getByText("The service refused this order's links")).toBeVisible({ timeout: REGISTRATION_MS })
+  } finally {
+    await control(request, "search", { refuseLinks: false })
+  }
+  // the service's answer to a move whose order changed meanwhile, the order as it is now, which this move left as it was
+  const view = await (await request.get(`${MOCK}/api/registration/${await registrationOf(request, invoiceId)}`)).json()
+  await page.route("**/api/registration/*/name", (route) => route.fulfill({ status: 409, json: { error: "registration_changed", registration: view } }))
+  await onStep(page).getByRole("button", { name: "Register without links" }).click()
+  await expect(onStep(page).getByText("That did not go through. Nothing changed. Try again in a moment.")).toBeVisible()
+  await expect(onStep(page).getByRole("button", { name: "Register without links" })).toBeEnabled()
+})
+
 test("an order failed with links the service refused offers no Try again, which the service refuses, in another browser too, and registers without them", async ({ page, browser, request }) => {
   const label = uniqueLabel("lf")
   await search(page, label)

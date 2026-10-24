@@ -1156,9 +1156,9 @@ async function moveWithoutLinks(): Promise<void> {
     if (holdOn(e, "Nothing changed. ", gen)) return
     const limit = e instanceof api.ApiError && e.code === "move_limit"
     if (e instanceof api.TermsChanged) return askTerms(gen, record.label, e, true)
-    // an order another request moved first is shown as it is now
-    if (e instanceof api.ApiError && e.code === "registration_changed") return reread(gen)
+    // an order another request changed first is shown as it is now, saying this move did nothing
     answer(gen, { type: "move-failed", note: limit ? moveLimitNote(reference) : warning("That did not go through. Nothing changed. Try again in a moment.") })
+    if (e instanceof api.ApiError && e.code === "registration_changed") reread(gen)
   }
 }
 
