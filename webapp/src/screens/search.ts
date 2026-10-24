@@ -149,7 +149,7 @@ export function balanceHint({ amount, held, heldUntil }: AppliedBalance, price: 
   return ["Paid from your balance.", price < amount ? `${dollars(amount - price)} stays in it.` : null]
 }
 
-// minLength is null for a code order restored without its code, which only the service can judge
+// minLength is null for an order restored without its code text
 export interface CodeCover { minLength: number | null; years: number }
 
 export function codeCover(record: OrderRecord): CodeCover | null {
@@ -166,7 +166,6 @@ export function moveBar(record: OrderRecord, label: string, price: number): "unc
   return price > record.paid ? "dearer" : null
 }
 
-// the second sentence is kept on one line
 export function moveHint(record: OrderRecord, label: string, price: number): [string, string | null] {
   const cover = codeCover(record)
   if (cover?.minLength === null) return ["Free with your code, if it covers a name this long", null]

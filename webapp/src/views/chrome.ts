@@ -6,9 +6,7 @@ import { onDrawn, onPageLeft, refresh } from "./shell.ts"
 
 const menuButton = () => document.querySelector<HTMLButtonElement>(".menu-button")!
 const menu = () => document.querySelector<HTMLElement>("#menu")!
-// the window the menu button shows in (styles.css)
 const PHONE = "(max-width: 520px)"
-// what the open menu covers, which takes neither focus nor a click meanwhile
 const COVERED = "body > main, body > .invest, body > footer"
 
 function setMenu(open: boolean): void {
@@ -22,7 +20,6 @@ function closeMenu(): void {
   if (!menu().hidden) setMenu(false)
 }
 
-// Tab goes round the menu button and the open menu's items, the only controls in view under the header's symbol
 function keepFocusIn(e: KeyboardEvent): void {
   const stops = [menuButton(), ...menu().querySelectorAll<HTMLElement>("a, button")]
   const [edge, next] = e.shiftKey ? [stops[0], stops.at(-1)!] : [stops.at(-1)!, stops[0]]
@@ -74,6 +71,5 @@ export function setUpChrome(): void {
     menuButton().focus()
   })
   onPageLeft(closeMenu)
-  // a window widened past a phone's has no menu, so one left open closes
   matchMedia(PHONE).addEventListener("change", (e) => { if (!e.matches) closeMenu() })
 }

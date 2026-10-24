@@ -47,7 +47,7 @@ let lastChecked: Record<string, CodeCheck> = {}
 const readIds = new Set<string>()
 const retried = new Set<string>()
 const readCodes = new Set<string>()
-// rows drawn before their read, which keep the room of what it can show for the rest of the opening
+// rows drawn before their read keep its room until the list is opened again
 const heldRows = new Set<string>()
 
 // an order page that saw its name registered tells the list, which then draws the row registered from the start

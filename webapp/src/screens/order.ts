@@ -11,7 +11,6 @@ export const REVEAL_HOURS = 24
 // refusals of the signed registration after which the page stops signing and says so
 export const REVEAL_ATTEMPTS = 3
 export const RETRY_MS = 3000
-// past a stage's usual time, it is said to take longer than usual
 export const STALL_MARGIN_MS = 60_000
 // a mainnet commit or register: a slow inclusion, then the service's 3 confirmations
 export const TX_STALL_MS = 180_000
@@ -54,9 +53,8 @@ export interface OrderState {
   // the balance that paid part of the order, as its own order reads now, which a new invoice spends again
   sourceBalance: Balance | null
   ask: TermsAsk | null
-  // a search after the order was taken answered that the name is reserved
   reserved: boolean
-  // the registration's stage, and when this page first saw it, on the service's clock
+  // when this page first saw the stage, on the service's clock
   since: { stage: string; at: number } | null
 }
 
@@ -96,8 +94,6 @@ export function initialState(reference: string, hold: Hold | null, reveal: Revea
   return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null, reserved: false, since: null }
 }
 
-// A stage moves on with the phase, and once the owner's signature is in, as the service then registers; a transaction sent
-// again within it moves nothing on.
 const stageOf = (view: RegistrationView) => `${view.id} ${view.phase}${view.phase === "committed" && view.label !== null ? " signed" : ""}`
 const sinceOf = (since: OrderState["since"], view: RegistrationView, now: number) => since?.stage === stageOf(view) ? since : { stage: stageOf(view), at: now }
 
@@ -179,8 +175,6 @@ export const failedLead = ({ view, invoice, codeRefused, codeKept, record }: Ord
 
 const NOT_REGISTERED_YET = "The name could not be registered yet"
 
-// The failed page's alert: the service's sentence for the buyer when it gave one, and whether Try again can still register
-// the name, which links or a code the service refused rule out.
 export const failedAlert = ({ view, codeRefused }: OrderState) => ({ title: view!.error ?? NOT_REGISTERED_YET, retry: !view!.linksRefused && !codeRefused })
 
 export const coinOf = (invoice: InvoiceView) => invoice.cryptoCurrency === "btc" || invoice.cryptoCurrency === "xmr" ? invoice.cryptoCurrency : null
@@ -272,7 +266,6 @@ export function revealDue(s: OrderState): boolean {
   return !(reveal?.key === revealKey(view) && reveal.sending) && refusalsOf(s) < REVEAL_ATTEMPTS
 }
 
-// a refused reveal is said by the page instead
 export function stalledAt(s: OrderState): number | null {
   const { view, since } = s
   if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS) return null

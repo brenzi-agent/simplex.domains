@@ -112,7 +112,6 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
   let codeChecked = false
   let sourceRead = false
   let unreadReads = 0
-  // whether a taken order's name is reserved now, searched once as the order is first seen taken
   let reserved: boolean | null = null
   // forgetting the last answer makes the next read answer at once
   const forget = () => {
@@ -260,8 +259,6 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
   }
 }
 
-// A taken order's register reverted on a name someone registered first, or on one reserved meanwhile, which a search
-// tells apart; one that could not be searched is taken as registered.
 async function reservedNow(view: api.RegistrationView, record: store.OrderRecord | null): Promise<boolean> {
   const label = labelOf(view, record)
   if (label === null) return false
@@ -467,8 +464,8 @@ function stopWatchingName(): void {
   payDetails = null
 }
 
-// The note holds its sentences in one cell, the ones not in force hidden, so it keeps its height as one replaces another;
-// it is hidden until the first check answers. The card page's note is its one notice (cardWords).
+// The note holds both sentences in one cell, the one not in force hidden, so it keeps its height as one replaces the
+// other; it is hidden until the first check answers. The card page's note is its one notice (cardWords).
 function nameNote(s: OrderState): HTMLElement {
   if (checksName(s)) watchName(s)
   const note = kept(NAME_NOTE, () => el("div", { class: "notice name-check unchecked", role: "status" }))
@@ -476,8 +473,8 @@ function nameNote(s: OrderState): HTMLElement {
   return note
 }
 
-// What the card page can say above its form, other than its name's check, by priority under a taken name: what an action
-// met, that this browser cannot remember a card payment, that an earlier try's invoice opened. It says the first there,
+// What the card page says above its form, other than its name's check, by priority under a taken name: what an action
+// met, that this browser cannot remember a card payment, that an earlier try's invoice opened. It says one thing there,
 // in the room held for the name's note, so nothing reaches Pay.
 function cardWords(s: OrderState): { tone: Note["tone"] | null; words: Kid[] }[] {
   const opened = insteadWords(s.invoice!)
@@ -504,7 +501,6 @@ function fillNameNote(note: HTMLElement, s: OrderState): void {
       "If someone registers it before you pay and the registration succeeds, what you paid is kept as your balance for another name, or refunded on request."]
   const gone: Kid[] = card ? [el("b", {}, "Taken"), ` at ${time}. ${dontPay}`] : [el("b", {}, "Someone has registered this name"), ` (checked at ${time}). `, dontPay]
   const said = taken ? gone : other?.words ?? free
-  // every sentence the page can say here holds its room, the ones not in force hidden, so one replacing another moves nothing
   note.replaceChildren(...[free, gone, ...others.map((o) => o.words)].map((words) => {
     const sentence = el("span", {}, ...words)
     sentence.classList.toggle("sizer", words !== said)

@@ -42,7 +42,6 @@
   --column: 600px;
   --control-h: 44px;
   --field-h: 48px;
-  /* a screen's room above its heading, and a step's frame under it, which a page opening on a step holds before its draw */
   --screen-top: 29px;
   --step-h: 540px;
 
@@ -219,7 +218,6 @@ html.framed body > main:empty { min-height: calc(var(--step-h) + var(--screen-to
 .field:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .field > svg.i { color: var(--faint); }
 .field input { flex: 1; min-width: 0; height: 24px; border: 0; background: none; outline: none; font: 600 var(--fs-body) var(--body); color: var(--ink); }
-/* the placeholder says what to enter, so it reads at the contrast of body text */
 .field input::placeholder { color: var(--ink-soft); font-weight: 500; }
 .field.bad { border-color: var(--danger-fg); }
 .field.ok { border-color: var(--ok-fg); }
@@ -502,7 +500,7 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 .countdown b { display: inline-grid; place-items: center; min-height: 1em; min-width: 4ch; font: 700 22px/1 var(--body); color: var(--primary); font-variant-numeric: tabular-nums; }
 .countdown b svg.i { width: .8em; height: .8em; }
 .countdown p { display: grid; align-items: center; color: var(--ink-soft); font-size: var(--fs-small); }
-/* the words in view and the longest ones, hidden, share one cell, whose middle is the icon's */
+/* the words in view and the longest ones, hidden, share one cell */
 .countdown p > *, .sized > * { grid-area: 1 / 1; }
 .sized { display: grid; }
 .sizer { visibility: hidden; }
@@ -555,7 +553,7 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 .list-row .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: var(--fs-small); white-space: nowrap; }
 .list-row .room { display: inline-grid; justify-items: end; }
 .list-row .room > * { grid-area: 1 / 1; }
-/* a chip gone from a row leaves its actions the room on a laptop, and its line's height on a phone */
+/* a gone chip's room goes to the actions on a laptop and keeps the line's height on a phone */
 .list-row .room:not(:has(> .chip)) { display: none; }
 /* a balance's words give way to its actions beside them, as the mockup draws Use and Refund, down to their own widest
    unbroken part, past which the actions go under them */

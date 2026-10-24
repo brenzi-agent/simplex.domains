@@ -202,8 +202,7 @@ export function addCode(code: CodeRecord): void {
   put("code", code.code, code)
 }
 
-// What Your names last read of each order, so the list opened again, in this tab or another, draws the rows it knows in
-// their last shape at once. Its key is outside the records' prefix, so no tab takes a write of it for a record's change.
+// outside the records' prefix, so no tab takes its writes for a record's change
 const SEEN = "simplex-names-seen"
 export const seen = <T>(): Record<string, T> => read<Record<string, T>>(SEEN) ?? {}
 export function setSeen(rows: object): void {
@@ -213,7 +212,7 @@ export function setSeen(rows: object): void {
   try {
     s.setItem(SEEN, text)
   } catch {
-    // a full storage keeps the rows read before; this page's reads draw them as they are now
+    // a full storage keeps the rows last written
   }
 }
 

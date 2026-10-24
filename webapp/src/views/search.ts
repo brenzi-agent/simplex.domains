@@ -369,7 +369,6 @@ function registerNote({ hold, register: { refusal } }: SearchState, signal: Abor
   return alertBox("danger", "alert", "That did not go through", words)
 }
 
-// a code that can no longer pay leaves the order to support
 function codeLossNote(state: CodeLoss, reference: string): Note {
   const [title, line] = STATE_LINES[state]
   return { tone: "danger", icon: "key", title, text: `${line ? `${line} ` : ""}Write to SimpleX support with this order's reference, `,

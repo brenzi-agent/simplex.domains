@@ -154,9 +154,7 @@ const PHASE_CHIPS: Record<Phase, [string, string]> = {
 const CHIPS = {
   sign: "Open to finish", cancelled: "Invoice cancelled", expired: "Invoice expired", late: "Paid late", confirming: "Confirming payment", rest: "Waiting for the rest",
 } as const
-// what an order's row says before its read answers, once its read failed, and for a name past its expiry
 export const ROW_CHIPS = { checking: "Checking", unchecked: "Not checked", lapsed: "Expired" } as const
-// every chip an order's row can show, the widest of which the row keeps room for
 export const ORDER_CHIP_WORDS = [...new Set([...Object.values(ROW_CHIPS), ...Object.values(PHASE_CHIPS).map(([words]) => words), ...Object.values(CHIPS)])]
 
 export function phaseChip(view: RegistrationView, invoice: InvoiceView | null, o: OrderRecord, now: number): [string, string] {
