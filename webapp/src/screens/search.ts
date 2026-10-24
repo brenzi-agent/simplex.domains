@@ -152,6 +152,8 @@ export function balanceHint({ amount, held, heldUntil }: AppliedBalance, price: 
 // minLength is null for an order restored without its code text
 export interface CodeCover { minLength: number | null; years: number }
 
+const COVERED = "Covered by your code"
+
 export function codeCover(record: OrderRecord): CodeCover | null {
   if (record.method !== "code") return null
   const code = record.prepaidCode ? parseNameCode(record.prepaidCode) : null
@@ -168,8 +170,8 @@ export function moveBar(record: OrderRecord, label: string, price: number): "unc
 
 export function moveHint(record: OrderRecord, label: string, price: number): [string, string | null] {
   const cover = codeCover(record)
-  if (cover?.minLength === null) return [label.length >= record.label.length ? "Free with your code" : "Free with your code, if it covers a name this long", null]
-  if (cover) return tooShort(cover, label) ? [`Your code pays for a name of ${cover.minLength} or more letters.`, `This name has ${label.length}.`] : ["Covered by your code", null]
+  if (cover?.minLength === null) return [label.length >= record.label.length ? COVERED : "Free with your code, if it covers a name this long", null]
+  if (cover) return tooShort(cover, label) ? [`Your code pays for a name of ${cover.minLength} or more letters.`, `This name has ${label.length}.`] : [COVERED, null]
   const paid = dollars(record.paid)
   if (price > record.paid) return [`This name costs more than the ${paid} your order is worth.`, null]
   return [price < record.paid ? `Uses ${dollars(price)} of your ${paid}; the rest stays as your balance.` : "Covered by your payment", null]
@@ -177,7 +179,8 @@ export function moveHint(record: OrderRecord, label: string, price: number): [st
 
 export function keptWords(record: OrderRecord): [string, string] {
   const cover = codeCover(record)
-  if (cover) return ["Your code is kept.", `It pays for another name ${cover.minLength === null ? "it covers" : `of ${cover.minLength} or more letters`}, for ${cover.years} years.`]
+  if (cover?.minLength === null) return ["Your code is kept.", `It pays for another name of ${record.label.length} or more letters, for ${cover.years} years, and maybe a shorter one.`]
+  if (cover) return ["Your code is kept.", `It pays for another name of ${cover.minLength} or more letters, for ${cover.years} years.`]
   const worth = dollars(record.paid)
   return [`Your payment is kept: ${worth}.`, `Choose another name of up to ${worth}; nothing more is charged.`]
 }
