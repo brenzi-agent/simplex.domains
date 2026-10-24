@@ -843,8 +843,26 @@ test("a code's row keeps its lines and height as its chip turns from Checking to
     const at = `${size.width}x${size.height}, added ${addedAt.slice(0, 10)}`
     expect([...new Set(frames.map(([chip]) => chip))], `${at}: the chip, frame by frame`).toEqual(["Checking", "Used"])
     expect([...new Set(frames.map(([, height, end]) => `${height} ${end}`))], `${at}: the row's height and the end links' top`).toHaveLength(1)
+    expect(await addedApart(page), `${at}: "added" and its date on different lines`).toBe(false)
     await page.unrouteAll({ behavior: "wait" })
   }
+})
+
+// whether a code's line breaks between "added" and the date after it
+const addedApart = (page: Page) => page.locator(".code-row .sub").evaluate((sub) => {
+  const walker = document.createTreeWalker(sub, NodeFilter.SHOW_TEXT)
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    const at = node.data.indexOf("added ")
+    if (at < 0) continue
+    const top = (from: number, to: number) => {
+      const range = document.createRange()
+      range.setStart(node!, from)
+      range.setEnd(node!, to)
+      return Math.round(range.getClientRects()[0].top)
+    }
+    return top(at, at + 5) !== top(at + 6, at + 7)
+  }
+  return null
 })
 
 test("a phone draws each code's chip at its actions, whatever its word", async ({ page }) => {

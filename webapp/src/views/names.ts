@@ -379,7 +379,7 @@ function codeRow(c: store.CodeRecord, s: ListState, signal: AbortSignal): HTMLEl
   // an unused code registers the names this tab finds from now on
   const use = check === "unused" ? small("Use", `${c.code}-use`, () => { session.setActiveCode({ display: c.code, minLength: c.minLength, years: c.years }); go(HOME) }) : null
   const state = checkAgainAt === undefined ? chip(text, tone, check === undefined || check === "unused") : chip("", "warn")
-  const node = row(c.code, el("b", { class: "mono" }, c.code), `A free name of ${c.minLength} or more letters, for ${c.years} years${SEP}added ${dateOf(Date.parse(c.addedAt) / 1000)}`,
+  const node = row(c.code, el("b", { class: "mono" }, c.code), [`A free name of ${c.minLength} or more letters, for ${c.years} years${SEP}`, el("span", { class: "nowrap" }, `added ${dateOf(Date.parse(c.addedAt) / 1000)}`)],
     chipRoom(state, CODE_CHIP_WORDS), [use, copy])
   node.classList.add("code-row")
   // the count goes in once the chip is in its row, as a held row's does
