@@ -784,3 +784,16 @@ test("a row drawn from the last reads stays drawn as it was, until its name regi
   expect([...new Set(frames.map(([chip]) => chip))], "the row's chip, frame by frame").toEqual(["Registering", "no chip"])
 })
 
+test("a read that does not answer leaves the row's place to the reading note, then draws it as last known and not read, and the list goes on", async ({ page }) => {
+  // the newest row first, whose read the older one's waits behind
+  await keepOrder(page, "reg-hung1", null, "neveranswered")
+  await keepOrder(page, "reg-hung0", null, "answeredfirst")
+  await page.route("**/api/registration/reg-hung1*", () => undefined)
+  await page.goto("/#/names")
+  await expect(page.locator(".list-row")).toHaveCount(1)
+  await expect(page.getByRole("status").filter({ hasText: "Reading your names…" })).toBeVisible()
+  await expect(page.locator("body > main .end-links")).toHaveCount(0)
+  await expect(page.locator(".list-row", { hasText: "neveranswered" }).locator(".chip")).toHaveText("Not checked", { timeout: 15_000 })
+  await expect(page.locator("body > main .end-links")).toBeVisible()
+  await expect(page.getByText("Reading your names…")).toHaveCount(0)
+})

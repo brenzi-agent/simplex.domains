@@ -262,6 +262,7 @@ html.framed body > main:empty { min-height: calc(var(--step-h) + var(--screen-to
 .actions-row > .alt { order: 1; font-size: 15px; text-align: center; }
 /* with no main button, the link keeps the place it has under one */
 .actions-row:not(:has(> .btn)) { padding-top: calc(var(--control-h) + 10px); }
+.note.reading { text-align: center; }
 .end-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; font-size: 15px; }
 
 .grad { background: var(--heading); -webkit-background-clip: text; background-clip: text; color: transparent; }

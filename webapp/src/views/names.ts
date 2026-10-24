@@ -29,6 +29,7 @@ import { rowName } from "./terms.ts"
 const UNREAD_RETRY_MS = 5_000
 const HOME = "/#/"
 const NAMES_TITLE = "Your names"
+const READING = "Reading your names…"
 const NAMES = "/#/names"
 
 // a row's action keeps focus over a redraw by its row's key and its own; one that opens a popup says so
@@ -58,6 +59,9 @@ export function seenRegistered(view: api.RegistrationView, invoice: api.InvoiceV
 const storedNow = (): Stored => ({ orders: store.orders(), pending: store.pendingCodes(), codes: store.codes(), canPersist: store.canPersist() })
 const storedEvent = (): ListEvent => ({ type: "stored", ...storedNow(), hold: tabHold() })
 
+// a row whose read has not answered by then is drawn as last known, marked as not read now
+const ROW_READ_BOUND_MS = 10_000
+
 export function historyPage(): void {
   listRoute = currentRoute()
   const reads = new AbortController()
@@ -67,6 +71,9 @@ export function historyPage(): void {
   retried.clear()
   readCodes.clear()
   list = initialList(storedNow(), tabHold(), store.seen<RowSeen>(), lastChecked, api.serviceNow())
+  after(ROW_READ_BOUND_MS, () => {
+    for (const o of nameRows(list)) if (!rowShown(list, o)) dispatchList({ type: "row-unread", id: o.registrationId })
+  }, reads.signal)
   showList()
 }
 
@@ -232,6 +239,7 @@ function buildNames(s: ListState, signal: AbortSignal): HTMLElement {
   const done = unread < 0
   return screen({ title: NAMES_TITLE, lead: leadOf(s.canPersist), back: HOME },
     names.length || done ? el("div", { class: "card list" }, names.length ? names : el("p", { class: "note" }, "No names in this browser yet.")) : null,
+    done ? null : el("p", { class: "note reading", role: "status" }, READING),
     done && balances.length ? [el("h2", { class: "label" }, "Balance"), el("div", { class: "card list" }, balances.map((b) => balanceRow(b, s)))] : null,
     done && s.codes.length ? [el("h2", { class: "label" }, "Codes"), el("div", { class: "card list" }, s.codes.map((c) => codeRow(c, s, signal)))] : null,
     done ? el("div", { class: "end-links" }, el("a", { href: CODE_URL }, "Add a code"), s.asking || !hasRecords(s) ? null : forgetLink()) : null,
