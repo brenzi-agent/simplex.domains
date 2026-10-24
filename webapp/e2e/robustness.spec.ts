@@ -664,6 +664,7 @@ test("Your names moves no row once drawn as its reads answer, on a browser's fir
     const kept = [
       [await keepOrder(page, "reg-still0", null, "studio42", { contact: contactLink("R1"), channel: channelLink("R2") }), registered],
       [await keepOrder(page, "reg-still1", "inv-still1", "bakerypaidwithbitcoin"), registered],
+      [await keepOrder(page, "reg-still4", "inv-still4", "bakerypaidbycard"), registered],
       [await keepOrder(page, "reg-still2", null, "w".repeat(MAX_LABEL_LENGTH)), { phase: "committed", commitTx: "0x02" }],
       [await keepOrder(page, "reg-still3", null, "bakerycodeorder"), { phase: "queued" }],
     ] as const
@@ -677,14 +678,15 @@ test("Your names moves no row once drawn as its reads answer, on a browser's fir
       const view = registrationView(order, change)
       await context.route(`**/api/registration/${order.registrationId}*`, (route) => slowly(view, route))
       if (order.invoiceId) await context.route(`**/api/invoice/${order.invoiceId}*`, (route) => slowly({ invoiceId: order.invoiceId, status: "paid", amount: 10000,
-        currency: "usd", expiresAt: new Date().toISOString(), kind: "name", registration: view, cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bcrt1q",
-        cryptoAmountPaid: "0.00156", paidInFull: true }, route))
+        currency: "usd", expiresAt: new Date().toISOString(), kind: "name", registration: view,
+        ...(order.registrationId === "reg-still4" ? { cryptoCurrency: "card", clientSecret: "pi_still_secret", amountPaid: 10000 }
+          : { cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bcrt1q", cryptoAmountPaid: "0.00156", paidInFull: true }) }, route))
     }
     // the first name has its two chats, the other none
     await context.route("**/api/name/**", (route) => slowly({ status: "registered", entities: route.request().url().includes(kept[0][0].request.labelHash)
       ? [linkedChat("contact"), linkedChat("channel")] : [], owner: kept[0][0].owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId,
     records: { contact: "", channel: "" }, recordsNonce: 0, expiresAt: now + ROW_YEAR_S, tld: "simplex", community: null }, route))
-    const reads = kept.length + 2
+    const reads = kept.length + 3
     for (const [tab, opening] of [[page, "first opening"], [await context.newPage(), "new tab"]] as const) {
       const before = answered
       // once the web fonts are in, which move text by their own measure, and from the list's top
