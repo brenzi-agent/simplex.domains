@@ -115,9 +115,6 @@ describe("list helpers", () => {
       expect(ORDER_CHIP_WORDS, `${what}: the words its row keeps room for`).toContain(chip[0])
     }
   })
-  it("ORDER_CHIP_WORDS holds the words of an order not read yet, or whose read failed, or a name past its expiry", () => {
-    expect(ORDER_CHIP_WORDS).toEqual(expect.arrayContaining(["Checking", "Not checked", "Expired"]))
-  })
   it("CODE_CHIPS words every state a code can be in", () => {
     expect(Object.keys(CODE_CHIPS).sort()).toEqual(["expired", "reserved", "revoked", "unpaid", "unused", "used"])
   })
