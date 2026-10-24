@@ -10,11 +10,11 @@ export const CARD_SLOW_MS = 10 * 60 * 1000
 export const REVEAL_HOURS = 24
 // refusals of the signed registration after which the page stops signing and says so
 export const REVEAL_ATTEMPTS = 3
-// the pause before a request that did not go through, as a reveal, is sent again
 export const RETRY_MS = 3000
-// A working stage that has not moved on for its usual time and this much more is said to take longer than usual. A
-// commit's or a register's transaction, whose time the page cannot know, has this margin alone.
+// past a stage's usual time, it is said to take longer than usual
 export const STALL_MARGIN_MS = 60_000
+// a mainnet commit or register: a slow inclusion, then the service's 3 confirmations
+export const TX_STALL_MS = 180_000
 // A view whose chain reads failed is read again after these pauses, the last repeated while they fail: a held poll would
 // wait for a change that a failed read never makes.
 const UNREAD_PACING_MS = [5_000, 15_000, 30_000]
@@ -272,15 +272,12 @@ export function revealDue(s: OrderState): boolean {
   return !(reveal?.key === revealKey(view) && reveal.sending) && refusalsOf(s) < REVEAL_ATTEMPTS
 }
 
-// When the registering page's stage counts as taking longer than usual: its usual time, the wait until revealAfter and
-// the reveal's tries for a registration to sign, then the margin. Never on another page, nor once the service refused
-// the reveal, which the page says instead.
+// a refused reveal is said by the page instead
 export function stalledAt(s: OrderState): number | null {
   const { view, since } = s
   if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS) return null
-  const signing = view.phase === "committed" && view.label === null
-  const usual = signing ? Math.max(since.at, (view.revealAfter ?? 0) * 1000) + REVEAL_ATTEMPTS * RETRY_MS : since.at
-  return usual + STALL_MARGIN_MS
+  if (view.phase !== "committed" || view.label !== null) return since.at + TX_STALL_MS
+  return Math.max(since.at, (view.revealAfter ?? 0) * 1000) + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS
 }
 
 // A moment counts as reached at its own millisecond, so a tick landing on it changes the page.

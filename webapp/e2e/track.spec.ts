@@ -1,6 +1,6 @@
 import { type APIRequestContext, expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
-import { STALL_MARGIN_MS } from "../src/screens/order.ts"
+import { TX_STALL_MS } from "../src/screens/order.ts"
 import {
   agreeToTerms, AVAILABLE_BRIEF, brokenNames, CHAIN, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, onStep, payButton, previewsShown, SAVED,
   lineStarts, offCentre, recordedFrames, recordFrames, REGISTRATION_MS, registrationOf, registrationView, rowFit, savedToReview, search, sevenLetters, shot, startOrder, takenOrder, TERMS, test, toCodeStep,
@@ -658,8 +658,8 @@ test("a page loaded directly on a phone draws its invest note where its first fr
   }
 })
 
-// how far ahead the service's clock is put, past a stage's margin
-const AHEAD_MS = 2 * STALL_MARGIN_MS
+// how far ahead the service's clock is put, past a commit's stall
+const AHEAD_MS = 2 * TX_STALL_MS
 
 // where the registering page's parts stand: its heading, the countdown and its words' cell, and the reference under them
 const registeringPlaces = (page: Page) => page.locator("body > main").evaluate((main) => [

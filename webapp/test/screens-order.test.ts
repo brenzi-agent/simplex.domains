@@ -3,7 +3,7 @@ import type { InvoiceView, RegistrationView } from "../src/api.ts"
 import { NO_LEAD } from "../src/screens/hold.ts"
 import {
   CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedAlert, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind,
-  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, spendCovers, STALL_MARGIN_MS, stalledAt, unreadDelay, wakeAt,
+  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, screenOf, spendCovers, STALL_MARGIN_MS, stalledAt, TX_STALL_MS, unreadDelay, wakeAt,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
 
@@ -475,10 +475,11 @@ describe("a stalled stage", () => {
     const waiting = seen(registration(committed))
     expect(seen(registration({ ...committed, label: "alice" }), NOW + 2000, waiting).since).toEqual({ stage: "reg-1 committed signed", at: NOW + 2000 })
   })
-  it("of a transaction stalls once the margin has gone by", () => {
-    expect(stalledAt(seen(committing))).toBe(NOW + STALL_MARGIN_MS)
-    expect(stalledAt(seen(registration({ ...committed, label: "alice" })))).toBe(NOW + STALL_MARGIN_MS)
-    expect(stalledAt(seen(registration({ ...committed, phase: "registering", label: "alice" })))).toBe(NOW + STALL_MARGIN_MS)
+  it("of a transaction stalls once a mainnet commit or register would have been mined and confirmed, however slow", () => {
+    expect(TX_STALL_MS).toBeGreaterThan(STALL_MARGIN_MS)
+    expect(stalledAt(seen(committing))).toBe(NOW + TX_STALL_MS)
+    expect(stalledAt(seen(registration({ ...committed, label: "alice" })))).toBe(NOW + TX_STALL_MS)
+    expect(stalledAt(seen(registration({ ...committed, phase: "registering", label: "alice" })))).toBe(NOW + TX_STALL_MS)
   })
   it("of the wait and the reveal stalls past the wait's end, the reveal's tries and the margin", () => {
     const later = registration({ ...committed, revealAfter: NOW / 1000 + 30 })
