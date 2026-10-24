@@ -669,20 +669,25 @@ const registeringPlaces = (page: Page) => page.locator("body > main").evaluate((
   return [r.top, r.height]
 }))
 
-test("a commit that does not move on for longer than usual says so in its words' place, and nothing moves", async ({ page, request }) => {
-  await heldAtCommit(page, request, "stall", async () => {
-    const words = page.locator(".countdown p > :not(.sizer)")
-    await expect(words).toHaveText("Placing your order. The wait starts once it is in.")
-    const before = await registeringPlaces(page)
-    // the page reads the time by the service's Date header, which now says the commit has stood still past its margin
-    await page.route("**/api/registration/*", async (route) => {
-      const response = await route.fetch()
-      await route.fulfill({ response, headers: { ...response.headers(), date: new Date(Date.now() + AHEAD_MS).toUTCString() } })
+// the service worker of a production build sends the page's reads past Playwright's routes in WebKit
+test.describe(() => {
+  test.use({ serviceWorkers: "block" })
+
+  test("a commit that does not move on for longer than usual says so in its words' place, and nothing moves", async ({ page, request }) => {
+    await heldAtCommit(page, request, "stall", async () => {
+      const words = page.locator(".countdown p > :not(.sizer)")
+      await expect(words).toHaveText("Placing your order. The wait starts once it is in.")
+      const before = await registeringPlaces(page)
+      // the page reads the time by the service's Date header, which now says the commit has stood still past its margin
+      await page.route("**/api/registration/*", async (route) => {
+        const response = await route.fetch()
+        await route.fulfill({ response, headers: { ...response.headers(), date: new Date(Date.now() + AHEAD_MS).toUTCString() } })
+      })
+      await expect(words).toHaveText("This is taking longer than usual. It continues by itself.")
+      expect(await registeringPlaces(page), "the heading, the countdown, its words' cell and the reference").toEqual(before)
+      // a long poll the route still holds would fail once the test ends
+      await page.unrouteAll({ behavior: "ignoreErrors" })
     })
-    await expect(words).toHaveText("This is taking longer than usual. It continues by itself.")
-    expect(await registeringPlaces(page), "the heading, the countdown, its words' cell and the reference").toEqual(before)
-    // a long poll the route still holds would fail once the test ends
-    await page.unrouteAll({ behavior: "ignoreErrors" })
   })
 })
 
