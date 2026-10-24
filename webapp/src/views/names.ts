@@ -307,7 +307,6 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
 const sizer = (...kids: Kid[]) => el("span", { class: "sizer", "aria-hidden": "true" }, ...kids)
 const chipRoom = (shown: HTMLElement) => el("span", { class: "room" }, shown, ...ORDER_CHIP_WORDS.map((words) => sizer(el("span", { class: "dot" }), words)))
 
-
 function rowChip(s: ListState, o: store.OrderRecord, seen: RowSeen | undefined): HTMLElement | null {
   if (s.unread.includes(o.registrationId) || !seen) return chip(ROW_CHIPS.unchecked, "warn")
   if (lapsed(seen, s.now)) return chip(ROW_CHIPS.lapsed, "bad")
