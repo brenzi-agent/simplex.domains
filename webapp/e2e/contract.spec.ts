@@ -962,7 +962,8 @@ test("a committed community name's view asks for the owner's acceptance of the t
     const view = await untilRevealable(id)
     expect(view.acceptance).toEqual({ policy: NAME_POLICY, termsHash: COMMUNITY_TERMS_HASH, nonce: 0 })
     const accept = view.acceptance!
-    for (const [what, acceptance] of [["none", null], ["another nonce", { ...accept, nonce: accept.nonce + 1 }], ["other terms", { ...accept, termsHash: `0x${"d8".repeat(32)}` }]] as const) {
+    for (const [what, acceptance] of [["none", null], ["another nonce", { ...accept, nonce: accept.nonce + 1 }], ["other terms", { ...accept, termsHash: `0x${"d8".repeat(32)}` }],
+      ["another policy", { ...accept, policy: view.sponsor }]] as const) {
       await expect(flow.revealOrder({ ...view, acceptance }, record), what).rejects.toMatchObject({ code: "bad_request" })
     }
     await flow.revealOrder(view, record)

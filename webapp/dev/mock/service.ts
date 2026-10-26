@@ -893,8 +893,6 @@ async function register(reg: Registration): Promise<void> {
     try {
       await sendTx(namePolicy, "commitUnderBonaFideCommunityTermsWithSig", [reg.commitment, termsHash, reg.owner, acceptNonce, deadline, acceptSignature])
     } catch (e) {
-      // one past its deadline, the reveal's, fails as a register past it does
-      if (e instanceof Reverted && e.revert === "SignatureExpired") return fail(reg, REFUSED)
       if (!(e instanceof Reverted && ACCEPTANCE_REFUSED.includes(e.revert ?? ""))) throw e
       clearReveal(reg)
       return changed(reg)
@@ -1037,7 +1035,7 @@ export async function reveal(registrationId: string, body: Record<string, unknow
   // a reveal signs the acceptance its view asks for: a listed name's, of the terms on chain now, and none for another name
   const asked = await acceptanceOf(reg).catch(unavailable)
   const accepted = body.acceptance as Record<string, unknown> | undefined
-  if ((asked === null) !== (accepted === undefined)) throw badRequest()
+  if (asked === null && accepted !== undefined) throw badRequest()
   let acceptance: Registration["acceptance"] = null
   if (asked) {
     if (typeof accepted !== "object" || accepted === null || accepted.termsHash !== asked.termsHash || accepted.nonce !== asked.nonce) throw badRequest()
@@ -1426,7 +1424,8 @@ export function controlTake(label: unknown): Record<string, unknown> {
   const done = (async () => {
     const tuple = { label, owner: holder.address, duration: durationFor(YEARS, TERM_START_S, nowSeconds()), secret: toHex(randomBytes(32)), resolver: deployment.resolver, data: [] as Hex[], reverseRecord: 0, referrer: zeroHash }
     const commitment = await read<Hex>(controller, "makeCommitment", [tuple])
-    await send(controller, "commit", [commitment])
+    // committed under the community terms, as a listed name needs and a plain name allows
+    await send(namePolicy, "commitUnderBonaFideCommunityTerms", [commitment, await read<Hex>(namePolicy, "termsHash")], undefined, holder)
     await untilChainTime(Number(await read<bigint>(controller, "commitments", [commitment])) + deployment.minCommitmentAge, chainNow)
     const turn = holderTurn.then(() => registerForHolder(tuple))
     holderTurn = turn.catch(() => undefined)
