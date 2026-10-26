@@ -61,7 +61,7 @@ const COMMUNITY_TERMS = "/community/"
 // the service's community_terms_url
 const COMMUNITY_TERMS_URL = "https://simplex.chat/community-terms"
 // a relayed acceptance the name policy refuses for what the page signed: the page signs again
-const ACCEPTANCE_REFUSED = ["TermsMismatch", "InvalidNonce", "SignatureExpired", "InvalidSignature"]
+const ACCEPTANCE_REFUSED = ["TermsMismatch", "InvalidNonce", "InvalidSignature"]
 // a community name's text in the service's ini: one line of up to this many characters
 const COMMUNITY_TEXT_MAX = 200
 const SECP256K1_HALF_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n
@@ -391,8 +391,8 @@ function nodeOf(labelHash: Hex): Hex {
 // The service's [names] terms_version and terms_url, and its [community] words keyed by label hash, which the service reads
 // at startup; /control/terms and /control/community change them as a restart with a new ini would. Which names are
 // community names is the name policy's list on chain; the words only say what a listed name is for. The e2e spec's
-// community names are bakers and bakehouse, which dev/deploy.ts lists, and whose words the service's contract run has
-// otherwise.
+// community names are bakers and bakehouse, which dev/deploy.ts lists; the service's contract run has words of its own for
+// bakers.
 const terms = { version: "2026-10-23", url: "https://simplex.chat/" }
 const communities = new Map<Hex, string>([[keccak256(toHex("bakers")), "bakers and pastry chefs"], [keccak256(toHex("bakehouse")), "a bakery's own bakers"]])
 
@@ -893,6 +893,8 @@ async function register(reg: Registration): Promise<void> {
     try {
       await sendTx(namePolicy, "commitUnderBonaFideCommunityTermsWithSig", [reg.commitment, termsHash, reg.owner, acceptNonce, deadline, acceptSignature])
     } catch (e) {
+      // one past its deadline, the reveal's, fails as a register past it does
+      if (e instanceof Reverted && e.revert === "SignatureExpired") return fail(reg, REFUSED)
       if (!(e instanceof Reverted && ACCEPTANCE_REFUSED.includes(e.revert ?? ""))) throw e
       clearReveal(reg)
       return changed(reg)

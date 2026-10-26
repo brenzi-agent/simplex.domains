@@ -33,7 +33,7 @@ const SEED_YEARS = 2
 const ALLOWANCE = 1_000_000n * 10n ** 18n
 // SimplexNamePolicy.Reason.Internal
 const RESERVED_INTERNAL = 1
-// the community terms the name policy holds by their hash; the service's community_terms_url serves this text
+// the community terms the name policy holds by their hash; the contract run's community_terms_url serves this text
 const COMMUNITY_TERMS_HASH = keccak256(readFileSync(new URL("./community-terms.txt", import.meta.url)))
 // the e2e community names: one free, one registered under the terms
 const COMMUNITY_NAMES = ["bakers", "bakehouse"]

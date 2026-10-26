@@ -2,7 +2,6 @@
 // The first cases need no /control endpoint, so they run against the service too, which has words of its own for bakers,
 // the name dev/deploy.ts lists.
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test"
-import type { Hex } from "viem"
 import {
   acceptedOnChain, AGREE, agreeToTerms, COMMUNITY_TERMS_HASH, communityTerms, contactLink, control, failedOrder, MOCK, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, restoreOrder,
   savedToReview, search, sevenLetters, startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered, withStripeKey,
@@ -339,19 +338,13 @@ test("Register without links asks for the terms once they changed, and the order
   })
 })
 
-// the bodies of the page's reveals, as it sends them
-function revealsOf(page: Page): Record<string, unknown>[] {
-  const bodies: Record<string, unknown>[] = []
-  page.on("request", (r) => { if (r.method() === "POST" && r.url().endsWith("/reveal")) bodies.push(r.postDataJSON()) })
-  return bodies
-}
-
 test("community terms changed on chain between the order and its reveal are agreed to again on the order's page before it signs, and the name registers under them", async ({ page, request }) => {
   const label = uniqueLabel("cv")
   await listed(request, [label], async () => {
-    const reveals = revealsOf(page)
+    let reveals = 0
+    page.on("request", (r) => { if (r.method() === "POST" && r.url().endsWith("/reveal")) reveals++ })
     const { invoiceId } = await startOrder(page, label)
-    const { hash } = await control(request, "community-terms", { text: `the community terms, changed for ${label}` }) as { hash: Hex }
+    const { hash } = await control(request, "community-terms", { text: `the community terms, changed for ${label}` }) as { hash: string }
     try {
       await control(request, `settle/${invoiceId}`)
       const notice = onStep(page).locator(".line", { hasText: TERMS_CHANGED })
@@ -359,10 +352,9 @@ test("community terms changed on chain between the order and its reveal are agre
       await expect(onStep(page).locator(".check.terms")).toHaveText(COMMUNITY_WORDS)
       await expect(onStep(page).getByRole("checkbox", { name: AGREE })).not.toBeChecked()
       // past the wait after which the reveal would have gone, nothing is signed before the tick
-      const registrationId = await registrationOf(request, invoiceId)
-      const { revealAfter } = await viewOf(request, registrationId) as { revealAfter: number }
+      const { revealAfter } = await invoiceViewOf(request, invoiceId) as { revealAfter: number }
       await page.waitForTimeout(Math.max(0, revealAfter * 1000 - Date.now()) + 3000)
-      expect([(await viewOf(request, registrationId)).label, reveals.length]).toEqual([null, 0])
+      expect([(await invoiceViewOf(request, invoiceId)).label, reveals]).toEqual([null, 0])
       await agreeToTerms(page)
       await waitRegistered(page, label)
       const view = await invoiceViewOf(request, invoiceId)

@@ -496,6 +496,8 @@ describe("a stalled stage", () => {
     }
     const view = registration(committed)
     expect(stalledAt({ ...seen(view), reveal: { key: revealKey(view), sending: false, refusals: REVEAL_ATTEMPTS } })).toBeNull()
+  })
+  it("waits while changed community terms are asked for, and is timed from the tick", () => {
     const changed = `0x${"d8".repeat(32)}`
     const asking = registration({ ...committed, acceptance: { policy: "0x3", termsHash: changed, nonce: 0 } })
     const ask = askFor(record().label, { version: "2026-10-23", url: "https://simplex.chat/" }, { for: null, terms: { url: "https://simplex.chat/community-terms", hash: changed } }, true)
@@ -511,6 +513,8 @@ describe("reveal helpers", () => {
   const waiting = read(null, view)
   it("revealKey names the commit a reveal is signed for", () => {
     expect(revealKey(view)).toBe(`reg-1 ${COMMITMENT} 4 ${NOW / 1000 + 3600}`)
+    const termsHash = `0x${"c7".repeat(32)}`
+    expect(revealKey(registration({ ...committed, acceptance: { policy: "0x3", termsHash, nonce: 0 } })), "and the acceptance it signs").toBe(`reg-1 ${COMMITMENT} 4 ${NOW / 1000 + 3600} ${termsHash} 0`)
   })
   it("refusalsOf counts the refusals of the commit shown, and none outside the wait", () => {
     const refused = { ...waiting, reveal: { key: revealKey(view), sending: false, refusals: 2 } }
@@ -544,7 +548,6 @@ describe("reveal helpers", () => {
     expect(revealDue(listed(changed, { ask: { ...ask, agreed: true } })), "ticked").toBe(true)
     expect(revealDue(listed(changed, { ask: { ...ask, agreed: true, community: { ...ask.community!, terms: { ...ask.community!.terms, hash: agreed } } } })), "ticked other terms").toBe(false)
     expect(revealDue(read(null, registration({ ...committed, unread: ["acceptance"] }))), "an acceptance the service could not read").toBe(false)
-    expect(revealKey(listed(agreed).view!), "a changed acceptance is signed anew").toBe(`reg-1 ${COMMITMENT} 4 ${NOW / 1000 + 3600} ${agreed} 0`)
   })
   it("unreadDelay reads a view with unread fields again after 5 s, 15 s, then every 30 s", () => {
     expect([0, 1, 2, 3, 10].map(unreadDelay)).toEqual([5000, 15000, 30000, 30000, 30000])
