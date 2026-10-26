@@ -343,10 +343,12 @@ function askAgain(view: api.RegistrationView, record: store.OrderRecord): void {
   askingAgain = key
   flow.quoteOf(record.label).then((quote) => {
     if (askingAgain === key) askingAgain = null
-    if (!quote) return
-    if (quote.community?.terms.hash !== view.acceptance!.termsHash) return reread(gen)
+    if (!quote || !isOpen(gen) || !askAgainDue(state)) return
+    if (quote.community?.terms.hash !== state.view!.acceptance!.termsHash) return reread(gen)
     askTerms(gen, record.label, quote, true)
-    if (isOpen(gen)) focusOn("reveal")
+    // the notice takes the focus from the page, never from the header, the footer or a dialog
+    const active = document.activeElement
+    if (active === document.body || active?.closest("body > main")) focusOn("reveal")
   }, (e) => setTimeout(() => {
     if (askingAgain === key) askingAgain = null
     answer(gen, { type: "tick", now: api.serviceNow() })

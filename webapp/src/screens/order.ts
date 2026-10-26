@@ -259,7 +259,7 @@ function paymentKind(s: OrderState, invoice: InvoiceView): OrderKind {
 export const revealKey = (view: RegistrationView) => `${view.id} ${view.commitment} ${view.intentNonce} ${view.revealBefore}${view.acceptance ? ` ${view.acceptance.termsHash} ${view.acceptance.nonce}` : ""}`
 
 // The community terms on chain are not the ones the order signed, so the buyer agrees to them again before the reveal.
-const termsChanged = ({ view, record }: OrderState) => !!record && !!view?.acceptance && view.acceptance.termsHash !== view.community?.terms.hash
+const termsChanged = ({ view }: OrderState) => !!view?.acceptance && view.acceptance.termsHash !== view.community?.terms.hash
 
 // The buyer is asked for the changed community terms, ticked or not.
 export const termsAskedAgain = (s: OrderState) => termsChanged(s) && s.ask?.community?.terms.hash === s.view!.acceptance!.termsHash
@@ -268,7 +268,7 @@ export const termsAskedAgain = (s: OrderState) => termsChanged(s) && s.ask?.comm
 export const termsToAgree = (s: OrderState) => termsChanged(s) && !(termsAskedAgain(s) && s.ask!.agreed)
 
 // The changed terms are asked for once the order is committed and they are not asked for yet.
-export const askAgainDue = (s: OrderState) => s.view?.phase === "committed" && s.view.label === null && !linksRefused(s) && termsChanged(s) && !termsAskedAgain(s)
+export const askAgainDue = (s: OrderState) => !!s.record && !linksRefused(s) && termsChanged(s) && !termsAskedAgain(s)
 
 export function refusalsOf({ view, reveal }: OrderState): number {
   return view?.phase === "committed" && reveal?.key === revealKey(view) ? reveal.refusals : 0
