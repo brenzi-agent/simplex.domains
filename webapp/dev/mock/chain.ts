@@ -51,7 +51,7 @@ const READ_TIMEOUT_MS = 10_000
 
 export const registrar = privateKeyToAccount(deployment.registrarKey)
 // the contracts' owner, who lists community names and sets their terms, as the tests' controls stand in for it
-const owner = privateKeyToAccount(deployment.ownerKey)
+export const owner = privateKeyToAccount(deployment.ownerKey)
 export const holder = privateKeyToAccount(deployment.holderKey)
 const chain = { ...foundry, id: deployment.chainId }
 // one quick retry for a read, as a provider drops a request now and then; a send is never retried, which could send twice
@@ -108,15 +108,16 @@ function revertName(e: unknown): string | null {
 
 // One transaction at a time from the registrar key, as the service's single sender: a dry run, the transaction made
 // and signed, then the send and its receipt. Only a failure from the send on can leave a transaction on its way.
-// goingOut is told the transaction's hash just before it goes out.
+// goingOut is told the transaction's hash just before it goes out. A control's change of the contracts' settings is sent
+// from the owner's key instead.
 let sending: Promise<unknown> = Promise.resolve()
-export function send(contract: Contract, functionName: string, args: unknown[], goingOut?: (hash: Hex) => void): Promise<Hex> {
+export function send(contract: Contract, functionName: string, args: unknown[], goingOut?: (hash: Hex) => void, from = registrar): Promise<Hex> {
   const run = async (): Promise<Hex> => {
     let serializedTransaction: Hex
     try {
-      await publicClient.simulateContract({ ...contract, functionName, args, account: registrar })
+      await publicClient.simulateContract({ ...contract, functionName, args, account: from })
       const request = await walletClient.prepareTransactionRequest({
-        account: registrar, to: contract.address, data: encodeFunctionData({ abi: contract.abi, functionName, args }), chain: null,
+        account: from, to: contract.address, data: encodeFunctionData({ abi: contract.abi, functionName, args }), chain: null,
       })
       serializedTransaction = await walletClient.signTransaction({ ...request, chain: null })
     } catch (e) {
@@ -130,18 +131,6 @@ export function send(contract: Contract, functionName: string, args: unknown[], 
   }
   const next = sending.then(run, run)
   sending = next.catch(() => undefined)
-  return next
-}
-
-// The owner's change of the contracts' settings, one at a time, its receipt waited for.
-let owning: Promise<unknown> = Promise.resolve()
-export function ownerSend(contract: Contract, functionName: string, args: unknown[]): Promise<void> {
-  const run = async () => {
-    const hash = await walletClient.writeContract({ ...contract, functionName, args, account: owner, chain: null })
-    if ((await sender.waitForTransactionReceipt({ hash, timeout: SEND_TIMEOUT_MS })).status !== "success") throw new Reverted(null)
-  }
-  const next = owning.then(run, run)
-  owning = next.catch(() => undefined)
   return next
 }
 

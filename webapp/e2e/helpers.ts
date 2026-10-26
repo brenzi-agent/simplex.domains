@@ -61,13 +61,11 @@ const CHAIN_ABI = parseAbi([
   "function rentPriceUSD(string label, uint256 duration) view returns ((uint256 base, uint256 premium))",
   "function setResolver(bytes32 node, address resolver)",
   "function setText(bytes32 node, string key, string value)",
-  "function acceptedTerms(bytes32 commitment, address owner) view returns (bytes32)",
-  "function reservedNames(bytes32 labelhash) view returns (uint8)",
   "event BonaFideTermsAccepted(string name, address indexed holder, bytes32 termsHash)",
 ])
 // the community terms dev/deploy.ts put on chain, by their hash, and the hash as an order signs it after /community/
 export const COMMUNITY_TERMS_HASH = keccak256(readFileSync(new URL("../dev/community-terms.txt", import.meta.url)))
-export const communityTerms = (version: string, hash: Hex = COMMUNITY_TERMS_HASH) => `${version}/community/${hash.slice(2)}`
+export const communityTerms = (version: string) => `${version}/community/${COMMUNITY_TERMS_HASH.slice(2)}`
 export const NAME_POLICY = deployment.namePolicy
 // gas for a few of an owner's own transactions, which anvil gives the owner's wallet
 const OWNER_GAS_WEI = 10n ** 18n
@@ -100,12 +98,8 @@ export const ownerSetsResolver = (ownerCode: string, label: string, resolver: He
 export const ownerSetsText = (ownerCode: string, label: string, key: string, value: string) =>
   asOwner(ownerCode, deployment.resolver, encodeFunctionData({ abi: CHAIN_ABI, functionName: "setText", args: [nodeOf(label), key, value] }))
 
-// The name policy's reason a name is reserved, 0 when it is not.
-export const policyReason = async (label: string) =>
-  Number(await chain.readContract({ address: deployment.namePolicy, abi: CHAIN_ABI, functionName: "reservedNames", args: [hex(labelHash(label)) as Hex] }))
-
 // The community terms the policy took from the owner for the commitment before its register, read from the register's
-// own BonaFideTermsAccepted event: the register consumes the acceptance, so acceptedTerms reads zero after it.
+// own BonaFideTermsAccepted event: the register consumes the acceptance, so the policy's acceptedTerms reads zero after it.
 export async function acceptedOnChain(registerTx: string): Promise<{ name: string; holder: string; termsHash: Hex } | null> {
   const receipt = await chain.getTransactionReceipt({ hash: registerTx as Hex })
   const logs = await chain.getContractEvents({ address: deployment.namePolicy, abi: CHAIN_ABI, eventName: "BonaFideTermsAccepted", blockHash: receipt.blockHash })

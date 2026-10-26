@@ -76,8 +76,6 @@ const COMMUNITY_TERMS = "/community/"
 export const termsFor = (terms: Terms, community: Community | null) => community ? `${terms.version}${COMMUNITY_TERMS}${community.terms.hash.slice(2)}` : terms.version
 export const currentTerms = (a: { terms: Terms; community: Community | null }) => termsFor(a.terms, a.community)
 export const communityAgreed = (terms: string | null | undefined) => terms?.includes(COMMUNITY_TERMS) === true
-// the hash of the community terms an order signed, null for a plain name's terms
-export const agreedTermsHash = (terms: string | null | undefined) => communityAgreed(terms) ? `0x${terms!.slice(terms!.indexOf(COMMUNITY_TERMS) + COMMUNITY_TERMS.length)}` : null
 
 export type SearchAnswer =
   | ({ status: "available"; price: number; currency: string; years: number; termStart: number; community: Community | null; terms: Terms } & ChainInfo)
@@ -156,7 +154,6 @@ export interface Acceptance {
   policy: string
   termsHash: string
   nonce: number
-  url: string
 }
 
 const LATE_WAITS = ["confirming", "crediting", "support"] as const
@@ -306,7 +303,7 @@ const isHash = (v: unknown) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(
 const isTermsUrl = (v: unknown) => typeof v === "string" && /^(https:\/\/|http:\/\/(127\.0\.0\.1|localhost)[:/])/.test(v)
 const isCommunity = (v: unknown) => v === null || (isObject(v) && nullable(v.for, (f) => typeof f === "string" && f !== "")
   && isObject(v.terms) && isTermsUrl(v.terms.url) && isHash(v.terms.hash))
-const isAcceptance = (v: unknown) => isObject(v) && isText(v.policy) && isHash(v.termsHash) && Number.isInteger(v.nonce) && (v.nonce as number) >= 0 && isTermsUrl(v.url)
+const isAcceptance = (v: unknown) => isObject(v) && isText(v.policy) && isHash(v.termsHash) && Number.isInteger(v.nonce) && (v.nonce as number) >= 0
 const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && Number.isInteger(v.version) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
   && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isCount(v.duration) && isAmount(v.price) && Number.isInteger(v.moves)
   && isAmount(v.fromBalance) && nullable(v.balance, isBalance) && nullable(v.latePayment, (l) => isObject(l) && LATE_WAITS.includes(l.waiting as LateWait))

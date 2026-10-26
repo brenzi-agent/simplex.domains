@@ -9,7 +9,7 @@ import { checksumAddress, fromHex, hex, personalDigest, signDigest } from "../sr
 import * as flow from "../src/flow.ts"
 import * as store from "../src/store.ts"
 import {
-  acceptedOnChain, channelLink, COMMUNITY_TERMS_HASH, communityTerms, contactLink, control, MOCK, NAME_POLICY, newClient, oracleQuote, ownerSetsResolver, ownerSetsText, policyReason, test, uniqueLabel,
+  acceptedOnChain, channelLink, COMMUNITY_TERMS_HASH, communityTerms, contactLink, control, MOCK, NAME_POLICY, newClient, oracleQuote, ownerSetsResolver, ownerSetsText, test, uniqueLabel,
 } from "./helpers.ts"
 
 type Json = Record<string, unknown>
@@ -953,11 +953,6 @@ test("a move signs the new name's terms: a community name needs the community wo
   })
 })
 
-test("a reservation is the name policy's, which the search answers as reserved", async () => {
-  expect(await policyReason("support"), "SimplexNamePolicy.Reason.Internal").toBe(1)
-  expect((await call("GET", `/api/name/${hex(labelHash("support"))}?length=7`)).json).toEqual({ status: "reserved", community: null })
-})
-
 test("a committed community name's view asks for the owner's acceptance of the terms on chain; its reveal without one, or with one for another nonce or terms, is bad_request, and with it the register takes it", async ({ request }) => {
   const label = uniqueLabel("tk")
   await listed(request, label, async () => {
@@ -965,7 +960,7 @@ test("a committed community name's view asks for the owner's acceptance of the t
     expect(draft.terms).toBe(COMMUNITY_TERMS)
     const record = flow.recordFor(draft, built, "code", 0, { registrationId: id, invoiceId: null })
     const view = await untilRevealable(id)
-    expect(view.acceptance).toEqual({ policy: NAME_POLICY, termsHash: COMMUNITY_TERMS_HASH, nonce: 0, url: expect.any(String) })
+    expect(view.acceptance).toEqual({ policy: NAME_POLICY, termsHash: COMMUNITY_TERMS_HASH, nonce: 0 })
     const accept = view.acceptance!
     for (const [what, acceptance] of [["none", null], ["another nonce", { ...accept, nonce: accept.nonce + 1 }], ["other terms", { ...accept, termsHash: `0x${"d8".repeat(32)}` }]] as const) {
       await expect(flow.revealOrder({ ...view, acceptance }, record), what).rejects.toMatchObject({ code: "bad_request" })
@@ -982,7 +977,7 @@ test("a plain name's committed view asks for no acceptance, and its reveal carry
   const record = flow.recordFor(draft, built, "code", 0, { registrationId: id, invoiceId: null })
   const view = await untilRevealable(id)
   expect(view.acceptance).toBeNull()
-  const acceptance = { policy: NAME_POLICY, termsHash: COMMUNITY_TERMS_HASH, nonce: 0, url: "https://simplex.chat/community-terms" }
+  const acceptance = { policy: NAME_POLICY, termsHash: COMMUNITY_TERMS_HASH, nonce: 0 }
   await expect(flow.revealOrder({ ...view, acceptance }, record)).rejects.toMatchObject({ code: "bad_request" })
   await flow.revealOrder(view, record)
   await untilPhase(id, ["registered"])

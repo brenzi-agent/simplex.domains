@@ -7,7 +7,7 @@ import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from ".
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
   closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedAlert, failedLead, finished, newInvoiceBy, spendCovers, initialState, type Note, type OrderEvent, type OrderKind,
-  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, sameStep, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt, askAgainDue,
+  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, sameStep, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt, askAgainDue, termsChanged, termsToAgree,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
 import { termsToSign } from "../screens/terms.ts"
@@ -76,7 +76,7 @@ function dispatch(event: OrderEvent): void {
   if (!checksName(state)) stopWatchingName()
   if (kind === "registered") seenRegistered(state.view!, state.invoice)
   if (revealDue(state)) reveal(state.view!, state.record!)
-  else if (askAgainDue(state)) askAgain(state.view!, state.record!)
+  else if (askAgainDue(state)) askAgain(state.record!)
   if (kind !== screenOf(before) || state.record !== before.record) keepCodes(state)
   wakeOnTime()
 }
@@ -334,17 +334,14 @@ function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
 }
 
 // Community terms that changed on chain since the order are agreed to again before the reveal signs them, under the
-// name terms the search has now; asked once each time the page opens the order.
-let askedAgain: string | null = null
-function askAgain(view: api.RegistrationView, record: store.OrderRecord): void {
-  const a = view.acceptance!
-  const key = `${opened} ${view.id} ${a.termsHash}`
-  if (askedAgain === key) return
-  askedAgain = key
+// name terms the search has now; the notice of the change takes the focus.
+function askAgain(record: store.OrderRecord): void {
   const gen = opened
   flow.quoteOf(record.label).then((quote) => {
-    if (quote) askTerms(gen, record.label, { terms: quote.terms, community: { for: view.community?.for ?? null, terms: { url: a.url, hash: a.termsHash } } }, true)
-  }, () => { askedAgain = null })
+    if (!quote) return
+    askTerms(gen, record.label, quote, true)
+    if (isOpen(gen)) focusOn("reveal")
+  }, (e) => setTimeout(() => answer(gen, { type: "tick", now: api.serviceNow() }), api.retryDelay(e, RETRY_MS) ?? RETRY_MS))
 }
 
 function keepCodes(s: OrderState): void {
@@ -1073,6 +1070,7 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
   const states = stagesOf(view)
   sayStage(view, states)
   const refused = refusalsOf(s) >= REVEAL_ATTEMPTS
+  const asking = termsToAgree(s)
   const steps = stages(states)
   const stalled = stalledAt(s)
   const clockNode = el("b", {})
@@ -1094,7 +1092,7 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
     if (stalled !== null && api.serviceNow() >= stalled) return say(note, STALL_NOTE)
     if (view.phase !== "committed") return say(note, view.phase === "registering" ? REGISTERING_NOTE : COMMIT_NOTE)
     waitsSeen.delete(view.id)
-    if (view.label === null && refused) say(note, "The registration is not signed yet.")
+    if (view.label === null && (refused || asking)) say(note, "The registration is not signed yet.")
     else say(note, REGISTERING_NOTE)
   }
   onTheSecond(() => waitLeft(view), tick, signal)
@@ -1104,7 +1102,7 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
     el("div", { class: "countdown" }, clockNode, el("p", {}, note, el("span", { class: "sizer", "aria-hidden": "true" }, WAIT_NOTE))),
     refused ? alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration.") : null,
     referenceLine(s.invoice?.invoiceId ?? view.id),
-    view.phase === "committed" && view.label === null ? agreement(s, "reveal") : null)
+    termsChanged(s) ? agreement(s, "reveal") : null)
 }
 
 const waitsSeen = new Map<string, number>()

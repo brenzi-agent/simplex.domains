@@ -495,6 +495,8 @@ describe("a stalled stage", () => {
     }
     const view = registration(committed)
     expect(stalledAt({ ...seen(view), reveal: { key: revealKey(view), sending: false, refusals: REVEAL_ATTEMPTS } })).toBeNull()
+    const asking = registration({ ...committed, acceptance: { policy: "0x3", termsHash: `0x${"d8".repeat(32)}`, nonce: 0 } })
+    expect(stalledAt(seen(asking)), "the community terms changed on chain wait for the buyer").toBeNull()
   })
 })
 
@@ -525,12 +527,13 @@ describe("reveal helpers", () => {
   it("revealDue for a community name once the terms it signs are those its order agreed to, or the buyer ticked them again", () => {
     const agreed = `0x${"c7".repeat(32)}`
     const changed = `0x${"d8".repeat(32)}`
-    const acceptance = { policy: "0x3", termsHash: agreed, nonce: 0, url: "https://simplex.chat/community-terms" }
+    const url = "https://simplex.chat/community-terms"
+    const acceptance = { policy: "0x3", termsHash: agreed, nonce: 0 }
     const listed = (termsHash: string, change: Partial<OrderState> = {}) =>
-      read(null, registration({ ...committed, acceptance: { ...acceptance, termsHash }, terms: `2026-10-23/community/${agreed.slice(2)}` }), change)
+      read(null, registration({ ...committed, acceptance: { ...acceptance, termsHash }, community: { for: null, terms: { url, hash: agreed } } }), change)
     expect([revealDue(listed(agreed)), askAgainDue(listed(agreed))]).toEqual([true, false])
     expect([revealDue(listed(changed)), askAgainDue(listed(changed))], "terms changed on chain since the order").toEqual([false, true])
-    const ask = { label: record().label, terms: { version: "2026-10-23", url: "https://simplex.chat/" }, community: { for: null, terms: { url: acceptance.url, hash: changed } }, agreed: false, changed: true }
+    const ask = { label: record().label, terms: { version: "2026-10-23", url: "https://simplex.chat/" }, community: { for: null, terms: { url, hash: changed } }, agreed: false, changed: true }
     expect([revealDue(listed(changed, { ask })), askAgainDue(listed(changed, { ask }))], "asked, not ticked").toEqual([false, false])
     expect(revealDue(listed(changed, { ask: { ...ask, agreed: true } })), "ticked").toBe(true)
     expect(revealDue(listed(changed, { ask: { ...ask, agreed: true, community: { ...ask.community, terms: { ...ask.community.terms, hash: agreed } } } })), "ticked other terms").toBe(false)

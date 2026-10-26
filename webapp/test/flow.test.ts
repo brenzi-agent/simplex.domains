@@ -2,7 +2,7 @@ import { hashMessage, recoverAddress, recoverMessageAddress, type Hex } from "vi
 import type { Phase } from "../src/api.ts"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { formatOwnerCode } from "../src/crypto/code.ts"
-import { commitmentSecret, labelHash, makeCommitment, namehash, registerIntentDigest, setTextDigest, YEAR_S } from "../src/crypto/registration.ts"
+import { acceptTermsDigest, commitmentSecret, labelHash, makeCommitment, namehash, registerIntentDigest, setTextDigest, YEAR_S } from "../src/crypto/registration.ts"
 import { unseal } from "../src/crypto/seal.ts"
 import { checksumAddress, hex, walletFromEntropy } from "../src/crypto/wallet.ts"
 
@@ -118,6 +118,21 @@ describe("revealOrder", () => {
     }
     const digest = registerIntentDigest(31337n, fromHex(CHAIN.sponsor), r, 3n, 87400n)
     expect(await recoverAddress({ hash: hex(digest) as Hex, signature: body.signature })).toBe(OWNER)
+  })
+
+  it("signs a community name's acceptance of the terms on chain with the code's key, at the same deadline, and a plain name's reveal carries none", async () => {
+    const { flow } = await modules()
+    const built = await flow.orderRequest(draft())
+    const record = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" })
+    answers["POST /api/registration/reg1/reveal"] = {}
+    const acceptance = { policy: "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707", termsHash: `0x${"c7".repeat(32)}`, nonce: 2 }
+    await flow.revealOrder(view(built.request, { acceptance }) as never, record)
+    await flow.revealOrder(view(built.request) as never, record)
+    const [listed, plain] = calls.map((c) => c.body as { acceptance?: { termsHash: string; nonce: number; signature: Hex } })
+    expect(listed.acceptance).toMatchObject({ termsHash: acceptance.termsHash, nonce: 2 })
+    const digest = acceptTermsDigest(31337n, fromHex(acceptance.policy), fromHex(built.request.commitment), fromHex(acceptance.termsHash), 2n, 87400n)
+    expect(await recoverAddress({ hash: hex(digest) as Hex, signature: listed.acceptance!.signature })).toBe(OWNER)
+    expect("acceptance" in plain).toBe(false)
   })
 })
 

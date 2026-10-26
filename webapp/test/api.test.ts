@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   ApiError, BalanceChanged, checkCode, createOrder, currentTerms, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
-  agreedTermsHash, communityAgreed, termsFor,
+  communityAgreed, termsFor,
 } from "../src/api.ts"
 
 const HASH = "ab".repeat(32)
@@ -265,9 +265,9 @@ describe("service errors", () => {
       expect(currentTerms(AVAILABLE as never)).toBe(SIGNED)
     })
 
-    it("tells signed terms that agreed to a community name's terms, and which", () => {
-      expect([communityAgreed(SIGNED), agreedTermsHash(SIGNED)]).toEqual([true, COMMUNITY_HASH])
-      for (const terms of ["2026-10-23", null, undefined]) expect([communityAgreed(terms), agreedTermsHash(terms)], String(terms)).toEqual([false, null])
+    it("tells signed terms that agreed to a community name's wording", () => {
+      expect(communityAgreed(SIGNED)).toBe(true)
+      for (const terms of ["2026-10-23", null, undefined]) expect(communityAgreed(terms), String(terms)).toBe(false)
     })
 
     it("passes a community entry in every search answer, and the terms in the available one", async () => {
@@ -309,13 +309,13 @@ describe("service errors", () => {
     })
 
     it("passes the acceptance a committed community name's reveal signs, and takes one it cannot sign as no answer", async () => {
-      const acceptance = { policy: "0x3", termsHash: COMMUNITY_HASH, nonce: 0, url: COMMUNITY.terms.url }
+      const acceptance = { policy: "0x3", termsHash: COMMUNITY_HASH, nonce: 0 }
       for (const change of [{ acceptance }, { acceptance: null }]) {
         answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
         expect(await readRegistration("r1"), JSON.stringify(change)).toMatchObject(change)
       }
       for (const change of [{ acceptance: undefined }, { acceptance: { ...acceptance, termsHash: "0x1" } }, { acceptance: { ...acceptance, nonce: -1 } }, { acceptance: { ...acceptance, nonce: 1.5 } },
-        { acceptance: { ...acceptance, policy: 3 } }, { acceptance: { ...acceptance, url: "javascript:alert(1)" } }]) {
+        { acceptance: { ...acceptance, policy: 3 } }]) {
         answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
         const e = await readRegistration("r1").then(() => null, (e: unknown) => e)
         expect((e as ApiError).code, JSON.stringify(change)).toBe("network")

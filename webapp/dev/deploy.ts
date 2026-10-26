@@ -33,10 +33,8 @@ const SEED_YEARS = 2
 const ALLOWANCE = 1_000_000n * 10n ** 18n
 // SimplexNamePolicy.Reason.Internal
 const RESERVED_INTERNAL = 1
-// the community terms the name policy holds by their hash, and where the chain says they are read; the service's
-// community_terms_url serves this text
-const COMMUNITY_TERMS = readFileSync(new URL("./community-terms.txt", import.meta.url))
-const COMMUNITY_TERMS_URL = process.env.COMMUNITY_TERMS_URL ?? "https://simplex.chat/community-terms"
+// the community terms the name policy holds by their hash; the service's community_terms_url serves this text
+const COMMUNITY_TERMS_HASH = keccak256(readFileSync(new URL("./community-terms.txt", import.meta.url)))
 // the e2e community names: one free, one registered under the terms
 const COMMUNITY_NAMES = ["bakers", "bakehouse"]
 // anvil's well-known development mnemonic
@@ -107,17 +105,11 @@ await write(owner, baseRegistrar, "addController", [namePolicy.address])
 await write(owner, controller, "setNamePolicy", [namePolicy.address])
 await write(owner, baseRegistrar, "setNamePolicy", [namePolicy.address])
 await write(owner, namePolicy, "addReservedNames", [["support", "simplex", "official"], RESERVED_INTERNAL])
-await write(owner, namePolicy, "setTerms", [keccak256(COMMUNITY_TERMS), COMMUNITY_TERMS_URL])
+await write(owner, namePolicy, "setTerms", [COMMUNITY_TERMS_HASH, "https://simplex.chat/community-terms"])
 await write(owner, namePolicy, "addBonaFideNames", [COMMUNITY_NAMES])
 
 const chainId = await publicClient.getChainId()
 const holderAccount = privateKeyToAccount(holderKey)
-
-const ACCEPT_TYPES = {
-  AcceptBonaFideTerms: [
-    { name: "commitment", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" },
-  ],
-} as const
 
 const REGISTER_TYPES = {
   RegisterName: [
@@ -152,21 +144,11 @@ const seeds = [
 ]
 // the controller makes every registration wait after its commit, by block time; the last commit is the latest
 let revealAfter = 0
-const termsHash = keccak256(COMMUNITY_TERMS)
 for (const registration of seeds) {
   const commitment = await publicClient.readContract({ ...controller, functionName: "makeCommitment", args: [registration] }) as Hex
-  // a community name is committed with its holder's acceptance of the terms, which the registrar relays as the service does
-  if (COMMUNITY_NAMES.includes(registration.label)) {
-    const nonce = await publicClient.readContract({ ...namePolicy, functionName: "nonces", args: [holder.address] }) as bigint
-    const deadline = (await publicClient.getBlock()).timestamp + MAX_COMMITMENT_AGE
-    const signature = await holderAccount.signTypedData({
-      domain: { name: "SimplexNamePolicy", version: "1", chainId, verifyingContract: namePolicy.address },
-      types: ACCEPT_TYPES,
-      primaryType: "AcceptBonaFideTerms",
-      message: { commitment, termsHash, nonce, deadline },
-    })
-    await write(registrar, namePolicy, "commitUnderBonaFideCommunityTermsWithSig", [commitment, termsHash, holder.address, nonce, deadline, signature])
-  } else await write(registrar, controller, "commit", [commitment])
+  // a community name's holder accepts the terms, which commits it
+  if (COMMUNITY_NAMES.includes(registration.label)) await write(holder, namePolicy, "commitUnderBonaFideCommunityTerms", [commitment, COMMUNITY_TERMS_HASH])
+  else await write(registrar, controller, "commit", [commitment])
   const committedAt = await publicClient.readContract({ ...controller, functionName: "commitments", args: [commitment] }) as bigint
   revealAfter = Number(committedAt + MIN_COMMITMENT_AGE)
 }

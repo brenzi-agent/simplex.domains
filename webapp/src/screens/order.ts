@@ -1,4 +1,4 @@
-import { agreedTermsHash, type Balance, type Community, holdsPayment, type InvoiceView, type RegistrationView, type Terms } from "../api.ts"
+import { type Balance, type Community, holdsPayment, type InvoiceView, type RegistrationView, type Terms } from "../api.ts"
 import type { IconName } from "../icons.ts"
 import type { CodeRefusal, OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
@@ -258,11 +258,13 @@ function paymentKind(s: OrderState, invoice: InvoiceView): OrderKind {
 export const revealKey = (view: RegistrationView) =>
   `${view.id} ${view.commitment} ${view.intentNonce} ${view.revealBefore}${view.acceptance ? ` ${view.acceptance.termsHash} ${view.acceptance.nonce}` : ""}`
 
-// A community name whose terms on chain are not the ones its order signed waits for the buyer to agree to them again.
-export function termsToAgree({ view, record, ask }: OrderState): boolean {
-  const accept = view?.acceptance
-  if (!accept || !record || accept.termsHash === agreedTermsHash(view!.terms ?? record.terms)) return false
-  return !(ask?.label === record.label && ask.agreed && ask.community?.terms.hash === accept.termsHash)
+// A community name whose terms on chain are not the ones its order signed, which the buyer agrees to again.
+export const termsChanged = ({ view, record }: OrderState) => !!record && !!view?.acceptance && view.acceptance.termsHash !== view.community?.terms.hash
+
+// A community name whose terms changed waits for the buyer to agree to them again.
+export function termsToAgree(s: OrderState): boolean {
+  const { view, record, ask } = s
+  return termsChanged(s) && !(ask?.label === record!.label && ask.agreed && ask.community?.terms.hash === view!.acceptance!.termsHash)
 }
 
 // The terms to agree to again are asked for once the order is committed and not yet asked for.
@@ -283,7 +285,7 @@ export function revealDue(s: OrderState): boolean {
 
 export function stalledAt(s: OrderState): number | null {
   const { view, since } = s
-  if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS) return null
+  if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS || termsToAgree(s)) return null
   if (view.phase !== "committed" || view.label !== null) return since.at + TX_STALL_MS
   return Math.max(since.at, (view.revealAfter ?? 0) * 1000) + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS
 }
