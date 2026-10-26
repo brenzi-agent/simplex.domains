@@ -554,7 +554,7 @@ describe("reveal helpers", () => {
     expect(askAgainDue(listed(CHANGED, { record: null })), "no name code in this browser").toBe(false)
     expect(askAgainDue(listed(CHANGED, { record: record({ linksRefused: true }) })), "links refused").toBe(false)
     expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true } })), "ticked").toBe(true)
-    expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true, community: { ...ask.community!, terms: { ...ask.community!.terms, hash: agreed } } } })), "ticked other terms").toBe(false)
+    expect(revealDue(listed(CHANGED, { ask: { ...reask(agreed), agreed: true } })), "ticked other terms").toBe(false)
     expect(revealDue(read(null, registration({ ...committed, unread: ["acceptance"] }))), "an acceptance the service could not read").toBe(false)
   })
   it("unreadDelay reads a view with unread fields again after 5 s, 15 s, then every 30 s", () => {

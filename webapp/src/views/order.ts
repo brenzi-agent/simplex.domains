@@ -76,7 +76,7 @@ function dispatch(event: OrderEvent): void {
   if (!checksName(state)) stopWatchingName()
   if (kind === "registered") seenRegistered(state.view!, state.invoice)
   if (revealDue(state)) reveal(state.view!, state.record!)
-  else if (askAgainDue(state)) askAgain(state.view!, state.record!)
+  else if (askAgainDue(state)) askAgain(state.record!)
   if (kind !== screenOf(before) || state.record !== before.record) keepCodes(state)
   wakeOnTime()
 }
@@ -335,13 +335,12 @@ function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
 
 // Community terms that changed on chain since the order are agreed to again before the reveal signs them, under the
 // name terms the search has now.
-let askingAgain: string | null = null
-function askAgain(view: api.RegistrationView, record: store.OrderRecord): void {
+let askingAgain: number | null = null
+function askAgain(record: store.OrderRecord): void {
   const gen = opened
-  const key = `${gen} ${revealKey(view)}`
-  if (askingAgain === key) return
-  askingAgain = key
-  const done = () => { if (askingAgain === key) askingAgain = null }
+  if (askingAgain === gen) return
+  askingAgain = gen
+  const done = () => { if (askingAgain === gen) askingAgain = null }
   // after a pause, a search that failed or answered the name as not available is made again, and one that answered other
   // community terms than the view's reads the view again
   const later = (delay: number, again: () => void) => setTimeout(() => { done(); again() }, delay)
