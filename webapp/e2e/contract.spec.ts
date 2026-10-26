@@ -838,7 +838,7 @@ test("a spend whose difference is below the card's least charge refuses the card
 const COMMUNITY_LABEL = "bakers"
 const TERMS_VERSION = "2026-10-23"
 const COMMUNITY_TERMS = communityTerms(TERMS_VERSION)
-const COMMUNITY_ENTRY = (text: unknown) => ({ for: text, terms: { url: expect.any(String), hash: COMMUNITY_TERMS_HASH } })
+const communityEntry = (text: unknown) => ({ for: text, terms: { url: expect.any(String), hash: COMMUNITY_TERMS_HASH } })
 
 // The service's terms at another version while `f` runs, as after a restart with a new terms_version.
 async function atVersion<T>(request: APIRequestContext, version: string, f: () => Promise<T>): Promise<T> {
@@ -864,7 +864,7 @@ const termsChanged = (version: string, community: Json | null) => ({ error: "ter
 
 test("every search answer carries the name's community entry, and the available one the terms to agree to", async () => {
   const listed = (await call("GET", `/api/name/${hex(labelHash(COMMUNITY_LABEL))}?length=${COMMUNITY_LABEL.length}`)).json
-  expect(listed).toMatchObject({ status: "available", community: COMMUNITY_ENTRY(expect.any(String)), terms: { version: TERMS_VERSION, url: expect.stringMatching(/^https:\/\//) } })
+  expect(listed).toMatchObject({ status: "available", community: communityEntry(expect.any(String)), terms: { version: TERMS_VERSION, url: expect.stringMatching(/^https:\/\//) } })
   const other = uniqueLabel("ta")
   expect((await call("GET", `/api/name/${hex(labelHash(other))}?length=${other.length}`)).json).toMatchObject({ status: "available", community: null, terms: { version: TERMS_VERSION } })
   for (const [name, status] of [["bakery", "registered"], ["support", "reserved"]]) {
@@ -934,10 +934,10 @@ test("a move signs the new name's terms: a community name needs the community wo
     const { id, view } = await failedOrder(request, uniqueLabel("tg"))
     expect([view.terms, view.community]).toEqual([TERMS_VERSION, null])
     const q = await quote(label)
-    expect(q.community).toEqual(COMMUNITY_ENTRY("test bakers"))
+    expect(q.community).toEqual(communityEntry("test bakers"))
     await expect(flow.retargetOrder(store.orderByRegistration(id)!, label, NO_LINKS, q, TERMS_VERSION)).rejects.toMatchObject({ code: "terms_changed", terms: { version: TERMS_VERSION }, community: { for: "test bakers" } })
     const moved = await flow.retargetOrder(store.orderByRegistration(id)!, label, NO_LINKS, q, COMMUNITY_TERMS)
-    expect([moved.moves, moved.terms, moved.community]).toEqual([1, COMMUNITY_TERMS, COMMUNITY_ENTRY("test bakers")])
+    expect([moved.moves, moved.terms, moved.community]).toEqual([1, COMMUNITY_TERMS, communityEntry("test bakers")])
     const record = store.orderByRegistration(id)!
     expect(record.terms).toBe(COMMUNITY_TERMS)
     const repeat = await call("POST", `/api/registration/${id}/name`, await nameBody(record, moved))
@@ -953,7 +953,7 @@ test("a move signs the new name's terms: a community name needs the community wo
   })
 })
 
-test("a committed community name's view asks for the owner's acceptance of the terms on chain; its reveal without one, or with one for another nonce or terms, is bad_request, and with it the register takes it", async ({ request }) => {
+test("a committed community name's view asks for the owner's acceptance of the terms on chain; its reveal without one, or with one for another nonce or terms, is bad_request, and with it the register records it", async ({ request }) => {
   const label = uniqueLabel("tk")
   await listed(request, label, async () => {
     const { draft, built, id } = await codeOrder(request, label)
@@ -972,7 +972,7 @@ test("a committed community name's view asks for the owner's acceptance of the t
   })
 })
 
-test("a plain name's committed view asks for no acceptance, and its reveal carrying one is bad_request", async ({ request }) => {
+test("a plain name's committed view asks for no acceptance, and its reveal with one is bad_request", async ({ request }) => {
   const { draft, built, id } = await codeOrder(request, uniqueLabel("tl"))
   const record = flow.recordFor(draft, built, "code", 0, { registrationId: id, invoiceId: null })
   const view = await untilRevealable(id)

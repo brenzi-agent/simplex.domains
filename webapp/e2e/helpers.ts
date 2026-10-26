@@ -1,7 +1,7 @@
 import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Locator, type Page } from "@playwright/test"
 import { randomInt } from "node:crypto"
 import { mkdirSync, readFileSync } from "node:fs"
-import { createPublicClient, createTestClient, createWalletClient, encodeFunctionData, http, keccak256, namehash, parseAbi, type Hex } from "viem"
+import { createPublicClient, createTestClient, createWalletClient, encodeFunctionData, http, namehash, parseAbi, parseEventLogs, type Hex } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { foundry } from "viem/chains"
 import { labelHash, YEAR_S } from "../src/crypto/registration.ts"
@@ -54,7 +54,7 @@ export async function mockRegistration(request: APIRequestContext, invoiceId: st
 
 // The worker's chain, read directly: the expiry the registrar holds and the price the oracle quotes.
 const deployment = JSON.parse(readFileSync(new URL(`../dev/local-chain-${SLOT}.json`, import.meta.url), "utf8")) as
-  { rpcUrl: string; chainId: number; tld: string; ens: Hex; resolver: Hex; controller: Hex; baseRegistrar: Hex; namePolicy: Hex }
+  { rpcUrl: string; chainId: number; tld: string; ens: Hex; resolver: Hex; controller: Hex; baseRegistrar: Hex; namePolicy: Hex; communityTermsHash: Hex; ownerKey: Hex }
 const chain = createPublicClient({ transport: http(deployment.rpcUrl) })
 const CHAIN_ABI = parseAbi([
   "function nameExpires(uint256 id) view returns (uint256)",
@@ -62,9 +62,10 @@ const CHAIN_ABI = parseAbi([
   "function setResolver(bytes32 node, address resolver)",
   "function setText(bytes32 node, string key, string value)",
   "event BonaFideTermsAccepted(string name, address indexed holder, bytes32 termsHash)",
+  "function addBonaFideNames(string[] names)",
 ])
 // the community terms dev/deploy.ts put on chain, by their hash, and the hash as an order signs it after /community/
-export const COMMUNITY_TERMS_HASH = keccak256(readFileSync(new URL("../dev/community-terms.txt", import.meta.url)))
+export const COMMUNITY_TERMS_HASH = deployment.communityTermsHash
 export const communityTerms = (version: string) => `${version}/community/${COMMUNITY_TERMS_HASH.slice(2)}`
 export const NAME_POLICY = deployment.namePolicy
 // gas for a few of an owner's own transactions, which anvil gives the owner's wallet
@@ -98,13 +99,20 @@ export const ownerSetsResolver = (ownerCode: string, label: string, resolver: He
 export const ownerSetsText = (ownerCode: string, label: string, key: string, value: string) =>
   asOwner(ownerCode, deployment.resolver, encodeFunctionData({ abi: CHAIN_ABI, functionName: "setText", args: [nodeOf(label), key, value] }))
 
-// The community terms the policy took from the owner for the commitment before its register, read from the register's
-// own BonaFideTermsAccepted event: the register consumes the acceptance, so the policy's acceptedTerms reads zero after it.
+// The community terms the owner accepted for the commitment before its register, as the register's own
+// BonaFideTermsAccepted event records them: the register consumes the acceptance, so the policy's acceptedTerms reads zero after it.
 export async function acceptedOnChain(registerTx: string): Promise<{ name: string; holder: string; termsHash: Hex } | null> {
   const receipt = await chain.getTransactionReceipt({ hash: registerTx as Hex })
-  const logs = await chain.getContractEvents({ address: deployment.namePolicy, abi: CHAIN_ABI, eventName: "BonaFideTermsAccepted", blockHash: receipt.blockHash })
-  const log = logs.find((l) => l.transactionHash === registerTx)
-  return log ? { name: log.args.name!, holder: log.args.holder!, termsHash: log.args.termsHash! } : null
+  const [log] = parseEventLogs({ abi: CHAIN_ABI, eventName: "BonaFideTermsAccepted", logs: receipt.logs })
+  return log ? { name: log.args.name, holder: log.args.holder, termsHash: log.args.termsHash } : null
+}
+
+// The contracts' owner lists the name on the name policy's community list, from the owner's own key.
+export async function contractsOwnerLists(label: string): Promise<void> {
+  const account = privateKeyToAccount(deployment.ownerKey)
+  const hash = await createWalletClient({ account, chain: { ...foundry, id: deployment.chainId }, transport: http(deployment.rpcUrl) })
+    .writeContract({ address: deployment.namePolicy, abi: CHAIN_ABI, functionName: "addBonaFideNames", args: [[label]] })
+  expect((await chain.waitForTransactionReceipt({ hash })).status, "the owner's listing").toBe("success")
 }
 
 export async function oracleQuote(label: string, years: number): Promise<number> {

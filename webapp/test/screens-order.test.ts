@@ -495,8 +495,11 @@ describe("a stalled stage", () => {
     }
     const view = registration(committed)
     expect(stalledAt({ ...seen(view), reveal: { key: revealKey(view), sending: false, refusals: REVEAL_ATTEMPTS } })).toBeNull()
-    const asking = registration({ ...committed, acceptance: { policy: "0x3", termsHash: `0x${"d8".repeat(32)}`, nonce: 0 } })
-    expect(stalledAt(seen(asking)), "the community terms changed on chain wait for the buyer").toBeNull()
+    const changed = `0x${"d8".repeat(32)}`
+    const asking = registration({ ...committed, acceptance: { policy: "0x3", termsHash: changed, nonce: 0 } })
+    const ask = { label: record().label, terms: { version: "2026-10-23", url: "https://simplex.chat/" }, community: { for: null, terms: { url: "https://simplex.chat/community-terms", hash: changed } }, agreed: false, changed: true }
+    for (const agreed of [false, true]) expect(stalledAt({ ...seen(asking), ask: { ...ask, agreed } }), `the changed community terms asked for, ticked ${agreed}`).toBeNull()
+    expect(stalledAt(seen(asking)), "changed terms that could not be asked for").not.toBeNull()
   })
 })
 

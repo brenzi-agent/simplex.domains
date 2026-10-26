@@ -120,7 +120,7 @@ describe("revealOrder", () => {
     expect(await recoverAddress({ hash: hex(digest) as Hex, signature: body.signature })).toBe(OWNER)
   })
 
-  it("signs a community name's acceptance of the terms on chain with the code's key, at the same deadline, and a plain name's reveal carries none", async () => {
+  it("signs a community name's acceptance of the terms on chain with the code's key, at the same deadline, and a plain name's reveal has none", async () => {
     const { flow } = await modules()
     const built = await flow.orderRequest(draft())
     const record = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" })

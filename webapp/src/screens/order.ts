@@ -258,18 +258,20 @@ function paymentKind(s: OrderState, invoice: InvoiceView): OrderKind {
 export const revealKey = (view: RegistrationView) =>
   `${view.id} ${view.commitment} ${view.intentNonce} ${view.revealBefore}${view.acceptance ? ` ${view.acceptance.termsHash} ${view.acceptance.nonce}` : ""}`
 
-// A community name whose terms on chain are not the ones its order signed, which the buyer agrees to again.
-export const termsChanged = ({ view, record }: OrderState) => !!record && !!view?.acceptance && view.acceptance.termsHash !== view.community?.terms.hash
+// The community terms on chain are not the ones the order signed, so the buyer agrees to them again before the reveal.
+const termsChanged = ({ view, record }: OrderState) => !!record && !!view?.acceptance && view.acceptance.termsHash !== view.community?.terms.hash
 
-// A community name whose terms changed waits for the buyer to agree to them again.
+// The buyer is asked for the changed community terms, ticked or not.
+export const termsAskedAgain = (s: OrderState) => termsChanged(s) && s.ask?.community?.terms.hash === s.view!.acceptance!.termsHash
+
+// The reveal waits until the buyer ticks the changed community terms.
 export function termsToAgree(s: OrderState): boolean {
-  const { view, record, ask } = s
-  return termsChanged(s) && !(ask?.label === record!.label && ask.agreed && ask.community?.terms.hash === view!.acceptance!.termsHash)
+  const { record, ask } = s
+  return termsChanged(s) && !(termsAskedAgain(s) && ask!.label === record!.label && ask!.agreed)
 }
 
-// The terms to agree to again are asked for once the order is committed and not yet asked for.
-export const askAgainDue = (s: OrderState) => s.view?.phase === "committed" && s.view.label === null && !linksRefused(s) && termsToAgree(s)
-  && s.ask?.community?.terms.hash !== s.view.acceptance!.termsHash
+// The changed terms are asked for once the order is committed and they are not asked for yet.
+export const askAgainDue = (s: OrderState) => s.view?.phase === "committed" && s.view.label === null && !linksRefused(s) && termsChanged(s) && !termsAskedAgain(s)
 
 export function refusalsOf({ view, reveal }: OrderState): number {
   return view?.phase === "committed" && reveal?.key === revealKey(view) ? reveal.refusals : 0
@@ -285,7 +287,7 @@ export function revealDue(s: OrderState): boolean {
 
 export function stalledAt(s: OrderState): number | null {
   const { view, since } = s
-  if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS || termsToAgree(s)) return null
+  if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS || termsAskedAgain(s)) return null
   if (view.phase !== "committed" || view.label !== null) return since.at + TX_STALL_MS
   return Math.max(since.at, (view.revealAfter ?? 0) * 1000) + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS
 }

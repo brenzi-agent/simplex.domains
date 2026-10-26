@@ -175,6 +175,7 @@ const deployment = {
   sponsor: sponsor.address,
   resolver: resolver.address,
   namePolicy: namePolicy.address,
+  communityTermsHash: COMMUNITY_TERMS_HASH,
   owner: owner.address,
   ownerKey: toHex(owner.getHdKey().privateKey!),
   guardian: guardian.address,

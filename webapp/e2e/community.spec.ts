@@ -2,8 +2,6 @@
 // The first cases need no /control endpoint, so they run against the service too, which lists bakers with words of its own.
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test"
 import type { Hex } from "viem"
-import { checksumAddress } from "../src/crypto/wallet.ts"
-import { walletOf } from "../src/flow.ts"
 import {
   acceptedOnChain, AGREE, agreeToTerms, COMMUNITY_TERMS_HASH, communityTerms, contactLink, control, failedOrder, MOCK, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, restoreOrder,
   savedToReview, search, sevenLetters, startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered, withStripeKey,
@@ -347,21 +345,21 @@ function revealsOf(page: Page): Record<string, unknown>[] {
   return bodies
 }
 
-test("a community name bought end to end has its owner's acceptance of the community terms relayed before the register, which takes it on chain", async ({ page, request }) => {
+test("a community name bought end to end has its owner's acceptance of the community terms relayed before the register, which records it on chain", async ({ page, request }) => {
   const label = uniqueLabel("cr")
   await listed(request, [label], async () => {
     const reveals = revealsOf(page)
-    const { invoiceId, ownerCode } = await startOrder(page, label)
+    const { invoiceId } = await startOrder(page, label)
     await control(request, `settle/${invoiceId}`)
     await waitRegistered(page, label)
     const view = await invoiceViewOf(request, invoiceId)
     expect(view.terms).toBe(communityTerms(TERMS_VERSION))
     expect(reveals.map((b) => (b.acceptance as Record<string, unknown> | undefined)?.termsHash), "one reveal, with the acceptance").toEqual([COMMUNITY_TERMS_HASH])
-    expect(await acceptedOnChain(view.registerTx as string)).toEqual({ name: label, holder: checksumAddress(walletOf(ownerCode)!.address), termsHash: COMMUNITY_TERMS_HASH })
+    expect(await acceptedOnChain(view.registerTx as string)).toEqual({ name: label, holder: view.owner, termsHash: COMMUNITY_TERMS_HASH })
   })
 })
 
-test("a plain name's reveal carries no acceptance, and its register takes none on chain", async ({ page, request }) => {
+test("a plain name's reveal has no acceptance, and its register records none on chain", async ({ page, request }) => {
   const label = uniqueLabel("cp")
   const reveals = revealsOf(page)
   const { invoiceId } = await startOrder(page, label)
@@ -392,7 +390,7 @@ test("community terms changed on chain between the order and its reveal are agre
       await waitRegistered(page, label)
       const view = await invoiceViewOf(request, invoiceId)
       expect(view.terms, "the order keeps the terms it signed").toBe(communityTerms(TERMS_VERSION))
-      expect((await acceptedOnChain(view.registerTx as string))?.termsHash, "the register took the new terms").toBe(hash)
+      expect((await acceptedOnChain(view.registerTx as string))?.termsHash, "the register recorded the new terms").toBe(hash)
     } finally {
       await control(request, "community-terms", { text: null })
     }
@@ -400,7 +398,7 @@ test("community terms changed on chain between the order and its reveal are agre
 })
 
 test("a taken community name's chats say so in their popup", async ({ page }) => {
-  // bakehouse is listed and registered with links from the start, as a listed name can only be registered so
+  // a registered name cannot be listed, so dev/deploy.ts registers bakehouse with links under the terms
   await search(page, TAKEN_COMMUNITY)
   const row = onStep(page).locator(".answer .row")
   await expect(row.getByRole("button", { name: MARKER })).toBeVisible()

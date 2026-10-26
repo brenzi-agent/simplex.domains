@@ -5,7 +5,8 @@ import { checksumAddress } from "../src/crypto/wallet.ts"
 import { walletOf } from "../src/flow.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, onStep, payButton, previewsShown, savedToReview,
+  acceptedOnChain, answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, COMMUNITY_TERMS_HASH, contactLink, contractsOwnerLists, control, fillLinks, FIT_SIZES,
+  LINKS_HEADING, MOCK, onStep, payButton, previewsShown, savedToReview,
   search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
@@ -152,6 +153,16 @@ test("a prepaid code registers a name with its links, which its records on chain
   expect(answer.owner, "the name code's wallet owns the name").toBe(checksumAddress(walletOf(await ownerCodeOf(page, registrationId))!.address))
   await page.goto(`/#/?name=${label}`)
   await expect(page.locator(".answer .row .chat"), "the name's answer opens both chats").toHaveCount(2)
+})
+
+test("a prepaid code registers a name the contracts' owner listed on chain, its register recording the owner's acceptance of the community terms", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
+  const label = uniqueLabel("cpol")
+  await contractsOwnerLists(label)
+  await payWithCode(page, label, code)
+  await waitRegistered(page, label)
+  const view = await (await request.get(`${MOCK}/api/registration/${new URL(page.url()).searchParams.get("registration")}`)).json() as { owner: string; registerTx: string }
+  expect(await acceptedOnChain(view.registerTx)).toEqual({ name: label, holder: view.owner, termsHash: COMMUNITY_TERMS_HASH })
 })
 
 test("a code order's name code, entered in another browser before the reveal, lets that browser reveal and register the name", async ({ page, browser, request }) => {

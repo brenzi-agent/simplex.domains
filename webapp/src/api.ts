@@ -64,8 +64,8 @@ export interface Terms {
   url: string
 }
 
-// A name on the chain's community list: what it is for, when the service words it, and the community terms its owner
-// accepts, by the hash the chain holds.
+// A name on the chain's community list: what it is for, null when the ini has no line for it, and the community terms its
+// owner accepts, by the hash the chain holds.
 export interface Community {
   for: string | null
   terms: { url: string; hash: string }

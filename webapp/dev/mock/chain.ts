@@ -19,6 +19,7 @@ export interface Deployment {
   sponsor: Address
   resolver: Address
   namePolicy: Address
+  communityTermsHash: Hex
   ownerKey: Hex
   registrarKey: Hex
   holderKey: Hex
@@ -51,7 +52,7 @@ const READ_TIMEOUT_MS = 10_000
 
 export const registrar = privateKeyToAccount(deployment.registrarKey)
 // the contracts' owner, who lists community names and sets their terms, as the tests' controls stand in for it
-export const owner = privateKeyToAccount(deployment.ownerKey)
+export const contractsOwner = privateKeyToAccount(deployment.ownerKey)
 export const holder = privateKeyToAccount(deployment.holderKey)
 const chain = { ...foundry, id: deployment.chainId }
 // one quick retry for a read, as a provider drops a request now and then; a send is never retried, which could send twice
