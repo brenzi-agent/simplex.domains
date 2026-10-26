@@ -51,7 +51,7 @@ const SEND_TIMEOUT_MS = 60_000
 const READ_TIMEOUT_MS = 10_000
 
 export const registrar = privateKeyToAccount(deployment.registrarKey)
-// the contracts' owner, who lists community names and sets their terms, as the tests' controls stand in for it
+// the contracts' owner, whose key the /control endpoints use to list community names and set their terms
 export const contractsOwner = privateKeyToAccount(deployment.ownerKey)
 export const holder = privateKeyToAccount(deployment.holderKey)
 const chain = { ...foundry, id: deployment.chainId }
@@ -109,7 +109,7 @@ function revertName(e: unknown): string | null {
 
 // One transaction at a time from the registrar key, as the service's single sender: a dry run, the transaction made
 // and signed, then the send and its receipt. Only a failure from the send on can leave a transaction on its way.
-// goingOut is told the transaction's hash just before it goes out; `from` sends as another account, the owner for a
+// goingOut is told the transaction's hash just before it goes out; `from` is the sending account: the owner for a
 // control's change of the contracts' settings, the holder for a rival's commit.
 let sending: Promise<unknown> = Promise.resolve()
 export function send(contract: Contract, functionName: string, args: unknown[], goingOut?: (hash: Hex) => void, from = registrar): Promise<Hex> {

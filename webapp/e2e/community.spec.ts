@@ -367,6 +367,25 @@ test("community terms changed on chain between the order and its reveal are agre
   })
 })
 
+test("changed community terms whose first search fails are asked for after a pause, and nothing is signed before the tick", async ({ page, request }) => {
+  const label = uniqueLabel("cw")
+  await listed(request, [label], async () => {
+    let reveals = 0
+    page.on("request", (r) => { if (r.method() === "POST" && r.url().endsWith("/reveal")) reveals++ })
+    const { invoiceId } = await startOrder(page, label)
+    await control(request, "community-terms", { text: `the community terms, changed for ${label}` })
+    try {
+      let searches = 0
+      await page.route("**/api/name/*", (route) => searches++ === 0 ? route.fulfill({ status: 503, json: { error: "provider_unavailable" } }) : route.fallback())
+      await control(request, `settle/${invoiceId}`)
+      await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: REGISTRATION_MS })
+      expect([searches > 1, reveals]).toEqual([true, 0])
+    } finally {
+      await control(request, "community-terms", { text: null })
+    }
+  })
+})
+
 test("a taken community name's chats say so in their popup", async ({ page }) => {
   // a registered name cannot be listed, so dev/deploy.ts registers bakehouse with links under the terms
   await search(page, TAKEN_COMMUNITY)
