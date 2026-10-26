@@ -7,7 +7,7 @@ import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from ".
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
   closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedAlert, failedLead, finished, newInvoiceBy, spendCovers, initialState, type Note, type OrderEvent, type OrderKind,
-  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, sameStep, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt,
+  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, sameStep, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt, askAgainDue,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
 import { termsToSign } from "../screens/terms.ts"
@@ -76,6 +76,7 @@ function dispatch(event: OrderEvent): void {
   if (!checksName(state)) stopWatchingName()
   if (kind === "registered") seenRegistered(state.view!, state.invoice)
   if (revealDue(state)) reveal(state.view!, state.record!)
+  else if (askAgainDue(state)) askAgain(state.view!, state.record!)
   if (kind !== screenOf(before) || state.record !== before.record) keepCodes(state)
   wakeOnTime()
 }
@@ -330,6 +331,20 @@ function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
       if (isRoute(pageRoute) && state.reference === reference) refresh()
     }, e instanceof api.ApiError && e.retryAfter ? e.retryAfter * 1000 : RETRY_MS)
   })
+}
+
+// Community terms that changed on chain since the order are agreed to again before the reveal signs them, under the
+// name terms the search has now; asked once each time the page opens the order.
+let askedAgain: string | null = null
+function askAgain(view: api.RegistrationView, record: store.OrderRecord): void {
+  const a = view.acceptance!
+  const key = `${opened} ${view.id} ${a.termsHash}`
+  if (askedAgain === key) return
+  askedAgain = key
+  const gen = opened
+  flow.quoteOf(record.label).then((quote) => {
+    if (quote) askTerms(gen, record.label, { terms: quote.terms, community: { for: view.community?.for ?? null, terms: { url: a.url, hash: a.termsHash } } }, true)
+  }, () => { askedAgain = null })
 }
 
 function keepCodes(s: OrderState): void {
@@ -1088,7 +1103,8 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
     // the note keeps the height of its longest words, so the page keeps still as they change
     el("div", { class: "countdown" }, clockNode, el("p", {}, note, el("span", { class: "sizer", "aria-hidden": "true" }, WAIT_NOTE))),
     refused ? alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration.") : null,
-    referenceLine(s.invoice?.invoiceId ?? view.id))
+    referenceLine(s.invoice?.invoiceId ?? view.id),
+    view.phase === "committed" && view.label === null ? agreement(s, "reveal") : null)
 }
 
 const waitsSeen = new Map<string, number>()

@@ -15,7 +15,7 @@ const WAITING = { registrationId: "reg-0", invoiceId: "inv-0" }
 const OPEN_ORDER = { invoiceId: "inv-9", confirming: false }
 const TERMS = { version: "2026-10-23", url: "https://simplex.chat/" }
 const NEWER = { version: "2026-11-01", url: "https://simplex.chat/terms" }
-const BAKERS = { for: "bakers and pastry chefs" }
+const BAKERS = { for: "bakers and pastry chefs", terms: { url: "https://simplex.chat/community-terms", hash: `0x${"c7".repeat(32)}` } }
 
 function checkout(change: Partial<Checkout> = {}): Checkout {
   return {

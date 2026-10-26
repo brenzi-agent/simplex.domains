@@ -63,7 +63,7 @@ const draft = (label = "dynamis", terms = TERMS.version) => ({ label, links: LIN
 function view(request: { labelHash: string; duration: number; commitment: string; sealed: string | null }, extra: Record<string, unknown> = {}) {
   return {
     id: "reg1", version: 1, unread: [], moves: 0, phase: "committed", labelHash: request.labelHash, label: null, owner: OWNER, commitment: request.commitment, sealed: request.sealed,
-    years: 2, duration: request.duration, price: 20000, fromBalance: 0, balance: null, commitTx: "0x01", registerTx: null, revealAfter: 1000, revealBefore: 87400, intentNonce: 3, expiresAt: null, error: null, linksRefused: false, latePayment: null,
+    years: 2, duration: request.duration, price: 20000, fromBalance: 0, balance: null, commitTx: "0x01", registerTx: null, revealAfter: 1000, revealBefore: 87400, intentNonce: 3, acceptance: null, expiresAt: null, error: null, linksRefused: false, latePayment: null,
     community: null, terms: TERMS.version, ...CHAIN, ...extra,
   }
 }

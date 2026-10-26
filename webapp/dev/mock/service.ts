@@ -1,6 +1,7 @@
 // A stand-in for StoreService's names API, driving the real contracts on the local chain.
 // A development fixture: memory only, no money, and not a specification of the real service.
 import { createHash, randomBytes } from "node:crypto"
+import { readFileSync } from "node:fs"
 import {
   encodeFunctionData, getAddress, hashTypedData, isAddress, keccak256, namehash, recoverAddress, recoverMessageAddress, recoverTypedDataAddress, toHex,
   zeroHash, type Address, type Hex,
@@ -10,7 +11,7 @@ import { codeHash, parseNameCode } from "../../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, durationFor, YEAR_S } from "../../src/crypto/registration.ts"
 import { labelProblem, linkKind, type LinkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
 import {
-  baseRegistrar, chainNow, controller, deployment, holder, mined, NotSent, ownerOf, read, registry, resolver, Reverted, send, sponsor,
+  baseRegistrar, chainNow, controller, deployment, holder, mined, namePolicy, NotSent, ownerOf, ownerSend, read, registry, resolver, Reverted, send, sponsor,
 } from "./chain.ts"
 import { TERM_START_S, untilChainTime } from "../chain-time.ts"
 import { addressFor } from "./addresses.ts"
@@ -55,9 +56,14 @@ const CHAIN_FAILED = "The blockchain did not answer"
 // a contract's revert name is no message for a buyer
 const REFUSED = "The blockchain refused the transaction"
 const SEALED_MAX = 11095
-// the terms an order signs: the version, with COMMUNITY_TERMS after it for a community name
-const SIGNED_TERMS = /^[A-Za-z0-9._/-]{1,48}$/
-const COMMUNITY_TERMS = "/community"
+// the terms an order signs: the version, with COMMUNITY_TERMS and the community terms' hash after it for a community name
+const SIGNED_TERMS = /^[A-Za-z0-9._/-]{1,112}$/
+const COMMUNITY_TERMS = "/community/"
+// the service's community_terms_url, and the text dev/deploy.ts put on chain, which a test's change of the terms goes back to
+const COMMUNITY_TERMS_URL = "https://simplex.chat/community-terms"
+const DEPLOYED_COMMUNITY_TERMS = readFileSync(new URL("../community-terms.txt", import.meta.url))
+// a relayed acceptance the name policy refuses for what the page signed: the page signs again
+const ACCEPTANCE_REFUSED = ["TermsMismatch", "InvalidNonce", "SignatureExpired", "InvalidSignature"]
 // a community name's text in the service's ini: one line of up to this many characters
 const COMMUNITY_TEXT_MAX = 200
 const SECP256K1_HALF_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n
@@ -88,6 +94,8 @@ interface Registration {
   secret: Hex | null
   records: { contact: string[]; channel: string[] } | null
   intent: { nonce: bigint; deadline: bigint; signature: Hex } | null
+  // the owner's signed acceptance of a community name's terms, relayed before the register
+  acceptance: { termsHash: Hex; nonce: bigint; signature: Hex } | null
   commitTx: Hex | null
   registerTx: Hex | null
   revealAfter: number | null
@@ -251,7 +259,7 @@ async function lookup(labelHash: Hex): Promise<Lookup> {
       read<bigint>(baseRegistrar, "nameExpires", [token]),
       read<bigint>(baseRegistrar, "GRACE_PERIOD"),
       chainNow(),
-      read<number>(controller, "reservedNames", [labelHash]),
+      read<number>(namePolicy, "reservedNames", [labelHash]),
     ])
     // a name in its grace period is still its holder's; a name never registered expires at 0
     if (expires > 0n && expires + grace >= BigInt(now)) {
@@ -343,7 +351,7 @@ export async function search(hash: string, lengthText: string | null): Promise<R
   if (!isHash(hash)) throw badRequest()
   const length = Number(lengthText)
   if (!Number.isInteger(length) || length < MIN_LABEL_LENGTH || length > MAX_LABEL_LENGTH) throw new HttpError(400, "invalid_name")
-  return { ...await answerFor(hash, length), community: communityOf(hash) }
+  return { ...await answerFor(hash, length), community: await communityOf(hash).catch(unavailable) }
 }
 
 async function answerFor(hash: Hex, length: number): Promise<Record<string, unknown>> {
@@ -382,18 +390,37 @@ function nodeOf(labelHash: Hex): Hex {
 
 // --- terms and community names
 
-// The service's [names] terms_version and terms_url, and its [community] list keyed by label hash, which the service reads
-// at startup; /control/terms and /control/community change them as a restart with a new ini would. The e2e spec's
-// community name is bakers, whose text the service's contract run words otherwise.
+// The service's [names] terms_version and terms_url, and its [community] words keyed by label hash, which the service reads
+// at startup; /control/terms and /control/community change them as a restart with a new ini would. Which names are
+// community names is the name policy's list on chain; the words only say what a listed name is for. The e2e spec's
+// community names are bakers and bakehouse, which dev/deploy.ts lists, and whose words the service's contract run has
+// otherwise.
 const terms = { version: "2026-10-23", url: "https://simplex.chat/" }
-const communities = new Map<Hex, string>([[keccak256(toHex("bakers")), "bakers and pastry chefs"]])
+const communities = new Map<Hex, string>([[keccak256(toHex("bakers")), "bakers and pastry chefs"], [keccak256(toHex("bakehouse")), "a bakery's own bakers"]])
+// the names a control put on the chain's list, which it takes off again; the deployed ones stay listed
+const controlListed = new Set<Hex>()
 
-const communityOf = (labelHash: Hex) => communities.has(labelHash) ? { for: communities.get(labelHash)! } : null
-const termsFor = (labelHash: Hex) => communities.has(labelHash) ? `${terms.version}${COMMUNITY_TERMS}` : terms.version
+const communityEntry = (labelHash: Hex, hash: Hex) => ({ for: communities.get(labelHash) ?? null, terms: { url: COMMUNITY_TERMS_URL, hash } })
 
-// an order or a move signs the terms the service has now for its name, the community agreement included for a community name
-function checkTerms(o: Pick<OrderBody, "labelHash" | "terms">): void {
-  if (o.terms !== termsFor(o.labelHash)) throw new HttpError(409, "terms_changed", { terms: { ...terms }, community: communityOf(o.labelHash) })
+// a listed name's entry with the community terms on chain now; a failed read throws
+async function communityOf(labelHash: Hex): Promise<Record<string, unknown> | null> {
+  const [listed, hash] = await Promise.all([read<boolean>(namePolicy, "bonaFideNames", [labelHash]), read<Hex>(namePolicy, "termsHash")])
+  return listed ? communityEntry(labelHash, hash) : null
+}
+
+// the entry of the community terms an order signed, which the view shows without reading the chain
+function signedCommunity(reg: Registration): Record<string, unknown> | null {
+  const at = reg.terms.indexOf(COMMUNITY_TERMS)
+  return at < 0 ? null : communityEntry(reg.labelHash, `0x${reg.terms.slice(at + COMMUNITY_TERMS.length)}`)
+}
+
+const termsFor = (community: Record<string, unknown> | null) =>
+  community ? `${terms.version}${COMMUNITY_TERMS}${(community.terms as { hash: Hex }).hash.slice(2)}` : terms.version
+
+// an order or a move signs the terms the service has now for its name, the community terms included for a community name
+async function checkTerms(o: Pick<OrderBody, "labelHash" | "terms">): Promise<void> {
+  const community = await communityOf(o.labelHash).catch((): never => { throw new HttpError(503, "name_check_unavailable") })
+  if (o.terms !== termsFor(community)) throw new HttpError(409, "terms_changed", { terms: { ...terms }, community })
 }
 
 // --- views
@@ -412,14 +439,22 @@ async function viewRead<T>(field: string, unread: string[], f: () => Promise<T>)
   }
 }
 
+// What the owner signs to accept a listed name's community terms, while no acceptance is stored with the reveal.
+async function acceptanceOf(reg: Registration): Promise<Record<string, unknown> | null> {
+  if (!await read<boolean>(namePolicy, "bonaFideNames", [reg.labelHash])) return null
+  const [termsHash, nonce] = await Promise.all([read<Hex>(namePolicy, "termsHash"), read<bigint>(namePolicy, "nonces", [reg.owner])])
+  return { policy: deployment.namePolicy, termsHash, nonce: Number(nonce), url: COMMUNITY_TERMS_URL }
+}
+
 async function registrationView(reg: Registration): Promise<Record<string, unknown>> {
   const unread: string[] = []
   const intentNonce = reg.phase === "committed" ? await viewRead("intentNonce", unread, async () => Number(await read<bigint>(sponsor, "nonces", [reg.owner]))) : null
+  const acceptance = reg.phase === "committed" && !reg.acceptance ? await viewRead("acceptance", unread, () => acceptanceOf(reg)) : null
   return {
     id: reg.id, version: reg.version, moves: reg.moves, phase: reg.phase, labelHash: reg.labelHash, label: reg.label, owner: reg.owner, commitment: reg.commitment, sealed: reg.sealed,
     resolver: deployment.resolver, sponsor: deployment.sponsor, chainId: deployment.chainId, tld: deployment.tld, years: reg.years, duration: reg.duration, price: reg.paid,
     fromBalance: reg.fromBalance, balance: balanceView(reg.id), latePayment: latePayment(reg), commitTx: reg.commitTx, registerTx: reg.registerTx, revealAfter: reg.revealAfter, revealBefore: reg.revealBefore,
-    intentNonce, unread, expiresAt: reg.expiresAt, error: reg.error, linksRefused: reg.linksRefused, community: communityOf(reg.labelHash), terms: reg.terms,
+    intentNonce, acceptance, unread, expiresAt: reg.expiresAt, error: reg.error, linksRefused: reg.linksRefused, community: signedCommunity(reg), terms: reg.terms,
   }
 }
 
@@ -625,7 +660,7 @@ export async function createInvoice(body: Record<string, unknown>): Promise<Reco
   if (resent) return invoiceView(invoices.get(resent.invoiceId!)!)
   freshTimestamp(body.timestamp)
   checkDuration(order.duration, YEARS)
-  checkTerms(order)
+  await checkTerms(order)
   await nameFree(order.labelHash)
   const price = await chainPrice(order.length, YEARS)
   if (body.price !== price) throw new HttpError(409, "catalog_changed", { price })
@@ -650,7 +685,7 @@ type NewRegistration = Pick<Registration, "years" | "paid" | "method" | "prepaid
 
 function newRegistration(order: OrderBody, extra: NewRegistration): Registration {
   const reg: Registration = {
-    id: id(), invoiceId: null, fromBalance: 0, balanceSource: null, ...order, ...extra, label: null, secret: null, records: null, intent: null, commitTx: null, registerTx: null,
+    id: id(), invoiceId: null, fromBalance: 0, balanceSource: null, ...order, ...extra, label: null, secret: null, records: null, intent: null, acceptance: null, commitTx: null, registerTx: null,
     revealAfter: null, revealBefore: null, expiresAt: null, error: null, createdAt: iso(nowSeconds()), failNext: false, moves: 0, linksRefused: false, resends: 0, version: 1,
   }
   registrations.set(reg.id, reg)
@@ -725,7 +760,7 @@ export async function registerWithCode(body: Record<string, unknown>): Promise<R
   if (resent) return { registrationId: resent.id }
   freshTimestamp(body.timestamp)
   checkDuration(order.duration, row.years)
-  checkTerms(order)
+  await checkTerms(order)
   await nameFree(order.labelHash)
   const error = CODE_ERRORS[row.state]
   if (error) throw new HttpError(error === "code_invalid" ? 400 : 409, error)
@@ -836,6 +871,7 @@ function clearReveal(reg: Registration): void {
   reg.secret = null
   reg.records = null
   reg.intent = null
+  reg.acceptance = null
 }
 
 function registrationTuple(reg: Registration) {
@@ -856,6 +892,17 @@ async function register(reg: Registration): Promise<void> {
     return fail(reg, "The register transaction did not go through")
   }
   const { nonce, deadline, signature } = reg.intent!
+  // a community name's acceptance goes on chain first, unless an earlier relay of it was mined
+  if (reg.acceptance && await read<Hex>(namePolicy, "acceptedTerms", [reg.commitment, reg.owner]) !== reg.acceptance.termsHash) {
+    const { termsHash, nonce: acceptNonce, signature: acceptSignature } = reg.acceptance
+    try {
+      await sendTx(namePolicy, "commitUnderBonaFideCommunityTermsWithSig", [reg.commitment, termsHash, reg.owner, acceptNonce, deadline, acceptSignature])
+    } catch (e) {
+      if (!(e instanceof Reverted && ACCEPTANCE_REFUSED.includes(e.revert ?? ""))) throw e
+      clearReveal(reg)
+      return changed(reg)
+    }
+  }
   // registering only once the transaction goes out: until then the name is not on its way to the owner
   const sending = (hash: Hex) => {
     reg.phase = "registering"
@@ -869,8 +916,9 @@ async function register(reg: Registration): Promise<void> {
     // no answer from the chain is not a failure: the transaction may still be mined, so the order waits for the chain
     if (!(e instanceof Reverted)) return awaitRegistration(reg)
     if ((await ownerOf(reg.labelHash).catch(() => null)) === reg.owner) return registered(reg)
-    // another registration by the same owner spent this nonce first: the owner signs again with the next one
-    if (e.revert === "InvalidNonce") {
+    // another registration by the same owner spent this nonce first, or the terms changed since the acceptance: the owner
+    // signs again
+    if (e.revert === "InvalidNonce" || e.revert === "TermsNotAccepted") {
       clearReveal(reg)
       reg.phase = "committed"
       return changed(reg)
@@ -960,6 +1008,9 @@ export async function reveal(registrationId: string, body: Record<string, unknow
   if (!reg) throw new HttpError(404, "not_found")
   lapse(reg)
   const signature = checkSignature(body.signature)
+  const signed = body.acceptance
+  if (signed !== undefined && (typeof signed !== "object" || signed === null)) throw badRequest()
+  const accepted = signed as Record<string, unknown> | undefined
   if (reg.label !== null) {
     if (reg.label === body.label && reg.intent?.signature === signature) return {}
     throw badRequest()
@@ -989,6 +1040,26 @@ export async function reveal(registrationId: string, body: Record<string, unknow
   })
   if (signer !== reg.owner) throw badRequest()
   if (BigInt(nonce) !== (await read<bigint>(sponsor, "nonces", [reg.owner]).catch(unavailable))) throw badRequest()
+  // a listed name's reveal carries the owner's acceptance of the terms on chain now; any other's carries none
+  const listed = await read<boolean>(namePolicy, "bonaFideNames", [reg.labelHash]).catch(unavailable)
+  let acceptance: Registration["acceptance"] = null
+  if (listed !== (accepted !== undefined)) throw badRequest()
+  if (accepted) {
+    const { termsHash, nonce: acceptNonce } = accepted
+    const acceptSignature = checkSignature(accepted.signature)
+    if (!isHash(termsHash) || typeof acceptNonce !== "number" || !Number.isInteger(acceptNonce)) throw badRequest()
+    const acceptor = await recoverTypedDataAddress({
+      domain: { name: "SimplexNamePolicy", version: "1", chainId: deployment.chainId, verifyingContract: deployment.namePolicy },
+      types: { AcceptBonaFideTerms: [{ name: "commitment", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
+      primaryType: "AcceptBonaFideTerms",
+      message: { commitment: reg.commitment, termsHash, nonce: BigInt(acceptNonce), deadline: BigInt(deadline) },
+      signature: acceptSignature,
+    })
+    if (acceptor !== reg.owner) throw badRequest()
+    const [current, policyNonce] = await Promise.all([read<Hex>(namePolicy, "termsHash"), read<bigint>(namePolicy, "nonces", [reg.owner])]).catch(unavailable)
+    if (termsHash !== current || BigInt(acceptNonce) !== policyNonce) throw badRequest()
+    acceptance = { termsHash, nonce: BigInt(acceptNonce), signature: acceptSignature }
+  }
   // Refused links are the committed ones, as the commitment and the owner's signature passed: only a move fixes them.
   if (reg.linksRefused) throw new HttpError(400, "invalid_link")
   const refuse = control.refuseLinks
@@ -1004,6 +1075,7 @@ export async function reveal(registrationId: string, body: Record<string, unknow
   reg.secret = secret
   reg.records = records
   reg.intent = { nonce: BigInt(nonce), deadline: BigInt(deadline), signature }
+  reg.acceptance = acceptance
   changed(reg)
   void advance(reg)
   return {}
@@ -1042,7 +1114,7 @@ export async function retarget(registrationId: string, body: Record<string, unkn
   const version = reg.version
   existingOrder(order, null, reg)
   checkDuration(order.duration, reg.years)
-  checkTerms(order)
+  await checkTerms(order)
   await nameFree(order.labelHash)
   const price = reg.method === "code" ? 0 : await chainPrice(order.length, reg.years)
   if (price > reg.paid) throw new HttpError(409, "price_too_high", { price })
@@ -1091,7 +1163,7 @@ export async function spend(sourceId: string, body: Record<string, unknown>): Pr
   if (resent) return resent.invoiceId ? invoiceView(invoices.get(resent.invoiceId)!) : { registrationId: resent.id }
   freshTimestamp(body.timestamp)
   checkDuration(order.duration, YEARS)
-  checkTerms(order)
+  await checkTerms(order)
   spendable(source, balance as number)
   await nameFree(order.labelHash)
   const chain = await chainPrice(order.length, YEARS)
@@ -1413,20 +1485,38 @@ export function controlTerms(body: Record<string, unknown>): Record<string, unkn
   return { terms }
 }
 
-// A name put on the community list with what it is for, or taken off it with null, as an edit of the ini and a restart would.
-export function controlCommunity(body: Record<string, unknown>): Record<string, unknown> {
-  const { label, for: text } = body
+// A name put on the chain's community list with what it is for in the ini, or taken off both with null, as the owner's
+// listing and an edit of the ini and a restart would. A name the chain lists already keeps its listing; one registered
+// cannot be listed. `listed: false` gives a name words without listing it.
+export async function controlCommunity(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { label, for: text, listed } = body
   if (typeof label !== "string" || labelProblem(label) !== null) throw new HttpError(400, "invalid_name")
   if (text !== null && (typeof text !== "string" || text.length === 0 || text.length > COMMUNITY_TEXT_MAX || /\p{Cc}/u.test(text))) throw badRequest()
+  if (listed !== undefined && typeof listed !== "boolean") throw badRequest()
   const hash = keccak256(toHex(label))
   if (text === null) communities.delete(hash)
   else communities.set(hash, text)
-  return { community: communityOf(hash) }
+  const onChain = await read<boolean>(namePolicy, "bonaFideNames", [hash])
+  if ((listed ?? text !== null) && !onChain) {
+    await ownerSend(namePolicy, "addBonaFideNames", [[label]])
+    if (await read<boolean>(namePolicy, "bonaFideNames", [hash])) controlListed.add(hash)
+  } else if (text === null && controlListed.delete(hash)) await ownerSend(namePolicy, "removeBonaFideNames", [[label]])
+  return { community: await communityOf(hash) }
+}
+
+// The community terms on chain changed by the owner, to this text, or back to the deployed one with null.
+export async function controlCommunityTerms(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { text } = body
+  if (text !== null && (typeof text !== "string" || text.length === 0)) throw badRequest()
+  const hash = keccak256(text === null ? DEPLOYED_COMMUNITY_TERMS : toHex(text))
+  await ownerSend(namePolicy, "setTerms", [hash, COMMUNITY_TERMS_URL])
+  return { hash }
 }
 
 export function dump(): unknown {
   return {
-    registrations: [...registrations.values()].map((r) => ({ ...r, intent: r.intent && { ...r.intent, nonce: String(r.intent.nonce), deadline: String(r.intent.deadline) } })),
+    registrations: [...registrations.values()].map((r) => ({ ...r, intent: r.intent && { ...r.intent, nonce: String(r.intent.nonce), deadline: String(r.intent.deadline) },
+      acceptance: r.acceptance && { ...r.acceptance, nonce: String(r.acceptance.nonce) } })),
     invoices: [...invoices.values()], balances: Object.fromEntries(balances),
   }
 }

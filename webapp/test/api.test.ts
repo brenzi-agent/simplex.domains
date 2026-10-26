@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   ApiError, BalanceChanged, checkCode, createOrder, currentTerms, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
-  communityAgreed, termsFor,
+  agreedTermsHash, communityAgreed, termsFor,
 } from "../src/api.ts"
 
 const HASH = "ab".repeat(32)
@@ -127,7 +127,7 @@ describe("service errors", () => {
   const REGISTRATION = {
     id: "r1", version: 4, unread: [], moves: 0, phase: "unpaid", labelHash: `0x${"ab".repeat(32)}`, label: null, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`,
     sealed: "sealed", years: 2, duration: 2 * 365 * 86400, price: 10000, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, linksRefused: false, latePayment: null,
-    resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex", community: null, terms: "2026-10-23",
+    resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex", community: null, terms: "2026-10-23", acceptance: null,
   }
   const INVOICE = { invoiceId: "inv1", status: "open", amount: 10000, currency: "usd", expiresAt: "2026-10-16T12:00:00Z", kind: "name", registration: REGISTRATION, cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bc1q" }
 
@@ -253,24 +253,27 @@ describe("service errors", () => {
   })
 
   describe("terms and community names", () => {
-    const COMMUNITY = { for: "bakers and pastry chefs" }
+    const COMMUNITY_HASH = `0x${"c7".repeat(32)}`
+    const COMMUNITY = { for: "bakers and pastry chefs", terms: { url: "https://simplex.chat/community-terms", hash: COMMUNITY_HASH } }
+    const SIGNED = `2026-10-23/community/${"c7".repeat(32)}`
     const AVAILABLE = { status: "available", price: 10000, currency: "usd", years: 2, termStart: 1798761600, resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex", community: COMMUNITY, terms: TERMS }
-    const ORDER = { labelHash: `0x${"ab".repeat(32)}`, length: 6, duration: 2 * 365 * 86400, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`, sealed: "sealed", terms: "2026-10-23/community", timestamp: 1, signature: "0x" }
+    const ORDER = { labelHash: `0x${"ab".repeat(32)}`, length: 6, duration: 2 * 365 * 86400, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`, sealed: "sealed", terms: SIGNED, timestamp: 1, signature: "0x" }
 
-    it("signs the terms version for a name not on the community list, and the version with the community agreement for one on it", () => {
+    it("signs the terms version for a name not on the community list, and the version with the community terms' hash for one on it", () => {
       expect(termsFor(TERMS, null)).toBe("2026-10-23")
-      expect(termsFor(TERMS, COMMUNITY)).toBe("2026-10-23/community")
-      expect(currentTerms(AVAILABLE as never)).toBe("2026-10-23/community")
+      expect(termsFor(TERMS, COMMUNITY)).toBe(SIGNED)
+      expect(currentTerms(AVAILABLE as never)).toBe(SIGNED)
     })
 
-    it("tells signed terms that agreed to a community name's wording", () => {
-      expect(communityAgreed("2026-10-23/community")).toBe(true)
-      for (const terms of ["2026-10-23", null, undefined]) expect(communityAgreed(terms), String(terms)).toBe(false)
+    it("tells signed terms that agreed to a community name's terms, and which", () => {
+      expect([communityAgreed(SIGNED), agreedTermsHash(SIGNED)]).toEqual([true, COMMUNITY_HASH])
+      for (const terms of ["2026-10-23", null, undefined]) expect([communityAgreed(terms), agreedTermsHash(terms)], String(terms)).toEqual([false, null])
     })
 
     it("passes a community entry in every search answer, and the terms in the available one", async () => {
       for (const body of [
         AVAILABLE, { status: "reserved", community: COMMUNITY }, { status: "registered", entities: [], tld: "simplex", community: COMMUNITY },
+        { ...AVAILABLE, community: { ...COMMUNITY, for: null } }, { ...AVAILABLE, community: { ...COMMUNITY, terms: { ...COMMUNITY.terms, url: "http://127.0.0.1:8198/terms.txt" } } },
         { status: "registered", entities: [], records: null, owner: "0x1", resolver: "0x2", recordsNonce: null, expiresAt: 1, gracePeriod: 2, chainId: 1, tld: "simplex", community: null },
       ]) {
         answerWith(200, JSON.stringify(body))
@@ -280,7 +283,9 @@ describe("service errors", () => {
 
     it("takes an answer without its community, or the available one without terms it can sign and link, as no answer", async () => {
       for (const body of [
-        { ...AVAILABLE, community: undefined }, { ...AVAILABLE, community: "bakers" }, { ...AVAILABLE, community: { for: 5 } }, { ...AVAILABLE, community: { for: "" } },
+        { ...AVAILABLE, community: undefined }, { ...AVAILABLE, community: "bakers" }, { ...AVAILABLE, community: { ...COMMUNITY, for: 5 } }, { ...AVAILABLE, community: { ...COMMUNITY, for: "" } },
+        { ...AVAILABLE, community: { for: COMMUNITY.for } }, { ...AVAILABLE, community: { ...COMMUNITY, terms: { url: COMMUNITY.terms.url } } },
+        { ...AVAILABLE, community: { ...COMMUNITY, terms: { ...COMMUNITY.terms, hash: "0xc7" } } }, { ...AVAILABLE, community: { ...COMMUNITY, terms: { ...COMMUNITY.terms, url: "http://simplex.chat/terms" } } },
         { ...AVAILABLE, terms: undefined }, { ...AVAILABLE, terms: null }, { ...AVAILABLE, terms: { url: TERMS.url } }, { ...AVAILABLE, terms: { ...TERMS, version: "" } },
         { ...AVAILABLE, terms: { ...TERMS, version: "2026 10 23" } }, { ...AVAILABLE, terms: { ...TERMS, version: "2026-10-23/community" } }, { ...AVAILABLE, terms: { ...TERMS, version: "v".repeat(33) } },
         { ...AVAILABLE, terms: { ...TERMS, url: "http://simplex.chat/terms" } }, { ...AVAILABLE, terms: { ...TERMS, url: "javascript:alert(1)" } },
@@ -292,11 +297,25 @@ describe("service errors", () => {
     })
 
     it("passes an order's community entry and the terms it signed, null for an order stored without them", async () => {
-      for (const change of [{ community: COMMUNITY, terms: "2026-10-23/community" }, { community: null, terms: null }, { terms: "v1.2_3" }]) {
+      for (const change of [{ community: COMMUNITY, terms: SIGNED }, { community: null, terms: null }, { terms: "v1.2_3" }]) {
         answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
         expect(await readRegistration("r1"), JSON.stringify(change)).toMatchObject(change)
       }
-      for (const change of [{ community: undefined }, { community: { for: 1 } }, { terms: undefined }, { terms: 5 }, { terms: "" }, { terms: "a b" }, { terms: "t".repeat(49) }]) {
+      for (const change of [{ community: undefined }, { community: { for: 1 } }, { terms: undefined }, { terms: 5 }, { terms: "" }, { terms: "a b" }, { terms: "t".repeat(113) }]) {
+        answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
+        const e = await readRegistration("r1").then(() => null, (e: unknown) => e)
+        expect((e as ApiError).code, JSON.stringify(change)).toBe("network")
+      }
+    })
+
+    it("passes the acceptance a committed community name's reveal signs, and takes one it cannot sign as no answer", async () => {
+      const acceptance = { policy: "0x3", termsHash: COMMUNITY_HASH, nonce: 0, url: COMMUNITY.terms.url }
+      for (const change of [{ acceptance }, { acceptance: null }]) {
+        answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
+        expect(await readRegistration("r1"), JSON.stringify(change)).toMatchObject(change)
+      }
+      for (const change of [{ acceptance: undefined }, { acceptance: { ...acceptance, termsHash: "0x1" } }, { acceptance: { ...acceptance, nonce: -1 } }, { acceptance: { ...acceptance, nonce: 1.5 } },
+        { acceptance: { ...acceptance, policy: 3 } }, { acceptance: { ...acceptance, url: "javascript:alert(1)" } }]) {
         answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
         const e = await readRegistration("r1").then(() => null, (e: unknown) => e)
         expect((e as ApiError).code, JSON.stringify(change)).toBe("network")

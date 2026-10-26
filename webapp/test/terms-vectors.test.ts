@@ -139,7 +139,7 @@ describe("the page's builders reproduce Appendix C", () => {
       sent.push(body)
       return new Response(JSON.stringify({
         id: REGISTRATION_ID, version: 2, moves: 1, phase: "queued", label: null, owner: OWNER, years: YEARS, price: 10000, fromBalance: 0, balance: null, latePayment: null,
-        commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, unread: [], expiresAt: null, error: null, linksRefused: false,
+        commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, acceptance: null, unread: [], expiresAt: null, error: null, linksRefused: false,
         community: null, ...CHAIN, ...body,
       }), { status: 200 })
     })

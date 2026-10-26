@@ -4,6 +4,7 @@ import { NO_LEAD } from "../src/screens/hold.ts"
 import {
   CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedAlert, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind,
   type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, sameStep, screenOf, spendCovers, STALL_MARGIN_MS, stalledAt, TX_STALL_MS, unreadDelay, wakeAt,
+  askAgainDue,
 } from "../src/screens/order.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
 
@@ -17,7 +18,7 @@ const WARN: Note = { tone: "warn", icon: "alert", title: null, text: "The invoic
 function registration(change: Partial<RegistrationView> = {}): RegistrationView {
   return {
     ...CHAIN, id: "reg-1", version: 1, phase: "unpaid", labelHash: "0x4f1b", label: null, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box", years: 2, duration: 2 * 365 * 86400,
-    price: 1500, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, intentNonce: null, unread: [], expiresAt: null, error: null, linksRefused: false, latePayment: null,
+    price: 1500, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, moves: 0, intentNonce: null, acceptance: null, unread: [], expiresAt: null, error: null, linksRefused: false, latePayment: null,
     community: null, terms: "2026-10-23", ...change,
   }
 }
@@ -521,6 +522,21 @@ describe("reveal helpers", () => {
     // the sponsor's nonce the service could not read leaves nothing to sign with
     expect(revealDue(read(null, registration({ ...committed, intentNonce: null, unread: ["intentNonce"] })))).toBe(false)
   })
+  it("revealDue for a community name once the terms it signs are those its order agreed to, or the buyer ticked them again", () => {
+    const agreed = `0x${"c7".repeat(32)}`
+    const changed = `0x${"d8".repeat(32)}`
+    const acceptance = { policy: "0x3", termsHash: agreed, nonce: 0, url: "https://simplex.chat/community-terms" }
+    const listed = (termsHash: string, change: Partial<OrderState> = {}) =>
+      read(null, registration({ ...committed, acceptance: { ...acceptance, termsHash }, terms: `2026-10-23/community/${agreed.slice(2)}` }), change)
+    expect([revealDue(listed(agreed)), askAgainDue(listed(agreed))]).toEqual([true, false])
+    expect([revealDue(listed(changed)), askAgainDue(listed(changed))], "terms changed on chain since the order").toEqual([false, true])
+    const ask = { label: record().label, terms: { version: "2026-10-23", url: "https://simplex.chat/" }, community: { for: null, terms: { url: acceptance.url, hash: changed } }, agreed: false, changed: true }
+    expect([revealDue(listed(changed, { ask })), askAgainDue(listed(changed, { ask }))], "asked, not ticked").toEqual([false, false])
+    expect(revealDue(listed(changed, { ask: { ...ask, agreed: true } })), "ticked").toBe(true)
+    expect(revealDue(listed(changed, { ask: { ...ask, agreed: true, community: { ...ask.community, terms: { ...ask.community.terms, hash: agreed } } } })), "ticked other terms").toBe(false)
+    expect(revealDue(read(null, registration({ ...committed, unread: ["acceptance"] }))), "an acceptance the service could not read").toBe(false)
+    expect(revealKey(listed(agreed).view!), "a changed acceptance is signed anew").toBe(`reg-1 ${COMMITMENT} 4 ${NOW / 1000 + 3600} ${agreed} 0`)
+  })
   it("unreadDelay reads a view with unread fields again after 5 s, 15 s, then every 30 s", () => {
     expect([0, 1, 2, 3, 10].map(unreadDelay)).toEqual([5000, 15000, 30000, 30000, 30000])
   })
@@ -573,7 +589,7 @@ describe("wakeAt", () => {
 
 describe("the terms of the same name again", () => {
   const TERMS = { version: "2026-11-01", url: "https://simplex.chat/" }
-  const BAKERS = { for: "bakers and pastry chefs" }
+  const BAKERS = { for: "bakers and pastry chefs", terms: { url: "https://simplex.chat/community-terms", hash: `0x${"c7".repeat(32)}` } }
 
   it("terms-asked ends a new invoice's or a move's work and asks for the name's terms, unticked", () => {
     for (const started of ["reorder-started", "move-started"] as const) {

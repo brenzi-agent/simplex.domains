@@ -64,15 +64,20 @@ export interface Terms {
   url: string
 }
 
+// A name on the chain's community list: what it is for, when the service words it, and the community terms its owner
+// accepts, by the hash the chain holds.
 export interface Community {
-  for: string
+  for: string | null
+  terms: { url: string; hash: string }
 }
 
-const COMMUNITY_TERMS = "/community"
+const COMMUNITY_TERMS = "/community/"
 
-export const termsFor = (terms: Terms, community: Community | null) => community ? `${terms.version}${COMMUNITY_TERMS}` : terms.version
+export const termsFor = (terms: Terms, community: Community | null) => community ? `${terms.version}${COMMUNITY_TERMS}${community.terms.hash.slice(2)}` : terms.version
 export const currentTerms = (a: { terms: Terms; community: Community | null }) => termsFor(a.terms, a.community)
-export const communityAgreed = (terms: string | null | undefined) => terms?.endsWith(COMMUNITY_TERMS) === true
+export const communityAgreed = (terms: string | null | undefined) => terms?.includes(COMMUNITY_TERMS) === true
+// the hash of the community terms an order signed, null for a plain name's terms
+export const agreedTermsHash = (terms: string | null | undefined) => communityAgreed(terms) ? `0x${terms!.slice(terms!.indexOf(COMMUNITY_TERMS) + COMMUNITY_TERMS.length)}` : null
 
 export type SearchAnswer =
   | ({ status: "available"; price: number; currency: string; years: number; termStart: number; community: Community | null; terms: Terms } & ChainInfo)
@@ -134,6 +139,8 @@ export interface RegistrationView extends ChainInfo {
   revealAfter: number | null
   revealBefore: number | null
   intentNonce: number | null
+  // what the owner signs with the reveal to accept a community name's terms on chain, null for a name not listed
+  acceptance: Acceptance | null
   // the fields left null because the service's chain read failed; reading the view again may fill them
   unread: string[]
   expiresAt: number | null
@@ -142,6 +149,14 @@ export interface RegistrationView extends ChainInfo {
   linksRefused: boolean
   community: Community | null
   terms: string | null
+}
+
+export interface Acceptance {
+  // the name policy, which the signature is for
+  policy: string
+  termsHash: string
+  nonce: number
+  url: string
 }
 
 const LATE_WAITS = ["confirming", "crediting", "support"] as const
@@ -283,15 +298,20 @@ const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.s
 const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registering", "registered", "taken", "failed"]
 const isBalance = (v: unknown) => isObject(v) && isAmount(v.amount) && typeof v.held === "boolean" && nullable(v.heldUntil, isText) && isAmount(v.refunded)
 const isVersion = (v: unknown) => typeof v === "string" && /^[A-Za-z0-9._-]{1,32}$/.test(v)
-const isSignedTerms = (v: unknown) => typeof v === "string" && /^[A-Za-z0-9._/-]{1,48}$/.test(v)
+const isSignedTerms = (v: unknown) => typeof v === "string" && /^[A-Za-z0-9._/-]{1,112}$/.test(v)
 // the checkbox links the terms page, which is only ever an https page
 const isTerms = (v: unknown) => isObject(v) && isVersion(v.version) && typeof v.url === "string" && v.url.startsWith("https://")
-const isCommunity = (v: unknown) => v === null || (isObject(v) && typeof v.for === "string" && v.for !== "")
+const isHash = (v: unknown) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v)
+// the community terms' page, which the service fetches over https, or on the local chain from the machine itself
+const isTermsUrl = (v: unknown) => typeof v === "string" && /^(https:\/\/|http:\/\/(127\.0\.0\.1|localhost)[:/])/.test(v)
+const isCommunity = (v: unknown) => v === null || (isObject(v) && nullable(v.for, (f) => typeof f === "string" && f !== "")
+  && isObject(v.terms) && isTermsUrl(v.terms.url) && isHash(v.terms.hash))
+const isAcceptance = (v: unknown) => isObject(v) && isText(v.policy) && isHash(v.termsHash) && Number.isInteger(v.nonce) && (v.nonce as number) >= 0 && isTermsUrl(v.url)
 const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && Number.isInteger(v.version) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
   && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isCount(v.duration) && isAmount(v.price) && Number.isInteger(v.moves)
   && isAmount(v.fromBalance) && nullable(v.balance, isBalance) && nullable(v.latePayment, (l) => isObject(l) && LATE_WAITS.includes(l.waiting as LateWait))
   && nullable(v.commitTx, isText) && nullable(v.registerTx, isText) && nullable(v.revealAfter, isAmount) && nullable(v.revealBefore, isAmount)
-  && nullable(v.intentNonce, isAmount) && Array.isArray(v.unread) && v.unread.every(isText) && nullable(v.expiresAt, isAmount) && nullable(v.error, isText)
+  && nullable(v.intentNonce, isAmount) && nullable(v.acceptance, isAcceptance) && Array.isArray(v.unread) && v.unread.every(isText) && nullable(v.expiresAt, isAmount) && nullable(v.error, isText)
   && typeof v.linksRefused === "boolean" && isCommunity(v.community) && nullable(v.terms, isSignedTerms)
 const isInvoice = (v: unknown) => isObject(v) && isText(v.invoiceId) && ["open", "paid", "expired"].includes(v.status as string) && isAmount(v.amount)
   && isText(v.currency) && isText(v.expiresAt) && isRegistration(v.registration) && optional(v.amountPaid, isAmount)
@@ -347,7 +367,8 @@ export function readRegistration(registrationId: string, seenVersion?: number, s
 
 export const changedView = (e: ApiError): RegistrationView | null => isRegistration(e.body.registration) ? e.body.registration as RegistrationView : null
 
-export const reveal = (registrationId: string, body: { label: string; secret: string; records: { contact: string[]; channel: string[] }; nonce: number; deadline: number; signature: string }) =>
+export const reveal = (registrationId: string, body: { label: string; secret: string; records: { contact: string[]; channel: string[] }; nonce: number; deadline: number; signature: string;
+  acceptance?: { termsHash: string; nonce: number; signature: string } }) =>
   call<Record<string, never>>("POST", `/api/registration/${encodeURIComponent(registrationId)}/reveal`, body)
 export const retarget = (registrationId: string, body: Omit<SignedOrder, "owner">) =>
   checked<RegistrationView>(signingTerms(call("POST", `/api/registration/${encodeURIComponent(registrationId)}/name`, body)), isRegistration)

@@ -18,6 +18,8 @@ export interface Deployment {
   controller: Address
   sponsor: Address
   resolver: Address
+  namePolicy: Address
+  ownerKey: Hex
   registrarKey: Hex
   holderKey: Hex
   minCommitmentAge: number
@@ -38,8 +40,9 @@ export const sponsor = { address: deployment.sponsor, abi: abiOf("simplex/Simple
 export const baseRegistrar = { address: deployment.baseRegistrar, abi: abiOf("ethregistrar/BaseRegistrarImplementation.sol/BaseRegistrarImplementation.json") }
 export const resolver = { address: deployment.resolver, abi: abiOf("simplex/SimplexResolver.sol/SimplexResolver.json") }
 export const registry = { address: deployment.ens, abi: abiOf("registry/ENSRegistry.sol/ENSRegistry.json") }
-// the sponsor passes the controller's and the base registrar's reverts through
-const revertAbi = [...sponsor.abi, ...controller.abi, ...baseRegistrar.abi, ...resolver.abi].filter((item) => item.type === "error")
+export const namePolicy = { address: deployment.namePolicy, abi: abiOf("simplex/SimplexNamePolicy.sol/SimplexNamePolicy.json") }
+// the sponsor passes the controller's, the name policy's and the base registrar's reverts through
+const revertAbi = [...sponsor.abi, ...controller.abi, ...namePolicy.abi, ...baseRegistrar.abi, ...resolver.abi].filter((item) => item.type === "error")
 
 // A transaction held up at the node is waited for, as the service answers an edit or a registration once it is mined;
 // a read or a dry run that hangs gives up much sooner, and the service's own loop tries a transaction again.
@@ -47,6 +50,8 @@ const SEND_TIMEOUT_MS = 60_000
 const READ_TIMEOUT_MS = 10_000
 
 export const registrar = privateKeyToAccount(deployment.registrarKey)
+// the contracts' owner, who lists community names and sets their terms, as the tests' controls stand in for it
+const owner = privateKeyToAccount(deployment.ownerKey)
 export const holder = privateKeyToAccount(deployment.holderKey)
 const chain = { ...foundry, id: deployment.chainId }
 // one quick retry for a read, as a provider drops a request now and then; a send is never retried, which could send twice
@@ -125,6 +130,18 @@ export function send(contract: Contract, functionName: string, args: unknown[], 
   }
   const next = sending.then(run, run)
   sending = next.catch(() => undefined)
+  return next
+}
+
+// The owner's change of the contracts' settings, one at a time, its receipt waited for.
+let owning: Promise<unknown> = Promise.resolve()
+export function ownerSend(contract: Contract, functionName: string, args: unknown[]): Promise<void> {
+  const run = async () => {
+    const hash = await walletClient.writeContract({ ...contract, functionName, args, account: owner, chain: null })
+    if ((await sender.waitForTransactionReceipt({ hash, timeout: SEND_TIMEOUT_MS })).status !== "success") throw new Reverted(null)
+  }
+  const next = owning.then(run, run)
+  owning = next.catch(() => undefined)
   return next
 }
 

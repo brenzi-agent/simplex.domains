@@ -1,7 +1,7 @@
 import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Locator, type Page } from "@playwright/test"
 import { randomInt } from "node:crypto"
 import { mkdirSync, readFileSync } from "node:fs"
-import { createPublicClient, createTestClient, createWalletClient, encodeFunctionData, http, namehash, parseAbi, type Hex } from "viem"
+import { createPublicClient, createTestClient, createWalletClient, encodeFunctionData, http, keccak256, namehash, parseAbi, type Hex } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { foundry } from "viem/chains"
 import { labelHash, YEAR_S } from "../src/crypto/registration.ts"
@@ -54,14 +54,21 @@ export async function mockRegistration(request: APIRequestContext, invoiceId: st
 
 // The worker's chain, read directly: the expiry the registrar holds and the price the oracle quotes.
 const deployment = JSON.parse(readFileSync(new URL(`../dev/local-chain-${SLOT}.json`, import.meta.url), "utf8")) as
-  { rpcUrl: string; chainId: number; tld: string; ens: Hex; resolver: Hex; controller: Hex; baseRegistrar: Hex }
+  { rpcUrl: string; chainId: number; tld: string; ens: Hex; resolver: Hex; controller: Hex; baseRegistrar: Hex; namePolicy: Hex }
 const chain = createPublicClient({ transport: http(deployment.rpcUrl) })
 const CHAIN_ABI = parseAbi([
   "function nameExpires(uint256 id) view returns (uint256)",
   "function rentPriceUSD(string label, uint256 duration) view returns ((uint256 base, uint256 premium))",
   "function setResolver(bytes32 node, address resolver)",
   "function setText(bytes32 node, string key, string value)",
+  "function acceptedTerms(bytes32 commitment, address owner) view returns (bytes32)",
+  "function reservedNames(bytes32 labelhash) view returns (uint8)",
+  "event BonaFideTermsAccepted(string name, address indexed holder, bytes32 termsHash)",
 ])
+// the community terms dev/deploy.ts put on chain, by their hash, and the hash as an order signs it after /community/
+export const COMMUNITY_TERMS_HASH = keccak256(readFileSync(new URL("../dev/community-terms.txt", import.meta.url)))
+export const communityTerms = (version: string, hash: Hex = COMMUNITY_TERMS_HASH) => `${version}/community/${hash.slice(2)}`
+export const NAME_POLICY = deployment.namePolicy
 // gas for a few of an owner's own transactions, which anvil gives the owner's wallet
 const OWNER_GAS_WEI = 10n ** 18n
 // SimplexPriceOracle's attoUSD to the cent
@@ -92,6 +99,19 @@ export const ownerSetsResolver = (ownerCode: string, label: string, resolver: He
 
 export const ownerSetsText = (ownerCode: string, label: string, key: string, value: string) =>
   asOwner(ownerCode, deployment.resolver, encodeFunctionData({ abi: CHAIN_ABI, functionName: "setText", args: [nodeOf(label), key, value] }))
+
+// The name policy's reason a name is reserved, 0 when it is not.
+export const policyReason = async (label: string) =>
+  Number(await chain.readContract({ address: deployment.namePolicy, abi: CHAIN_ABI, functionName: "reservedNames", args: [hex(labelHash(label)) as Hex] }))
+
+// The community terms the policy took from the owner for the commitment before its register, read from the register's
+// own BonaFideTermsAccepted event: the register consumes the acceptance, so acceptedTerms reads zero after it.
+export async function acceptedOnChain(registerTx: string): Promise<{ name: string; holder: string; termsHash: Hex } | null> {
+  const receipt = await chain.getTransactionReceipt({ hash: registerTx as Hex })
+  const logs = await chain.getContractEvents({ address: deployment.namePolicy, abi: CHAIN_ABI, eventName: "BonaFideTermsAccepted", blockHash: receipt.blockHash })
+  const log = logs.find((l) => l.transactionHash === registerTx)
+  return log ? { name: log.args.name!, holder: log.args.holder!, termsHash: log.args.termsHash! } : null
+}
 
 export async function oracleQuote(label: string, years: number): Promise<number> {
   const quote = await chain.readContract({ address: deployment.controller, abi: CHAIN_ABI, functionName: "rentPriceUSD", args: [label, BigInt(years * YEAR_S)] })
@@ -450,7 +470,7 @@ export async function keepOrder(page: Page, registrationId: string, invoiceId: s
 // The service's view of a kept order's registration, as its API answers it.
 export const registrationView = (o: KeptOrder, change: Record<string, unknown> = {}) => ({
   ...CHAIN, id: o.registrationId, version: 1, unread: [], moves: 0, phase: "unpaid", labelHash: o.request.labelHash, label: o.label, owner: o.owner, commitment: o.request.commitment, sealed: "sealed",
-  years: 2, duration: 2 * YEAR_S, price: 10000, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, expiresAt: null, error: null, linksRefused: false, latePayment: null,
+  years: 2, duration: 2 * YEAR_S, price: 10000, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, acceptance: null, expiresAt: null, error: null, linksRefused: false, latePayment: null,
   community: null, terms: TERMS.version, ...change,
 })
 

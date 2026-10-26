@@ -1,15 +1,20 @@
 // Community names and the terms every signature for a name waits for (contract section 1, Terms and community names).
 // The first cases need no /control endpoint, so they run against the service too, which lists bakers with words of its own.
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test"
+import type { Hex } from "viem"
+import { checksumAddress } from "../src/crypto/wallet.ts"
+import { walletOf } from "../src/flow.ts"
 import {
-  AGREE, agreeToTerms, contactLink, control, failedOrder, MOCK, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, restoreOrder, savedToReview, search, sevenLetters,
-  startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered, withStripeKey,
+  acceptedOnChain, AGREE, agreeToTerms, COMMUNITY_TERMS_HASH, communityTerms, contactLink, control, failedOrder, MOCK, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, restoreOrder,
+  savedToReview, search, sevenLetters, startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered, withStripeKey,
 } from "./helpers.ts"
 
 const COMMUNITY_LABEL = "bakers"
+// the community name dev/deploy.ts registered under the terms, with links
+const TAKEN_COMMUNITY = "bakehouse"
 const TERMS_VERSION = "2026-10-23"
 const NEWER_VERSION = "2026-11-01"
-const COMMUNITY_WORDS = "I agree to SimpleX name terms and will use this name for its community."
+const COMMUNITY_WORDS = "I agree to SimpleX name terms and the community terms, and will use this name for its community."
 const PLAIN_WORDS = "I agree to SimpleX name terms and do not knowingly violate any trademarks."
 const TERMS_CHANGED = "The terms changed. Agree to them again."
 // what the popup says of every community name after what the name is for
@@ -31,7 +36,7 @@ async function atVersion<T>(request: APIRequestContext, version: string, f: () =
   }
 }
 
-// The names on the community list while `f` runs, as after an edit of the service's ini and a restart.
+// The names on the chain's community list, with the ini's words, while `f` runs.
 async function listed<T>(request: APIRequestContext, labels: string[], f: () => Promise<T>): Promise<T> {
   for (const label of labels) await control(request, "community", { label, for: LISTED_FOR })
   try {
@@ -111,6 +116,7 @@ test("Check your order of a community name asks for the community wording, its t
   const terms = onStep(page).locator(".check.terms")
   await expect(terms).toHaveText(COMMUNITY_WORDS)
   await expect(terms.getByRole("link", { name: "SimpleX name terms" })).toHaveAttribute("href", /^https:\/\//)
+  await expect(terms.getByRole("link", { name: "community terms" })).toHaveAttribute("href", /^https?:\/\//)
   await expect(payButton(page)).toBeDisabled()
   const info = terms.getByRole("button", { name: "Which community this name is for" })
   await info.click()
@@ -161,7 +167,7 @@ test("a name put on the list meanwhile is refused for the community wording, whi
     await payButton(page).click()
     await page.waitForURL(/\?order=/)
     const view = await invoiceViewOf(request, new URL(page.url()).searchParams.get("order")!)
-    expect([view.terms, view.community]).toEqual([`${TERMS_VERSION}/community`, { for: LISTED_FOR }])
+    expect([view.terms, view.community]).toEqual([communityTerms(TERMS_VERSION), { for: LISTED_FOR, terms: { url: expect.any(String), hash: COMMUNITY_TERMS_HASH } }])
     await page.goto("/#/names")
     const marker = page.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: MARKER })
     await marker.click()
@@ -191,7 +197,7 @@ test("a failed order moved through the search to another name asks for that name
       await agreeToTerms(page)
       await move.click()
       await page.waitForURL(/\?order=/)
-      await expect.poll(async () => (await viewOf(request, registrationId)).terms, { timeout: REGISTRATION_MS }).toBe(`${NEWER_VERSION}/community`)
+      await expect.poll(async () => (await viewOf(request, registrationId)).terms, { timeout: REGISTRATION_MS }).toBe(communityTerms(NEWER_VERSION))
     })
   })
 })
@@ -334,15 +340,72 @@ test("Register without links asks for the terms once they changed, and the order
   })
 })
 
-test("a taken community name's chats say so in their popup", async ({ page, request }) => {
-  // bakery is registered with links from the start
-  await listed(request, ["bakery"], async () => {
-    await search(page, "bakery")
-    const row = onStep(page).locator(".answer .row")
-    await expect(row.getByRole("button", { name: MARKER })).toBeVisible()
-    await row.locator(".chat").first().click()
-    await expect(page.getByRole("dialog").locator(".soft").first()).toHaveText(/^[@#]bakery\.simplex · Community name$/)
+// the bodies of the page's reveals, as it sends them
+function revealsOf(page: Page): Record<string, unknown>[] {
+  const bodies: Record<string, unknown>[] = []
+  page.on("request", (r) => { if (r.method() === "POST" && r.url().endsWith("/reveal")) bodies.push(r.postDataJSON()) })
+  return bodies
+}
+
+test("a community name bought end to end has its owner's acceptance of the community terms relayed before the register, which takes it on chain", async ({ page, request }) => {
+  const label = uniqueLabel("cr")
+  await listed(request, [label], async () => {
+    const reveals = revealsOf(page)
+    const { invoiceId, ownerCode } = await startOrder(page, label)
+    await control(request, `settle/${invoiceId}`)
+    await waitRegistered(page, label)
+    const view = await invoiceViewOf(request, invoiceId)
+    expect(view.terms).toBe(communityTerms(TERMS_VERSION))
+    expect(reveals.map((b) => (b.acceptance as Record<string, unknown> | undefined)?.termsHash), "one reveal, with the acceptance").toEqual([COMMUNITY_TERMS_HASH])
+    expect(await acceptedOnChain(view.registerTx as string)).toEqual({ name: label, holder: checksumAddress(walletOf(ownerCode)!.address), termsHash: COMMUNITY_TERMS_HASH })
   })
+})
+
+test("a plain name's reveal carries no acceptance, and its register takes none on chain", async ({ page, request }) => {
+  const label = uniqueLabel("cp")
+  const reveals = revealsOf(page)
+  const { invoiceId } = await startOrder(page, label)
+  await control(request, `settle/${invoiceId}`)
+  await waitRegistered(page, label)
+  expect(reveals.map((b) => "acceptance" in b)).toEqual([false])
+  expect(await acceptedOnChain((await invoiceViewOf(request, invoiceId)).registerTx as string)).toBeNull()
+})
+
+test("community terms changed on chain between the order and its reveal are agreed to again on the order's page before it signs, and the name registers under them", async ({ page, request }) => {
+  const label = uniqueLabel("cv")
+  await listed(request, [label], async () => {
+    const reveals = revealsOf(page)
+    const { invoiceId } = await startOrder(page, label)
+    const { hash } = await control(request, "community-terms", { text: `the community terms, changed for ${label}` }) as { hash: Hex }
+    try {
+      await control(request, `settle/${invoiceId}`)
+      const notice = onStep(page).locator(".line", { hasText: TERMS_CHANGED })
+      await expect(notice).toBeVisible({ timeout: REGISTRATION_MS })
+      await expect(onStep(page).locator(".check.terms")).toHaveText(COMMUNITY_WORDS)
+      await expect(onStep(page).getByRole("checkbox", { name: AGREE })).not.toBeChecked()
+      // past the wait after which the reveal would have gone, nothing is signed before the tick
+      const registrationId = await registrationOf(request, invoiceId)
+      const { revealAfter } = await viewOf(request, registrationId) as { revealAfter: number }
+      await page.waitForTimeout(Math.max(0, revealAfter * 1000 - Date.now()) + 3000)
+      expect([(await viewOf(request, registrationId)).label, reveals.length]).toEqual([null, 0])
+      await agreeToTerms(page)
+      await waitRegistered(page, label)
+      const view = await invoiceViewOf(request, invoiceId)
+      expect(view.terms, "the order keeps the terms it signed").toBe(communityTerms(TERMS_VERSION))
+      expect((await acceptedOnChain(view.registerTx as string))?.termsHash, "the register took the new terms").toBe(hash)
+    } finally {
+      await control(request, "community-terms", { text: null })
+    }
+  })
+})
+
+test("a taken community name's chats say so in their popup", async ({ page }) => {
+  // bakehouse is listed and registered with links from the start, as a listed name can only be registered so
+  await search(page, TAKEN_COMMUNITY)
+  const row = onStep(page).locator(".answer .row")
+  await expect(row.getByRole("button", { name: MARKER })).toBeVisible()
+  await row.locator(".chat").first().click()
+  await expect(page.getByRole("dialog").locator(".soft").first()).toHaveText(/^[@#]bakehouse\.simplex · Community name$/)
 })
 
 // The marker on the name's baseline with its icon centred on its word: 16 px after the name on a desktop; on a phone at
@@ -371,10 +434,10 @@ async function expectMarkerPlaces(page: Page, surface: string, label: string, na
 
 test("the marker stands where the mockup draws it in the search's rows, available and taken", async ({ page, request }) => {
   const long = longLabel()
-  await listed(request, [long, "bakery"], async () => {
-    for (const label of [COMMUNITY_LABEL, long, "bakery"]) {
+  await listed(request, [long], async () => {
+    for (const label of [COMMUNITY_LABEL, long, TAKEN_COMMUNITY]) {
       await search(page, label)
-      await expectMarkerPlaces(page, label === "bakery" ? "taken row" : "search row", label, onStep(page).locator(".answer .row .name"))
+      await expectMarkerPlaces(page, label === TAKEN_COMMUNITY ? "taken row" : "search row", label, onStep(page).locator(".answer .row .name"))
     }
   })
 })

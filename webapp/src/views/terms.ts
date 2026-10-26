@@ -9,7 +9,7 @@ function showCommunity(label: string, tld: string, community: api.Community | nu
   showPopup(key, [
     el("h2", { id: POPUP_TITLE }, nameText(label, tld)),
     el("span", { class: "soft" }, "Community name"),
-    el("p", {}, community ? `This name is for ${community.for}. ` : "", "Its owner agrees to use it for this community, not as the name of one person or business."),
+    el("p", {}, community?.for ? `This name is for ${community.for}. ` : "", "Its owner agrees to use it for this community, not as the name of one person or business."),
   ], null)
 }
 
@@ -37,7 +37,8 @@ export function termsCheck(a: Agreement, agree: (agreed: boolean) => void): HTML
   const terms = el("a", { class: "nowrap", href: a.terms.url, target: "_blank", rel: "noopener" }, "SimpleX name terms")
   const community = a.community
   const words = community
-    ? ["I agree to ", terms, " and will use this name for its community.", el("button", { class: "cinfo", type: "button", "aria-label": "Which community this name is for",
+    ? ["I agree to ", terms, " and the ", el("a", { class: "nowrap", href: community.terms.url, target: "_blank", rel: "noopener" }, "community terms"),
+      ", and will use this name for its community.", el("button", { class: "cinfo", type: "button", "aria-label": "Which community this name is for",
       "aria-haspopup": "dialog", "data-focus": INFO_KEY, onclick: () => showCommunity(a.label, a.tld, community, INFO_KEY) }, icon("info"))]
     : ["I agree to ", terms, " and do not knowingly violate any trademarks."]
   return el("label", { class: "check terms" }, box, el("span", { class: "box" }), el("span", {}, ...words))

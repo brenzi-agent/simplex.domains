@@ -1,4 +1,4 @@
-import { type Balance, type Community, holdsPayment, type InvoiceView, type RegistrationView, type Terms } from "../api.ts"
+import { agreedTermsHash, type Balance, type Community, holdsPayment, type InvoiceView, type RegistrationView, type Terms } from "../api.ts"
 import type { IconName } from "../icons.ts"
 import type { CodeRefusal, OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
@@ -255,7 +255,19 @@ function paymentKind(s: OrderState, invoice: InvoiceView): OrderKind {
   return slow ? "status:card-unconfirmed" : "confirming"
 }
 
-export const revealKey = (view: RegistrationView) => `${view.id} ${view.commitment} ${view.intentNonce} ${view.revealBefore}`
+export const revealKey = (view: RegistrationView) =>
+  `${view.id} ${view.commitment} ${view.intentNonce} ${view.revealBefore}${view.acceptance ? ` ${view.acceptance.termsHash} ${view.acceptance.nonce}` : ""}`
+
+// A community name whose terms on chain are not the ones its order signed waits for the buyer to agree to them again.
+export function termsToAgree({ view, record, ask }: OrderState): boolean {
+  const accept = view?.acceptance
+  if (!accept || !record || accept.termsHash === agreedTermsHash(view!.terms ?? record.terms)) return false
+  return !(ask?.label === record.label && ask.agreed && ask.community?.terms.hash === accept.termsHash)
+}
+
+// The terms to agree to again are asked for once the order is committed and not yet asked for.
+export const askAgainDue = (s: OrderState) => s.view?.phase === "committed" && s.view.label === null && !linksRefused(s) && termsToAgree(s)
+  && s.ask?.community?.terms.hash !== s.view.acceptance!.termsHash
 
 export function refusalsOf({ view, reveal }: OrderState): number {
   return view?.phase === "committed" && reveal?.key === revealKey(view) ? reveal.refusals : 0
@@ -264,6 +276,7 @@ export function refusalsOf({ view, reveal }: OrderState): number {
 export function revealDue(s: OrderState): boolean {
   const { view, record, reveal } = s
   if (view?.phase !== "committed" || view.label !== null || view.intentNonce === null || !record || linksRefused(s)) return false
+  if (view.unread.includes("acceptance") || termsToAgree(s)) return false
   if ((view.revealAfter ?? 0) * 1000 > s.now) return false
   return !(reveal?.key === revealKey(view) && reveal.sending) && refusalsOf(s) < REVEAL_ATTEMPTS
 }

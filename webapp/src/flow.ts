@@ -2,7 +2,7 @@
 import * as api from "./api.ts"
 import { formatOwnerCode, parseNameCode } from "./crypto/code.ts"
 import {
-  CHANNEL_KEY, CONTACT_KEY, commitmentSecret, durationFor, labelHash, makeCommitment, namehash, registerIntentDigest, setTextDigest,
+  acceptTermsDigest, CHANNEL_KEY, CONTACT_KEY, commitmentSecret, durationFor, labelHash, makeCommitment, namehash, registerIntentDigest, setTextDigest,
   type Registration,
 } from "./crypto/registration.ts"
 import { seal, unseal } from "./crypto/seal.ts"
@@ -76,15 +76,19 @@ export function recordFor(draft: Draft, built: BuiltOrder, method: store.OrderRe
   }
 }
 
-// The owner signs the registration once the commit has aged; the deadline is when the commitment lapses anyway.
+// The owner signs the registration once the commit has aged, and a community name's terms with it; the deadline is when
+// the commitment lapses anyway.
 export async function revealOrder(view: api.RegistrationView, record: store.OrderRecord): Promise<void> {
   const wallet = walletOf(record.ownerCode)!
   const r = registrationOf(record.label, wallet.address, commitmentSecret(wallet.seed, record.label), record, view, BigInt(view.duration))
   const digest = registerIntentDigest(BigInt(view.chainId), fromHex(view.sponsor), r, BigInt(view.intentNonce!), BigInt(view.revealBefore!))
+  const a = view.acceptance
+  const acceptance = a && { termsHash: a.termsHash, nonce: a.nonce, signature: hex(signDigest(wallet.privateKey,
+    acceptTermsDigest(BigInt(view.chainId), fromHex(a.policy), fromHex(view.commitment), fromHex(a.termsHash), BigInt(a.nonce), BigInt(view.revealBefore!)))) }
   await api.reveal(view.id, {
     label: record.label, secret: hex(r.secret),
     records: { contact: r.contactLinks, channel: r.channelLinks },
-    nonce: view.intentNonce!, deadline: view.revealBefore!, signature: hex(signDigest(wallet.privateKey, digest)),
+    nonce: view.intentNonce!, deadline: view.revealBefore!, signature: hex(signDigest(wallet.privateKey, digest)), ...acceptance ? { acceptance } : {},
   })
 }
 
