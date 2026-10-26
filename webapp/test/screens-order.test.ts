@@ -6,6 +6,7 @@ import {
   type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, sameStep, screenOf, spendCovers, STALL_MARGIN_MS, stalledAt, TX_STALL_MS, unreadDelay, wakeAt,
   askAgainDue,
 } from "../src/screens/order.ts"
+import { askFor } from "../src/screens/terms.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
 
 const NOW = Date.parse("2026-10-17T12:00:00Z")
@@ -497,8 +498,10 @@ describe("a stalled stage", () => {
     expect(stalledAt({ ...seen(view), reveal: { key: revealKey(view), sending: false, refusals: REVEAL_ATTEMPTS } })).toBeNull()
     const changed = `0x${"d8".repeat(32)}`
     const asking = registration({ ...committed, acceptance: { policy: "0x3", termsHash: changed, nonce: 0 } })
-    const ask = { label: record().label, terms: { version: "2026-10-23", url: "https://simplex.chat/" }, community: { for: null, terms: { url: "https://simplex.chat/community-terms", hash: changed } }, agreed: false, changed: true }
-    for (const agreed of [false, true]) expect(stalledAt({ ...seen(asking), ask: { ...ask, agreed } }), `the changed community terms asked for, ticked ${agreed}`).toBeNull()
+    const ask = askFor(record().label, { version: "2026-10-23", url: "https://simplex.chat/" }, { for: null, terms: { url: "https://simplex.chat/community-terms", hash: changed } }, true)
+    expect(stalledAt({ ...seen(asking), ask }), "the changed community terms asked for").toBeNull()
+    const ticked = reduce({ ...seen(asking), ask, now: NOW + 60_000 }, { type: "terms-agreed", agreed: true })
+    expect(stalledAt(ticked), "timed from the tick").toBe(NOW + 60_000 + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS)
     expect(stalledAt(seen(asking)), "changed terms that could not be asked for").not.toBeNull()
   })
 })
@@ -536,10 +539,10 @@ describe("reveal helpers", () => {
       read(null, registration({ ...committed, acceptance: { ...acceptance, termsHash }, community: { for: null, terms: { url, hash: agreed } } }), change)
     expect([revealDue(listed(agreed)), askAgainDue(listed(agreed))]).toEqual([true, false])
     expect([revealDue(listed(changed)), askAgainDue(listed(changed))], "terms changed on chain since the order").toEqual([false, true])
-    const ask = { label: record().label, terms: { version: "2026-10-23", url: "https://simplex.chat/" }, community: { for: null, terms: { url, hash: changed } }, agreed: false, changed: true }
+    const ask = askFor(record().label, { version: "2026-10-23", url: "https://simplex.chat/" }, { for: null, terms: { url, hash: changed } }, true)
     expect([revealDue(listed(changed, { ask })), askAgainDue(listed(changed, { ask }))], "asked, not ticked").toEqual([false, false])
     expect(revealDue(listed(changed, { ask: { ...ask, agreed: true } })), "ticked").toBe(true)
-    expect(revealDue(listed(changed, { ask: { ...ask, agreed: true, community: { ...ask.community, terms: { ...ask.community.terms, hash: agreed } } } })), "ticked other terms").toBe(false)
+    expect(revealDue(listed(changed, { ask: { ...ask, agreed: true, community: { ...ask.community!, terms: { ...ask.community!.terms, hash: agreed } } } })), "ticked other terms").toBe(false)
     expect(revealDue(read(null, registration({ ...committed, unread: ["acceptance"] }))), "an acceptance the service could not read").toBe(false)
     expect(revealKey(listed(agreed).view!), "a changed acceptance is signed anew").toBe(`reg-1 ${COMMITMENT} 4 ${NOW / 1000 + 3600} ${agreed} 0`)
   })

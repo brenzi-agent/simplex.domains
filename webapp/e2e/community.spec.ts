@@ -1,5 +1,6 @@
 // Community names and the terms every signature for a name waits for (contract section 1, Terms and community names).
-// The first cases need no /control endpoint, so they run against the service too, which lists bakers with words of its own.
+// The first cases need no /control endpoint, so they run against the service too, which has words of its own for bakers,
+// the name dev/deploy.ts lists.
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test"
 import type { Hex } from "viem"
 import {

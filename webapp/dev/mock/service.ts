@@ -10,7 +10,7 @@ import { codeHash, parseNameCode } from "../../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, durationFor, YEAR_S } from "../../src/crypto/registration.ts"
 import { labelProblem, linkKind, type LinkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
 import {
-  baseRegistrar, chainNow, controller, deployment, holder, mined, namePolicy, NotSent, contractsOwner, ownerOf, read, registry, resolver, Reverted, send, sponsor,
+  baseRegistrar, chainNow, contractsOwner, controller, deployment, holder, mined, namePolicy, NotSent, ownerOf, read, registry, resolver, Reverted, send, sponsor,
 } from "./chain.ts"
 import { TERM_START_S, untilChainTime } from "../chain-time.ts"
 import { addressFor } from "./addresses.ts"
@@ -437,9 +437,8 @@ async function viewRead<T>(field: string, unread: string[], f: () => Promise<T>)
 
 // What the owner signs to accept a listed name's community terms, null for a name not listed.
 async function acceptanceOf(reg: Registration): Promise<{ policy: Address; termsHash: Hex; nonce: number } | null> {
-  if (!await read<boolean>(namePolicy, "bonaFideNames", [reg.labelHash])) return null
-  const [termsHash, nonce] = await Promise.all([read<Hex>(namePolicy, "termsHash"), read<bigint>(namePolicy, "nonces", [reg.owner])])
-  return { policy: deployment.namePolicy, termsHash, nonce: Number(nonce) }
+  const community = await communityOf(reg.labelHash)
+  return community && { policy: deployment.namePolicy, termsHash: community.terms.hash, nonce: Number(await read<bigint>(namePolicy, "nonces", [reg.owner])) }
 }
 
 async function registrationView(reg: Registration): Promise<Record<string, unknown>> {
@@ -1039,20 +1038,17 @@ export async function reveal(registrationId: string, body: Record<string, unknow
   if ((asked === null) !== (accepted === undefined)) throw badRequest()
   let acceptance: Registration["acceptance"] = null
   if (asked) {
-    if (typeof accepted !== "object" || accepted === null) throw badRequest()
-    const { termsHash, nonce: acceptNonce } = accepted
+    if (typeof accepted !== "object" || accepted === null || accepted.termsHash !== asked.termsHash || accepted.nonce !== asked.nonce) throw badRequest()
     const acceptSignature = checkSignature(accepted.signature)
-    if (!isHash(termsHash) || typeof acceptNonce !== "number" || !Number.isInteger(acceptNonce)) throw badRequest()
     const acceptor = await recoverTypedDataAddress({
       domain: { name: "SimplexNamePolicy", version: "1", chainId: deployment.chainId, verifyingContract: deployment.namePolicy },
       types: { AcceptBonaFideTerms: [{ name: "commitment", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
       primaryType: "AcceptBonaFideTerms",
-      message: { commitment: reg.commitment, termsHash, nonce: BigInt(acceptNonce), deadline: BigInt(deadline) },
+      message: { commitment: reg.commitment, termsHash: asked.termsHash, nonce: BigInt(asked.nonce), deadline: BigInt(deadline) },
       signature: acceptSignature,
     })
     if (acceptor !== reg.owner) throw badRequest()
-    if (termsHash !== asked.termsHash || acceptNonce !== asked.nonce) throw badRequest()
-    acceptance = { termsHash, nonce: BigInt(acceptNonce), signature: acceptSignature }
+    acceptance = { termsHash: asked.termsHash, nonce: BigInt(asked.nonce), signature: acceptSignature }
   }
   // Refused links are the committed ones, as the commitment and the owner's signature passed: only a move fixes them.
   if (reg.linksRefused) throw new HttpError(400, "invalid_link")
@@ -1503,8 +1499,7 @@ export async function controlCommunityTerms(body: Record<string, unknown>): Prom
 
 export function dump(): unknown {
   return {
-    registrations: [...registrations.values()].map((r) => ({ ...r, intent: r.intent && { ...r.intent, nonce: String(r.intent.nonce), deadline: String(r.intent.deadline) },
-      acceptance: r.acceptance && { ...r.acceptance, nonce: String(r.acceptance.nonce) } })),
+    registrations: [...registrations.values()].map((r) => ({ ...r, intent: r.intent && { ...r.intent, nonce: String(r.intent.nonce), deadline: String(r.intent.deadline) } })),
     invoices: [...invoices.values()], balances: Object.fromEntries(balances),
   }
 }

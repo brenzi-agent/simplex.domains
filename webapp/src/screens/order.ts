@@ -133,7 +133,8 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "code-check-due": return { ...s, codeCheckAt: e.at }
     case "source-read": return s.busy === "reorder" ? end(s, "reorder", { sourceBalance: e.balance }) : { ...s, sourceBalance: e.balance }
     case "terms-asked": return { ...s, busy: null, ask: askFor(e.label, e.terms, e.community, e.changed) }
-    case "terms-agreed": return s.ask ? { ...s, ask: { ...s.ask, agreed: e.agreed, changed: false } } : s
+    // a tick of changed community terms times the stall from itself
+    case "terms-agreed": return s.ask ? { ...s, ask: { ...s.ask, agreed: e.agreed, changed: false }, since: termsAskedAgain(s) && s.since ? { ...s.since, at: s.now } : s.since } : s
     case "hold-started": return { ...s, busy: null, note: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: e.lead } }
     case "hold-ended": return { ...s, hold: null }
   }
@@ -255,8 +256,7 @@ function paymentKind(s: OrderState, invoice: InvoiceView): OrderKind {
   return slow ? "status:card-unconfirmed" : "confirming"
 }
 
-export const revealKey = (view: RegistrationView) =>
-  `${view.id} ${view.commitment} ${view.intentNonce} ${view.revealBefore}${view.acceptance ? ` ${view.acceptance.termsHash} ${view.acceptance.nonce}` : ""}`
+export const revealKey = (view: RegistrationView) => `${view.id} ${view.commitment} ${view.intentNonce} ${view.revealBefore}${view.acceptance ? ` ${view.acceptance.termsHash} ${view.acceptance.nonce}` : ""}`
 
 // The community terms on chain are not the ones the order signed, so the buyer agrees to them again before the reveal.
 const termsChanged = ({ view, record }: OrderState) => !!record && !!view?.acceptance && view.acceptance.termsHash !== view.community?.terms.hash
@@ -265,10 +265,7 @@ const termsChanged = ({ view, record }: OrderState) => !!record && !!view?.accep
 export const termsAskedAgain = (s: OrderState) => termsChanged(s) && s.ask?.community?.terms.hash === s.view!.acceptance!.termsHash
 
 // The reveal waits until the buyer ticks the changed community terms.
-export function termsToAgree(s: OrderState): boolean {
-  const { record, ask } = s
-  return termsChanged(s) && !(termsAskedAgain(s) && ask!.label === record!.label && ask!.agreed)
-}
+export const termsToAgree = (s: OrderState) => termsChanged(s) && !(termsAskedAgain(s) && s.ask!.agreed)
 
 // The changed terms are asked for once the order is committed and they are not asked for yet.
 export const askAgainDue = (s: OrderState) => s.view?.phase === "committed" && s.view.label === null && !linksRefused(s) && termsChanged(s) && !termsAskedAgain(s)
@@ -287,7 +284,7 @@ export function revealDue(s: OrderState): boolean {
 
 export function stalledAt(s: OrderState): number | null {
   const { view, since } = s
-  if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS || termsAskedAgain(s)) return null
+  if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS || (termsAskedAgain(s) && !s.ask!.agreed)) return null
   if (view.phase !== "committed" || view.label !== null) return since.at + TX_STALL_MS
   return Math.max(since.at, (view.revealAfter ?? 0) * 1000) + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS
 }

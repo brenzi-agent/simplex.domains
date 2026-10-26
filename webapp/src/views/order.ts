@@ -76,7 +76,7 @@ function dispatch(event: OrderEvent): void {
   if (!checksName(state)) stopWatchingName()
   if (kind === "registered") seenRegistered(state.view!, state.invoice)
   if (revealDue(state)) reveal(state.view!, state.record!)
-  else if (askAgainDue(state)) askAgain(state.record!)
+  else if (askAgainDue(state)) askAgain(state.view!, state.record!)
   if (kind !== screenOf(before) || state.record !== before.record) keepCodes(state)
   wakeOnTime()
 }
@@ -334,14 +334,24 @@ function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
 }
 
 // Community terms that changed on chain since the order are agreed to again before the reveal signs them, under the
-// name terms the search has now; the notice of the change takes the focus.
-function askAgain(record: store.OrderRecord): void {
+// name terms the search has now; the notice of the change takes the focus. One search at a time, and one answering other
+// community terms than the view's reads the view again.
+let askingAgain: string | null = null
+function askAgain(view: api.RegistrationView, record: store.OrderRecord): void {
+  const key = revealKey(view)
+  if (askingAgain === key) return
+  askingAgain = key
   const gen = opened
   flow.quoteOf(record.label).then((quote) => {
+    askingAgain = null
     if (!quote) return
+    if (quote.community?.terms.hash !== view.acceptance!.termsHash) return reread(gen)
     askTerms(gen, record.label, quote, true)
     if (isOpen(gen)) focusOn("reveal")
-  }, (e) => setTimeout(() => answer(gen, { type: "tick", now: api.serviceNow() }), api.retryDelay(e, RETRY_MS) ?? RETRY_MS))
+  }, (e) => setTimeout(() => {
+    askingAgain = null
+    answer(gen, { type: "tick", now: api.serviceNow() })
+  }, api.retryDelay(e, RETRY_MS) ?? RETRY_MS))
 }
 
 function keepCodes(s: OrderState): void {
@@ -1070,7 +1080,6 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
   const states = stagesOf(view)
   sayStage(view, states)
   const refused = refusalsOf(s) >= REVEAL_ATTEMPTS
-  const asking = termsToAgree(s)
   const steps = stages(states)
   const stalled = stalledAt(s)
   const clockNode = el("b", {})
@@ -1092,7 +1101,7 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
     if (stalled !== null && api.serviceNow() >= stalled) return say(note, STALL_NOTE)
     if (view.phase !== "committed") return say(note, view.phase === "registering" ? REGISTERING_NOTE : COMMIT_NOTE)
     waitsSeen.delete(view.id)
-    if (view.label === null && (refused || asking)) say(note, "The registration is not signed yet.")
+    if (view.label === null && (refused || termsToAgree(s))) say(note, "The registration is not signed yet.")
     else say(note, REGISTERING_NOTE)
   }
   onTheSecond(() => waitLeft(view), tick, signal)

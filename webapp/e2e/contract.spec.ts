@@ -834,7 +834,7 @@ test("a spend whose difference is below the card's least charge refuses the card
 
 // --- terms and community names
 
-// the e2e spec's community name, which the service's contract run lists too
+// the e2e spec's community name, which dev/deploy.ts lists
 const COMMUNITY_LABEL = "bakers"
 const TERMS_VERSION = "2026-10-23"
 const COMMUNITY_TERMS = communityTerms(TERMS_VERSION)

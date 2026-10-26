@@ -83,8 +83,8 @@ export async function revealOrder(view: api.RegistrationView, record: store.Orde
   const r = registrationOf(record.label, wallet.address, commitmentSecret(wallet.seed, record.label), record, view, BigInt(view.duration))
   const digest = registerIntentDigest(BigInt(view.chainId), fromHex(view.sponsor), r, BigInt(view.intentNonce!), BigInt(view.revealBefore!))
   const a = view.acceptance
-  const acceptance = a ? { termsHash: a.termsHash, nonce: a.nonce, signature: hex(signDigest(wallet.privateKey,
-    acceptTermsDigest(BigInt(view.chainId), fromHex(a.policy), fromHex(view.commitment), fromHex(a.termsHash), BigInt(a.nonce), BigInt(view.revealBefore!)))) } : undefined
+  const acceptDigest = a && acceptTermsDigest(BigInt(view.chainId), fromHex(a.policy), fromHex(view.commitment), fromHex(a.termsHash), BigInt(a.nonce), BigInt(view.revealBefore!))
+  const acceptance = a ? { termsHash: a.termsHash, nonce: a.nonce, signature: hex(signDigest(wallet.privateKey, acceptDigest!)) } : undefined
   await api.reveal(view.id, {
     label: record.label, secret: hex(r.secret),
     records: { contact: r.contactLinks, channel: r.channelLinks },
