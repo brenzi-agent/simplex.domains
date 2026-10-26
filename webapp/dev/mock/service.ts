@@ -389,10 +389,9 @@ function nodeOf(labelHash: Hex): Hex {
 // --- terms and community names
 
 // The service's [names] terms_version and terms_url, and its [community] words keyed by label hash, which the service reads
-// at startup; /control/terms and /control/community change them as a restart with a new ini would. Which names are
-// community names is the name policy's list on chain; the words only say what a listed name is for. The e2e spec's
-// community names are bakers and bakehouse, which dev/deploy.ts lists; the service's contract run has words of its own for
-// bakers.
+// at startup; /control/terms and /control/community change them as a restart with a new ini would. The e2e spec's
+// community names are bakers and bakehouse, which dev/deploy.ts lists, and the service's contract run words bakers otherwise.
+// Which names are community names is the name policy's list on chain; the words only say what a listed name is for.
 const terms = { version: "2026-10-23", url: "https://simplex.chat/" }
 const communities = new Map<Hex, string>([[keccak256(toHex("bakers")), "bakers and pastry chefs"], [keccak256(toHex("bakehouse")), "a bakery's own bakers"]])
 

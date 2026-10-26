@@ -256,7 +256,7 @@ function paymentKind(s: OrderState, invoice: InvoiceView): OrderKind {
   return slow ? "status:card-unconfirmed" : "confirming"
 }
 
-export const revealKey = (view: RegistrationView) => `${view.id} ${view.commitment} ${view.intentNonce} ${view.revealBefore}${view.acceptance ? ` ${view.acceptance.termsHash} ${view.acceptance.nonce}` : ""}`
+export const revealKey = (view: RegistrationView) => `${view.id} ${view.commitment} ${view.intentNonce} ${view.revealBefore}${view.acceptance ? ` ${view.acceptance.policy} ${view.acceptance.termsHash} ${view.acceptance.nonce}` : ""}`
 
 // The community terms on chain are not the ones the order signed, so the buyer agrees to them again before the reveal.
 const termsChanged = ({ view }: OrderState) => !!view?.acceptance && view.acceptance.termsHash !== view.community?.terms.hash

@@ -349,6 +349,7 @@ test("community terms changed on chain between the order and its reveal are agre
       await control(request, `settle/${invoiceId}`)
       const notice = onStep(page).locator(".line", { hasText: TERMS_CHANGED })
       await expect(notice).toBeVisible({ timeout: REGISTRATION_MS })
+      await expect(notice, "the notice takes the focus from the page").toBeFocused()
       await expect(onStep(page).locator(".check.terms")).toHaveText(COMMUNITY_WORDS)
       await expect(onStep(page).getByRole("checkbox", { name: AGREE })).not.toBeChecked()
       // past the wait after which the reveal would have gone, nothing is signed before the tick

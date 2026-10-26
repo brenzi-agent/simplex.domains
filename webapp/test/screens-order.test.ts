@@ -514,7 +514,7 @@ describe("reveal helpers", () => {
   it("revealKey names the commit a reveal is signed for", () => {
     expect(revealKey(view)).toBe(`reg-1 ${COMMITMENT} 4 ${NOW / 1000 + 3600}`)
     const termsHash = `0x${"c7".repeat(32)}`
-    expect(revealKey(registration({ ...committed, acceptance: { policy: "0x3", termsHash, nonce: 0 } })), "and the acceptance it signs").toBe(`reg-1 ${COMMITMENT} 4 ${NOW / 1000 + 3600} ${termsHash} 0`)
+    expect(revealKey(registration({ ...committed, acceptance: { policy: "0x3", termsHash, nonce: 0 } })), "and the acceptance it signs").toBe(`reg-1 ${COMMITMENT} 4 ${NOW / 1000 + 3600} 0x3 ${termsHash} 0`)
   })
   it("refusalsOf counts the refusals of the commit shown, and none outside the wait", () => {
     const refused = { ...waiting, reveal: { key: revealKey(view), sending: false, refusals: 2 } }
@@ -544,6 +544,8 @@ describe("reveal helpers", () => {
     expect([revealDue(listed(changed)), askAgainDue(listed(changed))], "terms changed on chain since the order").toEqual([false, true])
     const ask = askFor(record().label, { version: "2026-10-23", url: "https://simplex.chat/" }, { for: null, terms: { url, hash: changed } }, true)
     expect([revealDue(listed(changed, { ask })), askAgainDue(listed(changed, { ask }))], "asked, not ticked").toEqual([false, false])
+    expect(askAgainDue(listed(changed, { record: null })), "no name code in this browser").toBe(false)
+    expect(askAgainDue(listed(changed, { record: record({ linksRefused: true }) })), "links refused").toBe(false)
     expect(revealDue(listed(changed, { ask: { ...ask, agreed: true } })), "ticked").toBe(true)
     expect(revealDue(listed(changed, { ask: { ...ask, agreed: true, community: { ...ask.community!, terms: { ...ask.community!.terms, hash: agreed } } } })), "ticked other terms").toBe(false)
     expect(revealDue(read(null, registration({ ...committed, unread: ["acceptance"] }))), "an acceptance the service could not read").toBe(false)
