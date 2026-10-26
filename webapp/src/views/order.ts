@@ -334,22 +334,21 @@ function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
 }
 
 // Community terms that changed on chain since the order are agreed to again before the reveal signs them, under the
-// name terms the search has now; the notice of the change takes the focus. One search at a time, and one answering other
-// community terms than the view's reads the view again.
+// name terms the search has now.
 let askingAgain: string | null = null
 function askAgain(view: api.RegistrationView, record: store.OrderRecord): void {
-  const key = revealKey(view)
+  const gen = opened
+  const key = `${gen} ${revealKey(view)}`
   if (askingAgain === key) return
   askingAgain = key
-  const gen = opened
   flow.quoteOf(record.label).then((quote) => {
-    askingAgain = null
+    if (askingAgain === key) askingAgain = null
     if (!quote) return
     if (quote.community?.terms.hash !== view.acceptance!.termsHash) return reread(gen)
     askTerms(gen, record.label, quote, true)
     if (isOpen(gen)) focusOn("reveal")
   }, (e) => setTimeout(() => {
-    askingAgain = null
+    if (askingAgain === key) askingAgain = null
     answer(gen, { type: "tick", now: api.serviceNow() })
   }, api.retryDelay(e, RETRY_MS) ?? RETRY_MS))
 }
@@ -719,7 +718,7 @@ function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
 
 function agreement({ ask, view, busy }: OrderState, focus: string): HTMLElement | null {
   if (!ask) return null
-  const agree = (agreed: boolean) => dispatch({ type: "terms-agreed", agreed })
+  const agree = (agreed: boolean) => dispatch({ type: "terms-agreed", agreed, now: api.serviceNow() })
   return termsBox({ ...ask, tld: view!.tld, disabled: busy !== null }, agree, focus)
 }
 

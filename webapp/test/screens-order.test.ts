@@ -500,7 +500,7 @@ describe("a stalled stage", () => {
     const asking = registration({ ...committed, acceptance: { policy: "0x3", termsHash: changed, nonce: 0 } })
     const ask = askFor(record().label, { version: "2026-10-23", url: "https://simplex.chat/" }, { for: null, terms: { url: "https://simplex.chat/community-terms", hash: changed } }, true)
     expect(stalledAt({ ...seen(asking), ask }), "the changed community terms asked for").toBeNull()
-    const ticked = reduce({ ...seen(asking), ask, now: NOW + 60_000 }, { type: "terms-agreed", agreed: true })
+    const ticked = reduce({ ...seen(asking), ask }, { type: "terms-agreed", agreed: true, now: NOW + 60_000 })
     expect(stalledAt(ticked), "timed from the tick").toBe(NOW + 60_000 + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS)
     expect(stalledAt(seen(asking)), "changed terms that could not be asked for").not.toBeNull()
   })
@@ -608,12 +608,12 @@ describe("the terms of the same name again", () => {
   })
   it("terms-agreed ticks the box and ends the notice that the terms changed", () => {
     const s = reduce(STATES["status:closed"], { type: "terms-asked", label: "alice", terms: TERMS, community: null, changed: true })
-    const ticked = reduce(s, { type: "terms-agreed", agreed: true })
+    const ticked = reduce(s, { type: "terms-agreed", agreed: true, now: NOW })
     expect(ticked.ask).toEqual({ label: "alice", terms: TERMS, community: null, agreed: true, changed: false })
-    expect(reduce(ticked, { type: "terms-agreed", agreed: false }).ask).toEqual({ label: "alice", terms: TERMS, community: null, agreed: false, changed: false })
+    expect(reduce(ticked, { type: "terms-agreed", agreed: false, now: NOW }).ask).toEqual({ label: "alice", terms: TERMS, community: null, agreed: false, changed: false })
   })
   it("terms-agreed with nothing asked changes nothing", () => {
-    expect(reduce(STATES["status:closed"], { type: "terms-agreed", agreed: true })).toBe(STATES["status:closed"])
+    expect(reduce(STATES["status:closed"], { type: "terms-agreed", agreed: true, now: NOW })).toBe(STATES["status:closed"])
   })
   it("the ask stays while the order is read again", () => {
     const s = reduce(STATES["status:closed"], { type: "terms-asked", label: "alice", terms: TERMS, community: null, changed: false })
@@ -621,7 +621,7 @@ describe("the terms of the same name again", () => {
   })
   it("an order moved to another name meanwhile drops the ask, ticked or not, so the next press asks for that name's terms", () => {
     const asked = reduce(STATES["status:closed"], { type: "terms-asked", label: "alice", terms: TERMS, community: null, changed: false })
-    const ticked = reduce(asked, { type: "terms-agreed", agreed: true })
+    const ticked = reduce(asked, { type: "terms-agreed", agreed: true, now: NOW })
     const moved = { ...STATES["status:closed"], record: record({ label: "bob123" }) }
     expect(reduce(ticked, answered(ticked, moved)).ask).toBeNull()
     expect(reduce(ticked, { type: "record-changed", record: record({ label: "bob123" }), cardSubmittedAt: null }).ask).toBeNull()

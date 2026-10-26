@@ -301,7 +301,7 @@ describe("service errors", () => {
         answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
         expect(await readRegistration("r1"), JSON.stringify(change)).toMatchObject(change)
       }
-      for (const change of [{ community: undefined }, { community: { for: 1 } }, { terms: undefined }, { terms: 5 }, { terms: "" }, { terms: "a b" }, { terms: "t".repeat(113) }]) {
+      for (const change of [{ community: undefined }, { community: { ...COMMUNITY, for: 1 } }, { terms: undefined }, { terms: 5 }, { terms: "" }, { terms: "a b" }, { terms: "t".repeat(113) }]) {
         answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
         const e = await readRegistration("r1").then(() => null, (e: unknown) => e)
         expect((e as ApiError).code, JSON.stringify(change)).toBe("network")

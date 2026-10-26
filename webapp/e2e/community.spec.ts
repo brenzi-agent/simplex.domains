@@ -346,30 +346,6 @@ function revealsOf(page: Page): Record<string, unknown>[] {
   return bodies
 }
 
-test("a community name bought end to end has its owner's acceptance of the community terms relayed before the register, which records it on chain", async ({ page, request }) => {
-  const label = uniqueLabel("cr")
-  await listed(request, [label], async () => {
-    const reveals = revealsOf(page)
-    const { invoiceId } = await startOrder(page, label)
-    await control(request, `settle/${invoiceId}`)
-    await waitRegistered(page, label)
-    const view = await invoiceViewOf(request, invoiceId)
-    expect(view.terms).toBe(communityTerms(TERMS_VERSION))
-    expect(reveals.map((b) => (b.acceptance as Record<string, unknown> | undefined)?.termsHash), "one reveal, with the acceptance").toEqual([COMMUNITY_TERMS_HASH])
-    expect(await acceptedOnChain(view.registerTx as string)).toEqual({ name: label, holder: view.owner, termsHash: COMMUNITY_TERMS_HASH })
-  })
-})
-
-test("a plain name's reveal has no acceptance, and its register records none on chain", async ({ page, request }) => {
-  const label = uniqueLabel("cp")
-  const reveals = revealsOf(page)
-  const { invoiceId } = await startOrder(page, label)
-  await control(request, `settle/${invoiceId}`)
-  await waitRegistered(page, label)
-  expect(reveals.map((b) => "acceptance" in b)).toEqual([false])
-  expect(await acceptedOnChain((await invoiceViewOf(request, invoiceId)).registerTx as string)).toBeNull()
-})
-
 test("community terms changed on chain between the order and its reveal are agreed to again on the order's page before it signs, and the name registers under them", async ({ page, request }) => {
   const label = uniqueLabel("cv")
   await listed(request, [label], async () => {

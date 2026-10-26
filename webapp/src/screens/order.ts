@@ -86,7 +86,7 @@ export type OrderEvent =
   | { type: "code-check-due"; at: number | null }
   | { type: "source-read"; balance: Balance | null }
   | { type: "terms-asked"; label: string; terms: Terms; community: Community | null; changed: boolean }
-  | { type: "terms-agreed"; agreed: boolean }
+  | { type: "terms-agreed"; agreed: boolean; now: number }
   | { type: "hold-started"; until: number; lead: string }
   | { type: "hold-ended" }
 
@@ -133,8 +133,8 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "code-check-due": return { ...s, codeCheckAt: e.at }
     case "source-read": return s.busy === "reorder" ? end(s, "reorder", { sourceBalance: e.balance }) : { ...s, sourceBalance: e.balance }
     case "terms-asked": return { ...s, busy: null, ask: askFor(e.label, e.terms, e.community, e.changed) }
-    // a tick of changed community terms times the stall from itself
-    case "terms-agreed": return s.ask ? { ...s, ask: { ...s.ask, agreed: e.agreed, changed: false }, since: termsAskedAgain(s) && s.since ? { ...s.since, at: s.now } : s.since } : s
+    // agreeing to changed community terms times the stall from then
+    case "terms-agreed": return s.ask ? { ...s, ask: { ...s.ask, agreed: e.agreed, changed: false }, since: termsAskedAgain(s) && s.since ? { ...s.since, at: e.now } : s.since } : s
     case "hold-started": return { ...s, busy: null, note: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: e.lead } }
     case "hold-ended": return { ...s, hold: null }
   }
