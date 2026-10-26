@@ -367,7 +367,7 @@ test("community terms changed on chain between the order and its reveal are agre
   })
 })
 
-test("changed community terms whose first search fails are asked for after a pause", async ({ page, request }) => {
+test("changed community terms whose first search fails are asked for once the search is made again", async ({ page, request }) => {
   const label = uniqueLabel("cw")
   await listed(request, [label], async () => {
     const { invoiceId } = await startOrder(page, label)
@@ -379,6 +379,28 @@ test("changed community terms whose first search fails are asked for after a pau
       await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: REGISTRATION_MS })
       expect(searches).toBeGreaterThan(1)
     } finally {
+      await control(request, "community-terms", { text: null })
+    }
+  })
+})
+
+test("community terms changed after the reveal, before its relay, are agreed to again and the name registers under them", async ({ page, request }) => {
+  const label = uniqueLabel("cx")
+  await listed(request, [label], async () => {
+    const { invoiceId } = await startOrder(page, label)
+    try {
+      await control(request, `settle/${invoiceId}`)
+      await expect.poll(async () => (await invoiceViewOf(request, invoiceId)).phase, { timeout: REGISTRATION_MS }).toBe("committed")
+      // the relay is held back while the reveal is stored and the terms change, then refused for the old terms
+      await control(request, "search", { unsentSeconds: 20 })
+      await expect.poll(async () => (await invoiceViewOf(request, invoiceId)).label, { timeout: REGISTRATION_MS }).toBe(label)
+      const { hash } = await control(request, "community-terms", { text: `the community terms, changed after the reveal of ${label}` }) as { hash: string }
+      await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: REGISTRATION_MS })
+      await agreeToTerms(page)
+      await waitRegistered(page, label)
+      expect((await acceptedOnChain((await invoiceViewOf(request, invoiceId)).registerTx as string))?.termsHash).toBe(hash)
+    } finally {
+      await control(request, "search", { unsentSeconds: 0 })
       await control(request, "community-terms", { text: null })
     }
   })
