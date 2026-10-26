@@ -884,17 +884,9 @@ async function register(reg: Registration): Promise<void> {
     return fail(reg, "The register transaction did not go through")
   }
   const { nonce, deadline, signature } = reg.intent!
-  // a community name's acceptance goes on chain first, unless an earlier relay of it was mined
-  if (reg.acceptance && await read<Hex>(namePolicy, "acceptedTerms", [reg.commitment, reg.owner]) !== reg.acceptance.termsHash) {
-    const { termsHash, nonce: acceptNonce, signature: acceptSignature } = reg.acceptance
-    try {
-      await sendTx(namePolicy, "commitUnderBonaFideCommunityTermsWithSig", [reg.commitment, termsHash, reg.owner, acceptNonce, deadline, acceptSignature])
-    } catch (e) {
-      if (!(e instanceof Reverted && SIGN_AGAIN.includes(e.revert ?? ""))) throw e
-      clearReveal(reg)
-      return changed(reg)
-    }
-  }
+  // a community name's acceptance goes on chain first, unless an earlier relay of it was mined; its revert is judged as the
+  // register's is
+  const relay = reg.acceptance && await read<Hex>(namePolicy, "acceptedTerms", [reg.commitment, reg.owner]) !== reg.acceptance.termsHash ? reg.acceptance : null
   // registering only once the transaction goes out: until then the name is not on its way to the owner
   const sending = (hash: Hex) => {
     reg.phase = "registering"
@@ -902,6 +894,7 @@ async function register(reg: Registration): Promise<void> {
     changed(reg)
   }
   try {
+    if (relay) await sendTx(namePolicy, "commitUnderBonaFideCommunityTermsWithSig", [reg.commitment, relay.termsHash, reg.owner, relay.nonce, deadline, relay.signature])
     reg.registerTx = await sendTx(sponsor, "registerWithCredit", [registrationTuple(reg), nonce, deadline, signature], sending)
   } catch (e) {
     if (e instanceof NotSent) throw e

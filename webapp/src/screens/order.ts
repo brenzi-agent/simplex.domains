@@ -54,7 +54,7 @@ export interface OrderState {
   sourceBalance: Balance | null
   ask: TermsAsk | null
   reserved: boolean
-  // when this page first saw the stage, on the service's clock
+  // when this page first saw the stage, or the buyer ticked changed community terms in it, on the service's clock
   since: { stage: string; at: number } | null
 }
 
@@ -115,7 +115,8 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "card-failed": return { ...s, cardFailed: true }
     case "card-started": return start(s, "card")
     case "card-refused": return end(s, "card", { note: e.note })
-    case "reveal-sent": return { ...s, reveal: { key: e.key, sending: true, refusals: s.reveal?.key === e.key ? s.reveal.refusals : 0 } }
+    // an ask the reveal does not sign, of terms the chain has no more, goes with it
+    case "reveal-sent": return { ...s, ask: termsAskedAgain(s) ? s.ask : null, reveal: { key: e.key, sending: true, refusals: s.reveal?.key === e.key ? s.reveal.refusals : 0 } }
     case "reveal-refused": return s.reveal?.key === e.key ? { ...s, reveal: { ...s.reveal, sending: false, refusals: s.reveal.refusals + 1 } } : s
     case "reveal-failed": return s.reveal?.key === e.key ? { ...s, reveal: { ...s.reveal, sending: false } } : s
     case "reveal-retried": return s.reveal ? { ...s, reveal: { ...s.reveal, refusals: 0 } } : s

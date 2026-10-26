@@ -341,18 +341,21 @@ function askAgain(view: api.RegistrationView, record: store.OrderRecord): void {
   const key = `${gen} ${revealKey(view)}`
   if (askingAgain === key) return
   askingAgain = key
+  const done = () => { if (askingAgain === key) askingAgain = null }
+  // after a pause, a search that failed or answered the name as not available is made again, and one that answered other
+  // community terms than the view's reads the view again
+  const later = (delay: number, again: () => void) => setTimeout(() => { done(); again() }, delay)
+  const tick = () => answer(gen, { type: "tick", now: api.serviceNow() })
   flow.quoteOf(record.label).then((quote) => {
-    if (askingAgain === key) askingAgain = null
-    if (!quote || !isOpen(gen) || !askAgainDue(state)) return
-    if (quote.community?.terms.hash !== state.view!.acceptance!.termsHash) return reread(gen)
+    if (!isOpen(gen) || !askAgainDue(state)) return done()
+    if (!quote) return later(RETRY_MS, tick)
+    if (quote.community?.terms.hash !== state.view!.acceptance!.termsHash) return later(RETRY_MS, () => reread(gen))
+    done()
     askTerms(gen, record.label, quote, true)
     // the notice takes the focus from the page, never from the header, the footer or a dialog
     const active = document.activeElement
     if (active === document.body || active?.closest("body > main")) focusOn("reveal")
-  }, (e) => setTimeout(() => {
-    if (askingAgain === key) askingAgain = null
-    answer(gen, { type: "tick", now: api.serviceNow() })
-  }, api.retryDelay(e, RETRY_MS) ?? RETRY_MS))
+  }, (e) => later(api.retryDelay(e, RETRY_MS) ?? RETRY_MS, tick))
 }
 
 function keepCodes(s: OrderState): void {

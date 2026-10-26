@@ -195,6 +195,13 @@ describe("reduce", () => {
       const refused = { ...waiting, reveal: { key, sending: false, refusals: 2 } }
       expect(reduce(refused, { type: "reveal-sent", key }).reveal).toEqual({ key, sending: true, refusals: 2 })
     })
+    it("reveal-sent keeps an ask of the changed community terms it signs, and drops another", () => {
+      const changed = `0x${"d8".repeat(32)}`
+      const asking = read(null, registration({ ...committed, acceptance: { policy: "0x3", termsHash: changed, nonce: 0 } }))
+      const ask = askFor(record().label, { version: "2026-10-23", url: "https://simplex.chat/" }, { for: null, terms: { url: "https://simplex.chat/community-terms", hash: changed } }, true)
+      expect(reduce({ ...asking, ask }, { type: "reveal-sent", key: "k" }).ask).toEqual(ask)
+      expect(reduce({ ...read(null, registration(committed)), ask }, { type: "reveal-sent", key: "k" }).ask).toBeNull()
+    })
     it("reveal-sent for another commit starts its count anew", () => {
       const old = { ...waiting, reveal: { key: "reg-1 0xold 3 1", sending: false, refusals: 2 } }
       expect(reduce(old, { type: "reveal-sent", key }).reveal).toEqual({ key, sending: true, refusals: 0 })
