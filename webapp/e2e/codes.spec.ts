@@ -5,9 +5,8 @@ import { checksumAddress } from "../src/crypto/wallet.ts"
 import { walletOf } from "../src/flow.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  acceptedOnChain, answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, COMMUNITY_TERMS_HASH, contactLink, contractsOwnerLists, control, fillLinks, FIT_SIZES,
-  LINKS_HEADING, MOCK, onStep, payButton, previewsShown, savedToReview,
-  search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
+  answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, onStep, payButton, previewsShown, savedToReview,
+  search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered, acceptedOnChain, COMMUNITY_TERMS_HASH, contractsOwnerLists,
 } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock

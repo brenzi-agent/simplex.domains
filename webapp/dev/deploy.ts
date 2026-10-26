@@ -146,9 +146,8 @@ const seeds = [
 let revealAfter = 0
 for (const registration of seeds) {
   const commitment = await publicClient.readContract({ ...controller, functionName: "makeCommitment", args: [registration] }) as Hex
-  // a community name's holder accepts the terms, which commits it
-  if (COMMUNITY_NAMES.includes(registration.label)) await write(holder, namePolicy, "commitUnderBonaFideCommunityTerms", [commitment, COMMUNITY_TERMS_HASH])
-  else await write(registrar, controller, "commit", [commitment])
+  // committed under the community terms, as a listed name needs and a plain name allows
+  await write(holder, namePolicy, "commitUnderBonaFideCommunityTerms", [commitment, COMMUNITY_TERMS_HASH])
   const committedAt = await publicClient.readContract({ ...controller, functionName: "commitments", args: [commitment] }) as bigint
   revealAfter = Number(committedAt + MIN_COMMITMENT_AGE)
 }

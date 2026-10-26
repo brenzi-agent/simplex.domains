@@ -64,7 +64,7 @@ const CHAIN_ABI = parseAbi([
   "event BonaFideTermsAccepted(string name, address indexed holder, bytes32 termsHash)",
   "function addBonaFideNames(string[] names)",
 ])
-// the community terms dev/deploy.ts put on chain, by their hash, and the hash as an order signs it after /community/
+// the community terms dev/deploy.ts put on chain, by their hash, and the terms an order of a community name signs at a version
 export const COMMUNITY_TERMS_HASH = deployment.communityTermsHash
 export const communityTerms = (version: string) => `${version}/community/${COMMUNITY_TERMS_HASH.slice(2)}`
 export const NAME_POLICY = deployment.namePolicy

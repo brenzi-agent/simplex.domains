@@ -60,8 +60,8 @@ const SIGNED_TERMS = /^[A-Za-z0-9._/-]{1,112}$/
 const COMMUNITY_TERMS = "/community/"
 // the service's community_terms_url
 const COMMUNITY_TERMS_URL = "https://simplex.chat/community-terms"
-// a relayed acceptance the name policy refuses for what the page signed: the page signs again
-const ACCEPTANCE_REFUSED = ["TermsMismatch", "InvalidNonce", "InvalidSignature"]
+// the reverts of a relay or a register after which the page signs again, as the service judges them
+const SIGN_AGAIN = ["InvalidNonce", "TermsNotAccepted", "TermsMismatch"]
 // a community name's text in the service's ini: one line of up to this many characters
 const COMMUNITY_TEXT_MAX = 200
 const SECP256K1_HALF_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n
@@ -893,7 +893,7 @@ async function register(reg: Registration): Promise<void> {
     try {
       await sendTx(namePolicy, "commitUnderBonaFideCommunityTermsWithSig", [reg.commitment, termsHash, reg.owner, acceptNonce, deadline, acceptSignature])
     } catch (e) {
-      if (!(e instanceof Reverted && ACCEPTANCE_REFUSED.includes(e.revert ?? ""))) throw e
+      if (!(e instanceof Reverted && SIGN_AGAIN.includes(e.revert ?? ""))) throw e
       clearReveal(reg)
       return changed(reg)
     }
@@ -913,7 +913,7 @@ async function register(reg: Registration): Promise<void> {
     if ((await ownerOf(reg.labelHash).catch(() => null)) === reg.owner) return registered(reg)
     // another registration by the same owner spent this nonce first, or the terms changed since the acceptance: the owner
     // signs again
-    if (e.revert === "InvalidNonce" || e.revert === "TermsNotAccepted") {
+    if (SIGN_AGAIN.includes(e.revert ?? "")) {
       clearReveal(reg)
       reg.phase = "committed"
       return changed(reg)

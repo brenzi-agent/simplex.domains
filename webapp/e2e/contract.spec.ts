@@ -8,9 +8,7 @@ import { CHANNEL_KEY, CONTACT_KEY, labelHash, namehash, setTextDigest, YEAR_S } 
 import { checksumAddress, fromHex, hex, personalDigest, signDigest } from "../src/crypto/wallet.ts"
 import * as flow from "../src/flow.ts"
 import * as store from "../src/store.ts"
-import {
-  acceptedOnChain, channelLink, COMMUNITY_TERMS_HASH, communityTerms, contactLink, control, MOCK, NAME_POLICY, newClient, oracleQuote, ownerSetsResolver, ownerSetsText, test, uniqueLabel,
-} from "./helpers.ts"
+import { acceptedOnChain, channelLink, COMMUNITY_TERMS_HASH, communityTerms, contactLink, control, MOCK, NAME_POLICY, newClient, oracleQuote, ownerSetsResolver, ownerSetsText, test, uniqueLabel } from "./helpers.ts"
 
 type Json = Record<string, unknown>
 
