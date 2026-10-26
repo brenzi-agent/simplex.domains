@@ -396,6 +396,7 @@ const terms = { version: "2026-10-23", url: "https://simplex.chat/" }
 const communities = new Map<Hex, string>([[keccak256(toHex("bakers")), "bakers and pastry chefs"], [keccak256(toHex("bakehouse")), "a bakery's own bakers"]])
 
 const communityEntry = (labelHash: Hex, hash: Hex) => ({ for: communities.get(labelHash) ?? null, terms: { url: COMMUNITY_TERMS_URL, hash } })
+const termsFor = (community: ReturnType<typeof communityEntry> | null) => community ? `${terms.version}${COMMUNITY_TERMS}${community.terms.hash.slice(2)}` : terms.version
 
 // a listed name's entry with the community terms on chain now; a failed read throws
 async function communityOf(labelHash: Hex) {
@@ -408,9 +409,6 @@ function signedCommunity(reg: Registration) {
   const at = reg.terms.indexOf(COMMUNITY_TERMS)
   return at < 0 ? null : communityEntry(reg.labelHash, `0x${reg.terms.slice(at + COMMUNITY_TERMS.length)}`)
 }
-
-const termsFor = (community: ReturnType<typeof communityEntry> | null) =>
-  community ? `${terms.version}${COMMUNITY_TERMS}${community.terms.hash.slice(2)}` : terms.version
 
 // an order or a move signs the terms the service has now for its name, the community terms included for a community name
 async function checkTerms(o: Pick<OrderBody, "labelHash" | "terms">): Promise<void> {

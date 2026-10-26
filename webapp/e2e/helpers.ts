@@ -107,8 +107,8 @@ export async function acceptedOnChain(registerTx: string): Promise<{ name: strin
   return log?.args ?? null
 }
 
-// The contracts' owner lists the name on the name policy's community list, from the owner's own key, as a case that also runs
-// against the service, which has no /control/community, lists one.
+// The contracts' owner lists the name on the name policy's community list from its own key, for a case that also runs
+// against the service, which has no /control/community.
 export async function contractsOwnerLists(label: string): Promise<void> {
   const account = privateKeyToAccount(deployment.ownerKey)
   const hash = await createWalletClient({ account, chain: { ...foundry, id: deployment.chainId }, transport: http(deployment.rpcUrl) })
