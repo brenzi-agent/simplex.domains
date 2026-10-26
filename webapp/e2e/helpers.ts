@@ -104,7 +104,7 @@ export const ownerSetsText = (ownerCode: string, label: string, key: string, val
 export async function acceptedOnChain(registerTx: string): Promise<{ name: string; holder: string; termsHash: Hex } | null> {
   const receipt = await chain.getTransactionReceipt({ hash: registerTx as Hex })
   const [log] = parseEventLogs({ abi: CHAIN_ABI, eventName: "BonaFideTermsAccepted", logs: receipt.logs })
-  return log ? { name: log.args.name, holder: log.args.holder, termsHash: log.args.termsHash } : null
+  return log?.args ?? null
 }
 
 // The contracts' owner lists the name on the name policy's community list, from the owner's own key, as a case that also runs

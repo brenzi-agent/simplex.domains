@@ -1,10 +1,10 @@
 // Community names and the terms every signature for a name waits for (contract section 1, Terms and community names).
 // The first cases need no /control endpoint, so they run against the service too, which has words of its own for bakers,
-// the name dev/deploy.ts lists.
+// a name dev/deploy.ts lists.
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test"
 import {
-  acceptedOnChain, AGREE, agreeToTerms, COMMUNITY_TERMS_HASH, communityTerms, contactLink, control, failedOrder, MOCK, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, restoreOrder,
-  savedToReview, search, sevenLetters, startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered, withStripeKey,
+  AGREE, agreeToTerms, contactLink, control, failedOrder, MOCK, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, restoreOrder, savedToReview, search, sevenLetters,
+  startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered, withStripeKey, acceptedOnChain, COMMUNITY_TERMS_HASH, communityTerms,
 } from "./helpers.ts"
 
 const COMMUNITY_LABEL = "bakers"

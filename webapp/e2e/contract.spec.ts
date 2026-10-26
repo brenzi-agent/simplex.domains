@@ -953,7 +953,7 @@ test("a move signs the new name's terms: a community name needs the community wo
   })
 })
 
-test("a committed community name's view asks for the owner's acceptance of the terms on chain; its reveal without one, or with one for another nonce or terms, is bad_request, and with it the register records it", async ({ request }) => {
+test("a committed community name's view asks for the owner's acceptance of the terms on chain; its reveal without one, or with one for another nonce, terms or policy, is bad_request, and with it the register records it", async ({ request }) => {
   const label = uniqueLabel("tk")
   await listed(request, label, async () => {
     const { draft, built, id } = await codeOrder(request, label)

@@ -76,8 +76,7 @@ export function recordFor(draft: Draft, built: BuiltOrder, method: store.OrderRe
   }
 }
 
-// The owner signs the registration once the commit has aged, and a community name's terms with it; the deadline is when
-// the commitment lapses anyway.
+// The owner signs the registration once the commit has aged; the deadline is when the commitment lapses anyway.
 export async function revealOrder(view: api.RegistrationView, record: store.OrderRecord): Promise<void> {
   const wallet = walletOf(record.ownerCode)!
   const r = registrationOf(record.label, wallet.address, commitmentSecret(wallet.seed, record.label), record, view, BigInt(view.duration))

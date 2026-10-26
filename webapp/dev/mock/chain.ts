@@ -109,8 +109,8 @@ function revertName(e: unknown): string | null {
 
 // One transaction at a time from the registrar key, as the service's single sender: a dry run, the transaction made
 // and signed, then the send and its receipt. Only a failure from the send on can leave a transaction on its way.
-// goingOut is told the transaction's hash just before it goes out. A control's change of the contracts' settings is sent
-// from the owner's key instead.
+// goingOut is told the transaction's hash just before it goes out; `from` sends as another account, the owner for a
+// control's change of the contracts' settings, the holder for a rival's commit.
 let sending: Promise<unknown> = Promise.resolve()
 export function send(contract: Contract, functionName: string, args: unknown[], goingOut?: (hash: Hex) => void, from = registrar): Promise<Hex> {
   const run = async (): Promise<Hex> => {

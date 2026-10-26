@@ -47,7 +47,7 @@ The backend needs two things outside this repo:
 
    ```
    git clone https://github.com/brenzi/simplex-namespace-contract.git && cd simplex-namespace-contract
-   git submodule update --init ens-contracts && cd ens-contracts
+   git submodule update --init ens-contracts && cd ens-contracts && git checkout a9c61ff
    npx pnpm@9 install --frozen-lockfile --ignore-scripts
    npx hardhat compile
    ```
