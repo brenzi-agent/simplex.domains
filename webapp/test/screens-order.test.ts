@@ -538,9 +538,8 @@ describe("reveal helpers", () => {
     const agreed = `0x${"c7".repeat(32)}`
     const changed = `0x${"d8".repeat(32)}`
     const url = "https://simplex.chat/community-terms"
-    const acceptance = { policy: "0x3", termsHash: agreed, nonce: 0 }
     const listed = (termsHash: string, change: Partial<OrderState> = {}) =>
-      read(null, registration({ ...committed, acceptance: { ...acceptance, termsHash }, community: { for: null, terms: { url, hash: agreed } } }), change)
+      read(null, registration({ ...committed, acceptance: { policy: "0x3", termsHash, nonce: 0 }, community: { for: null, terms: { url, hash: agreed } } }), change)
     expect([revealDue(listed(agreed)), askAgainDue(listed(agreed))]).toEqual([true, false])
     expect([revealDue(listed(changed)), askAgainDue(listed(changed))], "terms changed on chain since the order").toEqual([false, true])
     const ask = askFor(record().label, { version: "2026-10-23", url: "https://simplex.chat/" }, { for: null, terms: { url, hash: changed } }, true)

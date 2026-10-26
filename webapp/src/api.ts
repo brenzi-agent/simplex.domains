@@ -64,8 +64,9 @@ export interface Terms {
   url: string
 }
 
-// A name on the chain's community list: what it is for, null when the ini has no line for it, and the community terms its
-// owner accepts, by their hash: the chain's in a search answer, the one the order signed in an order's view.
+// A community name: what it is for, null when the ini has no line for it, and the community terms its owner accepts, by
+// their hash: in a search answer, a name on the chain's list with the chain's terms; in an order's view, an order that
+// signed community terms, with those terms.
 export interface Community {
   for: string | null
   terms: { url: string; hash: string }
@@ -137,7 +138,8 @@ export interface RegistrationView extends ChainInfo {
   revealAfter: number | null
   revealBefore: number | null
   intentNonce: number | null
-  // what the owner signs with the reveal to accept a community name's terms on chain, null for a name not listed
+  // what the owner signs with the reveal to accept a listed name's community terms on chain, while a committed order waits
+  // for its reveal; null otherwise
   acceptance: Acceptance | null
   // the fields left null because the service's chain read failed; reading the view again may fill them
   unread: string[]
