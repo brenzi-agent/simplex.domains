@@ -350,7 +350,7 @@ function askAgain(record: store.OrderRecord): void {
     if (quote.community?.terms.hash !== state.view!.acceptance!.termsHash) return later(RETRY_MS, () => reread(gen))
     done()
     askTerms(gen, record.label, quote, true)
-    // the notice takes the focus from the page, never from the header, the footer or a dialog
+    // the notice is focused only while the focus is on the page, not in the header, the footer or a dialog
     const active = document.activeElement
     if (active === document.body || active?.closest("body > main")) focusOn("reveal")
   }, (e) => {

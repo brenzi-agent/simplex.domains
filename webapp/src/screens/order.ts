@@ -116,7 +116,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "card-failed": return { ...s, cardFailed: true }
     case "card-started": return start(s, "card")
     case "card-refused": return end(s, "card", { note: e.note })
-    // at a reveal, only the ask of the changed community terms whose acceptance it carries is kept
+    // at a reveal, the ask is kept only for the changed community terms whose acceptance the reveal includes
     case "reveal-sent": return { ...s, ask: termsAskedAgain(s) ? s.ask : null, reveal: { key: e.key, sending: true, refusals: s.reveal?.key === e.key ? s.reveal.refusals : 0 } }
     case "reveal-refused": return s.reveal?.key === e.key ? { ...s, reveal: { ...s.reveal, sending: false, refusals: s.reveal.refusals + 1 } } : s
     case "reveal-failed": return s.reveal?.key === e.key ? { ...s, reveal: { ...s.reveal, sending: false } } : s

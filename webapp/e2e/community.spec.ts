@@ -394,6 +394,30 @@ test("changed community terms whose first search fails are asked for once the se
   })
 })
 
+test("changed community terms that a search answers otherwise than the view are asked for once the view is read again", async ({ page, request }) => {
+  const label = uniqueLabel("cv")
+  await listed(request, [label], async () => {
+    const { invoiceId } = await startOrder(page, label)
+    await withCommunityTerms(request, `the community terms, changed for ${label}`, async () => {
+      // the first search once the order is committed answers yet other terms, as if they changed again after the view
+      let answered = false
+      await page.route("**/api/name/*", async (route) => {
+        if (answered || (await invoiceViewOf(request, invoiceId)).phase !== "committed") return route.fallback()
+        const response = await route.fetch()
+        const json = await response.json()
+        json.community.terms.hash = `0x${"d8".repeat(32)}`
+        answered = true
+        await route.fulfill({ response, json })
+      })
+      let reads = 0
+      page.on("request", (r) => { if (answered && r.url().endsWith(`/api/invoice/${invoiceId}`)) reads++ })
+      await control(request, `settle/${invoiceId}`)
+      await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: REGISTRATION_MS })
+      expect([answered, reads > 0], "the view is read again after that search").toEqual([true, true])
+    })
+  })
+})
+
 test("community terms changed after the reveal, before its relay, are agreed to again and the name registers under them", async ({ page, request }) => {
   const label = uniqueLabel("cx")
   await listed(request, [label], async () => {

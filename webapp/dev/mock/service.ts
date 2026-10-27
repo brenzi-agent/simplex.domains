@@ -986,7 +986,8 @@ function linksOf(records: unknown): { contact: string[]; channel: string[] } {
 const linksTaken = (records: { contact: string[]; channel: string[] }) =>
   (["contact", "channel"] as const).every((kind) => records[kind].every((link) => linkProblem(kind, link) === null))
 
-// A reveal signs the acceptance its view asks for: a listed name's, of the terms on chain now, and none for another name.
+// A reveal includes the owner's signature of the acceptance its view returns: a listed name's, of the terms on chain now,
+// and none for another name.
 async function checkAcceptance(reg: Registration, body: unknown, deadline: number): Promise<Registration["acceptance"]> {
   const asked = await acceptanceOf(reg).catch(unavailable)
   const accepted = body as Record<string, unknown> | undefined
