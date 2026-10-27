@@ -510,12 +510,14 @@ describe("a stalled stage", () => {
     const view = registration(committed)
     expect(stalledAt({ ...seen(view), reveal: { key: revealKey(view), sending: false, refusals: REVEAL_ATTEMPTS } })).toBeNull()
   })
-  it("waits while changed community terms are asked for, and is timed from the tick", () => {
+  it("waits while changed community terms are asked for, and is timed from the last tick", () => {
     const asking = registration({ ...committed, acceptance: acceptanceFor(CHANGED) })
     const ask = reask()
     expect(stalledAt({ ...seen(asking), ask }), "the changed community terms asked for").toBeNull()
-    const ticked = reduce({ ...seen(asking), ask }, { type: "terms-agreed", agreed: true, now: NOW + 60_000 })
-    expect(stalledAt(ticked), "timed from the tick").toBe(NOW + 60_000 + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS)
+    const agreed = reduce({ ...seen(asking), ask }, { type: "terms-agreed", agreed: true, now: NOW + 30_000 })
+    expect(stalledAt(agreed), "the community terms not accepted yet").toBeNull()
+    const ticked = reduce(agreed, { type: "terms-accepted", accepted: true, now: NOW + 60_000 })
+    expect(stalledAt(ticked), "timed from the last tick").toBe(NOW + 60_000 + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS)
     expect(stalledAt(seen(asking)), "changed terms that could not be asked for").not.toBeNull()
   })
   it("is not said once the search for changed terms answered the name as registered or reserved, as the order then fails once its hours to sign are over", () => {
@@ -571,8 +573,9 @@ describe("reveal helpers", () => {
     expect(nameUnavailable(unread), "a view whose acceptance was not read now").toEqual(unavailable.unavailable)
     const recommitted = { ...unavailable, view: { ...unavailable.view!, commitment: `0x${"ef".repeat(32)}` } }
     expect([nameUnavailable(recommitted), askAgainDue(recommitted)], "a new commitment asks again").toEqual([null, true])
-    expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true } })), "ticked").toBe(true)
-    expect(revealDue(listed(CHANGED, { ask: { ...reask(SIGNED), agreed: true } })), "ticked other terms").toBe(false)
+    expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true } })), "the name terms ticked alone").toBe(false)
+    expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true, accepted: true } })), "ticked").toBe(true)
+    expect(revealDue(listed(CHANGED, { ask: { ...reask(SIGNED), agreed: true, accepted: true } })), "ticked other terms").toBe(false)
     expect(revealDue(read(null, registration({ ...committed, unread: ["acceptance"] }))), "an acceptance the service could not read").toBe(false)
   })
   it("unreadDelay reads a view with unread fields again after 5 s, 15 s, then every 30 s", () => {
@@ -638,8 +641,15 @@ describe("the terms of the same name again", () => {
   it("terms-agreed ticks the box and ends the notice that the terms changed", () => {
     const s = reduce(STATES["status:closed"], { type: "terms-asked", label: "alice", terms: TERMS, community: null, changed: true })
     const ticked = reduce(s, { type: "terms-agreed", agreed: true, now: NOW })
-    expect(ticked.ask).toEqual({ label: "alice", terms: TERMS, community: null, agreed: true, changed: false })
-    expect(reduce(ticked, { type: "terms-agreed", agreed: false, now: NOW }).ask).toEqual({ label: "alice", terms: TERMS, community: null, agreed: false, changed: false })
+    expect(ticked.ask).toEqual({ label: "alice", terms: TERMS, community: null, agreed: true, accepted: false, changed: false })
+    expect(reduce(ticked, { type: "terms-agreed", agreed: false, now: NOW }).ask).toEqual({ label: "alice", terms: TERMS, community: null, agreed: false, accepted: false, changed: false })
+  })
+  it("terms-accepted ticks a community name's own box and ends the notice that the terms changed", () => {
+    const s = reduce(STATES["status:closed"], { type: "terms-asked", label: "alice", terms: TERMS, community: BAKERS, changed: true })
+    const ticked = reduce(s, { type: "terms-accepted", accepted: true, now: NOW })
+    expect(ticked.ask).toEqual({ label: "alice", terms: TERMS, community: BAKERS, agreed: false, accepted: true, changed: false })
+    expect(reduce(ticked, { type: "terms-accepted", accepted: false, now: NOW }).ask).toMatchObject({ accepted: false })
+    expect(reduce(STATES["status:closed"], { type: "terms-accepted", accepted: true, now: NOW }), "nothing asked").toBe(STATES["status:closed"])
   })
   it("terms-agreed with nothing asked changes nothing", () => {
     expect(reduce(STATES["status:closed"], { type: "terms-agreed", agreed: true, now: NOW })).toBe(STATES["status:closed"])

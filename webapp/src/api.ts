@@ -1,4 +1,6 @@
 // The names service's HTTP API, on the page's own origin.
+import { keccak_256 } from "@noble/hashes/sha3"
+import { bytesToHex } from "@noble/hashes/utils"
 import { MAX_LABEL_LENGTH } from "./names.ts"
 
 export class ApiError extends Error {
@@ -317,6 +319,19 @@ export const searchName = (labelHash: string, length: number) => checked<SearchA
     && optional(a.resolver, isText) && optional(a.records, (r) => nullable(r, isRecords)) && optional(a.recordsNonce, (n) => nullable(n, isAmount))
     && optional(a.expiresAt, isAmount) && optional(a.gracePeriod, isAmount) && optional(a.chainId, isAmount))))
 export const previewLink = (link: string) => checked<Profile>(call("POST", "/api/link/preview", { link }), isPreview)
+
+// The community terms' text, which the service reads from the name policy, only when it hashes to the terms' hash: the
+// page shows the very text whose acceptance the owner signs.
+export async function communityTerms(terms: Community["terms"], signal?: AbortSignal): Promise<string> {
+  try {
+    const res = await fetch(terms.url, { signal })
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    if (res.ok && `0x${bytesToHex(keccak_256(bytes))}` === terms.hash) return new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+  } catch (e) {
+    if (signal?.aborted) throw e
+  }
+  throw noAnswer()
+}
 const CODE_STATES = ["unused", "used", "reserved", "expired", "unpaid", "revoked"] as const
 export type CodeState = typeof CODE_STATES[number]
 interface CodeAnswer { minLength: number; years: number; state: CodeState }

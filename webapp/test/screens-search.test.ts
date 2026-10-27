@@ -260,21 +260,26 @@ describe("reduce: the terms of a move", () => {
     expect(ticked.agreed).toBe(true)
     expect(reduce(ticked, { type: "agreed", agreed: false }).agreed).toBe(false)
   })
-  it("terms-changed takes the terms and community entry the service gave into the answer, unticks the box and says so, ending the move", () => {
-    const s = run(moving(), { type: "agreed", agreed: true }, { type: "register-started" })
+  it("accepted ticks and unticks a community name's own box beside it", () => {
+    const ticked = reduce(moving(), { type: "accepted", accepted: true })
+    expect(ticked.accepted).toBe(true)
+    expect(reduce(ticked, { type: "accepted", accepted: false }).accepted).toBe(false)
+  })
+  it("terms-changed takes the terms and community entry the service gave into the answer, unticks the boxes and says so, ending the move", () => {
+    const s = run(moving(), { type: "agreed", agreed: true }, { type: "accepted", accepted: true }, { type: "register-started" })
     const changed = reduce(s, { type: "terms-changed", label: "alice1", terms: NEWER, community: BAKERS })
-    expect(changed).toMatchObject({ agreed: false, termsChanged: true, register: { busy: false, refusal: null }, answer: { kind: "found", label: "alice1", answer: { ...AVAILABLE, terms: NEWER, community: BAKERS } } })
+    expect(changed).toMatchObject({ agreed: false, accepted: false, termsChanged: true, register: { busy: false, refusal: null }, answer: { kind: "found", label: "alice1", answer: { ...AVAILABLE, terms: NEWER, community: BAKERS } } })
   })
   it("terms-changed for a name no longer shown changes nothing", () => {
     const s = moving()
     expect(reduce(s, { type: "terms-changed", label: "bob123", terms: NEWER, community: null })).toBe(s)
   })
-  it("an answer for another name, or with other terms, unticks the box and ends the notice; the same answer again keeps them", () => {
-    const ticked = run(moving(), { type: "agreed", agreed: true })
+  it("an answer for another name, or with other terms, unticks the boxes and ends the notice; the same answer again keeps them", () => {
+    const ticked = run(moving(), { type: "agreed", agreed: true }, { type: "accepted", accepted: true })
     const again = run(ticked, searchedEvent("alice1"))
-    expect(reduce(again, answered(again)).agreed).toBe(true)
+    expect(reduce(again, answered(again))).toMatchObject({ agreed: true, accepted: true })
     const other = run(ticked, searchedEvent("carol1"))
-    expect(reduce(other, answered(other))).toMatchObject({ agreed: false, termsChanged: false })
+    expect(reduce(other, answered(other))).toMatchObject({ agreed: false, accepted: false, termsChanged: false })
     const changed = run(moving(), { type: "terms-changed", label: "alice1", terms: NEWER, community: null }, searchedEvent("alice1"))
     expect(reduce({ ...changed, agreed: true }, answered(changed, { ...AVAILABLE, terms: { ...NEWER, version: "2026-12-01" } }))).toMatchObject({ agreed: false })
   })

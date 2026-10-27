@@ -10,7 +10,7 @@ import {
   type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, sameStep, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt, askAgainDue, commitKey, nameUnavailable, termsAskedAgain, termsToAgree,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
-import { termsToSign } from "../screens/terms.ts"
+import { termsToSign, ticked } from "../screens/terms.ts"
 import { checkoutUrl, CODE_FROM_ORDER_URL } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
@@ -734,12 +734,13 @@ function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
 function agreement({ ask, view, busy, reveal }: OrderState, focus: string): HTMLElement | null {
   if (!ask) return null
   const agree = (agreed: boolean) => dispatch({ type: "terms-agreed", agreed, now: api.serviceNow() })
+  const accept = (accepted: boolean) => dispatch({ type: "terms-accepted", accepted, now: api.serviceNow() })
   // a reveal on its way has signed the ticked terms already
   const signing = reveal?.sending === true && reveal.key === revealKey(view!)
-  return termsBox({ ...ask, tld: view!.tld, disabled: busy !== null || signing }, agree, focus)
+  return termsBox({ ...ask, tld: view!.tld, disabled: busy !== null || signing }, agree, focus, accept)
 }
 
-const unagreed = ({ ask }: OrderState) => ask !== null && !ask.agreed
+const unagreed = ({ ask }: OrderState) => ask !== null && !ticked(ask)
 
 // the box takes focus as it comes; the notice of changed terms takes the button's
 function askTerms(gen: number, label: string, quote: Pick<flow.Quote, "terms" | "community">, changed = state.ask?.label === label): void {

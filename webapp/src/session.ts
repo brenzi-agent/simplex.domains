@@ -45,6 +45,8 @@ export interface Checkout {
   saved: boolean
   // the buyer ticked that they agree to the name terms, which the order waits for
   agreed: boolean
+  // the buyer ticked, on its own step, that they accept a community name's community terms, which the review waits for
+  accepted?: boolean
   termsChanged?: boolean
   // the history entry of the search the checkout started from
   searchAt: number

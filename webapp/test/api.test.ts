@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { zeroHash } from "viem"
+import { keccak256, toHex, zeroHash } from "viem"
 import {
   ApiError, BalanceChanged, checkCode, createOrder, currentTerms, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
-  communityAgreed, termsFor,
+  communityAgreed, communityTerms, termsFor,
 } from "../src/api.ts"
 
 const HASH = "ab".repeat(32)
@@ -19,6 +19,27 @@ async function errorOf(): Promise<ApiError> {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+describe("communityTerms", () => {
+  const TEXT = "# Community name terms\n\nUse the name for its community, café included.\n"
+  const hash = keccak256(toHex(TEXT))
+  const terms = { url: `/api/community-terms/${hash}`, hash }
+  it("reads the text the service serves from the chain once it hashes to the terms' hash", async () => {
+    answerWith(200, TEXT, { "content-type": "text/plain; charset=utf-8" })
+    await expect(communityTerms(terms)).resolves.toBe(TEXT)
+  })
+  it("is no answer for other text, a refusal, bytes that are not UTF-8, or a request that failed", async () => {
+    answerWith(200, `${TEXT}more`)
+    await expect(communityTerms(terms)).rejects.toMatchObject({ code: "network" })
+    answerWith(404, TEXT)
+    await expect(communityTerms(terms)).rejects.toMatchObject({ code: "network" })
+    const bytes = new Uint8Array([0xff, 0xfe])
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(bytes, { status: 200 })))
+    await expect(communityTerms({ ...terms, hash: keccak256(bytes) })).rejects.toMatchObject({ code: "network" })
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch") }))
+    await expect(communityTerms(terms)).rejects.toMatchObject({ code: "network" })
+  })
 })
 
 describe("retryDelay", () => {

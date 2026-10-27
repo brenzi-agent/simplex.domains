@@ -23,6 +23,8 @@ export interface CheckoutState {
   refusal: Refusal | null
   // the order whose invoice holds the checkout's balance, as the service's find names it
   holder: Holder | null
+  // the community terms' text read for their step, by their hash; null when it cannot be shown
+  communityText: { hash: string; text: string | null } | null
 }
 
 export interface Holder { label: string; tld: string; url: string }
@@ -32,6 +34,8 @@ export type CheckoutEvent =
   | { type: "link-set"; kind: LinkKind; link: string }
   | { type: "saved"; saved: boolean }
   | { type: "agreed"; agreed: boolean }
+  | { type: "accepted"; accepted: boolean }
+  | { type: "community-read"; hash: string; text: string | null }
   | { type: "method-chosen"; method: Method }
   | { type: "waiting-settled" }
   | { type: "open-order-seen"; order: OpenOrder | null }
@@ -47,7 +51,7 @@ export type CheckoutEvent =
   | { type: "hold-ended" }
 
 export function initialState(checkout: Checkout, step: CheckoutStep): CheckoutState {
-  return { step, checkout, sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null, holder: null }
+  return { step, checkout, sending: false, busy: false, waiting: null, openOrder: null, hold: null, refusal: null, holder: null, communityText: null }
 }
 
 export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial<Checkout> | null {
@@ -55,12 +59,13 @@ export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial
     case "link-set": return e.kind === "contact" ? { contact: e.link } : { channel: e.link }
     case "saved": return { saved: e.saved }
     case "agreed": return { agreed: e.agreed, termsChanged: undefined }
+    case "accepted": return { accepted: e.accepted }
     case "method-chosen": return e.method === checkout.method || e.method === checkout.unavailable ? null : { method: e.method }
     case "order-refused":
       if (e.reason === "code") return { code: null, codeError: e.error }
       return e.reason === "method" ? { unavailable: methodOf(checkout), method: FALLBACK_METHOD[methodOf(checkout)] } : null
     case "price-changed": return { price: e.price }
-    case "terms-changed": return { terms: e.terms, community: e.community, agreed: false, termsChanged: true }
+    case "terms-changed": return { terms: e.terms, community: e.community, agreed: false, accepted: checkout.accepted && e.community?.terms.hash === checkout.community?.terms.hash, termsChanged: true }
     case "balance-changed":
     case "balance-read": return balanceNow(checkout, e.balance)
     default: return null
@@ -86,7 +91,9 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
     case "link-set":
     case "saved":
     case "agreed":
+    case "accepted":
     case "method-chosen": return change ? { ...s, checkout } : s
+    case "community-read": return { ...s, communityText: { hash: e.hash, text: e.text } }
     case "waiting-settled": return { ...s, waiting: null }
     case "open-order-seen": return { ...s, openOrder: e.order }
     case "send-started": return { ...s, sending: true, busy: true }
@@ -140,9 +147,12 @@ export const methodOf = (c: Checkout): Method => methodsFor(c).includes(c.method
 // an order its balance covers is paid by nothing else
 export const covered = (c: Checkout) => c.balance !== null && split(c).rest === 0
 
-// the review opens once the name code is saved
+// the review opens once the name code is saved and a community name's terms are accepted on their own step, which only a
+// community name has
 export function stepFor(c: Checkout, asked: CheckoutStep): CheckoutStep {
-  return asked === "review" && !(c.ownerCode && c.saved) ? "code" : asked
+  if ((asked === "community" || asked === "review") && !(c.ownerCode && c.saved)) return "code"
+  if (asked === "community" && !c.community) return "review"
+  return asked === "review" && c.community && !c.accepted ? "community" : asked
 }
 
 export function screenOf(s: CheckoutState): CheckoutKind {

@@ -2,7 +2,7 @@ import { type Balance, type Community, holdsPayment, type InvoiceView, type Regi
 import type { IconName } from "../icons.ts"
 import type { CodeRefusal, OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
-import { askFor, type TermsAsk } from "./terms.ts"
+import { askFor, type TermsAsk, ticked } from "./terms.ts"
 
 // a card payment Stripe has not confirmed after this long gets the "not confirmed" page
 export const CARD_SLOW_MS = 10 * 60 * 1000
@@ -90,6 +90,7 @@ export type OrderEvent =
   | { type: "source-read"; balance: Balance | null }
   | { type: "terms-asked"; label: string; terms: Terms; community: Community | null; changed: boolean }
   | { type: "terms-agreed"; agreed: boolean; now: number }
+  | { type: "terms-accepted"; accepted: boolean; now: number }
   | { type: "name-unavailable"; key: string; status: SearchAnswer["status"] }
   | { type: "hold-started"; until: number; lead: string }
   | { type: "hold-ended" }
@@ -141,6 +142,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "terms-asked": return { ...s, busy: null, ask: askFor(e.label, e.terms, e.community, e.changed) }
     // agreeing to changed community terms times the stall from then
     case "terms-agreed": return s.ask ? { ...s, ask: { ...s.ask, agreed: e.agreed, changed: false }, since: termsAskedAgain(s) && s.since ? { ...s.since, at: e.now } : s.since } : s
+    case "terms-accepted": return s.ask ? { ...s, ask: { ...s.ask, accepted: e.accepted, changed: false }, since: termsAskedAgain(s) && s.since ? { ...s.since, at: e.now } : s.since } : s
     case "name-unavailable": return { ...s, unavailable: { key: e.key, status: e.status } }
     case "hold-started": return { ...s, busy: null, note: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: e.lead } }
     case "hold-ended": return { ...s, hold: null }
@@ -272,7 +274,7 @@ const termsChanged = ({ view }: OrderState) => !!view?.acceptance && view.accept
 export const termsAskedAgain = (s: OrderState) => termsChanged(s) && s.ask?.community?.terms.hash === s.view!.acceptance!.termsHash
 
 // The reveal waits until the buyer ticks the changed community terms.
-export const termsToAgree = (s: OrderState) => termsChanged(s) && !(termsAskedAgain(s) && s.ask!.agreed)
+export const termsToAgree = (s: OrderState) => termsChanged(s) && !(termsAskedAgain(s) && ticked(s.ask!))
 
 // The changed terms are asked for once the order is committed and they are not asked for yet.
 export const askAgainDue = (s: OrderState) => !!s.record && !linksRefused(s) && termsChanged(s) && !termsAskedAgain(s) && !nameUnavailable(s)
@@ -297,7 +299,7 @@ export function revealDue(s: OrderState): boolean {
 
 export function stalledAt(s: OrderState): number | null {
   const { view, since } = s
-  if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS || (termsAskedAgain(s) && !s.ask!.agreed) || nameUnavailable(s)) return null
+  if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS || (termsAskedAgain(s) && !ticked(s.ask!)) || nameUnavailable(s)) return null
   if (view.phase !== "committed" || view.label !== null) return since.at + TX_STALL_MS
   return Math.max(since.at, (view.revealAfter ?? 0) * 1000) + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS
 }

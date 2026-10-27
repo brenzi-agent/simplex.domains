@@ -39,6 +39,7 @@ export interface SearchState {
   ownOrder: string | null
   register: { busy: boolean; refusal: RegisterRefusal | null }
   agreed: boolean
+  accepted: boolean
   termsChanged: boolean
 }
 
@@ -57,6 +58,7 @@ export type SearchEvent =
   | { type: "register-refused"; refusal: RegisterRefusal }
   | { type: "register-held"; until: number }
   | { type: "agreed"; agreed: boolean }
+  | { type: "accepted"; accepted: boolean }
   | { type: "terms-changed"; label: string; terms: Terms; community: Community | null }
 
 const IDLE = { busy: false, refusal: null }
@@ -64,7 +66,7 @@ export const REGISTER_LEAD = "Nothing changed. "
 
 export const initialSearch = (): SearchState => ({
   opening: "plain", name: "", typed: "", searched: null, seq: 0, searching: null, answer: null, bad: false,
-  retarget: null, balance: null, moved: null, hold: null, paused: false, ownOrder: null, register: IDLE, agreed: false, termsChanged: false,
+  retarget: null, balance: null, moved: null, hold: null, paused: false, ownOrder: null, register: IDLE, agreed: false, accepted: false, termsChanged: false,
 })
 
 // An available name this browser has an order for, under its TLD, is checked again rather than offered while the order is read.
@@ -106,13 +108,14 @@ function answered(s: SearchState, e: Extract<SearchEvent, { type: "answered" }>)
   const before = s.answer?.kind === "found" && s.answer.label === e.label ? s.answer : null
   const same = before !== null
   const agreed = same && s.agreed && termsOf(before.answer) === termsOf(e.answer)
-  return { ...s, searching: null, answer: { kind: "found", label: e.label, answer: e.answer, mine: e.mine, now: e.now }, ownOrder: same ? s.ownOrder : null, agreed, termsChanged: same && s.termsChanged }
+  const accepted = same && s.accepted && termsOf(before.answer) === termsOf(e.answer)
+  return { ...s, searching: null, answer: { kind: "found", label: e.label, answer: e.answer, mine: e.mine, now: e.now }, ownOrder: same ? s.ownOrder : null, agreed, accepted, termsChanged: same && s.termsChanged }
 }
 
 function termsChanged(s: SearchState, e: Extract<SearchEvent, { type: "terms-changed" }>): SearchState {
   if (s.answer?.kind !== "found" || s.answer.label !== e.label || s.answer.answer.status !== "available") return s
   const answer = { ...s.answer, answer: { ...s.answer.answer, terms: e.terms, community: e.community } }
-  return { ...s, answer, agreed: false, termsChanged: true, register: IDLE }
+  return { ...s, answer, agreed: false, accepted: false, termsChanged: true, register: IDLE }
 }
 
 export function reduce(s: SearchState, e: SearchEvent): SearchState {
@@ -133,6 +136,7 @@ export function reduce(s: SearchState, e: SearchEvent): SearchState {
     case "register-refused": return { ...s, register: { busy: false, refusal: e.refusal } }
     case "register-held": return { ...s, register: IDLE, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: REGISTER_LEAD } }
     case "agreed": return { ...s, agreed: e.agreed, termsChanged: e.agreed ? false : s.termsChanged }
+    case "accepted": return { ...s, accepted: e.accepted }
     case "terms-changed": return termsChanged(s, e)
   }
 }

@@ -1,4 +1,5 @@
-// The checkout's steps: the links the name opens, its name code, and Check your order with how it pays, and Pay.
+// The checkout's steps: the links the name opens, its name code, a community name's community terms, and Check your order
+// with how it pays, and Pay.
 import * as api from "../api.ts"
 import { alertBox, announce, btn, codeDisplay, el, line, link, nameText, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
@@ -21,7 +22,7 @@ import {
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./hold.ts"
 import { openedInstead } from "./order.ts"
-import { rowName, termsBox } from "./terms.ts"
+import { CANT_SHOW, communityCheck, NO_TERMS, NOT_SET, rowName, termsBox, termsChangedLine, termsText } from "./terms.ts"
 
 const CHECKOUT_NOTE = "checkout-note"
 const SAVED_LABEL = "I have saved my name code"
@@ -61,9 +62,10 @@ export function checkoutPage(asked: CheckoutStep): void {
   pageRoute = currentRoute()
   // a wait met elsewhere in the tab holds this page's actions too
   dispatch({ type: "opened", step, checkout: c, sending: session.isSending(c), waiting: waitingCardOrder(), hold: tabHold() })
-  if (step !== "review") return
+  if (step !== "review" && step !== "community") return
   const reads = new AbortController()
   whenLeaving(() => reads.abort())
+  if (step === "community") return void readTerms(c.community!, reads.signal)
   if (state.waiting) void settleWaiting(state.waiting, reads.signal)
   else void showOpenOrder(reads.signal)
   if (c.balance) void watchBalance(c.balance.source, reads.signal)
@@ -118,6 +120,12 @@ async function watchBalance(source: string, signal: AbortSignal): Promise<void> 
     if (followed) holder = null
     await pause(holdWait(state.checkout.balance?.heldUntil ?? null, followed || unnamed, readAt, api.serviceNow()), signal)
   }
+}
+
+// the community terms' text for their step, which a name policy without terms has none of
+async function readTerms(community: api.Community, signal: AbortSignal): Promise<void> {
+  const text = community.terms.hash === NO_TERMS ? null : await api.communityTerms(community.terms, signal).catch(() => null)
+  if (!signal.aborted) dispatch({ type: "community-read", hash: community.terms.hash, text })
 }
 
 function dispatch(event: CheckoutEvent): void {
@@ -362,12 +370,29 @@ function buildCode(s: CheckoutState): HTMLElement {
     el("label", { class: "check" }, box, el("span", { class: "box" }), SAVED_LABEL))
 }
 
+// A community name's terms, read from the chain, and its own tick, which Continue waits for.
+function buildCommunity(s: CheckoutState): HTMLElement {
+  const c = s.checkout
+  const community = c.community!
+  const read = s.communityText?.hash === community.terms.hash ? s.communityText : null
+  const accept = (accepted: boolean) => { if (!state.sending && !act({ type: "accepted", accepted })) refresh() }
+  const text = community.terms.hash === NO_TERMS ? line("bad", "alert", NOT_SET)
+    : !read ? el("p", { class: "note center" }, "Loading the terms…")
+    : read.text === null ? line("bad", "alert", CANT_SHOW)
+    : termsText(read.text)
+  return screen({ title: "Community terms", lead: [nameText(c.label, c.chain.tld), " is a community name. Its owner accepts these terms."], back: checkoutUrl("code"),
+    action: continueButton(() => go(checkoutUrl("review")), !c.accepted) },
+    c.termsChanged ? termsChangedLine("continue") : null,
+    text,
+    communityCheck({ ...c, community, changed: false, tld: c.chain.tld, disabled: s.sending || !read?.text }, accept, true))
+}
+
 function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   const c = s.checkout
   const blocked = blockedBy(s)
   // the other way to pay ends the note under the methods
   const eth = el("a", { class: "nowrap", href: DAPP_URL, target: "_blank", rel: "noopener" }, "Pay with ETH")
-  return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null) },
+  return screen({ title: "Check your order", back: checkoutUrl(c.community ? "community" : "code"), action: payButton(s, blocked !== null) },
     el("div", { class: "review" }, orderCard(c),
       c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or check another code.`) : null,
       balanceNote(s),
@@ -404,6 +429,7 @@ function buildFailed(s: CheckoutState): HTMLElement {
 const BUILDERS: Record<CheckoutKind, Builder<CheckoutState>> = {
   links: buildLinks,
   code: buildCode,
+  community: buildCommunity,
   review: buildReview,
   "status:price-changed": buildPriceChanged,
   "status:too-many": buildTooMany,
@@ -519,7 +545,12 @@ async function showOwnOrder(): Promise<void> {
 
 function orderError(e: unknown, c: session.Checkout): void {
   if (e instanceof api.BalanceChanged) return balanceChanged(c, e.balance)
-  if (e instanceof api.TermsChanged) return void act({ type: "terms-changed", terms: e.terms, community: e.community })
+  if (e instanceof api.TermsChanged) {
+    act({ type: "terms-changed", terms: e.terms, community: e.community })
+    // community terms that changed are read and accepted again on their own step
+    if (stepFor(state.checkout, "review") === "community") redirect(checkoutUrl("community"))
+    return
+  }
   const code = e instanceof api.ApiError ? e.code : "network"
   if (code === "name_taken") {
     // no order was made, so the name code made for it owns nothing to find later

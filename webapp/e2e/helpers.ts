@@ -280,6 +280,8 @@ export const LINKS_HEADING = "What should your name open?"
 export const CODE_HEADING = "Save your name code"
 export const SAVED = "I have saved my name code"
 export const AGREE = /^I agree to SimpleX name terms/
+export const COMMUNITY_HEADING = "Community terms"
+export const ACCEPT = /^I accept the community terms/
 
 // An available name's Register, then Skip for now, up to the name code step, which makes the code.
 export async function toCodeStep(page: Page): Promise<void> {
@@ -289,22 +291,39 @@ export async function toCodeStep(page: Page): Promise<void> {
   await expect(onStep(page).getByRole("heading", { name: CODE_HEADING })).toBeVisible()
 }
 
-// On from the name code step, its box ticked, to Check your order, its terms agreed to unless `agree` is false.
+// On from the name code step, its box ticked, to Check your order, through a community name's terms step, accepted, its
+// terms agreed to unless `agree` is false.
 export async function savedToReview(page: Page, agree = true): Promise<void> {
   const box = onStep(page).getByRole("checkbox", { name: SAVED })
   // a code step gone back to keeps its box ticked
   if (!await box.isChecked()) await onStep(page).getByText(SAVED).click()
   await expect(box).toBeChecked()
   await onStep(page).getByRole("button", { name: "Continue" }).click()
-  await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
+  const review = onStep(page).getByRole("heading", { name: "Check your order" })
+  const community = onStep(page).getByRole("heading", { name: COMMUNITY_HEADING })
+  await expect(review.or(community)).toBeVisible()
+  if (await community.isVisible()) await acceptCommunityTerms(page)
+  await expect(review).toBeVisible()
   if (agree) await agreeToTerms(page)
 }
 
-// Check your order's terms ticked, which every order waits for; the box is pressed, as its words hold the terms' link.
+// A community name's terms step: its text shown, its box ticked, and Continue.
+export async function acceptCommunityTerms(page: Page): Promise<void> {
+  await expect(onStep(page).locator(".terms-text")).toBeVisible()
+  await tick(page, ACCEPT)
+  await onStep(page).getByRole("button", { name: "Continue" }).click()
+}
+
+// The name terms' box ticked, which every order waits for, and a community name's own box where it stands beside it.
 export async function agreeToTerms(page: Page): Promise<void> {
-  const box = onStep(page).getByRole("checkbox", { name: AGREE })
-  // a review gone back to keeps its box ticked
-  if (!await box.isChecked()) await onStep(page).locator(".check.terms .box").click()
+  await tick(page, AGREE)
+  if (await onStep(page).getByRole("checkbox", { name: ACCEPT }).count()) await tick(page, ACCEPT)
+}
+
+// A terms box ticked, pressed on its square, as its words hold links; a box gone back to keeps its tick.
+async function tick(page: Page, name: RegExp): Promise<void> {
+  const box = onStep(page).getByRole("checkbox", { name })
+  if (!await box.isChecked()) await onStep(page).locator(".check.terms", { has: page.getByRole("checkbox", { name }) }).locator(".box").click()
   await expect(box).toBeChecked()
 }
 

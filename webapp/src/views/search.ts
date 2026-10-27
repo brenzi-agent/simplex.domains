@@ -14,6 +14,7 @@ import {
   type SearchKind, type SearchState, type CodeLoss,
 } from "../screens/search.ts"
 import type { Note } from "../screens/order.ts"
+import { ticked } from "../screens/terms.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { type Builder, CONTACT_EMAIL, currentRoute, draw, go, historyPlace, isRedraw, isRoute, kept, keptLive, throughHistory } from "./shell.ts"
@@ -21,7 +22,7 @@ import { chatButton } from "./chats.ts"
 import { STATE_LINES } from "./codes.ts"
 import { moveLimitNote, noteBox } from "./order.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
-import { rowName, termsChangedLine, termsCheck } from "./terms.ts"
+import { rowName, termsChangedLine, termsChecks } from "./terms.ts"
 
 // word joiners keep "a–z" and "0–9" whole: a line may otherwise break after their dash
 const RANGES = "a\u2060–\u2060z, 0\u2060–\u20609"
@@ -187,7 +188,8 @@ function register(): void {
   const sameCode = !ownerCode || started?.ownerCode == null || started.ownerCode === ownerCode
   if (started && started.label === label && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started) && sameCode) {
     const agreed = started.agreed && api.currentTerms(started) === api.currentTerms(answer)
-    session.updateCheckout(label, { ...quote, agreed, termsChanged: undefined, searchAt: historyPlace(), code, codeError: undefined, balance, balanceChange: undefined, ownerCode: ownerCode ?? started.ownerCode })
+    const accepted = started.accepted && api.currentTerms(started) === api.currentTerms(answer)
+    session.updateCheckout(label, { ...quote, agreed, accepted, termsChanged: undefined, searchAt: historyPlace(), code, codeError: undefined, balance, balanceChange: undefined, ownerCode: ownerCode ?? started.ownerCode })
     return go(checkoutUrl("links"))
   }
   session.setCheckout({
@@ -199,7 +201,7 @@ function register(): void {
 
 async function retarget(record: store.OrderRecord, label: string, quote: Available): Promise<void> {
   const page = opens
-  if (!state.agreed) return
+  if (!ticked({ ...state, community: quote.community })) return
   dispatch({ type: "register-started" })
   try {
     // links the service refused at the reveal would be refused again
@@ -330,7 +332,7 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
   const short = usesCode(s) ? session.activeCode() : null
   const asks = retarget !== null && !unpayable && own === null
   const words = !retarget ? "Register" : cover ? "Register with your code" : "Register with your payment"
-  const button = setAction(btn(words, "small", register), s.register.busy, unpayable || own !== null || s.hold !== null || (asks && !s.agreed))
+  const button = setAction(btn(words, "small", register), s.register.busy, unpayable || own !== null || s.hold !== null || (asks && !ticked({ ...s, community: answer.community })))
   button.dataset.focus = "register"
   const deal = free ? [el("b", { class: "price" }, "Free"), el("span", { class: "soft" }, ` / ${free.years} years`)]
     : [el("b", { class: "price" }, dollars(answer.price)), el("span", { class: "soft" }, ` / ${answer.years} years`)]
@@ -348,9 +350,10 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
   ]
 }
 
-function moveAgreement(s: SearchState, label: string, answer: Available): HTMLLabelElement {
+function moveAgreement(s: SearchState, label: string, answer: Available): HTMLElement {
   const agree = (agreed: boolean) => dispatch({ type: "agreed", agreed })
-  return termsCheck({ terms: answer.terms, community: answer.community, agreed: s.agreed, changed: s.termsChanged, label, tld: answer.tld, disabled: s.register.busy }, agree)
+  const accept = (accepted: boolean) => dispatch({ type: "accepted", accepted })
+  return termsChecks({ terms: answer.terms, community: answer.community, agreed: s.agreed, accepted: s.accepted, changed: s.termsChanged, label, tld: answer.tld, disabled: s.register.busy }, agree, accept)
 }
 
 function balanceLine(balance: session.AppliedBalance, price: number): HTMLElement {
