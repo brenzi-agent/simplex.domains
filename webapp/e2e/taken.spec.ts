@@ -58,6 +58,16 @@ test("a paid order whose name was reserved meanwhile says so, and keeps its paym
   await expect(onStep(page).getByRole("button", { name: "Choose another name" })).toBeEnabled()
 })
 
+test("a failed order whose name was registered or reserved since offers another name for it", async ({ page, request }) => {
+  const label = uniqueLabel("fg")
+  const { registrationId } = await failedOrder(page, request, label)
+  await expect(onStep(page).getByRole("button", { name: "Choose another name" }), "a name still available is tried again").toHaveCount(0)
+  await answersReserved(page, label)
+  await page.reload()
+  await onStep(page).getByRole("button", { name: "Choose another name" }).click()
+  await expect(page).toHaveURL(new RegExp(`[?&]retarget=${registrationId}`))
+})
+
 // a wait on moving the payment that ends while the search gone back to is still out, and that search's answer
 const MOVE_WAIT_S = 3
 const SEARCH_RTT_MS = 5_000

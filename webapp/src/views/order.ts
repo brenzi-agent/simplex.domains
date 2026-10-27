@@ -7,7 +7,7 @@ import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from ".
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
   closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedAlert, failedLead, finished, newInvoiceBy, spendCovers, initialState, type Note, type OrderEvent, type OrderKind,
-  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, sameStep, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt, askAgainDue, termsAskedAgain, termsToAgree,
+  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, sameStep, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt, askAgainDue, nameUnavailable, termsAskedAgain, termsToAgree,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
 import { termsToSign } from "../screens/terms.ts"
@@ -113,7 +113,7 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
   let codeChecked = false
   let sourceRead = false
   let unreadReads = 0
-  let reserved: boolean | null = null
+  let status: api.SearchAnswer["status"] | null | undefined
   // forgetting the last answer makes the next read answer at once
   const forget = () => {
     invoice = null
@@ -214,11 +214,12 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
     if (answered !== drawn || recorded !== drawnRecord) {
       drawn = answered
       drawnRecord = recorded
-      if (view.phase === "taken" && reserved === null) {
-        reserved = await reservedNow(view, record ?? null)
+      if ((view.phase === "taken" || view.phase === "failed") && status === undefined) {
+        status = await statusNow(view, record ?? null)
         if (!isRoute(mine)) return
       }
-      dispatch({ type: "answered", seq, now: api.serviceNow(), invoice, view, record: record ?? null, cardSubmittedAt: cardSubmittedAt(invoice, record), reserved: reserved ?? false })
+      dispatch({ type: "answered", seq, now: api.serviceNow(), invoice, view, record: record ?? null, cardSubmittedAt: cardSubmittedAt(invoice, record), reserved: status === "reserved",
+        nameGone: status === "registered" || status === "reserved" })
     }
     // a closed order that a balance paid part of reads that balance once, for what its new invoice will pay
     if (!sourceRead && closedCase(state) !== null && record?.balanceSource) {
@@ -260,11 +261,11 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
   }
 }
 
-async function reservedNow(view: api.RegistrationView, record: store.OrderRecord | null): Promise<boolean> {
+async function statusNow(view: api.RegistrationView, record: store.OrderRecord | null): Promise<api.SearchAnswer["status"] | null> {
   const label = labelOf(view, record)
-  if (label === null) return false
+  if (label === null) return null
   const answer = await api.searchName(view.labelHash, label.length).catch(() => null)
-  return answer?.status === "reserved"
+  return answer?.status ?? null
 }
 
 // Another order of the same buyer: one of this commitment, or of the code's wallet once it moved to another name.
@@ -340,13 +341,16 @@ function askAgain(record: store.OrderRecord): void {
   const gen = opened
   askingAgain = gen
   const done = () => { if (askingAgain === gen) askingAgain = null }
-  // after a pause, a search that failed for now or answered the name as not available is made again, and after one that
-  // answered other community terms than the view's, the view is read again
+  // after a pause, a search that failed for now is made again, and after one that answered other community terms than the
+  // view's, the view is read again; one that answered the name as registered or reserved ends the ask, which the page says
   const later = (delay: number, again: () => void) => setTimeout(() => { done(); again() }, delay)
   const tick = () => answer(gen, { type: "tick", now: api.serviceNow() })
-  flow.quoteOf(record.label).then((quote) => {
+  api.searchName(state.view!.labelHash, record.label.length).then((quote) => {
     if (!isOpen(gen) || !askAgainDue(state)) return done()
-    if (!quote) return later(RETRY_MS, tick)
+    if (quote.status !== "available") {
+      done()
+      return answer(gen, { type: "name-unavailable", key: revealKey(state.view!), reserved: quote.status === "reserved" })
+    }
     if (quote.community?.terms.hash !== state.view!.acceptance!.termsHash) return later(RETRY_MS, () => reread(gen))
     done()
     askTerms(gen, record.label, quote, true)
@@ -1116,8 +1120,17 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
     // the note keeps the height of its longest words, so the page keeps still as they change
     el("div", { class: "countdown" }, clockNode, el("p", {}, note, el("span", { class: "sizer", "aria-hidden": "true" }, WAIT_NOTE))),
     refused ? alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration.") : null,
+    unavailableNote(s),
     referenceLine(s.invoice?.invoiceId ?? view.id),
     termsAskedAgain(s) ? agreement(s, "reveal") : null)
+}
+
+// A name taken or reserved while its changed terms waited cannot be registered by this order, which then ends.
+function unavailableNote(s: OrderState): HTMLElement | null {
+  const unavailable = nameUnavailable(s)
+  if (!unavailable) return null
+  return alertBox("warn", "alert", unavailable.reserved ? "The name was reserved meanwhile" : "Someone registered the name first",
+    `This order can't register it. Its ${REVEAL_HOURS} hours to sign end at ${timeOf(s.view!.revealBefore! * 1000)}; then choose another name for it.`)
 }
 
 const waitsSeen = new Map<string, number>()
@@ -1188,7 +1201,7 @@ async function moveWithoutLinks(): Promise<void> {
     const now = e instanceof api.ApiError && e.code === "registration_changed" ? api.changedView(e) : null
     if (now && !sameStep(view, now)) {
       answer(gen, { type: "answered", seq: ++reads, now: api.serviceNow(), invoice: state.invoice && { ...state.invoice, registration: now },
-        view: now, record: state.record, cardSubmittedAt: state.cardSubmittedAt, reserved: state.reserved })
+        view: now, record: state.record, cardSubmittedAt: state.cardSubmittedAt, reserved: state.reserved, nameGone: state.nameGone })
       return answer(gen, { type: "move-failed", note: null })
     }
     answer(gen, { type: "move-failed", note: limit ? moveLimitNote(reference) : warning("That did not go through. Nothing changed. Try again in a moment.") })
@@ -1280,7 +1293,9 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
   const alert = failedAlert(s)
   const support = [el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with its reference."]
-  return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s), action },
+  // a name taken or reserved since cannot be tried again, so the order moves to another one
+  const alt = s.nameGone && s.record ? link("Choose another name", () => go(`/#/?retarget=${view.id}`)) : null
+  return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s), action, alt },
     el("p", { class: "note center" }, ...orderLine(s)),
     stages(failedAt),
     alertBox("danger", "alert", alert.title, alert.retry ? ["If Try again still fails, write to ", ...support] : ["Write to ", ...support]),

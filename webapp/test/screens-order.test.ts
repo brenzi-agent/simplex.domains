@@ -4,7 +4,7 @@ import { NO_LEAD } from "../src/screens/hold.ts"
 import {
   CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedAlert, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind,
   type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, sameStep, screenOf, spendCovers, STALL_MARGIN_MS, stalledAt, TX_STALL_MS, unreadDelay, wakeAt,
-  askAgainDue,
+  askAgainDue, nameUnavailable,
 } from "../src/screens/order.ts"
 import { askFor } from "../src/screens/terms.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
@@ -48,7 +48,7 @@ function read(invoice: InvoiceView | null, view: RegistrationView = invoice!.reg
 }
 
 const answered = (s: OrderState, next: OrderState): Extract<OrderEvent, { type: "answered" }> =>
-  ({ type: "answered", seq: s.seq + 1, now: next.now, invoice: next.invoice, view: next.view!, record: next.record, cardSubmittedAt: next.cardSubmittedAt, reserved: next.reserved })
+  ({ type: "answered", seq: s.seq + 1, now: next.now, invoice: next.invoice, view: next.view!, record: next.record, cardSubmittedAt: next.cardSubmittedAt, reserved: next.reserved, nameGone: next.nameGone })
 
 const submittedAgo = (ms: number) => new Date(NOW - ms).toISOString()
 const committed = { phase: "committed", commitTx: "0xc0", revealAfter: NOW / 1000 - 1, revealBefore: NOW / 1000 + 3600, intentNonce: 4 } as const
@@ -475,6 +475,11 @@ describe("a taken order's name", () => {
     expect(reduce(start, answered(start, { ...taken, reserved: true })).reserved).toBe(true)
     expect(reduce(start, answered(start, taken)).reserved).toBe(false)
   })
+  it("is gone once the search answered it as registered or reserved, as a failed order's is", () => {
+    const start = initialState("reg-1", null)
+    expect(reduce(start, answered(start, { ...taken, nameGone: true })).nameGone).toBe(true)
+    expect(reduce(start, answered(start, taken)).nameGone).toBe(false)
+  })
 })
 
 describe("a stalled stage", () => {
@@ -518,6 +523,10 @@ describe("a stalled stage", () => {
     expect(stalledAt(ticked), "timed from the tick").toBe(NOW + 60_000 + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS)
     expect(stalledAt(seen(asking)), "changed terms that could not be asked for").not.toBeNull()
   })
+  it("is not said once the search for changed terms answered the name as registered or reserved, as the order ends instead", () => {
+    const asking = seen(registration({ ...committed, acceptance: acceptanceFor(CHANGED) }))
+    expect(stalledAt(reduce(asking, { type: "name-unavailable", key: revealKey(asking.view!), reserved: false }))).toBeNull()
+  })
 })
 
 describe("reveal helpers", () => {
@@ -560,6 +569,11 @@ describe("reveal helpers", () => {
     expect([revealDue(listed(CHANGED, { ask })), askAgainDue(listed(CHANGED, { ask }))], "asked, not ticked").toEqual([false, false])
     expect(askAgainDue(listed(CHANGED, { record: null })), "no name code in this browser").toBe(false)
     expect(askAgainDue(listed(CHANGED, { record: record({ linksRefused: true }) })), "links refused").toBe(false)
+    const unavailable = reduce(listed(CHANGED), { type: "name-unavailable", key: revealKey(listed(CHANGED).view!), reserved: true })
+    expect([nameUnavailable(unavailable), askAgainDue(unavailable)], "the name registered or reserved meanwhile")
+      .toEqual([{ key: revealKey(listed(CHANGED).view!), reserved: true }, false])
+    const recommitted = { ...unavailable, view: { ...unavailable.view!, commitment: `0x${"ef".repeat(32)}` } }
+    expect([nameUnavailable(recommitted), askAgainDue(recommitted)], "a new commitment asks again").toEqual([null, true])
     expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true } })), "ticked").toBe(true)
     expect(revealDue(listed(CHANGED, { ask: { ...reask(SIGNED), agreed: true } })), "ticked other terms").toBe(false)
     expect(revealDue(read(null, registration({ ...committed, unread: ["acceptance"] }))), "an acceptance the service could not read").toBe(false)
@@ -653,7 +667,7 @@ describe("initialState", () => {
     expect(initialState("inv-1", { until: NOW + 1000, lead: NO_LEAD }, reveal)).toEqual({
       reference: "inv-1", seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false,
       reveal, busy: null, note: null, hold: { until: NOW + 1000, lead: NO_LEAD }, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null,
-      reserved: false, since: null,
+      reserved: false, nameGone: false, unavailable: null, since: null,
     })
   })
 })

@@ -54,12 +54,16 @@ export interface OrderState {
   sourceBalance: Balance | null
   ask: TermsAsk | null
   reserved: boolean
+  // a taken or failed order's name, searched once, is registered or reserved
+  nameGone: boolean
+  // the search of the changed terms' ask answered the name as registered or reserved, for the commitment of this reveal key
+  unavailable: { key: string; reserved: boolean } | null
   // when this page first saw the stage, or the buyer ticked changed community terms in it, on the service's clock
   since: { stage: string; at: number } | null
 }
 
 export type OrderEvent =
-  | { type: "answered"; seq: number; now: number; invoice: InvoiceView | null; view: RegistrationView; record: OrderRecord | null; cardSubmittedAt: string | null; reserved: boolean }
+  | { type: "answered"; seq: number; now: number; invoice: InvoiceView | null; view: RegistrationView; record: OrderRecord | null; cardSubmittedAt: string | null; reserved: boolean; nameGone: boolean }
   | { type: "record-changed"; record: OrderRecord | null; cardSubmittedAt: string | null }
   | { type: "read-failed" }
   | { type: "not-found" }
@@ -87,11 +91,12 @@ export type OrderEvent =
   | { type: "source-read"; balance: Balance | null }
   | { type: "terms-asked"; label: string; terms: Terms; community: Community | null; changed: boolean }
   | { type: "terms-agreed"; agreed: boolean; now: number }
+  | { type: "name-unavailable"; key: string; reserved: boolean }
   | { type: "hold-started"; until: number; lead: string }
   | { type: "hold-ended" }
 
 export function initialState(reference: string, hold: Hold | null, reveal: Reveal | null = null): OrderState {
-  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null, reserved: false, since: null }
+  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null, reserved: false, nameGone: false, unavailable: null, since: null }
 }
 
 const stageOf = (view: RegistrationView) => `${view.id} ${view.phase}${view.phase === "committed" && view.label !== null ? " signed" : ""}`
@@ -107,7 +112,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
       if (e.seq <= s.seq) return s
       // a reveal the view shows as stored is no longer sending, so one the service clears is signed again under the same key
       return { ...s, seq: e.seq, now: e.now, invoice: e.invoice, view: e.view, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? e.view.label),
-        reserved: e.reserved, since: sinceOf(s.since, e.view, e.now), reveal: e.view.label !== null && s.reveal ? { ...s.reveal, sending: false } : s.reveal }
+        reserved: e.reserved, nameGone: e.nameGone, since: sinceOf(s.since, e.view, e.now), reveal: e.view.label !== null && s.reveal ? { ...s.reveal, sending: false } : s.reveal }
     case "record-changed": return { ...s, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? null) }
     case "read-failed": return s
     case "not-found": return { ...s, gone: true }
@@ -139,6 +144,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "terms-agreed": return s.ask ? { ...s, ask: { ...s.ask, agreed: e.agreed, changed: false }, since: termsAskedAgain(s) && s.since ? { ...s.since, at: e.now } : s.since } : s
     case "hold-started": return { ...s, busy: null, note: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: e.lead } }
     case "hold-ended": return { ...s, hold: null }
+    case "name-unavailable": return { ...s, unavailable: { key: e.key, reserved: e.reserved } }
   }
 }
 
@@ -270,7 +276,10 @@ export const termsAskedAgain = (s: OrderState) => termsChanged(s) && s.ask?.comm
 export const termsToAgree = (s: OrderState) => termsChanged(s) && !(termsAskedAgain(s) && s.ask!.agreed)
 
 // The changed terms are asked for once the order is committed and they are not asked for yet.
-export const askAgainDue = (s: OrderState) => !!s.record && !linksRefused(s) && termsChanged(s) && !termsAskedAgain(s)
+export const askAgainDue = (s: OrderState) => !!s.record && !linksRefused(s) && termsChanged(s) && !termsAskedAgain(s) && !nameUnavailable(s)
+
+// The changed terms cannot be asked for a name the search answered as registered or reserved while this commitment waits.
+export const nameUnavailable = (s: OrderState) => s.view && s.unavailable?.key === revealKey(s.view) ? s.unavailable : null
 
 export function refusalsOf({ view, reveal }: OrderState): number {
   return view?.phase === "committed" && reveal?.key === revealKey(view) ? reveal.refusals : 0
@@ -286,7 +295,7 @@ export function revealDue(s: OrderState): boolean {
 
 export function stalledAt(s: OrderState): number | null {
   const { view, since } = s
-  if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS || (termsAskedAgain(s) && !s.ask!.agreed)) return null
+  if (!view || !since || screenOf(s) !== "registering" || refusalsOf(s) >= REVEAL_ATTEMPTS || (termsAskedAgain(s) && !s.ask!.agreed) || nameUnavailable(s)) return null
   if (view.phase !== "committed" || view.label !== null) return since.at + TX_STALL_MS
   return Math.max(since.at, (view.revealAfter ?? 0) * 1000) + REVEAL_ATTEMPTS * RETRY_MS + STALL_MARGIN_MS
 }

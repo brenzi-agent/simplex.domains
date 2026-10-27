@@ -1,6 +1,7 @@
 // A stand-in for StoreService's names API, driving the real contracts on the local chain.
 // A development fixture: memory only, no money, and not a specification of the real service.
 import { createHash, randomBytes } from "node:crypto"
+import { readFileSync } from "node:fs"
 import {
   encodeFunctionData, getAddress, hashTypedData, isAddress, keccak256, namehash, recoverAddress, recoverMessageAddress, recoverTypedDataAddress, toHex,
   zeroHash, type Address, type Hex,
@@ -58,8 +59,8 @@ const SEALED_MAX = 11095
 // the terms an order signs: the version, with COMMUNITY_TERMS and the community terms' hash after it for a community name
 const SIGNED_TERMS = /^[A-Za-z0-9._/-]{1,112}$/
 const COMMUNITY_TERMS = "/community/"
-// the service's community_terms_url
-const COMMUNITY_TERMS_URL = "https://simplex.chat/community-terms"
+// the community terms dev/deploy.ts keeps on chain
+const DEPLOYED_TERMS = readFileSync(new URL("../community-terms.txt", import.meta.url), "utf8")
 // the reverts of a relay or a register after which the page signs again, as the service judges them
 const SIGN_AGAIN = ["InvalidNonce", "TermsNotAccepted", "TermsMismatch"]
 // a community name's text in the service's ini: one line of up to this many characters
@@ -395,7 +396,7 @@ function nodeOf(labelHash: Hex): Hex {
 const terms = { version: "2026-10-23", url: "https://simplex.chat/" }
 const communities = new Map<Hex, string>([[keccak256(toHex("bakers")), "bakers and pastry chefs"]])
 
-const communityEntry = (labelHash: Hex, hash: Hex) => ({ for: communities.get(labelHash) ?? null, terms: { url: COMMUNITY_TERMS_URL, hash } })
+const communityEntry = (labelHash: Hex, hash: Hex) => ({ for: communities.get(labelHash) ?? null, terms: { url: `/api/community-terms/${hash}`, hash } })
 const termsFor = (community: ReturnType<typeof communityEntry> | null) => community ? `${terms.version}${COMMUNITY_TERMS}${community.terms.hash.slice(2)}` : terms.version
 
 // a listed name's entry with the community terms on chain now; a failed read throws
@@ -1488,9 +1489,17 @@ export async function controlCommunity(body: Record<string, unknown>): Promise<R
 export async function controlCommunityTerms(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { text } = body
   if (text !== null && (typeof text !== "string" || text.length === 0)) throw badRequest()
-  const hash = text === null ? deployment.communityTermsHash : keccak256(toHex(text))
-  await send(namePolicy, "setTerms", [hash, COMMUNITY_TERMS_URL], undefined, contractsOwner)
-  return { hash }
+  const terms = text ?? DEPLOYED_TERMS
+  await send(namePolicy, "setTerms", [terms], undefined, contractsOwner)
+  return { hash: keccak256(toHex(terms)) }
+}
+
+// The text the name policy keeps of the community terms of this hash, which the page links.
+export async function communityTerms(hash: string): Promise<string> {
+  if (!isHash(hash)) throw badRequest()
+  const text = await read<string>(namePolicy, "termsText").catch(unavailable)
+  if (text === "" || keccak256(toHex(text)) !== hash) throw new HttpError(404, "not_found")
+  return text
 }
 
 export function dump(): unknown {

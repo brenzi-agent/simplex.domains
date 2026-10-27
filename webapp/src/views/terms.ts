@@ -4,6 +4,8 @@ import { POPUP_TITLE, showPopup } from "./shell.ts"
 
 const TERMS_CHANGED = "The terms changed. Agree to them again."
 const INFO_KEY = "community-info"
+// the terms hash of a name policy that has no community terms yet, under which a community name cannot be ordered
+const NO_TERMS = `0x${"0".repeat(64)}`
 
 function showCommunity(label: string, tld: string, community: api.Community | null, key: string): void {
   showPopup(key, [
@@ -32,11 +34,13 @@ export interface Agreement {
 }
 
 export function termsCheck(a: Agreement, agree: (agreed: boolean) => void): HTMLLabelElement {
-  const box = el("input", { type: "checkbox", checked: a.agreed, disabled: a.disabled, "data-focus": "agreed" })
+  const unset = a.community?.terms.hash === NO_TERMS
+  const box = el("input", { type: "checkbox", checked: a.agreed && !unset, disabled: a.disabled || unset, "data-focus": "agreed" })
   box.addEventListener("change", () => agree(box.checked))
   const terms = el("a", { class: "nowrap", href: a.terms.url, target: "_blank", rel: "noopener" }, "SimpleX name terms")
   const community = a.community
-  const words = community
+  const words = unset ? ["This community name can't be ordered yet: its community terms are not set."]
+    : community
     ? ["I agree to ", terms, " and the ", el("a", { class: "nowrap", href: community.terms.url, target: "_blank", rel: "noopener" }, "community terms"),
       ", and will use this name for its community.", el("button", { class: "cinfo", type: "button", "aria-label": "Which community this name is for",
       "aria-haspopup": "dialog", "data-focus": INFO_KEY, onclick: () => showCommunity(a.label, a.tld, community, INFO_KEY) }, icon("info"))]

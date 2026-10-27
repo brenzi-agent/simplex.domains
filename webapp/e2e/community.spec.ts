@@ -6,6 +6,7 @@ import {
   AGREE, agreeToTerms, contactLink, control, failedOrder, MOCK, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, restoreOrder, savedToReview, search, sevenLetters,
   startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered, withStripeKey, acceptedOnChain, COMMUNITY_TERMS_HASH, communityTerms,
 } from "./helpers.ts"
+import { keccak256, toHex } from "viem"
 import { RETRY_MS } from "../src/screens/order.ts"
 
 const COMMUNITY_LABEL = "bakers"
@@ -134,7 +135,10 @@ test("Check your order of a community name asks for the community wording, its t
   const terms = onStep(page).locator(".check.terms")
   await expect(terms).toHaveText(COMMUNITY_WORDS)
   await expect(terms.getByRole("link", { name: "SimpleX name terms" })).toHaveAttribute("href", /^https:\/\//)
-  await expect(terms.getByRole("link", { name: "community terms" })).toHaveAttribute("href", /^https?:\/\//)
+  const communityLink = terms.getByRole("link", { name: "community terms" })
+  await expect(communityLink).toHaveAttribute("href", `/api/community-terms/${COMMUNITY_TERMS_HASH}`)
+  const linked = await page.request.get((await communityLink.getAttribute("href"))!)
+  expect(keccak256(toHex(await linked.text())), "the link answers the terms of the hash the order signs").toBe(COMMUNITY_TERMS_HASH)
   await expect(payButton(page)).toBeDisabled()
   const info = terms.getByRole("button", { name: "Which community this name is for" })
   await info.click()
@@ -419,6 +423,22 @@ test("changed community terms that a search answers otherwise than the view are 
     await control(request, `settle/${invoiceId}`)
     await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: REGISTRATION_MS })
     expect([answered, reads > 0], "the view is read again after that search").toEqual([true, true])
+  })
+})
+
+test("changed community terms of a name reserved meanwhile are not asked for: the page says the order cannot register it, and searches no more", async ({ page, request }) => {
+  await orderBeforeTermsChange(page, request, "cz", async (_, invoiceId) => {
+    let searches = 0
+    await page.route("**/api/name/*", async (route) => {
+      if ((await invoiceViewOf(request, invoiceId)).phase !== "committed") return route.fallback()
+      searches++
+      await route.fulfill({ json: { status: "reserved", community: null } })
+    })
+    await control(request, `settle/${invoiceId}`)
+    await expect(onStep(page).locator(".notice", { hasText: "The name was reserved meanwhile" })).toContainText("This order can't register it.", { timeout: REGISTRATION_MS })
+    await page.waitForTimeout(3 * RETRY_MS)
+    expect(searches, "one search, not one after each pause").toBe(1)
+    await expect(onStep(page).getByText(TERMS_CHANGED)).toHaveCount(0)
   })
 })
 

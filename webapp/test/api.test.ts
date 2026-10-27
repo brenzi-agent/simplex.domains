@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { zeroHash } from "viem"
 import {
   ApiError, BalanceChanged, checkCode, createOrder, currentTerms, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
   communityAgreed, termsFor,
@@ -254,7 +255,7 @@ describe("service errors", () => {
 
   describe("terms and community names", () => {
     const COMMUNITY_HASH = `0x${"c7".repeat(32)}`
-    const COMMUNITY = { for: "bakers and pastry chefs", terms: { url: "https://simplex.chat/community-terms", hash: COMMUNITY_HASH } }
+    const COMMUNITY = { for: "bakers and pastry chefs", terms: { url: `/api/community-terms/${COMMUNITY_HASH}`, hash: COMMUNITY_HASH } }
     const SIGNED = `2026-10-23/community/${"c7".repeat(32)}`
     const AVAILABLE = { status: "available", price: 10000, currency: "usd", years: 2, termStart: 1798761600, resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex", community: COMMUNITY, terms: TERMS }
     const ORDER = { labelHash: `0x${"ab".repeat(32)}`, length: 6, duration: 2 * 365 * 86400, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`, sealed: "sealed", terms: SIGNED, timestamp: 1, signature: "0x" }
@@ -273,7 +274,7 @@ describe("service errors", () => {
     it("passes a community entry in every search answer, and the terms in the available one", async () => {
       for (const body of [
         AVAILABLE, { status: "reserved", community: COMMUNITY }, { status: "registered", entities: [], tld: "simplex", community: COMMUNITY },
-        { ...AVAILABLE, community: { ...COMMUNITY, for: null } }, { ...AVAILABLE, community: { ...COMMUNITY, terms: { ...COMMUNITY.terms, url: "http://127.0.0.1:8198/terms.txt" } } },
+        { ...AVAILABLE, community: { ...COMMUNITY, for: null } }, { ...AVAILABLE, community: { ...COMMUNITY, terms: { url: `/api/community-terms/${zeroHash}`, hash: zeroHash } } },
         { status: "registered", entities: [], records: null, owner: "0x1", resolver: "0x2", recordsNonce: null, expiresAt: 1, gracePeriod: 2, chainId: 1, tld: "simplex", community: null },
       ]) {
         answerWith(200, JSON.stringify(body))
@@ -285,7 +286,7 @@ describe("service errors", () => {
       for (const body of [
         { ...AVAILABLE, community: undefined }, { ...AVAILABLE, community: "bakers" }, { ...AVAILABLE, community: { ...COMMUNITY, for: 5 } }, { ...AVAILABLE, community: { ...COMMUNITY, for: "" } },
         { ...AVAILABLE, community: { for: COMMUNITY.for } }, { ...AVAILABLE, community: { ...COMMUNITY, terms: { url: COMMUNITY.terms.url } } },
-        { ...AVAILABLE, community: { ...COMMUNITY, terms: { ...COMMUNITY.terms, hash: "0xc7" } } }, { ...AVAILABLE, community: { ...COMMUNITY, terms: { ...COMMUNITY.terms, url: "http://simplex.chat/terms" } } },
+        { ...AVAILABLE, community: { ...COMMUNITY, terms: { ...COMMUNITY.terms, hash: "0xc7" } } }, { ...AVAILABLE, community: { ...COMMUNITY, terms: { ...COMMUNITY.terms, url: "https://simplex.chat/community-terms" } } },
         { ...AVAILABLE, terms: undefined }, { ...AVAILABLE, terms: null }, { ...AVAILABLE, terms: { url: TERMS.url } }, { ...AVAILABLE, terms: { ...TERMS, version: "" } },
         { ...AVAILABLE, terms: { ...TERMS, version: "2026 10 23" } }, { ...AVAILABLE, terms: { ...TERMS, version: "2026-10-23/community" } }, { ...AVAILABLE, terms: { ...TERMS, version: "v".repeat(33) } },
         { ...AVAILABLE, terms: { ...TERMS, url: "http://simplex.chat/terms" } }, { ...AVAILABLE, terms: { ...TERMS, url: "javascript:alert(1)" } },

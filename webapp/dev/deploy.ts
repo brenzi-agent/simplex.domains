@@ -33,8 +33,9 @@ const SEED_YEARS = 2
 const ALLOWANCE = 1_000_000n * 10n ** 18n
 // SimplexNamePolicy.Reason.Internal
 const RESERVED_INTERNAL = 1
-// the community terms the name policy holds by their hash; the contract run's community_terms_url serves this text
-const COMMUNITY_TERMS_HASH = keccak256(readFileSync(new URL("./community-terms.txt", import.meta.url)))
+// the community terms the name policy keeps on chain, and their hash, which orders sign
+const COMMUNITY_TERMS = readFileSync(new URL("./community-terms.txt", import.meta.url), "utf8")
+const COMMUNITY_TERMS_HASH = keccak256(Buffer.from(COMMUNITY_TERMS))
 // the e2e community names: one free, one registered under the terms
 const COMMUNITY_NAMES = ["bakers", "bakehouse"]
 // anvil's well-known development mnemonic
@@ -105,7 +106,7 @@ await write(owner, baseRegistrar, "addController", [namePolicy.address])
 await write(owner, controller, "setNamePolicy", [namePolicy.address])
 await write(owner, baseRegistrar, "setNamePolicy", [namePolicy.address])
 await write(owner, namePolicy, "addReservedNames", [["support", "simplex", "official"], RESERVED_INTERNAL])
-await write(owner, namePolicy, "setTerms", [COMMUNITY_TERMS_HASH, "https://simplex.chat/community-terms"])
+await write(owner, namePolicy, "setTerms", [COMMUNITY_TERMS])
 await write(owner, namePolicy, "addBonaFideNames", [COMMUNITY_NAMES])
 
 const chainId = await publicClient.getChainId()

@@ -301,8 +301,8 @@ const isSignedTerms = (v: unknown) => typeof v === "string" && /^[A-Za-z0-9._/-]
 // the checkbox links the terms page, which is only ever an https page
 const isTerms = (v: unknown) => isObject(v) && isVersion(v.version) && typeof v.url === "string" && v.url.startsWith("https://")
 const isHash = (v: unknown) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v)
-// the community terms' page, which the service fetches over https, or on the local chain from the machine itself
-const isTermsUrl = (v: unknown) => typeof v === "string" && /^(https:\/\/|http:\/\/(127\.0\.0\.1|localhost)[:/])/.test(v)
+// the community terms' text, which the service answers from the name policy by their hash
+const isTermsUrl = (v: unknown) => typeof v === "string" && /^\/api\/community-terms\/0x[0-9a-f]{64}$/.test(v)
 const isCommunity = (v: unknown) => v === null || (isObject(v) && nullable(v.for, (f) => typeof f === "string" && f !== "")
   && isObject(v.terms) && isTermsUrl(v.terms.url) && isHash(v.terms.hash))
 const isAcceptance = (v: unknown) => isObject(v) && isText(v.policy) && isHash(v.termsHash) && Number.isInteger(v.nonce) && (v.nonce as number) >= 0
