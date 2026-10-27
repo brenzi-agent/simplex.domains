@@ -1130,7 +1130,7 @@ function unavailableNote(s: OrderState): HTMLElement | null {
   const unavailable = nameUnavailable(s)
   if (!unavailable) return null
   return alertBox("warn", "alert", unavailable.reserved ? "The name was reserved meanwhile" : "Someone registered the name first",
-    `This order can't register it. Its ${REVEAL_HOURS} hours to sign end at ${timeOf(s.view!.revealBefore! * 1000)}; then choose another name for it.`)
+    `This order can't register it. Once its ${REVEAL_HOURS} hours to sign are over, choose another name for it.`)
 }
 
 const waitsSeen = new Map<string, number>()

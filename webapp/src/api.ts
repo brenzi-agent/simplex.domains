@@ -139,8 +139,8 @@ export interface RegistrationView extends ChainInfo {
   revealBefore: number | null
   intentNonce: number | null
   // what the owner signs with the reveal to accept a listed name's community terms on chain, while a committed order waits
-  // for its reveal; null otherwise
-  acceptance: Acceptance | null
+  // for its reveal, the policy being the signature's verifying contract; null otherwise
+  acceptance: { policy: string; termsHash: string; nonce: number } | null
   // the fields left null because the service's chain read failed; reading the view again may fill them
   unread: string[]
   expiresAt: number | null
@@ -149,13 +149,6 @@ export interface RegistrationView extends ChainInfo {
   linksRefused: boolean
   community: Community | null
   terms: string | null
-}
-
-export interface Acceptance {
-  // the name policy, which the signature is for
-  policy: string
-  termsHash: string
-  nonce: number
 }
 
 const LATE_WAITS = ["confirming", "crediting", "support"] as const

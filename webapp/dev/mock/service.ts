@@ -414,7 +414,8 @@ function signedCommunity(reg: Registration) {
 // an order or a move signs the terms the service has now for its name, the community terms included for a community name
 async function checkTerms(o: Pick<OrderBody, "labelHash" | "terms">): Promise<void> {
   const community = await communityOf(o.labelHash).catch((): never => { throw new HttpError(503, "name_check_unavailable") })
-  if (o.terms !== termsFor(community)) throw new HttpError(409, "terms_changed", { terms: { ...terms }, community })
+  // a listed name cannot be ordered before the policy has community terms, which the page then says
+  if (o.terms !== termsFor(community) || community?.terms.hash === zeroHash) throw new HttpError(409, "terms_changed", { terms: { ...terms }, community })
 }
 
 // --- views
