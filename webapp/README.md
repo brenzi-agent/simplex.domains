@@ -73,7 +73,7 @@ Tests and manual checks move orders along with `POST` requests to the mock:
 
 | Request | Effect |
 |---|---|
-| `/control/settle/<invoice>` | the invoice is paid; registration starts and a balance it held is spent. On a closed invoice the payment is late: the order stays unpaid and its confirmed money is credited to its balance once |
+| `/control/settle/<invoice>` `{"paid"}` | the money that reached the invoice is confirmed: its whole amount, or the coin given in `paid`. An open invoice is paid and registration starts, a balance it held is spent, and coin past the amount is credited to the order's balance; less than the amount is refused (`/control/partial` sends part). On a closed invoice the payment is late, as BTCPay keeps it: the invoice stays expired, with `paidInFull` once all of the amount arrived, the order stays unpaid, and each confirmed figure is credited to its balance once. Credit is the price's share of the coin, at the lower of the invoice's rate and the current one |
 | `/control/partial/<invoice>` | half the crypto amount arrives |
 | `/control/confirming/<invoice>` | the full amount is seen, not yet confirmed |
 | `/control/expire/<invoice>` | the invoice expires |

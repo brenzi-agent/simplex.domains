@@ -123,9 +123,12 @@ interface Invoice {
   cryptoAmountPaid: string | null
   cryptoAmountDue: string | null
   paidInFull: boolean | null
+  // all the money read on it is confirmed, which a settle makes so
+  confirmed: boolean
   settledAt: string | null
   clientSecret: string | null
-  // the confirmed money credited to the order's balance after the invoice closed, in coin units (cents for a card), and its cents
+  // the confirmed money counted already, in coin units (cents for a card): the price when it settled in time, and each credit
+  // to the order's balance since; and the cents credited
   lateUnits: bigint
   lateCents: number
   // what a credit of confirmed late money waits on, set by the tests: the service's next pass, or support
@@ -453,7 +456,7 @@ function latePayment(reg: Registration): Record<string, unknown> | null {
   const inv = reg.invoiceId === null ? null : invoices.get(reg.invoiceId)!
   if (reg.phase !== "unpaid" || inv === null || inv.status === "open" || inv.amountPaid === null) return null
   if (inv.lateWait !== null) return { waiting: inv.lateWait }
-  return inv.status === "paid" ? null : { waiting: "confirming" }
+  return inv.confirmed ? null : { waiting: "confirming" }
 }
 
 function credit(registrationId: string, cents: number): void {
@@ -484,9 +487,14 @@ const unitsOf = (decimal: string, decimals: number) => {
   const [whole, fraction = ""] = decimal.split(".")
   return BigInt(whole + fraction.padEnd(decimals, "0"))
 }
+const decimalOf = (units: bigint, decimals: number) => {
+  const digits = units.toString().padStart(decimals + 1, "0")
+  const fraction = digits.slice(-decimals).replace(/0+$/, "")
+  return fraction ? `${digits.slice(0, -decimals)}.${fraction}` : digits.slice(0, -decimals)
+}
 
-// Money confirmed on an invoice after its order closed is credited to that order's balance, each figure once, at the lower
-// of the invoice's rate (its amount over its crypto) and the current rate, rounded down to the cent.
+// Money confirmed on an invoice after its order closed, or past its amount, is credited to that order's balance, each figure
+// once, at the lower of the invoice's rate (its amount over its crypto) and the current rate, rounded down to the cent.
 function creditLate(inv: Invoice): void {
   const coin = inv.method === "card" ? null : inv.method
   const confirmed = coin === null ? BigInt(inv.amountPaid!) : unitsOf(inv.cryptoAmountPaid!, UNIT_DECIMALS[coin])
@@ -638,7 +646,7 @@ function openInvoice(reg: Registration, method: Method, amount: number): Invoice
     id: id(), registrationId: reg.id, method, status: "open", amount,
     expiresAt: iso(nowSeconds() + INVOICE_MINUTES * 60),
     cryptoAmount: method === "card" ? null : (amount / 100 / RATES[method]).toFixed(method === "btc" ? 5 : 3),
-    amountPaid: null, cryptoAmountPaid: null, cryptoAmountDue: null, paidInFull: null, settledAt: null,
+    amountPaid: null, cryptoAmountPaid: null, cryptoAmountDue: null, paidInFull: null, confirmed: false, settledAt: null,
     clientSecret: method === "card" ? `pi_mock_secret_${randomBytes(12).toString("hex")}` : null, lateUnits: 0n, lateCents: 0, lateWait: null,
   }
   reg.invoiceId = inv.id
@@ -663,9 +671,7 @@ export async function readInvoice(invoiceId: string, wait: string | null, seenVe
   expireIfDue(inv)
   const reg = registrations.get(inv.registrationId)!
   lapse(reg)
-  // a name invoice paid after it closed has nothing more to wait for
-  const lateAndUnpaid = inv.status === "paid" && reg.phase === "unpaid"
-  if (wait !== null && !lateAndUnpaid) {
+  if (wait !== null) {
     await hold(inv.id, () => inv.status === wait && (seenVersion === null || reg.version === seenVersion) && (seenPaid === null || ((inv.cryptoAmountPaid ?? "") === seenPaid && (inv.paidInFull === true) === seenFull)))
     expireIfDue(inv)
   }
@@ -1253,26 +1259,47 @@ export async function editRecords(body: Record<string, unknown>): Promise<Record
 
 // --- controls for tests and screenshots
 
-export function controlInvoice(action: string, invoiceId: string): Record<string, unknown> {
+// What a settle confirms in all, in coin units (cents for a card): the invoice's amount, or the coin a test names.
+function settledUnits(inv: Invoice, paid: unknown): bigint {
+  const decimals = inv.method === "card" ? null : UNIT_DECIMALS[inv.method]
+  if (paid === undefined) return decimals === null ? BigInt(inv.amount) : unitsOf(inv.cryptoAmount!, decimals)
+  const [, fraction = ""] = typeof paid === "string" ? paid.split(".") : []
+  if (decimals === null || typeof paid !== "string" || !/^\d+(\.\d+)?$/.test(paid) || fraction.length > decimals) throw badRequest()
+  return unitsOf(paid, decimals)
+}
+
+// As BTCPay settles: an open invoice paid in full, or past its amount, registers its name and credits what is past it; a
+// closed one stays closed, its money credited to the order's balance.
+function settle(inv: Invoice, reg: Registration, paid: bigint): void {
+  const decimals = inv.method === "card" ? null : UNIT_DECIMALS[inv.method]
+  const whole = decimals === null ? BigInt(inv.amount) : unitsOf(inv.cryptoAmount!, decimals)
+  const open = inv.status === "open"
+  // less than the amount on an open invoice is a part payment, which /control/partial makes
+  if (open && paid < whole) throw badRequest()
+  Object.assign(inv, { amountPaid: Number(paid * BigInt(inv.amount) / whole), paidInFull: paid >= whole, confirmed: true })
+  if (decimals !== null) Object.assign(inv, { cryptoAmountPaid: decimalOf(paid, decimals), cryptoAmountDue: decimalOf(paid >= whole ? 0n : whole - paid, decimals) })
+  if (open && reg.phase === "unpaid") {
+    Object.assign(inv, { status: "paid", settledAt: iso(nowSeconds()), lateUnits: whole })
+    reg.phase = "queued"
+    spendHold(reg)
+    changed(reg)
+    void advance(reg)
+  }
+  if (inv.lateWait === null) creditLate(inv)
+}
+
+export function controlInvoice(action: string, invoiceId: string, body: Record<string, unknown>): Record<string, unknown> {
   const inv = invoices.get(invoiceId)
   if (!inv) throw new HttpError(404, "not_found")
   expireIfDue(inv)
   const reg = registrations.get(inv.registrationId)!
   if (action === "settle") {
-    const wasOpen = inv.status === "open"
-    Object.assign(inv, { status: "paid", amountPaid: inv.amount, settledAt: iso(nowSeconds()), paidInFull: true })
-    if (inv.method !== "card") Object.assign(inv, { cryptoAmountPaid: inv.cryptoAmount, cryptoAmountDue: "0" })
-    if (wasOpen && reg.phase === "unpaid") {
-      reg.phase = "queued"
-      spendHold(reg)
-      changed(reg)
-      void advance(reg)
-    } else if (reg.phase === "unpaid" && inv.lateWait === null) creditLate(inv)
+    settle(inv, reg, settledUnits(inv, body.paid))
   } else if (action === "partial") {
     const half = (Number(inv.cryptoAmount) / 2).toFixed(5)
-    Object.assign(inv, { amountPaid: Math.floor(inv.amount / 2), paidInFull: false, cryptoAmountPaid: half, cryptoAmountDue: (Number(inv.cryptoAmount) - Number(half)).toFixed(5) })
+    Object.assign(inv, { amountPaid: Math.floor(inv.amount / 2), paidInFull: false, confirmed: false, cryptoAmountPaid: half, cryptoAmountDue: (Number(inv.cryptoAmount) - Number(half)).toFixed(5) })
   } else if (action === "confirming") {
-    Object.assign(inv, { amountPaid: inv.amount, paidInFull: true })
+    Object.assign(inv, { amountPaid: inv.amount, paidInFull: true, confirmed: false })
     if (inv.method !== "card") Object.assign(inv, { cryptoAmountPaid: inv.cryptoAmount, cryptoAmountDue: "0" })
   } else if (action === "expire") {
     close(inv)
@@ -1300,7 +1327,7 @@ export function controlLate(invoiceId: string, waiting: unknown): Record<string,
   if (waiting !== null && waiting !== "crediting" && waiting !== "support") throw badRequest()
   inv.lateWait = waiting
   const reg = registrations.get(inv.registrationId)!
-  if (waiting === null && inv.status === "paid" && reg.phase === "unpaid") creditLate(inv)
+  if (waiting === null && inv.confirmed && reg.phase === "unpaid") creditLate(inv)
   wake(reg)
   return { ok: true }
 }

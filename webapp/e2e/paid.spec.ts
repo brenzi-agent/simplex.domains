@@ -786,6 +786,7 @@ test("a replaced invoice leads to its new order until a late payment reaches it"
   for (const p of [page, restored]) {
     await p.goto(`/?order=${invoiceId}`)
     await expect(p.getByText("The payment arrived after this invoice had closed")).toBeVisible()
+    await expect(onStep(p).getByText(/Once confirmed|not the full amount/), "all of it arrived and is credited").toHaveCount(0)
     await expect(p.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
     expect(new URL(p.url()).searchParams.get("order")).toBe(invoiceId)
     await p.goto("/#/names")
@@ -809,6 +810,7 @@ test("an invoice that received part of its payment and was replaced leads on to 
   await control(request, `settle/${invoiceId}`)
   await page.goto(`/?order=${invoiceId}`)
   await expect(page.getByText("The payment arrived after this invoice had closed")).toBeVisible()
+  await expect(onStep(page).getByText(/Once confirmed|not the full amount/), "the rest arrived and all of it is credited").toHaveCount(0)
   await page.goto("/#/names")
   await expect(page.locator(".list-row:visible", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText(["Waiting for payment", "Paid late"])
   await page.goto(`/?order=${invoiceId}`)
@@ -830,6 +832,20 @@ test("an invoice that closed while its payment was confirming says a payment rea
   await expect(row).toContainText("A payment did not complete before the invoice closed")
   await expect(row.locator(".chip")).toHaveText(["Invoice expired"])
   await shot(page, "N12f-history-expired-paid")
+})
+
+test("an overpaid invoice registers its name, even where the service reads its due below zero", async ({ page, request }) => {
+  const label = uniqueLabel("over")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  // BTCPay's due for an overpaid invoice, as a service that passes it on answers it
+  await page.route(`**/api/invoice/${invoiceId}*`, async (route) => {
+    const response = await route.fetch()
+    const json = await response.json()
+    await route.fulfill({ response, json: json.paidInFull ? { ...json, cryptoAmountDue: "-0.00078" } : json })
+  })
+  await control(request, `settle/${invoiceId}`, { paid: "0.00234" })
+  await waitRegistered(page, label)
+  await page.unrouteAll({ behavior: "ignoreErrors" })
 })
 
 const INVOICE_EXPIRED = "The invoice expired before the full amount arrived. Don't send more; what you sent is kept as your balance."
