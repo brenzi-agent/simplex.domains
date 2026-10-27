@@ -334,7 +334,7 @@ export function drawLoading(title: string, place = (screen: HTMLElement) => scre
   draw(LOADING, () => place(screen({ title })))
 }
 
-export const isDark = () => document.documentElement.classList.contains("dark")
+const isDark = () => document.documentElement.classList.contains("dark")
 
 // The browser's own bars, as a phone's or an installed app's, take the ground of the theme on screen, which may not be the system's.
 function paintBars(): void {
@@ -343,15 +343,37 @@ function paintBars(): void {
 }
 
 const THEMING = "theming"
+const DARK_SYSTEM = "(prefers-color-scheme: dark)"
 // a frame after the ground has faded, once the controls have drawn the tokens' last colours, so they do not ease to them
 const themed = () => requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove(THEMING)))
-function toggleTheme(): void {
-  const dark = !isDark()
-  store.setTheme(dark ? "dark" : "light")
+const themeFollowers = new Set<(dark: boolean) => void>()
+
+// the page's theme, which Stripe's card form follows
+export const pageTheme = {
+  dark: isDark,
+  watch(follow: (dark: boolean) => void): () => void {
+    themeFollowers.add(follow)
+    return () => { themeFollowers.delete(follow) }
+  },
+}
+
+function showTheme(dark: boolean): void {
   // Chromium starts a control's own colour transition anew each frame the tokens move, so controls follow the tokens until the ground fades
   document.documentElement.classList.toggle(THEMING, !reducedMotion())
   document.documentElement.classList.toggle("dark", dark)
   paintBars()
+  for (const follow of themeFollowers) follow(dark)
+}
+
+function toggleTheme(): void {
+  const dark = !isDark()
+  store.setTheme(dark ? "dark" : "light")
+  showTheme(dark)
+}
+
+// with no theme chosen, the page follows the system's as it changes
+function followSystem(e: MediaQueryListEvent): void {
+  if (!store.chosenTheme() && e.matches !== isDark()) showTheme(e.matches)
 }
 
 export const OFFLINE_NOTE = "You are offline. Searches, payments and order updates need the connection."
@@ -373,6 +395,7 @@ function frame(): HTMLElement {
   if (document.body.dataset.framed) return main
   document.body.dataset.framed = "1"
   for (const button of document.querySelectorAll(".theme-switch")) button.addEventListener("click", toggleTheme)
+  matchMedia(DARK_SYSTEM).addEventListener("change", followSystem)
   document.body.addEventListener("transitionend", (e) => { if (e.target === document.body && e.pseudoElement === "::after") themed() })
   paintBars()
   document.body.append(offline)

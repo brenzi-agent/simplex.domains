@@ -227,10 +227,28 @@ export function forgetEverything(): void {
   }
 }
 
-export function setTheme(t: "light" | "dark"): void {
+// index.html reads the theme kept here before the first paint
+const THEME_KEY = "theme"
+type Theme = "light" | "dark"
+// a choice storage refused, which lasts this page only
+let pageTheme: Theme | null = null
+
+export function setTheme(t: Theme): void {
+  pageTheme = t
   try {
-    window.localStorage.setItem("theme", t)
+    window.localStorage.setItem(THEME_KEY, t)
   } catch {
     // the choice lasts this page only
   }
+}
+
+// the theme a reader chose, here or in another tab, or null while the page follows the system's
+export function chosenTheme(): Theme | null {
+  try {
+    const kept = window.localStorage.getItem(THEME_KEY)
+    if (kept === "light" || kept === "dark") return kept
+  } catch {
+    // storage refused: only this page's choice counts
+  }
+  return pageTheme
 }

@@ -240,12 +240,14 @@ const FORM_TO_PAY = 16
 // Stripe's answer to a card it declines, which the page says as Stripe words it
 const DECLINED = "Your card was declined."
 // A Stripe.js whose card form comes when the test calls __loadCard, `px` tall for the column, and grows by __growCard;
-// it declines every card when asked to.
+// it declines every card when asked to. It counts its mounts in __mounts, and keeps in __logos Stripe's logo tone of
+// each appearance the form is given once made.
 const stripeOnCue = (px: FormPx, declines = false) => `window.Stripe = () => ({
   confirmPayment: async () => (${declines} ? { error: { type: "card_error", message: "${DECLINED}" } } : { paymentIntent: { status: "processing" } }),
-  elements: () => ({ create: () => {
+  elements: () => ({ update: ({ appearance }) => { (window.__logos ??= []).push(appearance.variables.logoColor) }, create: () => {
     const handlers = {}
     return { on: (event, handler) => { handlers[event] = handler }, destroy: () => undefined, mount: (target) => {
+      window.__mounts = (window.__mounts ?? 0) + 1
       window.__loadCard = () => {
         const form = document.createElement("div")
         form.style.height = (target.clientWidth >= ${STRIPE_WIDE_COLUMN} ? ${px.wide} : ${px.narrow}) + "px"
@@ -257,6 +259,10 @@ const stripeOnCue = (px: FormPx, declines = false) => `window.Stripe = () => ({
   } }),
 })`
 const loadCard = (page: Page) => page.evaluate(() => (window as unknown as { __loadCard: () => void }).__loadCard())
+const cardSeen = (page: Page) => page.evaluate(() => {
+  const w = window as unknown as { __logos?: string[]; __mounts?: number }
+  return { logos: w.__logos ?? [], mounts: w.__mounts ?? 0 }
+})
 const growCard = (page: Page, by: number) => page.evaluate((px) => (window as unknown as { __growCard: (by: number) => void }).__growCard(px), by)
 // the card page's windows: a laptop's, a narrow desktop window's, and two phones'
 const CARD_SIZES = [{ width: 1280, height: 800 }, { width: 600, height: 800 }, { width: 390, height: 844 }, { width: 360, height: 780 }]
@@ -429,6 +435,37 @@ test.describe(() => {
 
   test("a card Stripe declines in a browser that cannot remember a card payment takes the warning's place, Pay under the form", async ({ page }) => {
     await cardFits(page, new RegExp(`^${DECLINED}$`), await routedCardOrder(page, { ...tenLetters, forgetful: true }), { declines: true })
+  })
+
+  // Stripe's logo tone stands for the appearance: light on the dark theme, dark on the light one
+  test("the card form follows the system's theme while none is chosen, and the theme switch, in place", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light" })
+    const open = await routedCardOrder(page, tenLetters)
+    await page.route("https://js.stripe.com/**", (route) => route.fulfill({ contentType: "text/javascript", body: stripeOnCue(FORMS_PX[1]) }))
+    await open()
+    await expect(onStep(page).getByRole("heading", { name: "Pay by card" })).toBeVisible()
+    await loadCard(page)
+    await expect(onStep(page).locator(".stripe > div")).toHaveCount(1)
+    expect(await cardSeen(page), "made in the light theme").toEqual({ logos: [], mounts: 1 })
+    const html = page.locator("html")
+    await page.emulateMedia({ colorScheme: "dark" })
+    await expect(html, "the page follows the system's theme").toHaveClass(/\bdark\b/)
+    await expect.poll(() => cardSeen(page), "the form follows it").toEqual({ logos: ["light"], mounts: 1 })
+    await page.emulateMedia({ colorScheme: "light" })
+    await expect(html).not.toHaveClass(/\bdark\b/)
+    await expect.poll(() => cardSeen(page)).toEqual({ logos: ["light", "dark"], mounts: 1 })
+    const toggle = page.getByRole("button", { name: "Switch light or dark theme" })
+    await toggle.click()
+    await expect(html).toHaveClass(/\bdark\b/)
+    await expect.poll(() => cardSeen(page), "the form follows the switch").toEqual({ logos: ["light", "dark", "light"], mounts: 1 })
+    // a theme chosen holds against the system's
+    await page.emulateMedia({ colorScheme: "light" })
+    await page.emulateMedia({ colorScheme: "dark" })
+    await page.emulateMedia({ colorScheme: "light" })
+    await expect(html, "the chosen theme holds").toHaveClass(/\bdark\b/)
+    await toggle.click()
+    await expect(html).not.toHaveClass(/\bdark\b/)
+    await expect.poll(() => cardSeen(page)).toEqual({ logos: ["light", "dark", "light", "dark"], mounts: 1 })
   })
 })
 

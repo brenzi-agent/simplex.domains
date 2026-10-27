@@ -19,7 +19,7 @@ import { seenRegistered } from "./names.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
 import { termsBox } from "./terms.ts"
 import {
-  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusOn, go, historyPlace, isDark, isRedraw, isRoute, kept, keptLive, outcome, redirect, referenceLine, refresh, screen,
+  asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusOn, go, historyPlace, isRedraw, isRoute, kept, keptLive, outcome, pageTheme, redirect, referenceLine, refresh, screen,
   searchLink, showRefund, useBalance, whenDropped, whenLeaving,
 } from "./shell.ts"
 
@@ -620,7 +620,7 @@ function mountInto(form: HTMLElement, invoice: api.InvoiceView): void {
     card = STAND_IN
     return
   }
-  void mountCard(key, invoice.clientSecret ?? "", form, isDark()).then((mounted) => {
+  void mountCard(key, invoice.clientSecret ?? "", form, pageTheme).then((mounted) => {
     if (mine !== cardMounts) return mounted?.destroy()
     if (!mounted) return dispatch({ type: "card-failed" })
     card = mounted
