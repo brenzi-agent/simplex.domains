@@ -4,7 +4,7 @@ import * as api from "../api.ts"
 import { el, icon, link, refill, waitOut } from "../dom.ts"
 import { type LinkKind, linkKind, linkProblem, linkTooLong } from "../names.ts"
 import { chatButton, profileLine } from "./chats.ts"
-import { hasCamera, scanQr } from "./scan.ts"
+import { scanButton, scanQr } from "./scan.ts"
 import { inPlace, whenDropped } from "./shell.ts"
 
 // a phone's field, beside Paste and the scan button, has room for a short placeholder only
@@ -14,10 +14,10 @@ const KIND_TEXT: Record<LinkKind, { name: string; noun: string; placeholder: str
 }
 const ANY_LINK = { name: "Link", placeholder: "Paste a contact address or channel link", short: "Contact or channel link" }
 const ANY_LINK_SCANNED = "Paste or scan a link"
-// styles.css's phone layout, and a touch screen's pointer: the camera is asked about on a phone only
+// styles.css's phone layout
 const PHONE = "(max-width: 520px)"
-const TOUCH = "(pointer: coarse)"
 const NO_CAMERA = "Allow the camera, or paste the link."
+const SCAN_HINT = "Point the camera at the QR code of your SimpleX address or channel link."
 const NOT_A_LINK = "This is not a SimpleX contact address or channel link."
 const linkName = (kind: LinkKind) => KIND_TEXT[kind].name
 const otherKind = (kind: LinkKind): LinkKind => kind === "contact" ? "channel" : "contact"
@@ -99,14 +99,10 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
     }, () => undefined).finally(() => input.focus())
   } }, "Paste") : null
   // a phone with a camera reads the link from its QR code, as the app shows it
-  const scan = el("button", { class: "scan", type: "button", "aria-label": "Scan QR code", hidden: true, onclick: () => void scanned() }, icon("scan"))
-  if (matchMedia(TOUCH).matches) {
-    void hasCamera().then((found) => {
-      scan.hidden = !found
-      camera = found
-      placeholder()
-    })
-  }
+  const scan = scanButton(() => void scanned(), (found) => {
+    camera = found
+    placeholder()
+  })
   const box = el("label", { class: "field" }, icon("link"), input, preview, paste, scan, unlink)
   const card = el("div", {})
   const field = el("div", { class: "link-field" }, box, card)
@@ -207,7 +203,7 @@ function linkField(takes: Takes, value: string, save: (v: string, kind: LinkKind
     let text: string | null
     scan.disabled = true
     try {
-      text = await scanQr(life.signal)
+      text = await scanQr(life.signal, SCAN_HINT)
     } catch {
       if (!shown()) return
       input.setAttribute("aria-describedby", errorId)

@@ -673,8 +673,11 @@ const LEGIBLE_PX = 14
 async function codeFieldAt(browser: Browser, browserName: string, width: number) {
   const phone = width < 1000
   const context = await browser.newContext({ viewport: { width, height: 800 }, isMobile: phone && browserName === "chromium", hasTouch: phone })
+  // a phone with a camera, whose field holds the scan button too; this container's WebKit aborts on a real device query
+  await context.addInitScript(() => Object.defineProperty(navigator, "mediaDevices", { value: { enumerateDevices: async () => [{ kind: "videoinput" }] } }))
   const page = await context.newPage()
   await page.goto("/#/code")
+  if (phone) await expect(page.getByRole("button", { name: "Scan QR code" }), "the scan button beside the code").toBeVisible()
   await codeField(page).fill(NAME_CODE)
   // a name code is judged by its orders, which this one has none of
   await expect(page.locator(".verdict.bad")).toContainText("No order was found")

@@ -6,6 +6,7 @@ import * as flow from "../flow.ts"
 import type * as session from "../session.ts"
 import * as store from "../store.ts"
 import { holdFrom } from "./hold.ts"
+import { scanButton, scanQr } from "./scan.ts"
 import { kept, whenDropped } from "./shell.ts"
 
 export type CodeVerdict =
@@ -35,6 +36,8 @@ const coversLine = (code: session.AppliedCode) => `This code allows you to regis
 const unused = (code: session.AppliedCode): CodeVerdict => ({ kind: "prepaid", code, line: coversLine(code) })
 
 const MISTYPED: CodeVerdict = { kind: "refused", title: "This code is not valid", line: "Check it for a mistyped character." }
+const NO_CAMERA: CodeVerdict = { kind: "refused", title: "The camera could not be used", line: "Allow the camera, or paste the code." }
+const SCAN_HINT = "Point the camera at the QR code of your name code."
 const UNFINISHED: CodeVerdict = { kind: "refused", title: "This is not a SimpleX names code", line: "Check it and try again." }
 
 const ownerLine = (name: string) => `Name code of ${name}.simplex. Adding it shows the name in Your names, where you can edit its links.`
@@ -135,7 +138,9 @@ export function codeField(key: string, label: string, heard: (v: CodeVerdict | n
     const verdictId = `${key}-verdict`
     const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, spellcheck: "false", placeholder: "SN…", autocomplete: "off", value: typed.get(key) })
     const check = el("button", { class: "btn lens", type: "button", "aria-label": "Check" }, icon("search"))
-    const box = el("label", { class: "field code-input" }, input, check)
+    // a phone with a camera reads the code from its QR code, as another device shows it
+    const scan = scanButton(() => void scanned())
+    const box = el("label", { class: "field code-input" }, input, scan, check)
     const line = liveRegion("verdict")
     line.id = verdictId
     const life = new AbortController()
@@ -157,6 +162,22 @@ export function codeField(key: string, label: string, heard: (v: CodeVerdict | n
       heard(v)
     }
     check.addEventListener("click", watchCode(input, show, life.signal))
+    // one scan at a time, ended with the field's page; a code read is judged at once, as a pasted one is
+    async function scanned(): Promise<void> {
+      scan.disabled = true
+      try {
+        const text = await scanQr(life.signal, SCAN_HINT)
+        if (text !== null) {
+          input.value = text.trim()
+          input.dispatchEvent(new InputEvent("input", { inputType: "insertFromPaste" }))
+        }
+      } catch {
+        if (!life.signal.aborted) show(NO_CAMERA)
+      } finally {
+        scan.disabled = false
+      }
+      if (!life.signal.aborted) input.focus()
+    }
     // a name code is never kept to show again, nor most of one mistyped or cut short, as anyone who sees it can take the name
     input.addEventListener("input", () => {
       if (mayBeOwnerCode(input.value)) typed.delete(key)

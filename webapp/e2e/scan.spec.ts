@@ -1,6 +1,10 @@
 import { chromium, expect, type Browser } from "@playwright/test"
 import { readFileSync, writeFileSync } from "node:fs"
-import { LINKS_HEADING, onStep, search, test, uniqueLabel } from "./helpers.ts"
+import { newOwnerCode } from "../src/flow.ts"
+import { encodeQr } from "../src/qr.ts"
+import type { Pixels } from "../src/scan.ts"
+import { qrPixels, withQuietZone } from "../test/qr-image.ts"
+import { codeField, LINKS_HEADING, onStep, search, test, uniqueLabel } from "./helpers.ts"
 
 // Chromium's fake camera stands in for a phone's: listed as a device, refused until the camera is granted, and showing a
 // still frame of a QR code when given a video file.
@@ -23,6 +27,15 @@ function y4mOf(pgm: Buffer): Buffer {
   const [width, height] = [Number(header[1]), Number(header[2])]
   const chroma = Buffer.alloc((width / 2) * (height / 2) * 2, 128)
   return Buffer.concat([Buffer.from(`YUV4MPEG2 W${width} H${height} F10:1 Ip A1:1 C420jpeg\nFRAME\n`), pgm.subarray(header[0].length), chroma])
+}
+
+// the white border, in modules, a QR code is shown with
+const QUIET_ZONE = 4
+// a reader's picture of a name code's QR, as a binary PGM, in grey
+function pgmOf({ data, width, height }: Pixels): Buffer {
+  const grey = Buffer.alloc(width * height)
+  for (let i = 0; i < grey.length; i++) grey[i] = data[i * 4]
+  return Buffer.concat([Buffer.from(`P5\n${width} ${height}\n255\n`), grey])
 }
 
 async function linksStep(browser: Browser, baseURL: string, grant: boolean) {
@@ -114,6 +127,47 @@ test("Cancel closes the camera's view, leaving the field empty and focused", asy
     const link = onStep(page).getByRole("textbox", { name: "Link", exact: true })
     await expect(link).toHaveValue("")
     await expect(link).toBeFocused()
+  } finally {
+    await browser.close()
+  }
+})
+
+test("the camera reads a name code's QR code into the Code field of Check your code, which judges it", async ({ baseURL }, testInfo) => {
+  const code = newOwnerCode()
+  const video = testInfo.outputPath("scan-code.y4m")
+  writeFileSync(video, y4mOf(pgmOf(qrPixels(withQuietZone(encodeQr(code)!.modules, QUIET_ZONE)))))
+  const browser = await withCamera([FAKE_CAMERA, `--use-file-for-fake-video-capture=${video}`])
+  try {
+    const context = await browser.newContext({ baseURL, viewport: PHONE, hasTouch: true, reducedMotion: "reduce" })
+    await context.grantPermissions(["camera"])
+    const page = await context.newPage()
+    await page.goto("/#/code")
+    const scan = onStep(page).getByRole("button", { name: "Scan QR code" })
+    await expect(scan).toBeVisible()
+    await page.setViewportSize(LAPTOP)
+    await expect(scan, "a laptop's camera faces its reader").toBeHidden()
+    await page.setViewportSize(PHONE)
+    await scan.click()
+    await expect(page.getByRole("dialog", { name: "Scan a QR code" })).toContainText("Point the camera at the QR code of your name code.")
+    await expect(codeField(page)).toHaveValue(code, { timeout: 10_000 })
+    await expect(page.getByRole("dialog"), "the camera's view goes once it has read the code").toHaveCount(0)
+    await expect(onStep(page).locator(".verdict"), "the code judged").not.toBeEmpty()
+    await expect(codeField(page)).toBeFocused()
+    await expect(scan, "a field holding a code offers no scan").toBeHidden()
+  } finally {
+    await browser.close()
+  }
+})
+
+test("a camera not allowed for the Code field says so", async ({ baseURL }) => {
+  const browser = await withCamera([FAKE_CAMERA])
+  try {
+    const context = await browser.newContext({ baseURL, viewport: PHONE, hasTouch: true, reducedMotion: "reduce" })
+    const page = await context.newPage()
+    await page.goto("/#/code")
+    await onStep(page).getByRole("button", { name: "Scan QR code" }).click()
+    await expect(onStep(page).locator(".verdict.bad")).toHaveText("The camera could not be used. Allow the camera, or paste the code.")
+    await expect(page.getByRole("dialog")).toHaveCount(0)
   } finally {
     await browser.close()
   }
