@@ -737,16 +737,17 @@ async function agreedFirst(gen: number, record: store.OrderRecord, invoice: api.
 // a late credit the service cannot make by itself, which support makes by hand
 const creditBySupport: Kid[] = [" It is not credited to your balance by itself: write to ", el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with the reference below."]
 
+const KEPT_ONCE: Record<Exclude<api.LateWait, "support">, string> = { confirming: "Once confirmed, it is", crediting: "Once credited, it is" }
+
 function closedWords(closed: ClosedCase, inv: api.InvoiceView, view: api.RegistrationView): [Tone, Kid] {
-  const bySupport = view.latePayment?.waiting === "support"
-  if (closed === "paid-late" && bySupport) return ["warn", ["The payment arrived after this invoice had closed, so nothing was registered.", creditBySupport]]
+  const waiting = view.latePayment?.waiting
+  const kept = (lead: string): Kid => waiting === "support" ? [lead, creditBySupport] : `${lead} ${waiting ? KEPT_ONCE[waiting] : "It is"} ${KEPT_LATE}`
   switch (closed) {
-    case "paid-late": return ["warn", `The payment arrived after this invoice had closed, so nothing was registered. It is ${KEPT_LATE}`]
+    case "paid-late": return ["warn", kept("The payment arrived after this invoice had closed, so nothing was registered.")]
     case "cancelled": return ["info", "This invoice was cancelled and nothing was received."]
     case "received": {
       const coin = coinOf(inv)
-      const arrived = coin && partlyPaid(inv) && !inv.paidInFull ? `${inv.cryptoAmountPaid} ${TICKER[coin]} arrived, which is not the full amount.` : "A payment did not complete before the invoice closed."
-      return ["warn", bySupport ? [arrived, creditBySupport] : `${arrived} Once confirmed, it is ${KEPT_LATE}`]
+      return ["warn", kept(coin && partlyPaid(inv) && !inv.paidInFull ? `${inv.cryptoAmountPaid} ${TICKER[coin]} arrived, which is not the full amount.` : "A payment did not complete before the invoice closed.")]
     }
     case "expired": return ["info", inv.cryptoCurrency ? "Nothing was received before it closed." : "Nothing was paid before it closed."]
   }

@@ -1,4 +1,4 @@
-import { type Balance, type Community, holdsPayment, type InvoiceView, type RegistrationView, type Terms } from "../api.ts"
+import { type Balance, type Community, holdsPayment, type InvoiceView, paidLate, type RegistrationView, type Terms } from "../api.ts"
 import type { IconName } from "../icons.ts"
 import type { CodeRefusal, OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
@@ -236,14 +236,14 @@ export function finished(invoice: InvoiceView | null, view: RegistrationView): b
   if (view.phase === "registered") return true
   if (view.phase !== "unpaid" || !invoice || invoice.status === "open") return false
   if (view.latePayment) return view.latePayment.waiting === "support"
-  return invoice.status === "paid" && view.balance !== null
+  return paidLate(invoice) && view.balance !== null
 }
 
 // An unpaid order's invoice that takes no more payment.
 export function closedCase({ invoice, view, record }: OrderState): ClosedCase | null {
   if (!invoice || view?.phase !== "unpaid") return null
-  if (invoice.status === "paid") return "paid-late"
   if (invoice.status === "open") return null
+  if (paidLate(invoice)) return "paid-late"
   if (record?.cancelled && !holdsPayment(invoice)) return "cancelled"
   return holdsPayment(invoice) ? "received" : "expired"
 }

@@ -169,6 +169,13 @@ export interface InvoiceView {
 
 export const holdsPayment = (inv: InvoiceView) => Boolean(inv.amountPaid) || Number(inv.cryptoAmountPaid ?? "0") > 0 || inv.paidInFull === true
 
+// All of a closed invoice's amount arrived after it closed and is credited, or waits on support alone. BTCPay keeps such an
+// invoice expired (invalid after a cancel) and says paidInFull; a provider that settles it late reads paid.
+export function paidLate(inv: InvoiceView): boolean {
+  const waiting = inv.registration.latePayment?.waiting
+  return (inv.status === "paid" || (inv.status === "expired" && inv.paidInFull === true)) && (waiting === undefined || waiting === "support")
+}
+
 // an invoice closed with nothing received, whose order a new invoice can take over
 export const closedEmpty = (inv: InvoiceView | null) => inv?.status === "expired" && !holdsPayment(inv)
 

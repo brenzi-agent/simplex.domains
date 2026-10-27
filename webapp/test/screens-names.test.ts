@@ -101,6 +101,10 @@ describe("list helpers", () => {
       ["an expired invoice money reached", registration(), invoice({ status: "expired", cryptoAmountPaid: "0.0001" }), record(), ["Invoice expired", "warn"]],
       ["a cancelled invoice that closed", registration(), invoice({ status: "expired" }), record({ cancelled: true }), ["Invoice cancelled", "bad"]],
       ["a payment after the invoice closed", registration(), invoice({ status: "paid" }), record(), ["Paid late", "warn"]],
+      ["a whole payment after the close, credited, kept expired", registration(), invoice({ status: "expired", cryptoAmountPaid: "0.00025", paidInFull: true }), record(), ["Paid late", "warn"]],
+      ["a whole payment after a cancel, credited", registration(), invoice({ status: "expired", cryptoAmountPaid: "0.00025", paidInFull: true }), record({ cancelled: true }), ["Paid late", "warn"]],
+      ["a whole payment after the close, confirming", registration(), invoice({ status: "expired", cryptoAmountPaid: "0.00025", paidInFull: true }, { latePayment: { waiting: "confirming" } }), record(),
+        ["Invoice expired", "warn"]],
       ["a payment in full", registration(), invoice({ paidInFull: true }), record(), ["Confirming payment", "warn"]],
       ["a card submitted", registration(), invoice({ cryptoCurrency: "card" }), record({ cardSubmittedAt: "2026-10-17T11:59:30Z" }), ["Confirming payment", "warn"]],
       ["part of a payment", registration(), invoice({ cryptoAmountPaid: "0.0001" }), record(), ["Waiting for the rest", "warn"]],
@@ -256,10 +260,20 @@ describe("lateLine", () => {
   it("keeps a payment that arrived after its invoice closed as the order's balance", () => {
     expect(lateLine(invoice({ status: "paid", paidInFull: true }))).toBe("Paid after the invoice closed; kept as your balance")
   })
+  it("says a whole payment that BTCPay keeps expired, or invalid after a cancel, was paid after the close once it is credited", () => {
+    expect(lateLine(invoice({ status: "expired", cryptoAmountPaid: "0.00025", cryptoAmountDue: "0", paidInFull: true }))).toBe("Paid after the invoice closed; kept as your balance")
+  })
   it("keeps part of a payment, and a payment that had not completed, held as the invoice closed", () => {
     expect(lateLine(invoice({ status: "expired", cryptoAmountPaid: "0.0001" }))).toBe("Part of the payment arrived; kept as your balance")
-    expect(lateLine(invoice({ status: "expired", cryptoAmountPaid: "0.00025", paidInFull: true })))
+    expect(lateLine(invoice({ status: "expired", amountPaid: 1500, cryptoCurrency: "card" })))
       .toBe("A payment did not complete before the invoice closed; kept as your balance")
+  })
+  it("keeps it as the balance once it is confirmed or credited, while the credit waits on either", () => {
+    const whole = { status: "expired", cryptoAmountPaid: "0.00025", cryptoAmountDue: "0", paidInFull: true } as const
+    expect(lateLine(invoice(whole, { latePayment: { waiting: "confirming" } }))).toBe("A payment did not complete before the invoice closed; kept as your balance once confirmed")
+    expect(lateLine(invoice(whole, { latePayment: { waiting: "crediting" } }))).toBe("A payment did not complete before the invoice closed; kept as your balance once credited")
+    expect(lateLine(invoice({ status: "expired", cryptoAmountPaid: "0.0001" }, { latePayment: { waiting: "confirming" } })))
+      .toBe("Part of the payment arrived; kept as your balance once confirmed")
   })
   it("sends to support money the service cannot credit by itself", () => {
     expect(lateLine(invoice({ status: "paid", paidInFull: true }, { latePayment: { waiting: "support" } }))).toBe("Paid after the invoice closed; write to support to have it credited")
