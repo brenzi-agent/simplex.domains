@@ -10,7 +10,6 @@ RUN git clone https://github.com/brenzi/simplex-namespace-contract.git . \
  && git fetch origin "$NAMESPACE_COMMIT" \
  && git checkout "$NAMESPACE_COMMIT" \
  && git submodule update --init ens-contracts \
- && git -C ens-contracts fetch origin "$ENS_CONTRACTS_COMMIT" \
  && git -C ens-contracts checkout "$ENS_CONTRACTS_COMMIT"
 WORKDIR /src/ens-contracts
 RUN npx --yes pnpm@9 install --frozen-lockfile --ignore-scripts && npx hardhat compile

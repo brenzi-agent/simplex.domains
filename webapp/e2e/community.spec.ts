@@ -206,7 +206,7 @@ test("a name put on the list meanwhile is refused for the community wording, whi
     await payButton(page).click()
     await page.waitForURL(/\?order=/)
     const view = await invoiceViewOf(request, new URL(page.url()).searchParams.get("order")!)
-    expect([view.terms, view.community]).toEqual([communityTerms(TERMS_VERSION), { for: LISTED_FOR, terms: { url: expect.any(String), hash: COMMUNITY_TERMS_HASH } }])
+    expect([view.terms, view.community]).toEqual([communityTerms(TERMS_VERSION), { for: LISTED_FOR, terms: { url: `/api/community-terms/${COMMUNITY_TERMS_HASH}`, hash: COMMUNITY_TERMS_HASH } }])
     await page.goto("/#/names")
     const marker = page.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: MARKER })
     await marker.click()

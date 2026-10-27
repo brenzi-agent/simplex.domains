@@ -473,7 +473,7 @@ test("a retry refused for a code used elsewhere says the code is gone and offers
   await reopenRefused(page)
 })
 
-test("a failed code order opened again after its code was used elsewhere offers no Try again, and from the first frame the time after", async ({ page, request }) => {
+test("a failed code order opened again after its code was used elsewhere offers no Try again nor another name, and from the first frame the time after", async ({ page, request }) => {
   const { code, registrationId, label } = await registerWithCode(page, request, "cgone")
   await control(request, `fail/${registrationId}`)
   await expect(page.getByRole("heading", { name: "Not registered" })).toBeVisible({ timeout: 60_000 })

@@ -61,6 +61,9 @@ test("a paid order whose name was reserved meanwhile says so, and keeps its paym
 test("a failed order whose name was registered or reserved since offers another name for it", async ({ page, request }) => {
   const label = uniqueLabel("fg")
   const { registrationId } = await failedOrder(page, request, label)
+  const searched = page.waitForResponse("**/api/name/**")
+  await page.reload()
+  await searched
   await expect(onStep(page).getByRole("button", { name: "Choose another name" }), "a name still available is tried again").toHaveCount(0)
   await control(request, "take", { label })
   await expect.poll(async () => (await searchName(request, label)).status, { timeout: REGISTRATION_MS }).toBe("registered")

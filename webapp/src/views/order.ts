@@ -222,13 +222,11 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
       dispatch({ type: "answered", seq, now: api.serviceNow(), invoice, view, record: record ?? null, cardSubmittedAt: cardSubmittedAt(invoice, record), nameStatus: status ?? null })
     }
     // A failed order is drawn first, and its name searched after: one registered or reserved since can move to another
-    // name, from the browser with its name code. A search that failed is made again with the next read.
+    // name, from the browser with its name code.
     if (view.phase === "failed" && status === undefined && record && !view.linksRefused) {
-      status = (await statusNow(view, record)) ?? undefined
+      status = await statusNow(view, record)
       if (!isRoute(mine)) return
-      if (status !== undefined) {
-        dispatch({ type: "answered", seq: ++reads, now: api.serviceNow(), invoice, view, record, cardSubmittedAt: cardSubmittedAt(invoice, record), nameStatus: status })
-      }
+      if (status) dispatch({ type: "answered", seq: ++reads, now: api.serviceNow(), invoice, view, record, cardSubmittedAt: cardSubmittedAt(invoice, record), nameStatus: status })
     }
     // a closed order that a balance paid part of reads that balance once, for what its new invoice will pay
     if (!sourceRead && closedCase(state) !== null && record?.balanceSource) {
