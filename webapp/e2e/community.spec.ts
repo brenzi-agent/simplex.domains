@@ -34,6 +34,16 @@ async function atVersion<T>(request: APIRequestContext, version: string, f: () =
   }
 }
 
+// The name policy's community terms changed to this text while `f` runs, then back to the deployed ones.
+async function withCommunityTerms<T>(request: APIRequestContext, text: string, f: (hash: string) => Promise<T>): Promise<T> {
+  const { hash } = await control(request, "community-terms", { text }) as { hash: string }
+  try {
+    return await f(hash)
+  } finally {
+    await control(request, "community-terms", { text: null })
+  }
+}
+
 // The names on the chain's community list, with the ini's words, while `f` runs.
 async function listed<T>(request: APIRequestContext, labels: string[], f: () => Promise<T>): Promise<T> {
   for (const label of labels) await control(request, "community", { label, for: LISTED_FOR })
@@ -344,8 +354,7 @@ test("community terms changed on chain between the order and its reveal are agre
     let reveals = 0
     page.on("request", (r) => { if (r.method() === "POST" && r.url().endsWith("/reveal")) reveals++ })
     const { invoiceId } = await startOrder(page, label)
-    const { hash } = await control(request, "community-terms", { text: `the community terms, changed for ${label}` }) as { hash: string }
-    try {
+    await withCommunityTerms(request, `the community terms, changed for ${label}`, async (hash) => {
       await control(request, `settle/${invoiceId}`)
       const notice = onStep(page).locator(".line", { hasText: TERMS_CHANGED })
       await expect(notice).toBeVisible({ timeout: REGISTRATION_MS })
@@ -361,9 +370,7 @@ test("community terms changed on chain between the order and its reveal are agre
       const view = await invoiceViewOf(request, invoiceId)
       expect(view.terms, "the order keeps the terms it signed").toBe(communityTerms(TERMS_VERSION))
       expect((await acceptedOnChain(view.registerTx as string))?.termsHash, "the register recorded the new terms").toBe(hash)
-    } finally {
-      await control(request, "community-terms", { text: null })
-    }
+    })
   })
 })
 
@@ -371,16 +378,13 @@ test("changed community terms whose first search fails are asked for once the se
   const label = uniqueLabel("cw")
   await listed(request, [label], async () => {
     const { invoiceId } = await startOrder(page, label)
-    await control(request, "community-terms", { text: `the community terms, changed for ${label}` })
-    try {
+    await withCommunityTerms(request, `the community terms, changed for ${label}`, async () => {
       let searches = 0
       await page.route("**/api/name/*", (route) => searches++ === 0 ? route.fulfill({ status: 503, json: { error: "provider_unavailable" } }) : route.fallback())
       await control(request, `settle/${invoiceId}`)
       await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: REGISTRATION_MS })
       expect(searches).toBeGreaterThan(1)
-    } finally {
-      await control(request, "community-terms", { text: null })
-    }
+    })
   })
 })
 
@@ -394,15 +398,15 @@ test("community terms changed after the reveal, before its relay, are agreed to 
       // the relay is held back while the reveal is stored and the terms change, then refused for the old terms
       await control(request, "search", { unsentSeconds: 20 })
       await expect.poll(async () => (await invoiceViewOf(request, invoiceId)).label, { timeout: REGISTRATION_MS }).toBe(label)
-      const { hash } = await control(request, "community-terms", { text: `the community terms, changed after the reveal of ${label}` }) as { hash: string }
-      await control(request, "search", { unsentSeconds: 0 })
-      await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: REGISTRATION_MS })
-      await agreeToTerms(page)
-      await waitRegistered(page, label)
-      expect((await acceptedOnChain((await invoiceViewOf(request, invoiceId)).registerTx as string))?.termsHash).toBe(hash)
+      await withCommunityTerms(request, `the community terms, changed after the reveal of ${label}`, async (hash) => {
+        await control(request, "search", { unsentSeconds: 0 })
+        await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: REGISTRATION_MS })
+        await agreeToTerms(page)
+        await waitRegistered(page, label)
+        expect((await acceptedOnChain((await invoiceViewOf(request, invoiceId)).registerTx as string))?.termsHash).toBe(hash)
+      })
     } finally {
       await control(request, "search", { unsentSeconds: 0 })
-      await control(request, "community-terms", { text: null })
     }
   })
 })

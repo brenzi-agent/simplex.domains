@@ -884,8 +884,7 @@ async function register(reg: Registration): Promise<void> {
     return fail(reg, "The register transaction did not go through")
   }
   const { nonce, deadline, signature } = reg.intent!
-  // a community name's acceptance goes on chain first, unless an earlier relay of it was mined; its revert is judged as the
-  // register's is
+  // a community name's acceptance is relayed first unless already on chain; its revert is judged as the register's
   const relay = reg.acceptance && await read<Hex>(namePolicy, "acceptedTerms", [reg.commitment, reg.owner]) !== reg.acceptance.termsHash ? reg.acceptance : null
   // registering only once the transaction goes out: until then the name is not on its way to the owner
   const sending = (hash: Hex) => {
@@ -901,8 +900,7 @@ async function register(reg: Registration): Promise<void> {
     // no answer from the chain is not a failure: the transaction may still be mined, so the order waits for the chain
     if (!(e instanceof Reverted)) return awaitRegistration(reg)
     if ((await ownerOf(reg.labelHash).catch(() => null)) === reg.owner) return registered(reg)
-    // another registration by the same owner spent this nonce first, or the terms changed since the acceptance: the owner
-    // signs again
+    // another order of the same owner spent this nonce first, or the terms changed: the owner signs again
     if (SIGN_AGAIN.includes(e.revert ?? "")) {
       clearReveal(reg)
       reg.phase = "committed"
@@ -1473,9 +1471,9 @@ export async function controlCommunity(body: Record<string, unknown>): Promise<R
   if (typeof label !== "string" || labelProblem(label) !== null) throw new HttpError(400, "invalid_name")
   if (text !== null && (typeof text !== "string" || text.length === 0 || text.length > COMMUNITY_TEXT_MAX || /\p{Cc}/u.test(text))) throw badRequest()
   const hash = keccak256(toHex(label))
+  await send(namePolicy, text === null ? "removeBonaFideNames" : "addBonaFideNames", [[label]], undefined, contractsOwner)
   if (text === null) communities.delete(hash)
   else communities.set(hash, text)
-  await send(namePolicy, text === null ? "removeBonaFideNames" : "addBonaFideNames", [[label]], undefined, contractsOwner)
   return { community: await communityOf(hash) }
 }
 

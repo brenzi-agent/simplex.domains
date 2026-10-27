@@ -105,8 +105,9 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
   switch (e.type) {
     case "answered":
       if (e.seq <= s.seq) return s
+      // a stored reveal ends its sending, so one the service clears is signed again under the same key
       return { ...s, seq: e.seq, now: e.now, invoice: e.invoice, view: e.view, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? e.view.label),
-        reserved: e.reserved, since: sinceOf(s.since, e.view, e.now) }
+        reserved: e.reserved, since: sinceOf(s.since, e.view, e.now), reveal: e.view.label !== null && s.reveal ? { ...s.reveal, sending: false } : s.reveal }
     case "record-changed": return { ...s, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? null) }
     case "read-failed": return s
     case "not-found": return { ...s, gone: true }

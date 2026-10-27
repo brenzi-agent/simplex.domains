@@ -527,6 +527,12 @@ describe("reveal helpers", () => {
     expect(revealKey(view)).toBe(`reg-1 ${COMMITMENT} 4 ${NOW / 1000 + 3600}`)
     expect(revealKey(registration({ ...committed, acceptance: acceptanceFor(CHANGED) })), "and the acceptance it signs").toBe(`reg-1 ${COMMITMENT} 4 ${NOW / 1000 + 3600} 0x3 ${CHANGED} 0`)
   })
+  it("a stored reveal ends its sending, so one the service clears is signed again under the same key", () => {
+    const sent = reduce(waiting, { type: "reveal-sent", key: revealKey(view) })
+    const stored = reduce(sent, answered(sent, read(null, registration({ ...committed, label: "alice" }))))
+    expect(stored.reveal).toEqual({ key: revealKey(view), sending: false, refusals: 0 })
+    expect(revealDue(reduce(stored, answered(stored, read(null, view))))).toBe(true)
+  })
   it("refusalsOf counts the refusals of the commit shown, and none outside the wait", () => {
     const refused = { ...waiting, reveal: { key: revealKey(view), sending: false, refusals: 2 } }
     expect(refusalsOf(refused)).toBe(2)
