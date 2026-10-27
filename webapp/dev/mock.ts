@@ -82,8 +82,8 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 
 // a text, as the community terms are, is answered as plain text
 function reply(res: ServerResponse, status: number, body: unknown, retryAfter: number | null = null): void {
-  const text = typeof body === "string" ? body : JSON.stringify(body, (_, v) => (typeof v === "bigint" ? v.toString() : v))
-  res.writeHead(status, { "content-type": typeof body === "string" ? "text/plain; charset=utf-8" : "application/json", "cache-control": "no-store", ...(retryAfter ? { "retry-after": String(retryAfter) } : {}) })
+  const [type, text] = typeof body === "string" ? ["text/plain; charset=utf-8", body] : ["application/json", JSON.stringify(body, (_, v) => (typeof v === "bigint" ? v.toString() : v))]
+  res.writeHead(status, { "content-type": type, "cache-control": "no-store", ...(retryAfter ? { "retry-after": String(retryAfter) } : {}) })
   res.end(text)
 }
 

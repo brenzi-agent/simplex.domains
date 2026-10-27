@@ -6,7 +6,7 @@ import {
   AGREE, agreeToTerms, contactLink, control, failedOrder, MOCK, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, restoreOrder, savedToReview, search, sevenLetters,
   startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered, withStripeKey, acceptedOnChain, COMMUNITY_TERMS_HASH, communityTerms,
 } from "./helpers.ts"
-import { keccak256, toHex } from "viem"
+import { keccak256, toHex, zeroHash } from "viem"
 import { RETRY_MS } from "../src/screens/order.ts"
 
 const COMMUNITY_LABEL = "bakers"
@@ -126,6 +126,23 @@ test("a community name shows its marker after the name, a button whose popup say
   await search(page, uniqueLabel("cn"))
   await expect(onStep(page).getByRole("button", { name: "Register" })).toBeEnabled()
   await expect(onStep(page).getByRole("button", { name: MARKER }), "a name not on the list").toHaveCount(0)
+})
+
+test("a community name whose policy has no terms yet cannot be ordered, and its box says so", async ({ page }) => {
+  // the name policy before its owner's first setTerms answers a zero hash
+  await page.route("**/api/name/*", async (route) => {
+    const response = await route.fetch()
+    const json = await response.json()
+    if (json.community) json.community.terms = { url: `/api/community-terms/${zeroHash}`, hash: zeroHash }
+    await route.fulfill({ response, json })
+  })
+  await search(page, COMMUNITY_LABEL)
+  await toReview(page, false)
+  const terms = onStep(page).locator(".check.terms")
+  await expect(terms).toHaveText("This community name can't be ordered yet: its community terms are not set.")
+  await expect(terms.getByRole("checkbox")).toBeDisabled()
+  await expect(terms.getByRole("link")).toHaveCount(0)
+  await expect(payButton(page)).toBeDisabled()
 })
 
 test("Check your order of a community name asks for the community wording, its terms linked and its ⓘ saying what the name is for, and Pay waits for the tick", async ({ page }) => {
@@ -414,7 +431,8 @@ test("changed community terms that a search answers otherwise than the view are 
       if (answered || (await invoiceViewOf(request, invoiceId)).phase !== "committed") return route.fallback()
       const response = await route.fetch()
       const json = await response.json()
-      json.community.terms.hash = `0x${"d8".repeat(32)}`
+      const other = `0x${"d8".repeat(32)}`
+      json.community.terms = { url: `/api/community-terms/${other}`, hash: other }
       answered = true
       await route.fulfill({ response, json })
     })

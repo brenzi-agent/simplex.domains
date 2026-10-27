@@ -1,4 +1,4 @@
-import { type Balance, type Community, holdsPayment, type InvoiceView, type RegistrationView, type Terms } from "../api.ts"
+import { type Balance, type Community, holdsPayment, type InvoiceView, type RegistrationView, type SearchAnswer, type Terms } from "../api.ts"
 import type { IconName } from "../icons.ts"
 import type { CodeRefusal, OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
@@ -53,9 +53,8 @@ export interface OrderState {
   // the balance that paid part of the order, as its own order reads now, which a new invoice spends again
   sourceBalance: Balance | null
   ask: TermsAsk | null
-  reserved: boolean
-  // a taken or failed order's name, searched once, is registered or reserved
-  nameGone: boolean
+  // a taken or failed order's name, as one search answered it
+  nameStatus: SearchAnswer["status"] | null
   // the search of the changed terms' ask answered the name as registered or reserved, for the commitment of this reveal key
   unavailable: { key: string; reserved: boolean } | null
   // when this page first saw the stage, or the buyer ticked changed community terms in it, on the service's clock
@@ -63,7 +62,7 @@ export interface OrderState {
 }
 
 export type OrderEvent =
-  | { type: "answered"; seq: number; now: number; invoice: InvoiceView | null; view: RegistrationView; record: OrderRecord | null; cardSubmittedAt: string | null; reserved: boolean; nameGone: boolean }
+  | { type: "answered"; seq: number; now: number; invoice: InvoiceView | null; view: RegistrationView; record: OrderRecord | null; cardSubmittedAt: string | null; nameStatus: SearchAnswer["status"] | null }
   | { type: "record-changed"; record: OrderRecord | null; cardSubmittedAt: string | null }
   | { type: "read-failed" }
   | { type: "not-found" }
@@ -96,7 +95,7 @@ export type OrderEvent =
   | { type: "hold-ended" }
 
 export function initialState(reference: string, hold: Hold | null, reveal: Reveal | null = null): OrderState {
-  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null, reserved: false, nameGone: false, unavailable: null, since: null }
+  return { reference, seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false, reveal, busy: null, note: null, hold, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null, nameStatus: null, unavailable: null, since: null }
 }
 
 const stageOf = (view: RegistrationView) => `${view.id} ${view.phase}${view.phase === "committed" && view.label !== null ? " signed" : ""}`
@@ -112,7 +111,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
       if (e.seq <= s.seq) return s
       // a reveal the view shows as stored is no longer sending, so one the service clears is signed again under the same key
       return { ...s, seq: e.seq, now: e.now, invoice: e.invoice, view: e.view, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? e.view.label),
-        reserved: e.reserved, nameGone: e.nameGone, since: sinceOf(s.since, e.view, e.now), reveal: e.view.label !== null && s.reveal ? { ...s.reveal, sending: false } : s.reveal }
+        nameStatus: e.nameStatus, since: sinceOf(s.since, e.view, e.now), reveal: e.view.label !== null && s.reveal ? { ...s.reveal, sending: false } : s.reveal }
     case "record-changed": return { ...s, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? null) }
     case "read-failed": return s
     case "not-found": return { ...s, gone: true }

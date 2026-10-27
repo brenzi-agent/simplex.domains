@@ -19,7 +19,6 @@ export interface Deployment {
   sponsor: Address
   resolver: Address
   namePolicy: Address
-  communityTermsHash: Hex
   ownerKey: Hex
   registrarKey: Hex
   holderKey: Hex

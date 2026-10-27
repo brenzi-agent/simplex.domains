@@ -1,4 +1,4 @@
-// Deploys the .simplex contracts (ens-contracts PR #42) to a running local node for the names webapp,
+// Deploys the .simplex contracts (ens-contracts PR #45) to a running local node for the names webapp,
 // wired as the PR's test fixture wires them, and seeds names in every state search can answer.
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
@@ -41,7 +41,7 @@ const COMMUNITY_NAMES = ["bakers", "bakehouse"]
 // anvil's well-known development mnemonic
 const MNEMONIC = "test test test test test test test test test test test junk"
 
-if (!ENS_CONTRACTS_DIR) throw new Error("set ENS_CONTRACTS_DIR to a compiled checkout of ens-contracts PR #42")
+if (!ENS_CONTRACTS_DIR) throw new Error("set ENS_CONTRACTS_DIR to a compiled checkout of ens-contracts PR #45")
 
 const [owner, guardian, registrar, holder] = [0, 1, 2, 3].map((i) => mnemonicToAccount(MNEMONIC, { addressIndex: i }))
 const registrarKey = toHex(registrar.getHdKey().privateKey!)

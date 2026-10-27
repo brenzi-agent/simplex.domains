@@ -48,7 +48,7 @@ function read(invoice: InvoiceView | null, view: RegistrationView = invoice!.reg
 }
 
 const answered = (s: OrderState, next: OrderState): Extract<OrderEvent, { type: "answered" }> =>
-  ({ type: "answered", seq: s.seq + 1, now: next.now, invoice: next.invoice, view: next.view!, record: next.record, cardSubmittedAt: next.cardSubmittedAt, reserved: next.reserved, nameGone: next.nameGone })
+  ({ type: "answered", seq: s.seq + 1, now: next.now, invoice: next.invoice, view: next.view!, record: next.record, cardSubmittedAt: next.cardSubmittedAt, nameStatus: next.nameStatus })
 
 const submittedAgo = (ms: number) => new Date(NOW - ms).toISOString()
 const committed = { phase: "committed", commitTx: "0xc0", revealAfter: NOW / 1000 - 1, revealBefore: NOW / 1000 + 3600, intentNonce: 4 } as const
@@ -472,13 +472,8 @@ describe("a taken order's name", () => {
   const taken = read(null, registration({ phase: "taken", label: "alice" }))
   it("is taken as the search after it answered: reserved meanwhile, or not", () => {
     const start = initialState("reg-1", null)
-    expect(reduce(start, answered(start, { ...taken, reserved: true })).reserved).toBe(true)
-    expect(reduce(start, answered(start, taken)).reserved).toBe(false)
-  })
-  it("is gone once the search answered it as registered or reserved, as a failed order's is", () => {
-    const start = initialState("reg-1", null)
-    expect(reduce(start, answered(start, { ...taken, nameGone: true })).nameGone).toBe(true)
-    expect(reduce(start, answered(start, taken)).nameGone).toBe(false)
+    expect(reduce(start, answered(start, { ...taken, nameStatus: "reserved" })).nameStatus).toBe("reserved")
+    expect(reduce(start, answered(start, taken)).nameStatus).toBeNull()
   })
 })
 
@@ -667,7 +662,7 @@ describe("initialState", () => {
     expect(initialState("inv-1", { until: NOW + 1000, lead: NO_LEAD }, reveal)).toEqual({
       reference: "inv-1", seq: 0, now: 0, invoice: null, view: null, record: null, cardSubmittedAt: null, cardFailed: false,
       reveal, busy: null, note: null, hold: { until: NOW + 1000, lead: NO_LEAD }, price: null, gone: false, codeRefused: false, codeKept: false, codeCheckAt: null, sourceBalance: null, ask: null,
-      reserved: false, nameGone: false, unavailable: null, since: null,
+      nameStatus: null, unavailable: null, since: null,
     })
   })
 })

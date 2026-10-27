@@ -199,6 +199,7 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
     }
     if (!isRoute(mine)) return
     if (view.phase !== "failed") codeChecked = false
+    if (view.phase !== "taken" && view.phase !== "failed") status = undefined
     if (invoice && invoice.status !== "open") store.clearCardSubmitted(invoice.invoiceId)
     if (invoice && invoice.status !== "open" && record?.cardSubmittedAt) {
       store.updateOrder(record.registrationId, { cardSubmittedAt: undefined })
@@ -218,8 +219,7 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
         status = await statusNow(view, record ?? null)
         if (!isRoute(mine)) return
       }
-      dispatch({ type: "answered", seq, now: api.serviceNow(), invoice, view, record: record ?? null, cardSubmittedAt: cardSubmittedAt(invoice, record), reserved: status === "reserved",
-        nameGone: status === "registered" || status === "reserved" })
+      dispatch({ type: "answered", seq, now: api.serviceNow(), invoice, view, record: record ?? null, cardSubmittedAt: cardSubmittedAt(invoice, record), nameStatus: status ?? null })
     }
     // a closed order that a balance paid part of reads that balance once, for what its new invoice will pay
     if (!sourceRead && closedCase(state) !== null && record?.balanceSource) {
@@ -1201,7 +1201,7 @@ async function moveWithoutLinks(): Promise<void> {
     const now = e instanceof api.ApiError && e.code === "registration_changed" ? api.changedView(e) : null
     if (now && !sameStep(view, now)) {
       answer(gen, { type: "answered", seq: ++reads, now: api.serviceNow(), invoice: state.invoice && { ...state.invoice, registration: now },
-        view: now, record: state.record, cardSubmittedAt: state.cardSubmittedAt, reserved: state.reserved, nameGone: state.nameGone })
+        view: now, record: state.record, cardSubmittedAt: state.cardSubmittedAt, nameStatus: state.nameStatus })
       return answer(gen, { type: "move-failed", note: null })
     }
     answer(gen, { type: "move-failed", note: limit ? moveLimitNote(reference) : warning("That did not go through. Nothing changed. Try again in a moment.") })
@@ -1234,7 +1234,8 @@ function registeredLead(view: api.RegistrationView, record: store.OrderRecord | 
   return record ? `Registered until ${until}.` : `Registered until ${until} to ${shortAddress(view.owner)}. Its name code is not in this browser.`
 }
 
-function buildTakenWithCode({ view: taken, record, reserved }: OrderState): HTMLElement {
+function buildTakenWithCode({ view: taken, record, nameStatus }: OrderState): HTMLElement {
+  const reserved = nameStatus === "reserved"
   const view = taken!
   const label = labelOf(view, record)
   const released = releasedCode(view, record)
@@ -1258,7 +1259,7 @@ function buildTaken(s: OrderState): HTMLElement {
     ? el("div", { class: "notice plain" }, el("b", {}, "What you paid is kept as your balance."),
       " Choose another name and pay only the difference, or ask for a refund. Your names shows the balance.")
     : el("div", { class: "notice plain" }, el("b", {}, "What you paid went to your balance."), " It has been spent or refunded since; Your names shows it.")
-  const reserved = s.reserved
+  const reserved = s.nameStatus === "reserved"
   const title = label ? [gradName(label, view.tld), reserved ? " is\u00a0reserved" : " was\u00a0taken"] : reserved ? "The name is reserved" : "The name was taken"
   return screen({ title, lead: reserved ? "It was reserved meanwhile, so it can't be registered." : "Someone registered it before your order could.",
     ...balanceActions(s) },
@@ -1293,8 +1294,9 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
   const alert = failedAlert(s)
   const support = [el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with its reference."]
-  // a name taken or reserved since cannot be tried again, so the order moves to another one
-  const alt = s.nameGone && s.record ? link("Choose another name", () => go(`/#/?retarget=${view.id}`)) : null
+  // a name taken or reserved since cannot be registered by this order, so it can move to another one with its code
+  const gone = s.nameStatus === "registered" || s.nameStatus === "reserved"
+  const alt = gone && s.record && !s.codeRefused ? link("Choose another name", () => go(`/#/?retarget=${view.id}`)) : null
   return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: failedLead(s), action, alt },
     el("p", { class: "note center" }, ...orderLine(s)),
     stages(failedAt),

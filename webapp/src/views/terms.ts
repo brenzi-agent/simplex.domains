@@ -35,7 +35,7 @@ export interface Agreement {
 
 export function termsCheck(a: Agreement, agree: (agreed: boolean) => void): HTMLLabelElement {
   const unset = a.community?.terms.hash === NO_TERMS
-  const box = el("input", { type: "checkbox", checked: a.agreed && !unset, disabled: a.disabled || unset, "data-focus": "agreed" })
+  const box = el("input", { type: "checkbox", checked: a.agreed, disabled: a.disabled || unset, "data-focus": "agreed" })
   box.addEventListener("change", () => agree(box.checked))
   const terms = el("a", { class: "nowrap", href: a.terms.url, target: "_blank", rel: "noopener" }, "SimpleX name terms")
   const community = a.community

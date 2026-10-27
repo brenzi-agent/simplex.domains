@@ -1489,9 +1489,9 @@ export async function controlCommunity(body: Record<string, unknown>): Promise<R
 export async function controlCommunityTerms(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { text } = body
   if (text !== null && (typeof text !== "string" || text.length === 0)) throw badRequest()
-  const terms = text ?? DEPLOYED_TERMS
-  await send(namePolicy, "setTerms", [terms], undefined, contractsOwner)
-  return { hash: keccak256(toHex(terms)) }
+  const communityText = text ?? DEPLOYED_TERMS
+  await send(namePolicy, "setTerms", [communityText], undefined, contractsOwner)
+  return { hash: keccak256(toHex(communityText)) }
 }
 
 // The text the name policy keeps of the community terms of this hash, which the page links.
