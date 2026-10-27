@@ -500,6 +500,8 @@ test("Skip for now shows only while no link is given, and a link edited keeps it
   const stored = () => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!) as { contact: string; channel: string }, CHECKOUT_KEY)
   const contact = contactLink("S1")
   const border = () => step.locator(".link-field .field").first().evaluate((box) => getComputedStyle(box).borderTopColor)
+  // the pointer left where Register was lies over the field, which takes the hover border whenever the browser next updates hover
+  await page.mouse.move(0, 0)
   await link.blur()
   const neutral = await border()
   await link.fill(contact)
