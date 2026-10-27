@@ -269,6 +269,8 @@ const isText = (v: unknown) => typeof v === "string"
 const isAmount = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0
 const isCount = (v: unknown) => Number.isInteger(v) && (v as number) >= 1
 const isDecimal = (v: unknown) => typeof v === "string" && /^\d+(\.\d+)?$/.test(v)
+// BTCPay reports an overpaid invoice's due below zero, which the page reads as nothing left to pay
+const isDue = (v: unknown) => typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v)
 const optional = (v: unknown, test: (v: unknown) => boolean) => v === undefined || test(v)
 const nullable = (v: unknown, test: (v: unknown) => boolean) => v === null || test(v)
 // an image the page holds itself, as the service sends it: the page's CSP loads images from nowhere else
@@ -295,9 +297,11 @@ const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id)
   && typeof v.linksRefused === "boolean" && isCommunity(v.community) && nullable(v.terms, isSignedTerms)
 const isInvoice = (v: unknown) => isObject(v) && isText(v.invoiceId) && ["open", "paid", "expired"].includes(v.status as string) && isAmount(v.amount)
   && isText(v.currency) && isText(v.expiresAt) && isRegistration(v.registration) && optional(v.amountPaid, isAmount)
-  && optional(v.cryptoAmountPaid, isDecimal) && optional(v.cryptoAmountDue, isDecimal) && optional(v.cryptoAmount, isDecimal)
+  && optional(v.cryptoAmountPaid, isDecimal) && optional(v.cryptoAmountDue, isDue) && optional(v.cryptoAmount, isDecimal)
   && optional(v.paidInFull, (x) => typeof x === "boolean") && optional(v.address, isText)
   && optional(v.cryptoCurrency, (x) => ["card", "btc", "xmr"].includes(x as string)) && optional(v.requiredConfirmations, (x) => Number.isInteger(x) && (x as number) >= 0)
+const clampDue = (inv: InvoiceView): InvoiceView => inv.cryptoAmountDue?.startsWith("-") ? { ...inv, cryptoAmountDue: "0" } : inv
+const checkedInvoice = (answer: Promise<unknown>) => checked<InvoiceView>(answer, isInvoice).then(clampDue)
 const isRecords = (v: unknown) => isObject(v) && isText(v.contact) && isText(v.channel)
 
 export const searchName = (labelHash: string, length: number) => checked<SearchAnswer>(call("GET", `/api/name/${labelHash}?length=${length}`), (a) => isCommunity(a.community) && (
@@ -325,10 +329,10 @@ const signingTerms = (sent: Promise<unknown>) => sent.catch((e: unknown) => {
 })
 
 export const createOrder = (order: SignedOrder, method: Method, price: number) =>
-  checked<InvoiceView>(signingTerms(call("POST", "/api/invoice", { kind: "name", ...order, method, price })), isInvoice)
+  checkedInvoice(signingTerms(call("POST", "/api/invoice", { kind: "name", ...order, method, price })))
 export const registerWithCode = (order: SignedOrder, code: string) =>
   checked<{ registrationId: string }>(signingTerms(call("POST", "/api/name/register", { ...order, code })), (a) => isText(a.registrationId))
-export const cancelInvoice = (invoiceId: string) => checked<InvoiceView>(call("POST", `/api/invoice/${encodeURIComponent(invoiceId)}/cancel`), isInvoice)
+export const cancelInvoice = (invoiceId: string) => checkedInvoice(call("POST", `/api/invoice/${encodeURIComponent(invoiceId)}/cancel`))
 
 // what a long poll on an invoice has seen: its status, its registration's version, and the payment marks, the paid amount
 // and paidInFull, as Monero can report a full payment with no amount yet
@@ -337,7 +341,7 @@ export const seenOf = (inv: InvoiceView): SeenInvoice => ({ status: inv.status, 
 
 export function readInvoice(invoiceId: string, seen?: SeenInvoice, signal?: AbortSignal): Promise<InvoiceView> {
   const query = seen ? `?wait=${seen.status}&seenVersion=${seen.version}&seenPaid=${encodeURIComponent(seen.paid)}&seenFull=${seen.full ? "1" : "0"}` : ""
-  return checked<InvoiceView>(call("GET", `/api/invoice/${encodeURIComponent(invoiceId)}${query}`, undefined, signal, seen ? null : REQUEST_TIMEOUT_MS), isInvoice)
+  return checkedInvoice(call("GET", `/api/invoice/${encodeURIComponent(invoiceId)}${query}`, undefined, signal, seen ? null : REQUEST_TIMEOUT_MS))
 }
 
 export function readRegistration(registrationId: string, seenVersion?: number, signal?: AbortSignal): Promise<RegistrationView> {
@@ -361,7 +365,8 @@ export async function spend(registrationId: string, body: SpendRequest): Promise
     if (!nullable(e.body.balance, isBalance)) throw noAnswer()
     throw new BalanceChanged(e, e.body.balance as Balance | null)
   })
-  return checked(sent, (a) => isInvoice(a) || (isText(a.registrationId) && a.invoiceId === undefined))
+  const made = await checked<{ registrationId: string } | InvoiceView>(sent, (a) => isInvoice(a) || (isText(a.registrationId) && a.invoiceId === undefined))
+  return "invoiceId" in made ? clampDue(made) : made
 }
 export const retry = (registrationId: string) => checked<RegistrationView>(call("POST", `/api/registration/${encodeURIComponent(registrationId)}/retry`), isRegistration)
 const isFound = (r: unknown) => isObject(r) && isText(r.registrationId) && nullable(r.invoiceId, isText) && PHASES.includes(r.phase as Phase) && isText(r.createdAt)
