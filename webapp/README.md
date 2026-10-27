@@ -52,7 +52,7 @@ The backend needs two things outside this repo:
    npx hardhat compile
    ```
 
-2. Foundry's `anvil`, from the [release tarball](https://github.com/foundry-rs/foundry/releases). Hardhat's own node does not return revert data, which the mock needs to tell a taken name from a failure.
+2. Foundry's `anvil`, from the [release tarball](https://github.com/foundry-rs/foundry/releases). The backend runs on anvil only: Hardhat's node returns no revert data, which the mock needs to tell a taken name from a failure, so on it the balance, taken and contract browser tests fail. `start.sh` stops when a chain it waits for is not anvil, as when another chain already holds the port.
 
 ## Run
 

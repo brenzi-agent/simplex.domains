@@ -35,8 +35,15 @@ MEMORY_STATES=8
 for ((i = 0; i < count; i++)); do
   "$ANVIL" --chain-id 31337 --host "${ANVIL_HOST:-127.0.0.1}" --port "$((RPC_PORT + i))" --block-time 1 --prune-history "$MEMORY_STATES" --silent &
 done
+rpc() { curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"$2\"}" "$(rpc_url "$1")"; }
 for ((i = 0; i < count; i++)); do
-  until curl -s -o /dev/null -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}' "$(rpc_url "$i")"; do sleep 0.2; done
+  until rpc "$i" eth_chainId >/dev/null; do sleep 0.2; done
+  # a port another chain holds answers for it, and Hardhat's node returns no revert data, which the mock needs
+  client="$(rpc "$i" web3_clientVersion)"
+  if [[ "$client" != *'"anvil/'* ]]; then
+    echo "$(rpc_url "$i") is not anvil: $client" >&2
+    exit 1
+  fi
 done
 
 deploys=()
