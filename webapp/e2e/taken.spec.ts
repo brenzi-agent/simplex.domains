@@ -63,7 +63,9 @@ test("a failed order whose name was registered or reserved since offers another 
   const { registrationId } = await failedOrder(page, request, label)
   const searched = page.waitForResponse("**/api/name/**")
   await page.reload()
-  await searched
+  await (await searched).finished()
+  // the page draws the answer a task later
+  await page.evaluate(() => new Promise((drawn) => setTimeout(drawn)))
   await expect(onStep(page).getByRole("button", { name: "Choose another name" }), "a name still available is tried again").toHaveCount(0)
   await control(request, "take", { label })
   await expect.poll(async () => (await searchName(request, label)).status, { timeout: REGISTRATION_MS }).toBe("registered")

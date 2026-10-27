@@ -438,6 +438,8 @@ async function viewRead<T>(field: string, unread: string[], f: () => Promise<T>)
 // What the owner signs to accept a listed name's community terms, null for a name not listed.
 async function acceptanceOf(reg: Registration): Promise<{ policy: Address; termsHash: Hex; nonce: number } | null> {
   const community = await communityOf(reg.labelHash)
+  // before the policy has community terms there are none to accept: the view leaves it unread, and a reveal waits
+  if (community?.terms.hash === zeroHash) throw new Error("the name policy has no community terms yet")
   return community && { policy: deployment.namePolicy, termsHash: community.terms.hash, nonce: Number(await read<bigint>(namePolicy, "nonces", [reg.owner])) }
 }
 

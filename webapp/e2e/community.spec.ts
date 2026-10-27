@@ -151,23 +151,6 @@ test("Check your order of a community name asks for the community wording, its t
   await expect(payButton(page)).toBeEnabled()
 })
 
-test("a community name whose policy has no terms yet cannot be ordered, and its box says so", async ({ page }) => {
-  // the name policy before its owner's first setTerms answers a zero hash
-  await page.route("**/api/name/*", async (route) => {
-    const response = await route.fetch()
-    const json = await response.json()
-    if (json.community) json.community.terms = { url: `/api/community-terms/${zeroHash}`, hash: zeroHash }
-    await route.fulfill({ response, json })
-  })
-  await search(page, COMMUNITY_LABEL)
-  await toReview(page, false)
-  const terms = onStep(page).locator(".check.terms")
-  await expect(terms).toHaveText("This community name can't be ordered yet: its community terms are not set.")
-  await expect(terms.getByRole("checkbox")).toBeDisabled()
-  await expect(terms.getByRole("link")).toHaveCount(0)
-  await expect(payButton(page)).toBeDisabled()
-})
-
 test("an order refused for terms changed meanwhile unticks the box and says so in place, the box and Pay staying put, and signs the new terms once ticked", async ({ page, request }) => {
   const label = uniqueLabel("ct")
   await search(page, label)
@@ -191,6 +174,23 @@ test("an order refused for terms changed meanwhile unticks the box and says so i
     const invoiceId = new URL(page.url()).searchParams.get("order")!
     expect((await invoiceViewOf(request, invoiceId)).terms).toBe(NEWER_VERSION)
   })
+})
+
+test("a community name whose policy has no terms yet cannot be ordered, and its box says so", async ({ page }) => {
+  // the name policy before its owner's first setTerms answers a zero hash
+  await page.route("**/api/name/*", async (route) => {
+    const response = await route.fetch()
+    const json = await response.json()
+    if (json.community) json.community.terms = { url: `/api/community-terms/${zeroHash}`, hash: zeroHash }
+    await route.fulfill({ response, json })
+  })
+  await search(page, COMMUNITY_LABEL)
+  await toReview(page, false)
+  const terms = onStep(page).locator(".check.terms")
+  await expect(terms).toHaveText("This community name can't be ordered yet: its community terms are not set.")
+  await expect(terms.getByRole("checkbox")).toBeDisabled()
+  await expect(terms.getByRole("link")).toHaveCount(0)
+  await expect(payButton(page)).toBeDisabled()
 })
 
 test("a name put on the list meanwhile is refused for the community wording, which the review then asks for under its marker, and Your names marks the name", async ({ page, request }) => {
@@ -454,6 +454,7 @@ test("changed community terms of a name reserved meanwhile are not asked for: th
     })
     await control(request, `settle/${invoiceId}`)
     await expect(onStep(page).locator(".notice", { hasText: "The name was reserved meanwhile" })).toContainText("This order can't register it.", { timeout: REGISTRATION_MS })
+    await expect(onStep(page).locator(".screen-head .lead"), "no lead asks to keep the page open for the name").toHaveCount(0)
     await page.waitForTimeout(3 * RETRY_MS)
     expect(searches, "one search, not one after each pause").toBe(1)
     await expect(onStep(page).getByText(TERMS_CHANGED)).toHaveCount(0)

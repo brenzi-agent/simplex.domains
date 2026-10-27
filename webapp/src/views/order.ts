@@ -1099,6 +1099,7 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
   const refused = refusalsOf(s) >= REVEAL_ATTEMPTS
   const steps = stages(states)
   const stalled = stalledAt(s)
+  const unavailable = nameUnavailable(s)
   const clockNode = el("b", {})
   const note = el("span", {})
   const tryAgain = () => {
@@ -1122,23 +1123,17 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
     else say(note, REGISTERING_NOTE)
   }
   onTheSecond(() => waitLeft(view), tick, signal)
-  return screen({ title: headingOf(s), lead: leadOf(s), action: refused ? btn("Try again", "", tryAgain) : null },
+  return screen({ title: headingOf(s), lead: unavailable ? null : leadOf(s), action: refused ? btn("Try again", "", tryAgain) : null },
     steps,
     // the note keeps the height of its longest words, so the page keeps still as they change
     el("div", { class: "countdown" }, clockNode, el("p", {}, note, el("span", { class: "sizer", "aria-hidden": "true" }, WAIT_NOTE))),
     refused ? alertBox("danger", "alert", "The name could not be signed", "The service refused the signed registration.") : null,
-    unavailableNote(s),
+    // a name taken or reserved while its changed terms waited cannot be registered by this order, which fails once its
+    // hours to sign are over
+    unavailable ? alertBox("warn", "alert", unavailable.status === "reserved" ? "The name was reserved meanwhile" : "Someone registered the name first",
+      `This order can't register it. Once its ${REVEAL_HOURS} hours to sign are over, choose another name for it.`) : null,
     referenceLine(s.invoice?.invoiceId ?? view.id),
     termsAskedAgain(s) ? agreement(s, "reveal") : null)
-}
-
-// A name taken or reserved while its changed terms waited cannot be registered by this order, which fails once its hours
-// to sign are over.
-function unavailableNote(s: OrderState): HTMLElement | null {
-  const unavailable = nameUnavailable(s)
-  if (!unavailable) return null
-  return alertBox("warn", "alert", unavailable.status === "reserved" ? "The name was reserved meanwhile" : "Someone registered the name first",
-    `This order can't register it. Once its ${REVEAL_HOURS} hours to sign are over, choose another name for it.`)
 }
 
 const waitsSeen = new Map<string, number>()

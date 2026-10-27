@@ -141,9 +141,9 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "terms-asked": return { ...s, busy: null, ask: askFor(e.label, e.terms, e.community, e.changed) }
     // agreeing to changed community terms times the stall from then
     case "terms-agreed": return s.ask ? { ...s, ask: { ...s.ask, agreed: e.agreed, changed: false }, since: termsAskedAgain(s) && s.since ? { ...s.since, at: e.now } : s.since } : s
+    case "name-unavailable": return { ...s, unavailable: { key: e.key, status: e.status } }
     case "hold-started": return { ...s, busy: null, note: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: e.lead } }
     case "hold-ended": return { ...s, hold: null }
-    case "name-unavailable": return { ...s, unavailable: { key: e.key, status: e.status } }
   }
 }
 
