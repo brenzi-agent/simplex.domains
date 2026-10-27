@@ -430,7 +430,7 @@ test("community terms changed after the reveal, before its relay, are agreed to 
       await control(request, `settle/${invoiceId}`)
       await expect.poll(async () => (await invoiceViewOf(request, invoiceId)).phase, { timeout: REGISTRATION_MS }).toBe("committed")
       // the relay is held back while the reveal is stored and the terms change, then refused for the old terms
-      await control(request, "search", { unsentSeconds: 20 })
+      await control(request, "search", { unsentSeconds: REGISTRATION_MS / 1000 })
       await expect.poll(async () => (await invoiceViewOf(request, invoiceId)).label, { timeout: REGISTRATION_MS }).toBe(label)
       await withCommunityTerms(request, `the community terms, changed after the reveal of ${label}`, async (hash) => {
         await control(request, "search", { unsentSeconds: 0 })
