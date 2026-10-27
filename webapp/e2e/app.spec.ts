@@ -150,3 +150,68 @@ test("on a phone, Forget's question glides into view rather than jumping there",
   const moves = scrolled.slice(1).map((y, i) => y - scrolled[i]).filter((d) => d !== 0)
   expect(moves.length, `the frames the page scrolled in: ${scrolled.join(",")}`).toBeGreaterThan(2)
 })
+
+const THEMES = ["light", "dark"] as const
+// styles.css's --page-color in each theme
+const GROUND = { light: "rgb(243, 250, 255)", dark: "rgb(0, 8, 50)" }
+const LOGO_WIDTH = 168
+// index.html's images a laptop's window shows in each theme, by class, at their styles.css widths
+const STATIC_IMAGES: Record<string, Record<string, number>> = {
+  light: { "logo-light": LOGO_WIDTH, moon: 22, wefunder: 81 },
+  dark: { "logo-dark": LOGO_WIDTH, sun: 22, wefunder: 81 },
+}
+// long enough that a page drawn before its stylesheet shows in several frames
+const STYLESHEET_DELAY_MS = 500
+const isStylesheet = (url: URL) => url.pathname.endsWith(".css")
+
+interface Painted { ground: string; images: [string, number][] }
+// the page's ground, and the images of index.html's header, invest note and footer with their widths, as the frame paints them
+const painted = (): Painted => ({
+  ground: getComputedStyle(document.documentElement).backgroundColor,
+  images: [...document.querySelectorAll("body > :is(header, .invest, footer) :is(img, svg)")].flatMap((n): [string, number][] => {
+    const width = Math.round(n.getBoundingClientRect().width)
+    return width ? [[n.getAttribute("class") ?? n.tagName, width]] : []
+  }),
+})
+// each run of like frames on one line, from its first frame's index
+const frameLog = (frames: Painted[]) => frames.map((f, i) => `${i}: ${f.ground} ${JSON.stringify(f.images)}`)
+  .filter((line, i, lines) => i === 0 || line.slice(line.indexOf(" ")) !== lines[i - 1].slice(lines[i - 1].indexOf(" "))).join("\n")
+
+test("the page's first frame is styled, on its ground with index.html's images at their sizes, on load and on reload in both themes", async ({ page }) => {
+  await page.route(isStylesheet, async (route) => {
+    await new Promise((arrived) => setTimeout(arrived, STYLESHEET_DELAY_MS))
+    await route.continue()
+  })
+  await recordFrames(page, painted, true)
+  for (const theme of THEMES) {
+    await page.emulateMedia({ colorScheme: theme })
+    for (const load of ["load", "reload"]) {
+      await (load === "load" ? page.goto("/") : page.reload())
+      await expect(page.locator("body > main h1")).toBeVisible()
+      const frames = await recordedFrames<Painted>(page)
+      const what = `${theme}, ${load}, every frame:\n${frameLog(frames)}`
+      expect(frames.some((f) => f.images.length), what).toBe(true)
+      for (const frame of frames) {
+        expect(frame.ground, what).toBe(GROUND[theme])
+        for (const [image, width] of frame.images) expect(width, `${image}'s width; ${what}`).toBe(STATIC_IMAGES[theme][image])
+      }
+    }
+  }
+})
+
+test("a page whose stylesheet fails draws index.html's images at their own small sizes, on its theme's ground", async ({ page }) => {
+  await page.route(isStylesheet, (route) => route.abort())
+  await recordFrames(page, painted, true)
+  for (const theme of THEMES) {
+    await page.emulateMedia({ colorScheme: theme })
+    await page.goto("/")
+    await page.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))))
+    const frames = await recordedFrames<Painted>(page)
+    const what = `${theme}, every frame:\n${frameLog(frames)}`
+    expect(frames.some((f) => f.images.length), what).toBe(true)
+    for (const frame of frames) {
+      expect(frame.ground, what).toBe(GROUND[theme])
+      for (const [image, width] of frame.images) expect(width, `${image}'s width; ${what}`).toBeLessThanOrEqual(LOGO_WIDTH)
+    }
+  }
+})

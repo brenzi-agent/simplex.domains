@@ -1,5 +1,4 @@
 // The router: one page per route, redrawn on navigation.
-import "./styles.css"
 import { checkoutStepOf, EDIT_PATH, fromOrder, viewOf } from "./screens/routes.ts"
 import { checkoutPage } from "./views/checkout.ts"
 import { setUpChrome } from "./views/chrome.ts"
