@@ -215,11 +215,20 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
     if (answered !== drawn || recorded !== drawnRecord) {
       drawn = answered
       drawnRecord = recorded
-      if ((view.phase === "taken" || view.phase === "failed") && status === undefined) {
+      if (view.phase === "taken" && status === undefined) {
         status = await statusNow(view, record ?? null)
         if (!isRoute(mine)) return
       }
       dispatch({ type: "answered", seq, now: api.serviceNow(), invoice, view, record: record ?? null, cardSubmittedAt: cardSubmittedAt(invoice, record), nameStatus: status ?? null })
+    }
+    // A failed order is drawn first, and its name searched after: one registered or reserved since can move to another
+    // name, from the browser with its name code. A search that failed is made again with the next read.
+    if (view.phase === "failed" && status === undefined && record && !view.linksRefused) {
+      status = (await statusNow(view, record)) ?? undefined
+      if (!isRoute(mine)) return
+      if (status !== undefined) {
+        dispatch({ type: "answered", seq: ++reads, now: api.serviceNow(), invoice, view, record, cardSubmittedAt: cardSubmittedAt(invoice, record), nameStatus: status })
+      }
     }
     // a closed order that a balance paid part of reads that balance once, for what its new invoice will pay
     if (!sourceRead && closedCase(state) !== null && record?.balanceSource) {
@@ -349,7 +358,7 @@ function askAgain(record: store.OrderRecord): void {
     if (!isOpen(gen) || !askAgainDue(state)) return done()
     if (quote.status !== "available") {
       done()
-      return answer(gen, { type: "name-unavailable", key: revealKey(state.view!), reserved: quote.status === "reserved" })
+      return answer(gen, { type: "name-unavailable", key: revealKey(state.view!), status: quote.status })
     }
     if (quote.community?.terms.hash !== state.view!.acceptance!.termsHash) return later(RETRY_MS, () => reread(gen))
     done()
@@ -1125,11 +1134,12 @@ function buildRegistering(s: OrderState, signal: AbortSignal): HTMLElement {
     termsAskedAgain(s) ? agreement(s, "reveal") : null)
 }
 
-// A name taken or reserved while its changed terms waited cannot be registered by this order, which then ends.
+// A name taken or reserved while its changed terms waited cannot be registered by this order, which fails once its hours
+// to sign are over.
 function unavailableNote(s: OrderState): HTMLElement | null {
   const unavailable = nameUnavailable(s)
   if (!unavailable) return null
-  return alertBox("warn", "alert", unavailable.reserved ? "The name was reserved meanwhile" : "Someone registered the name first",
+  return alertBox("warn", "alert", unavailable.status === "reserved" ? "The name was reserved meanwhile" : "Someone registered the name first",
     `This order can't register it. Once its ${REVEAL_HOURS} hours to sign are over, choose another name for it.`)
 }
 

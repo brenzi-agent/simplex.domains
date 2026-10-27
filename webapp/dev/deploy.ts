@@ -33,15 +33,16 @@ const SEED_YEARS = 2
 const ALLOWANCE = 1_000_000n * 10n ** 18n
 // SimplexNamePolicy.Reason.Internal
 const RESERVED_INTERNAL = 1
-// the community terms the name policy keeps on chain, and their hash, which orders sign
-const COMMUNITY_TERMS = readFileSync(new URL("./community-terms.txt", import.meta.url), "utf8")
-const COMMUNITY_TERMS_HASH = keccak256(Buffer.from(COMMUNITY_TERMS))
 // the e2e community names: one free, one registered under the terms
 const COMMUNITY_NAMES = ["bakers", "bakehouse"]
 // anvil's well-known development mnemonic
 const MNEMONIC = "test test test test test test test test test test test junk"
 
-if (!ENS_CONTRACTS_DIR) throw new Error("set ENS_CONTRACTS_DIR to a compiled checkout of ens-contracts PR #45")
+if (!ENS_CONTRACTS_DIR) throw new Error("set ENS_CONTRACTS_DIR to the compiled ens-contracts submodule of a simplex-namespace-contract checkout")
+// the community terms the name policy keeps on chain, the namespace repository's text beside its ens-contracts, and their
+// hash, which orders sign
+const COMMUNITY_TERMS = readFileSync(join(ENS_CONTRACTS_DIR, "..", "bona-fide-terms.simplex.md"), "utf8")
+const COMMUNITY_TERMS_HASH = keccak256(Buffer.from(COMMUNITY_TERMS))
 
 const [owner, guardian, registrar, holder] = [0, 1, 2, 3].map((i) => mnemonicToAccount(MNEMONIC, { addressIndex: i }))
 const registrarKey = toHex(registrar.getHdKey().privateKey!)

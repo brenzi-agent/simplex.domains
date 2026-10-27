@@ -2,6 +2,7 @@
 // A development fixture: memory only, no money, and not a specification of the real service.
 import { createHash, randomBytes } from "node:crypto"
 import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import {
   encodeFunctionData, getAddress, hashTypedData, isAddress, keccak256, namehash, recoverAddress, recoverMessageAddress, recoverTypedDataAddress, toHex,
   zeroHash, type Address, type Hex,
@@ -59,8 +60,8 @@ const SEALED_MAX = 11095
 // the terms an order signs: the version, with COMMUNITY_TERMS and the community terms' hash after it for a community name
 const SIGNED_TERMS = /^[A-Za-z0-9._/-]{1,112}$/
 const COMMUNITY_TERMS = "/community/"
-// the community terms dev/deploy.ts keeps on chain
-const DEPLOYED_TERMS = readFileSync(new URL("../community-terms.txt", import.meta.url), "utf8")
+// the community terms dev/deploy.ts keeps on chain, the namespace repository's text beside its ens-contracts
+const DEPLOYED_TERMS = readFileSync(join(process.env.ENS_CONTRACTS_DIR!, "..", "bona-fide-terms.simplex.md"), "utf8")
 // the reverts of a relay or a register after which the page signs again, as the service judges them
 const SIGN_AGAIN = ["InvalidNonce", "TermsNotAccepted", "TermsMismatch"]
 // a community name's text in the service's ini: one line of up to this many characters

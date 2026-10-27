@@ -128,23 +128,6 @@ test("a community name shows its marker after the name, a button whose popup say
   await expect(onStep(page).getByRole("button", { name: MARKER }), "a name not on the list").toHaveCount(0)
 })
 
-test("a community name whose policy has no terms yet cannot be ordered, and its box says so", async ({ page }) => {
-  // the name policy before its owner's first setTerms answers a zero hash
-  await page.route("**/api/name/*", async (route) => {
-    const response = await route.fetch()
-    const json = await response.json()
-    if (json.community) json.community.terms = { url: `/api/community-terms/${zeroHash}`, hash: zeroHash }
-    await route.fulfill({ response, json })
-  })
-  await search(page, COMMUNITY_LABEL)
-  await toReview(page, false)
-  const terms = onStep(page).locator(".check.terms")
-  await expect(terms).toHaveText("This community name can't be ordered yet: its community terms are not set.")
-  await expect(terms.getByRole("checkbox")).toBeDisabled()
-  await expect(terms.getByRole("link")).toHaveCount(0)
-  await expect(payButton(page)).toBeDisabled()
-})
-
 test("Check your order of a community name asks for the community wording, its terms linked and its ⓘ saying what the name is for, and Pay waits for the tick", async ({ page }) => {
   await search(page, COMMUNITY_LABEL)
   await toReview(page, false)
@@ -166,6 +149,23 @@ test("Check your order of a community name asks for the community wording, its t
   await expect(onStep(page).getByRole("checkbox", { name: AGREE }), "the ⓘ inside the box's words does not tick it").not.toBeChecked()
   await agreeToTerms(page)
   await expect(payButton(page)).toBeEnabled()
+})
+
+test("a community name whose policy has no terms yet cannot be ordered, and its box says so", async ({ page }) => {
+  // the name policy before its owner's first setTerms answers a zero hash
+  await page.route("**/api/name/*", async (route) => {
+    const response = await route.fetch()
+    const json = await response.json()
+    if (json.community) json.community.terms = { url: `/api/community-terms/${zeroHash}`, hash: zeroHash }
+    await route.fulfill({ response, json })
+  })
+  await search(page, COMMUNITY_LABEL)
+  await toReview(page, false)
+  const terms = onStep(page).locator(".check.terms")
+  await expect(terms).toHaveText("This community name can't be ordered yet: its community terms are not set.")
+  await expect(terms.getByRole("checkbox")).toBeDisabled()
+  await expect(terms.getByRole("link")).toHaveCount(0)
+  await expect(payButton(page)).toBeDisabled()
 })
 
 test("an order refused for terms changed meanwhile unticks the box and says so in place, the box and Pay staying put, and signs the new terms once ticked", async ({ page, request }) => {

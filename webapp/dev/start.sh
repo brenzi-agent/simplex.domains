@@ -2,7 +2,8 @@
 # Starts the local backend for the names webapp: a chain with the PR #45 contracts and the mock names service.
 # Then run `npm run dev` for the page. Ctrl-C stops everything.
 #
-#   ENS_CONTRACTS_DIR  a compiled ens-contracts checkout at PR #45 (simplex-namespace-contract's submodule)
+#   ENS_CONTRACTS_DIR  the compiled ens-contracts submodule (PR #45) of a simplex-namespace-contract checkout, whose
+#                      bona-fide-terms.simplex.md the chain keeps as its community terms
 #   ANVIL              Foundry's anvil (default: anvil)
 #   MIN_COMMITMENT_AGE seconds every registration waits after its commit (default: 60, as the PR's deploy scripts)
 #   ANVIL_HOST         the address anvil listens on (default: 127.0.0.1)

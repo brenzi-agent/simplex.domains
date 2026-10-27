@@ -3,10 +3,11 @@
 # Built from the simplex.domains repository root, as compose.yaml does: the page's fonts and images live there.
 
 FROM node:24-bookworm AS contracts
-ARG NAMESPACE_COMMIT=0fba157c70efffaa30729a42d9014ed9249ede45
-ARG ENS_CONTRACTS_COMMIT=de5733cf7032263fe77402db0134b60fa1a9be18
+ARG NAMESPACE_COMMIT=15af3a61a17aa8413ad40c8ff196de34c979a2e9
+ARG ENS_CONTRACTS_COMMIT=bbd7c45cecf21bd4b600a739d71f2ff7476c844e
 WORKDIR /src
 RUN git clone https://github.com/brenzi/simplex-namespace-contract.git . \
+ && git fetch origin "$NAMESPACE_COMMIT" \
  && git checkout "$NAMESPACE_COMMIT" \
  && git submodule update --init ens-contracts \
  && git -C ens-contracts fetch origin "$ENS_CONTRACTS_COMMIT" \
@@ -26,6 +27,8 @@ FROM node:24-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 COPY --from=anvil /usr/local/bin/anvil /usr/local/bin/anvil
 COPY --from=contracts /src/ens-contracts/artifacts /contracts/artifacts
+# the community terms dev/deploy.ts sets, beside ENS_CONTRACTS_DIR as in the namespace repository
+COPY --from=contracts /src/bona-fide-terms.simplex.md /bona-fide-terms.simplex.md
 WORKDIR /repo/webapp
 COPY webapp/package.json webapp/package-lock.json ./
 RUN npm ci

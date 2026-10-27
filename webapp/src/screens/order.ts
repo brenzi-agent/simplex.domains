@@ -56,7 +56,7 @@ export interface OrderState {
   // a taken or failed order's name, as one search answered it
   nameStatus: SearchAnswer["status"] | null
   // the search of the changed terms' ask answered the name as registered or reserved, for the commitment of this reveal key
-  unavailable: { key: string; reserved: boolean } | null
+  unavailable: { key: string; status: SearchAnswer["status"] } | null
   // when this page first saw the stage, or the buyer ticked changed community terms in it, on the service's clock
   since: { stage: string; at: number } | null
 }
@@ -90,7 +90,7 @@ export type OrderEvent =
   | { type: "source-read"; balance: Balance | null }
   | { type: "terms-asked"; label: string; terms: Terms; community: Community | null; changed: boolean }
   | { type: "terms-agreed"; agreed: boolean; now: number }
-  | { type: "name-unavailable"; key: string; reserved: boolean }
+  | { type: "name-unavailable"; key: string; status: SearchAnswer["status"] }
   | { type: "hold-started"; until: number; lead: string }
   | { type: "hold-ended" }
 
@@ -143,7 +143,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "terms-agreed": return s.ask ? { ...s, ask: { ...s.ask, agreed: e.agreed, changed: false }, since: termsAskedAgain(s) && s.since ? { ...s.since, at: e.now } : s.since } : s
     case "hold-started": return { ...s, busy: null, note: null, hold: { until: Math.max(e.until, s.hold?.until ?? 0), lead: e.lead } }
     case "hold-ended": return { ...s, hold: null }
-    case "name-unavailable": return { ...s, unavailable: { key: e.key, reserved: e.reserved } }
+    case "name-unavailable": return { ...s, unavailable: { key: e.key, status: e.status } }
   }
 }
 
