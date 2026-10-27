@@ -351,7 +351,7 @@ class Matrix {
   }
 }
 
-function encodeQr(payload: string): QrSymbol | null {
+export function encodeQr(payload: string): QrSymbol | null {
   const bytes = new TextEncoder().encode(payload);
   const version = versionFor(bytes.length);
   if (version === null) return null;

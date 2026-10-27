@@ -244,6 +244,8 @@ html.framed body > main:empty { min-height: calc(var(--step-h) + var(--screen-to
 .screen.step:not(:has(> .actions-row)) { grid-template-rows: auto minmax(0, 1fr); }
 /* the card page is as tall as its content, so Pay and what follows it stay under Stripe's form as the form grows */
 .screen.step:has(> .screen-body > .stripe) { height: auto; grid-template-rows: auto; }
+/* a step grows under its content to hold a name code's QR, shown under everything */
+.screen.step:has(> .screen-body > .code-qr svg) { height: auto; min-height: calc(var(--step-h) + var(--screen-top)); }
 .screen-head { display: grid; grid-template-columns: var(--back-w) minmax(0, 1fr) var(--back-w); row-gap: 10px; }
 .screen-head h1 { grid-area: 1 / 2; text-align: center; }
 /* Back's word 12 px under the heading's top, its tap area 40 px tall */
@@ -565,7 +567,8 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
    unbroken part, past which the actions go under them */
 .balance-row .main { flex-basis: 0; min-width: auto; }
 .row-code { flex-basis: 100%; display: grid; gap: 12px; }
-.row-code > .qr { justify-self: center; }
+.row-code > .qr, .code-qr > .qr { justify-self: center; }
+.code-qr { display: grid; }
 .danger-link { font-size: var(--fs-small); }
 /* Forget's question comes into view with room below it; its answers are an equal pair, side by side when each gets the
    220 px that holds "Forget everything" */
@@ -688,7 +691,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 /* controls ease their colours as the pointer, a choice or a state changes them, and follow the theme's tokens as it switches */
 html:not(.theming) :is(.btn, .field, .back, .chat, .unlink, .method, .field-copy, .check, .check .box, .brand, .theme-switch, .menu-button) { transition: background-color var(--fast), border-color var(--fast), box-shadow var(--fast), color var(--fast), filter var(--fast), opacity var(--fast); }
 .copied-note { transition: opacity var(--fast), translate var(--fast) var(--ease); }
-:where(.answer > *, .notice, .entity, .other-order, .field-error, .verdict:not(:empty), .offline-note:not(:has(> span:empty))) { animation: arrive 180ms var(--ease) backwards; }
+:where(.answer > *, .notice, .entity, .code-qr > *, .other-order, .field-error, .verdict:not(:empty), .offline-note:not(:has(> span:empty))) { animation: arrive 180ms var(--ease) backwards; }
 /* shell.ts marks what a redraw draws again as shown */
 .shown, .shown::before, .shown::after { animation: none !important; }
 /* what went before is gone at once, so what replaces it starts in sight, never leaving a frame empty */

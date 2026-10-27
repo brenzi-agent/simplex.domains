@@ -1,12 +1,13 @@
 import { type APIRequestContext, type Browser, expect, type Page } from "@playwright/test"
 import { CODE_LIMIT } from "../dev/mock/limits.ts"
+import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import type { Links } from "../src/api.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
 import { walletOf } from "../src/flow.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, onStep, payButton, previewsShown, savedToReview,
-  search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
+  answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, offCentre, onStep,
+  payButton, previewsShown, qrText, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
@@ -772,3 +773,54 @@ test("a view whose sponsor nonce could not be read is read again after 5 then 15
   expect(again.at - reads[first].at).toBeGreaterThanOrEqual(4500)
   if (again.unread.length) expect(third.at - again.at).toBeGreaterThanOrEqual(14500)
 })
+
+const CODE_QR = "QR code of the name code"
+// the least room between the name code's QR and the invest note under the page
+const QR_ABOVE_INVEST = 16
+
+// where the name's page draws its heading block and each part of its content but the QR, the QR, and the invest note
+const registeredPlaces = (page: Page) => page.evaluate(() => {
+  const place = (n: Element | null) => {
+    const b = n?.getBoundingClientRect()
+    return b ? { top: Math.round(b.top + scrollY), bottom: Math.round(b.bottom + scrollY) } : null
+  }
+  const parts = [...document.querySelectorAll("body > main > section :is(.screen-head > *, .screen-body > :not(.code-qr), .actions-row)")].map(place)
+  return { parts, code: place(document.querySelector("body > main .code-display")), qr: place(document.querySelector("body > main .code-qr svg")),
+    invest: place(document.querySelector("body > .invest p")) }
+})
+
+for (const length of [6, MAX_LABEL_LENGTH]) {
+  test(`a name's page shows its code's QR only while the code is shown, under it, nothing above moving, and Your names with the code, for a name of ${length} wide letters`, async ({ page }) => {
+    const label = "w".repeat(length)
+    const { registrationId, ownerCode } = await fakeRegisteredName(page, label, { contact: "", channel: "" })
+    await page.goto(`/?registration=${registrationId}`)
+    const step = onStep(page)
+    await expect(step.getByRole("heading", { name: `${label}.simplex is yours` })).toBeVisible()
+    const qr = step.getByRole("img", { name: CODE_QR })
+    for (const size of FIT_SIZES) {
+      const where = `${size.width}x${size.height}`
+      await page.setViewportSize(size)
+      await expect(page.locator("body > main svg.qr"), `${where}: no QR while the code is hidden`).toHaveCount(0)
+      const hidden = await registeredPlaces(page)
+      await step.getByRole("button", { name: "Show" }).click()
+      await expect(qr, where).toBeVisible()
+      expect(await qrText(qr), `${where}: the QR holds the code as it is typed`).toBe(ownerCode)
+      const shown = await registeredPlaces(page)
+      expect(shown.parts, `${where}: nothing above the QR moved`).toEqual(hidden.parts)
+      expect(shown.qr!.top, `${where}: the QR under the code`).toBeGreaterThan(shown.code!.bottom)
+      expect(shown.invest!.top - shown.qr!.bottom, `${where}: the room between the QR and the invest note`).toBeGreaterThanOrEqual(QR_ABOVE_INVEST)
+      expect(await offCentre(qr), `${where}: the QR centred`).toBeLessThanOrEqual(1)
+      await step.getByRole("button", { name: "Hide" }).click()
+      await expect(page.locator("body > main svg.qr"), `${where}: the QR gone with the code`).toHaveCount(0)
+      expect(await registeredPlaces(page), `${where}: the page as before Show`).toEqual(hidden)
+    }
+    await page.setViewportSize(FIT_SIZES[0])
+    await page.goto("/#/names")
+    const row = page.locator(".list-row", { hasText: `${label}.simplex` })
+    await expect(row.getByRole("img", { name: CODE_QR }), "Your names: no QR while the code is folded").toHaveCount(0)
+    await row.getByRole("button", { name: "Name code" }).click()
+    expect(await qrText(row.getByRole("img", { name: CODE_QR })), "Your names: the QR holds the code").toBe(ownerCode)
+    await row.getByRole("button", { name: "Name code" }).click()
+    await expect(row.locator("svg.qr"), "Your names: the QR gone with the code").toHaveCount(0)
+  })
+}
