@@ -252,6 +252,9 @@ export async function shownCode(page: Page): Promise<Locator> {
 // where session.ts keeps the tab's checkout, with the owner code made for it
 export const CHECKOUT_KEY = "simplex-names-checkout"
 export const checkoutOwnerCode = (page: Page) => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).ownerCode as string, CHECKOUT_KEY)
+// the name code this browser keeps with the order of an invoice
+export const orderOwnerCode = (page: Page, invoiceId: string) => page.evaluate((id) => Object.values({ ...localStorage }).map((v) => { try { return JSON.parse(v) } catch { return null } })
+  .find((o) => o?.invoiceId === id)?.ownerCode as string | undefined, invoiceId)
 
 export const LINKS_HEADING = "What should your name open?"
 export const CODE_HEADING = "Save your name code"

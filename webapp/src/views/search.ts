@@ -11,7 +11,7 @@ import { againLine, ranOut } from "../screens/names.ts"
 import { checkoutUrl } from "../screens/routes.ts"
 import {
   type Answer, balanceHint, codeCover, initialSearch, keptWords, moveBar, moveHint, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent,
-  type SearchKind, type SearchState, type CodeLoss,
+  orderCode, type OrderRead, ownOrders, type OwnOrders, type SearchKind, type SearchState, type CodeLoss,
 } from "../screens/search.ts"
 import type { Note } from "../screens/order.ts"
 import * as session from "../session.ts"
@@ -112,16 +112,22 @@ function mineFor(hash: string, answer: api.SearchAnswer): boolean {
   return store.orders().some((o) => o.request.labelHash === hash && o.owner.toLowerCase() === owner)
 }
 
+// the reads of this browser's orders for the name last answered available, which Register waits for
+let ownRead: { label: string; orders: Promise<OwnOrders> } | null = null
+
 async function pointAtOwnOrder(label: string, hash: string, page: number): Promise<void> {
-  for (const o of store.orders().filter((r) => r.request.labelHash === hash && !r.cancelled)) {
+  const read = async (o: store.OrderRecord): Promise<OrderRead | null> => {
+    if (!onPage(page)) return null
     const invoice = o.invoiceId ? await api.readInvoice(o.invoiceId).catch(() => null) : null
     const reg = invoice?.registration ?? (o.invoiceId ? null : await api.readRegistration(o.registrationId).catch(() => null))
-    if (!onPage(page)) return
-    const open = reg !== null && (reg.phase !== "unpaid" || invoice?.status === "open")
-    if (!open || ["taken", "failed", "registered"].includes(reg.phase)) continue
-    return dispatch({ type: "own-order-seen", label, url: store.orderUrl(o) })
+    return reg && { phase: reg.phase, invoice: invoice?.status ?? null }
   }
-  if (onPage(page) && state.ownOrder !== null) dispatch({ type: "own-order-seen", label, url: null })
+  const orders = ownOrders(store.orders().filter((r) => r.request.labelHash === hash), read)
+  ownRead = { label, orders }
+  const { open } = await orders
+  if (!onPage(page)) return
+  if (open) return dispatch({ type: "own-order-seen", label, url: store.orderUrl(open) })
+  if (state.ownOrder !== null) dispatch({ type: "own-order-seen", label, url: null })
 }
 
 async function readOrder(record: store.OrderRecord): Promise<{ view: api.RegistrationView; synced: store.OrderRecord } | null> {
@@ -171,27 +177,40 @@ type Available = Extract<api.SearchAnswer, { status: "available" }>
 // an order this browser has for the name, which the search found or the service named in refusing a second one
 const ownOrderOf = ({ ownOrder, register: { refusal } }: SearchState) => ownOrder ?? (refusal?.why === "other" ? refusal.url : null)
 
-function register(): void {
-  const s = state
-  if (s.answer?.kind !== "found" || s.answer.answer.status !== "available") return
-  const { label, answer } = s.answer
+const offered = ({ answer }: SearchState) => answer?.kind === "found" && answer.answer.status === "available" ? { label: answer.label, answer: answer.answer } : null
+
+async function register(): Promise<void> {
+  const shown = offered(state)
+  if (!shown) return
+  if (state.retarget) return void retarget(state.retarget, shown.label, shown.answer)
+  const page = opens
+  const closed = ownRead?.label === shown.label ? (await ownRead.orders).closed : null
+  const still = offered(state)
+  // an order of the name that the reads found still open is the buyer's, which the page points at instead
+  if (!onPage(page) || still?.label !== shown.label || ownOrderOf(state) !== null) return
+  checkOut(state, still.label, still.answer, closed?.ownerCode ?? null)
+}
+
+function checkOut(s: SearchState, label: string, answer: Available, closedCode: string | null): void {
   const chain = flow.chainOf(answer)
-  if (s.retarget) return void retarget(s.retarget, label, answer)
   const code = codeFor(s, label)
   // a balance pays under its order's name code, which then owns this name too
   const source = s.balance && store.orderByRegistration(s.balance.source)
   const balance = source ? s.balance : null
-  const ownerCode = source ? source.ownerCode : null
+  const { ownerCode, saved } = orderCode(source ? source.ownerCode : null, closedCode)
   const started = session.checkout()
   const quote = { price: answer.price, years: answer.years, termStart: answer.termStart, chain, terms: answer.terms, community: answer.community }
   const sameCode = !ownerCode || started?.ownerCode == null || started.ownerCode === ownerCode
   if (started && started.label === label && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started) && sameCode) {
     const agreed = started.agreed && api.currentTerms(started) === api.currentTerms(answer)
-    session.updateCheckout(label, { ...quote, agreed, termsChanged: undefined, searchAt: historyPlace(), code, codeError: undefined, balance, balanceChange: undefined, ownerCode: ownerCode ?? started.ownerCode })
+    session.updateCheckout(label, {
+      ...quote, agreed, termsChanged: undefined, searchAt: historyPlace(), code, codeError: undefined, balance, balanceChange: undefined, ownerCode: ownerCode ?? started.ownerCode,
+      saved: started.saved || saved,
+    })
     return go(checkoutUrl("links"))
   }
   session.setCheckout({
-    label, ...quote, contact: "", channel: "", method: "btc", code, balance, ownerCode, saved: false, agreed: false,
+    label, ...quote, contact: "", channel: "", method: "btc", code, balance, ownerCode, saved, agreed: false,
     searchAt: historyPlace(), step: "links",
   })
   go(checkoutUrl("links"))
@@ -330,7 +349,7 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
   const short = usesCode(s) ? session.activeCode() : null
   const asks = retarget !== null && !unpayable && own === null
   const words = !retarget ? "Register" : cover ? "Register with your code" : "Register with your payment"
-  const button = setAction(btn(words, "small", register), s.register.busy, unpayable || own !== null || s.hold !== null || (asks && !s.agreed))
+  const button = setAction(btn(words, "small", () => void register()), s.register.busy, unpayable || own !== null || s.hold !== null || (asks && !s.agreed))
   button.dataset.focus = "register"
   const deal = free ? [el("b", { class: "price" }, "Free"), el("span", { class: "soft" }, ` / ${free.years} years`)]
     : [el("b", { class: "price" }, dollars(answer.price)), el("span", { class: "soft" }, ` / ${answer.years} years`)]

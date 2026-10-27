@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest"
 import type { SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
-  balanceHint, codeCover, initialSearch, keptWords, moveBar, moveHint, type Opening, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent, type SearchKind, type SearchState, screenOf,
+  balanceHint, codeCover, initialSearch, keptWords, moveBar, moveHint, type Opening, orderCode, type OrderRead, ownOrders, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent,
+  type SearchKind, type SearchState, screenOf,
 } from "../src/screens/search.ts"
 import { timeOf } from "../src/format.ts"
 import type { OrderRecord } from "../src/store.ts"
@@ -401,5 +402,84 @@ describe("a move", () => {
   it("opens saying what the order keeps: its code, or its payment", () => {
     expect(keptWords(coded())).toEqual(["Your code is kept.", "It pays for another name of 9 or more letters, for 2 years."])
     expect(keptWords(record())).toEqual(["Your payment is kept: $15.", "Choose another name of up to $15; nothing more is charged."])
+  })
+})
+
+describe("ownOrders", () => {
+  const CODES = { a: "SN-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA", b: "SN-BBBBB-BBBBB-BBBBB-BBBBB-BBBBB-BBBBB", c: "SN-CCCCC-CCCCC-CCCCC-CCCCC-CCCCC-CCCCC" }
+  const order = (id: string, change: Partial<OrderRecord> = {}) => record({ registrationId: id, invoiceId: `inv-${id}`, ...change })
+  // each order's read, by registration id; an order missing here could not be read
+  function reader(reads: Record<string, OrderRead>) {
+    const asked: string[] = []
+    const read = async (o: OrderRecord) => {
+      asked.push(o.registrationId)
+      return reads[o.registrationId] ?? null
+    }
+    return { asked, read }
+  }
+  const unpaid = (invoice: OrderRead["invoice"]): OrderRead => ({ phase: "unpaid", invoice })
+
+  it("finds nothing for a name this browser never ordered", async () => {
+    expect(await ownOrders([], reader({}).read)).toEqual({ open: null, closed: null })
+  })
+  it("takes a cancelled order as closed without reading it", async () => {
+    const cancelled = order("r1", { cancelled: true, ownerCode: CODES.a })
+    const { asked, read } = reader({})
+    expect(await ownOrders([cancelled], read)).toEqual({ open: null, closed: cancelled })
+    expect(asked, "a cancelled order is not read").toEqual([])
+  })
+  it("takes an order whose invoice expired, or was paid after it closed, unpaid, as closed", async () => {
+    const expired = order("r1")
+    expect(await ownOrders([expired], reader({ r1: unpaid("expired") }).read)).toEqual({ open: null, closed: expired })
+    expect(await ownOrders([expired], reader({ r1: unpaid("paid") }).read), "a late payment registers nothing").toEqual({ open: null, closed: expired })
+  })
+  it("keeps the newest closed order of several, as the list comes newest first", async () => {
+    const newest = order("r1", { ownerCode: CODES.a })
+    const cancelled = order("r2", { ownerCode: CODES.b, cancelled: true })
+    const oldest = order("r3", { ownerCode: CODES.c })
+    const reads = { r1: unpaid("expired"), r3: unpaid("expired") }
+    expect(await ownOrders([newest, cancelled, oldest], reader(reads).read)).toEqual({ open: null, closed: newest })
+    expect(await ownOrders([cancelled, oldest], reader(reads).read)).toEqual({ open: null, closed: cancelled })
+  })
+  it("stops at an order that can still register the name: an open invoice, or a payment on its way to the chain", async () => {
+    const closed = order("r1", { cancelled: true })
+    const open = order("r2")
+    const older = order("r3")
+    for (const live of [unpaid("open"), { phase: "queued", invoice: "paid" }, { phase: "committed", invoice: null }] as OrderRead[]) {
+      const { asked, read } = reader({ r2: live, r3: unpaid("expired") })
+      expect(await ownOrders([closed, open, older], read), JSON.stringify(live)).toEqual({ open, closed })
+      expect(asked, "nothing older is read").toEqual(["r2"])
+    }
+  })
+  it("takes a registered, taken or failed order as neither open nor closed", async () => {
+    for (const phase of ["registered", "taken", "failed"] as const) {
+      expect(await ownOrders([order("r1")], reader({ r1: { phase, invoice: "paid" } }).read), phase).toEqual({ open: null, closed: null })
+    }
+  })
+  it("takes an order with no invoice as never closed, whatever its phase", async () => {
+    expect(await ownOrders([order("r1", { invoiceId: null })], reader({ r1: unpaid(null) }).read)).toEqual({ open: null, closed: null })
+  })
+  it("passes over an order that could not be read, for an older one", async () => {
+    const unread = order("r1", { ownerCode: CODES.a })
+    const older = order("r2", { ownerCode: CODES.b })
+    expect(await ownOrders([unread, older], reader({ r2: unpaid("expired") }).read)).toEqual({ open: null, closed: older })
+  })
+})
+
+describe("orderCode", () => {
+  const PAYING = "SN-PPPPP-PPPPP-PPPPP-PPPPP-PPPPP-PPPPP"
+  const CLOSED = "SN-CCCCC-CCCCC-CCCCC-CCCCC-CCCCC-CCCCC"
+  it("leaves a new name code to the code step when nothing names one", () => {
+    expect(orderCode(null, null)).toEqual({ ownerCode: null, saved: false })
+  })
+  it("keeps a closed order's name code, which the buyer saved already", () => {
+    expect(orderCode(null, CLOSED)).toEqual({ ownerCode: CLOSED, saved: true })
+  })
+  it("never overrides the name code of the balance that pays, which the buyer is asked to save", () => {
+    expect(orderCode(PAYING, null)).toEqual({ ownerCode: PAYING, saved: false })
+    expect(orderCode(PAYING, CLOSED)).toEqual({ ownerCode: PAYING, saved: false })
+  })
+  it("takes the paying code as saved when it is the closed order's own", () => {
+    expect(orderCode(CLOSED, CLOSED)).toEqual({ ownerCode: CLOSED, saved: true })
   })
 })

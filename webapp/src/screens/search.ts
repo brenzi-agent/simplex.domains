@@ -1,4 +1,4 @@
-import { type Community, currentTerms, type SearchAnswer, type Terms } from "../api.ts"
+import { type Community, currentTerms, type InvoiceView, type Phase, type SearchAnswer, type Terms } from "../api.ts"
 import { parseNameCode } from "../crypto/code.ts"
 import { dollars } from "../format.ts"
 import { heldWords } from "./balance.ts"
@@ -135,6 +135,36 @@ export function reduce(s: SearchState, e: SearchEvent): SearchState {
     case "agreed": return { ...s, agreed: e.agreed, termsChanged: e.agreed ? false : s.termsChanged }
     case "terms-changed": return termsChanged(s, e)
   }
+}
+
+// an order as the service reads it: its registration's phase, and its invoice's status when it has one
+export interface OrderRead { phase: Phase; invoice: InvoiceView["status"] | null }
+export interface OwnOrders { open: OrderRecord | null; closed: OrderRecord | null }
+
+const ENDED: Phase[] = ["registered", "taken", "failed"]
+
+// This browser's orders for a name, newest first: the first that can still register it, and the newest that closed
+// unpaid, cancelled or expired. A cancelled order is closed without a read; one that cannot be read is neither.
+export async function ownOrders(orders: OrderRecord[], read: (o: OrderRecord) => Promise<OrderRead | null>): Promise<OwnOrders> {
+  let closed: OrderRecord | null = null
+  for (const o of orders) {
+    if (o.cancelled) {
+      closed ??= o
+      continue
+    }
+    const r = await read(o)
+    if (r === null) continue
+    if (r.phase === "unpaid" ? r.invoice === "open" : !ENDED.includes(r.phase)) return { open: o, closed }
+    if (r.phase === "unpaid" && r.invoice !== null) closed ??= o
+  }
+  return { open: null, closed }
+}
+
+// A balance pays under its own order's name code, which nothing overrides; else a new order keeps the code of the
+// name's closed order, which the buyer saved for it.
+export function orderCode(paying: string | null, closed: string | null): { ownerCode: string | null; saved: boolean } {
+  const ownerCode = paying ?? closed
+  return { ownerCode, saved: ownerCode !== null && ownerCode === closed }
 }
 
 export function screenOf(s: SearchState): SearchKind {

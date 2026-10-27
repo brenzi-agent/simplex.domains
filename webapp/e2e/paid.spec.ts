@@ -7,7 +7,7 @@ import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
   blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, mockRegistration, onStep, oracleQuote, payButton, previewsShown, REGISTRATION_MS,
-  offCentre, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered, withStripeKey, AVAILABLE_BRIEF, TAKEN_BRIEF,
+  offCentre, orderOwnerCode, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered, withStripeKey, AVAILABLE_BRIEF, TAKEN_BRIEF,
 } from "./helpers.ts"
 
 // the card form these tests pay with is the dev server's stand-in; a production build loads Stripe's own
@@ -718,9 +718,7 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   await shot(page, "N4b-cancelled")
 
   // ordering again opens Check your order with the same name code, saved already; nothing is ordered until Pay
-  const ownerCodeOf = (id: string) => page.evaluate((i) => Object.values({ ...localStorage }).map((v) => { try { return JSON.parse(v) } catch { return null } })
-    .find((o) => o?.invoiceId === i)?.ownerCode as string | undefined, id)
-  const ownerCode = await ownerCodeOf(invoiceId)
+  const ownerCode = await orderOwnerCode(page, invoiceId)
   await page.getByRole("button", { name: "Order the name again" }).click()
   await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
   expect(await checkoutOwnerCode(page), "the same name code").toBe(ownerCode)
@@ -737,7 +735,7 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   await page.waitForURL((url) => (url.searchParams.get("order") ?? invoiceId) !== invoiceId)
   const second = new URL(page.url()).searchParams.get("order")!
   expect(await checkoutOwnerCode(page).catch(() => null), "the checkout ended").toBeNull()
-  expect(await ownerCodeOf(second), "the new order's name code").toBe(ownerCode)
+  expect(await orderOwnerCode(page, second), "the new order's name code").toBe(ownerCode)
   await control(request, `expire/${second}`)
   await expect(page.getByText("Nothing was received before it closed.")).toBeVisible()
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
@@ -753,6 +751,34 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
 
   await page.goto("/#/names")
   await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).first().locator(".chip")).toHaveText(/Invoice (expired|cancelled)/)
+})
+
+test("a name searched again after its invoice was cancelled keeps that order's name code, saved already", async ({ page }) => {
+  const label = uniqueLabel("keep")
+  const { invoiceId, ownerCode } = await startOrder(page, label, { method: "btc" })
+  await page.getByRole("button", { name: "Cancel this invoice" }).click()
+  await expect(page.getByText("This invoice was cancelled and nothing was received.")).toBeVisible()
+
+  await search(page, label)
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
+  expect(await checkoutOwnerCode(page), "the cancelled order's name code").toBe(ownerCode)
+  // saved already, so the links step goes on to Check your order, past the code step
+  await onStep(page).getByRole("button", { name: "Skip for now" }).click()
+  await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await page.goto("/#/checkout/code")
+  await expect(onStep(page).getByRole("heading", { name: CODE_HEADING })).toBeVisible()
+  await expect(onStep(page).getByRole("checkbox", { name: SAVED })).toBeChecked()
+  await expect(await shownCode(page)).toHaveText(ownerCode)
+
+  // the cancelled order is not live, so the same code orders the name again
+  await onStep(page).getByRole("button", { name: "Continue" }).click()
+  await agreeToTerms(page)
+  await payButton(page).click()
+  await page.waitForURL((url) => (url.searchParams.get("order") ?? invoiceId) !== invoiceId)
+  expect(await orderOwnerCode(page, new URL(page.url()).searchParams.get("order")!), "the new order's name code").toBe(ownerCode)
+  await page.goto("/#/names")
+  await expect(page.locator(".list-row", { hasText: "Checkout not finished" }), "no new code is left pending").toHaveCount(0)
 })
 
 test("a replaced invoice leads to its new order until a late payment reaches it", async ({ page, browser, request }) => {
