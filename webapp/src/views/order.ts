@@ -333,15 +333,15 @@ function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
   })
 }
 
-// Community terms that changed on chain since the order are agreed to again before the reveal signs them, under the
-// name terms the search has now.
+// Community terms that changed on chain since the order are agreed to again before the owner signs their acceptance at
+// the reveal, under the name terms the search has now.
 let askingAgain: number | null = null
 function askAgain(record: store.OrderRecord): void {
   const gen = opened
   askingAgain = gen
   const done = () => { if (askingAgain === gen) askingAgain = null }
-  // after a pause, a search that failed for now or answered the name as not available is made again, and one that answered
-  // other community terms than the view's reads the view again
+  // after a pause, a search that failed for now or answered the name as not available is made again, and after one that
+  // answered other community terms than the view's, the view is read again
   const later = (delay: number, again: () => void) => setTimeout(() => { done(); again() }, delay)
   const tick = () => answer(gen, { type: "tick", now: api.serviceNow() })
   flow.quoteOf(record.label).then((quote) => {

@@ -897,8 +897,8 @@ async function register(reg: Registration): Promise<void> {
     reg.registerTx = await sendTx(sponsor, "registerWithCredit", [registrationTuple(reg), nonce, deadline, signature], sending)
   } catch (e) {
     if (e instanceof NotSent) throw e
-    // no answer from the chain is not a failure: the transaction may still be mined, so the order waits for the chain
-    if (!(e instanceof Reverted)) return awaitRegistration(reg)
+    // no answer from the chain is not a failure: the register may still be mined, so the order waits for the chain
+    if (!(e instanceof Reverted)) return reg.phase === "registering" ? awaitRegistration(reg) : fail(reg, CHAIN_FAILED)
     if ((await ownerOf(reg.labelHash).catch(() => null)) === reg.owner) return registered(reg)
     // another order of the same owner spent this nonce first, or the terms changed: the owner signs again
     if (SIGN_AGAIN.includes(e.revert ?? "")) {

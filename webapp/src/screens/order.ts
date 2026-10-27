@@ -105,7 +105,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
   switch (e.type) {
     case "answered":
       if (e.seq <= s.seq) return s
-      // a stored reveal ends its sending, so one the service clears is signed again under the same key
+      // a reveal the view shows as stored is no longer sending, so one the service clears is signed again under the same key
       return { ...s, seq: e.seq, now: e.now, invoice: e.invoice, view: e.view, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? e.view.label),
         reserved: e.reserved, since: sinceOf(s.since, e.view, e.now), reveal: e.view.label !== null && s.reveal ? { ...s.reveal, sending: false } : s.reveal }
     case "record-changed": return { ...s, record: e.record, cardSubmittedAt: e.cardSubmittedAt, ask: askKept(s.ask, e.record?.label ?? null) }
@@ -116,7 +116,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "card-failed": return { ...s, cardFailed: true }
     case "card-started": return start(s, "card")
     case "card-refused": return end(s, "card", { note: e.note })
-    // a reveal keeps only the ask of the changed community terms it signs
+    // at a reveal, only the ask of the changed community terms whose acceptance it carries is kept
     case "reveal-sent": return { ...s, ask: termsAskedAgain(s) ? s.ask : null, reveal: { key: e.key, sending: true, refusals: s.reveal?.key === e.key ? s.reveal.refusals : 0 } }
     case "reveal-refused": return s.reveal?.key === e.key ? { ...s, reveal: { ...s.reveal, sending: false, refusals: s.reveal.refusals + 1 } } : s
     case "reveal-failed": return s.reveal?.key === e.key ? { ...s, reveal: { ...s.reveal, sending: false } } : s
