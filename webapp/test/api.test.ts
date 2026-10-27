@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { keccak256, toHex, zeroHash } from "viem"
 import {
-  ApiError, BalanceChanged, checkCode, createOrder, currentTerms, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
+  ApiError, BalanceChanged, cancelInvoice, checkCode, createOrder, currentTerms, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
   communityAgreed, communityTerms, termsFor,
 } from "../src/api.ts"
 
@@ -165,6 +165,22 @@ describe("service errors", () => {
       answerWith(200, JSON.stringify(body))
       const e = await readInvoice("inv1").then(() => null, (e: unknown) => e)
       expect((e as ApiError).code, JSON.stringify(body).slice(0, 120)).toBe("network")
+    }
+  })
+
+  it("takes an overpaid invoice's negative due as nothing left to pay, from every request that answers an invoice", async () => {
+    const overpaid = { ...INVOICE, cryptoAmountPaid: "0.00256", cryptoAmountDue: "-0.001", paidInFull: true }
+    const reads: [string, () => Promise<unknown>][] = [
+      ["a read", () => readInvoice("inv1")], ["a cancel", () => cancelInvoice("inv1")], ["a spend", () => spend("r1", SPEND)],
+    ]
+    for (const [name, read] of reads) {
+      answerWith(200, JSON.stringify(overpaid))
+      expect(await read(), name).toMatchObject({ cryptoAmountPaid: "0.00256", cryptoAmountDue: "0", paidInFull: true })
+    }
+    for (const cryptoAmountDue of ["-", "--0.001", "-0.001x", "- 0.001"]) {
+      answerWith(200, JSON.stringify({ ...overpaid, cryptoAmountDue }))
+      const e = await readInvoice("inv1").then(() => null, (e: unknown) => e)
+      expect((e as ApiError).code, cryptoAmountDue).toBe("network")
     }
   })
 

@@ -1,4 +1,4 @@
-import { holdsPayment, type CodeState, type InvoiceView, LINK_KINDS, type Links, type Phase, type RegistrationView, type SearchAnswer } from "../api.ts"
+import { holdsPayment, type CodeState, type InvoiceView, type LateWait, LINK_KINDS, type Links, paidLate, type Phase, type RegistrationView, type SearchAnswer } from "../api.ts"
 import { dateOf, dollars, methodName } from "../format.ts"
 import { type CodeRecord, type OrderRecord, orderUrl, type PendingCode } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
@@ -187,8 +187,8 @@ export const ORDER_CHIP_WORDS = [...new Set([...Object.values(ROW_CHIPS), ...Obj
 export function phaseChip(view: RegistrationView, invoice: InvoiceView | null, o: OrderRecord, now: number): [string, string] {
   if (waitsToSign(view, now)) return [CHIPS.sign, "warn"]
   if (view.phase !== "unpaid") return PHASE_CHIPS[view.phase]
+  if (invoice && paidLate(invoice)) return [CHIPS.late, "warn"]
   if (invoice?.status === "expired") return o.cancelled && !holdsPayment(invoice) ? [CHIPS.cancelled, "bad"] : [CHIPS.expired, holdsPayment(invoice) ? "warn" : "bad"]
-  if (invoice?.status === "paid") return [CHIPS.late, "warn"]
   if (invoice?.paidInFull || o.cardSubmittedAt) return [CHIPS.confirming, "warn"]
   if (invoice?.amountPaid || Number(invoice?.cryptoAmountPaid ?? "0") > 0) return [CHIPS.rest, "warn"]
   return PHASE_CHIPS.unpaid
@@ -208,11 +208,15 @@ export function paidLine(o: OrderRecord, view: RegistrationView | null, invoice:
   return `${dollars(o.paid)} ${methodName(o.method)}`
 }
 
+const LATE_KEPT: Record<LateWait | "credited", string> = {
+  credited: "kept as your balance", confirming: "kept as your balance once confirmed", crediting: "kept as your balance once credited", support: "write to support to have it credited",
+}
+
 // Money that reached an unpaid order's invoice once it had closed, or that it held as it closed, which is kept as the
 // order's balance; null when the invoice took none.
 export function lateLine(invoice: InvoiceView): string | null {
-  const kept = invoice.registration.latePayment?.waiting === "support" ? "write to support to have it credited" : "kept as your balance"
-  if (invoice.status === "paid") return `Paid after the invoice closed; ${kept}`
+  const kept = LATE_KEPT[invoice.registration.latePayment?.waiting ?? "credited"]
+  if (paidLate(invoice)) return `Paid after the invoice closed; ${kept}`
   if (invoice.status !== "expired") return null
   const part = Number(invoice.cryptoAmountPaid ?? "0") > 0 && !invoice.paidInFull
   const arrived = part ? "Part of the payment arrived" : holdsPayment(invoice) ? "A payment did not complete before the invoice closed" : null

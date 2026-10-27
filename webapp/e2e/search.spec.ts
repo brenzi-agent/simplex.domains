@@ -3,7 +3,7 @@ import { labelHash } from "../src/crypto/registration.ts"
 import { hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  codeField, control, LINKS_HEADING, onStep, payButton, recordedFrames, recordFrames, REGISTRATION_MS, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel,
+  agreeToTerms, checkoutOwnerCode, codeField, control, LINKS_HEADING, onStep, orderOwnerCode, payButton, recordedFrames, recordFrames, REGISTRATION_MS, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel,
   waitRegistered,
 } from "./helpers.ts"
 
@@ -191,15 +191,25 @@ test("without storage two expired invoices of one order do not lead to each othe
   await context.close()
 })
 
-test("a new invoice for a method that is unavailable says so and offers another way", async ({ page, request }) => {
+test("a new invoice for a method that is unavailable says so and offers another way, with the same name code", async ({ page, request }) => {
   const label = uniqueLabel("unav")
-  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  const { invoiceId, ownerCode } = await startOrder(page, label, { method: "btc" })
   await control(request, `expire/${invoiceId}`)
   await control(request, "search", { invoiceError: "provider_unavailable" })
   await page.getByRole("button", { name: "Get a new invoice" }).click()
   await expect(page.getByText("Bitcoin is unavailable right now")).toBeVisible()
   await page.getByRole("link", { name: "order the name again" }).click()
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(label)
+  // the expired order's name code orders the name again, saved already
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
+  expect(await checkoutOwnerCode(page), "the expired order's name code").toBe(ownerCode)
+  await onStep(page).getByRole("button", { name: "Skip for now" }).click()
+  await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await agreeToTerms(page)
+  await payButton(page).click()
+  await page.waitForURL((url) => (url.searchParams.get("order") ?? invoiceId) !== invoiceId)
+  expect(await orderOwnerCode(page, new URL(page.url()).searchParams.get("order")!), "the new order's name code").toBe(ownerCode)
 })
 
 test("a double click acts once, whatever the redrawn page puts under the pointer", async ({ page }) => {

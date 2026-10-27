@@ -115,9 +115,17 @@ describe("screenOf", () => {
   })
 })
 
+// all of the amount, which reached the invoice after it closed
+const LATE_FULL: Partial<InvoiceView> = { status: "expired", cryptoAmountPaid: "0.00025", cryptoAmountDue: "0", paidInFull: true }
+
 describe("closedCase", () => {
   const cases: [string, ClosedCase, OrderState][] = [
     ["a payment after the invoice closed", "paid-late", read(crypto({ status: "paid", paidInFull: true }))],
+    ["a whole payment after the close, credited, which BTCPay keeps expired", "paid-late", read(crypto(LATE_FULL))],
+    ["a whole payment after a cancel, credited", "paid-late", read(crypto(LATE_FULL), undefined, { record: record({ cancelled: true }) })],
+    ["a whole payment after the close that only support can credit", "paid-late", read(crypto(LATE_FULL, { latePayment: { waiting: "support" } }))],
+    ["a whole payment after the close, still confirming", "received", read(crypto(LATE_FULL, { latePayment: { waiting: "confirming" } }))],
+    ["a whole payment after the close, confirmed and not yet credited", "received", read(crypto(LATE_FULL, { latePayment: { waiting: "crediting" } }))],
     ["a cancelled invoice that closed with nothing received", "cancelled", read(crypto({ status: "expired" }), undefined, { record: record({ cancelled: true }) })],
     ["an expired invoice that money reached", "received", read(crypto({ status: "expired", cryptoAmountPaid: "0.0001", cryptoAmountDue: "0.00015" }))],
     ["a cancelled invoice that money reached", "received", read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }), undefined, { record: record({ cancelled: true }) })],
@@ -368,6 +376,13 @@ describe("finished", () => {
     expect(finished(paidLate({}), registration({ latePayment: { waiting: "support" } }))).toBe(true)
     expect(finished(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }), registration({ latePayment: { waiting: "support" } })), "a part payment").toBe(true)
   })
+  it("stops at a whole late payment that BTCPay keeps expired once it is in the balance, and follows a part payment for the rest", () => {
+    const credited = registration({ balance: { amount: 1500, held: false, heldUntil: null, refunded: 0 } })
+    expect(finished(crypto(LATE_FULL, credited), credited)).toBe(true)
+    expect(finished(crypto(LATE_FULL), registration()), "not credited yet").toBe(false)
+    const part = crypto({ status: "expired", cryptoAmountPaid: "0.0001" }, credited)
+    expect(finished(part, part.registration)).toBe(false)
+  })
   it("stops at a registered name, and follows an open invoice and a taken or failed order", () => {
     expect(finished(null, registration({ phase: "registered" }))).toBe(true)
     expect(finished(crypto(), registration())).toBe(false)
@@ -382,6 +397,7 @@ describe("closedBalance", () => {
   })
   it("offers the balance that money paid after the close became", () => {
     expect(closedBalance(read(crypto({ status: "paid", paidInFull: true }, { balance: BALANCE })))).toBe("offer")
+    expect(closedBalance(read(crypto(LATE_FULL, { balance: BALANCE }))), "kept expired").toBe("offer")
   })
   it("leads a replaced invoice's balance to its new invoice, which can be cancelled for it", () => {
     const replaced = read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }, { balance: BALANCE }), undefined, { record: record({ replacedBy: "/?order=inv-2" }) })
@@ -416,6 +432,16 @@ describe("spendCovers", () => {
     const grown = reduce(pressed, { type: "source-read", balance: balance(1500) })
     expect([grown.busy, spendCovers(grown)]).toEqual([null, true])
   })
+  const own = (amount: number, held = false) => read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }, { balance: balance(amount, held) }))
+  it("registers the same name with the order's own balance, which money on its closed invoice became, once that covers the price", () => {
+    expect(spendCovers(own(1500))).toBe(true)
+    expect(spendCovers(own(750))).toBe(false)
+    expect(spendCovers(own(1500, true))).toBe(false)
+  })
+  it("says so once the order's own balance is read grown to the price", () => {
+    const grown = reduce(reduce(own(750), { type: "reorder-started" }), { type: "source-read", balance: balance(1500) })
+    expect([grown.busy, spendCovers(grown)]).toEqual([null, true])
+  })
 })
 
 describe("newInvoiceBy", () => {
@@ -424,6 +450,13 @@ describe("newInvoiceBy", () => {
   })
   it("asks find which balance paid part of an order this browser adopted, never ordering the difference alone", () => {
     expect(newInvoiceBy(record(), crypto({ status: "expired", amount: 500 }, { fromBalance: 1000 }))).toBe("find")
+  })
+  it("spends the order's own balance, which money on its closed invoice became, for the rest of the same name", () => {
+    const credited = { balance: { amount: 750, held: false, heldUntil: null, refunded: 0 } }
+    expect(newInvoiceBy(record(), crypto({ status: "expired", cryptoAmountPaid: "0.0001" }, credited))).toBe("own")
+    expect(newInvoiceBy(record({ balanceSource: "reg-0" }), crypto({ status: "expired", cryptoAmountPaid: "0.0001" }, { ...credited, fromBalance: 1000 })), "the balance that paid part first")
+      .toBe("spend")
+    expect(newInvoiceBy(record(), crypto({ status: "expired" }, { balance: { ...credited.balance, amount: 0 } })), "a balance spent or refunded").toBe("order")
   })
   it("orders again at the price an order paid by its invoice alone", () => {
     expect(newInvoiceBy(record(), crypto({ status: "expired" }))).toBe("order")

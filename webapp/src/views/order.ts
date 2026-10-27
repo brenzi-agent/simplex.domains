@@ -714,21 +714,21 @@ function cardStandIn(form: HTMLElement): void {
 const withoutRecord = (cls: string, text = "Enter your name code") => btn(text, cls, () => go(CODE_FROM_ORDER_URL))
 
 const CLOSED_TITLE = "Invoice closed"
-const KEPT_LATE = "kept as your balance for another name, or refunded on request; Your names shows it."
+const KEPT_LATE = "kept as your balance for this name or another, or refunded on request; Your names shows it."
 const partlyPaid = (invoice: api.InvoiceView) => Number(invoice.cryptoAmountPaid ?? "0") > 0
 
 function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
   const inv = s.invoice!
   const closed = closedCase(s)!
   const [tone, text] = closedWords(closed, inv, s.view!)
-  // only a new invoice is held for the tab's wait
-  const reorders = (closed === "received" || closed === "expired") && s.record !== null && !s.record.replacedBy
-  holdEnds(signal)(s.hold !== null)
   const kept = closedBalance(s)
+  // only a new invoice is held for the tab's wait; the balance kept pays for one of the same name
+  const reorders = kept === "offer" || ((closed === "received" || closed === "expired") && s.record !== null && !s.record.replacedBy)
+  holdEnds(signal)(s.hold !== null)
   const replaced = kept === "replaced" ? el("p", { class: "note" }, "What reached this invoice is kept as your balance: you can cancel the new invoice and use the balance instead.") : null
   return outcome({ tone, icon: "alert", title: CLOSED_TITLE, text, reference: inv.invoiceId,
-    extra: [replaced, actionNote(s, reorders ? signal : null)], agreement: kept !== "offer" && reorders ? agreement(s, "reorder") : null,
-    ...kept === "offer" ? balanceActions(s) : { action: closedAction(s, closed) } })
+    extra: [replaced, actionNote(s, reorders ? signal : null)], agreement: reorders ? agreement(s, "reorder") : null,
+    ...kept === "offer" ? balanceActions(s, newInvoiceButton(s, "", reorder)) : { action: closedAction(s, closed) } })
 }
 
 function agreement({ ask, view, busy, reveal }: OrderState, focus: string): HTMLElement | null {
@@ -757,8 +757,14 @@ function termsOrAsk(gen: number, record: store.OrderRecord, signed: string | nul
 async function signsHere(record: store.OrderRecord, invoice: api.InvoiceView): Promise<boolean> {
   const by = newInvoiceBy(record, invoice)
   if (by === "order") return true
-  const source = by === "find" ? await flow.balanceSourceOf(record) : record.balanceSource
+  const source = await sourceOf(by, record, invoice)
   return source != null && await balanceOf(source) !== null
+}
+
+// the order whose balance a new invoice of a closed one spends
+async function sourceOf(by: "spend" | "find" | "own", record: store.OrderRecord, invoice: api.InvoiceView): Promise<string | null | undefined> {
+  if (by === "own") return invoice.registration.id
+  return by === "find" ? await flow.balanceSourceOf(record) : record.balanceSource
 }
 
 // nothing is cancelled before the buyer has agreed to the terms the new invoice would sign
@@ -776,16 +782,17 @@ async function agreedFirst(gen: number, record: store.OrderRecord, invoice: api.
 // a late credit the service cannot make by itself, which support makes by hand
 const creditBySupport: Kid[] = [" It is not credited to your balance by itself: write to ", el("a", { href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " with the reference below."]
 
+const KEPT_ONCE: Record<Exclude<api.LateWait, "support">, string> = { confirming: "Once confirmed, it is", crediting: "Once credited, it is" }
+
 function closedWords(closed: ClosedCase, inv: api.InvoiceView, view: api.RegistrationView): [Tone, Kid] {
-  const bySupport = view.latePayment?.waiting === "support"
-  if (closed === "paid-late" && bySupport) return ["warn", ["The payment arrived after this invoice had closed, so nothing was registered.", creditBySupport]]
+  const waiting = view.latePayment?.waiting
+  const kept = (lead: string): Kid => waiting === "support" ? [lead, creditBySupport] : `${lead} ${waiting ? KEPT_ONCE[waiting] : "It is"} ${KEPT_LATE}`
   switch (closed) {
-    case "paid-late": return ["warn", `The payment arrived after this invoice had closed, so nothing was registered. It is ${KEPT_LATE}`]
+    case "paid-late": return ["warn", kept("The payment arrived after this invoice had closed, so nothing was registered.")]
     case "cancelled": return ["info", "This invoice was cancelled and nothing was received."]
     case "received": {
       const coin = coinOf(inv)
-      const arrived = coin && partlyPaid(inv) && !inv.paidInFull ? `${inv.cryptoAmountPaid} ${TICKER[coin]} arrived, which is not the full amount.` : "A payment did not complete before the invoice closed."
-      return ["warn", bySupport ? [arrived, creditBySupport] : `${arrived} Once confirmed, it is ${KEPT_LATE}`]
+      return ["warn", kept(coin && partlyPaid(inv) && !inv.paidInFull ? `${inv.cryptoAmountPaid} ${TICKER[coin]} arrived, which is not the full amount.` : "A payment did not complete before the invoice closed.")]
     }
     case "expired": return ["info", inv.cryptoCurrency ? "Nothing was received before it closed." : "Nothing was paid before it closed."]
   }
@@ -982,11 +989,12 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
       if (isOpen(gen)) go(searchLink(record.label))
       return
     }
-    // part of the price came from a balance, which pays again; a browser that adopted the order asks find which balance
+    // part of the price came from a balance, which pays again, or money on the invoice became the order's own; a browser
+    // that adopted the order asks find which balance
     const by = newInvoiceBy(record, now)
-    const source = by === "find" ? await flow.balanceSourceOf(record) : record.balanceSource
     const signed = now.registration.terms ?? record.terms
     if (by !== "order") {
+      const source = await sourceOf(by, record, now)
       if (source) return await spendAgain(record, source, quote, gen, method, signed)
       if (isOpen(gen)) go(searchLink(record.label))
       return
@@ -1274,15 +1282,17 @@ function buildTaken(s: OrderState): HTMLElement {
 
 const REFUND = "refund"
 
-// An order's balance pays for another name of its code, or support refunds it while no open invoice holds it; only the
-// browser holding the code does either. Without a balance left, another name is searched as usual.
-function balanceActions({ view, invoice, record }: OrderState): { action: HTMLButtonElement; alt: HTMLAnchorElement | null } {
+// An order's balance pays for another name of its code, or the same name when `same` gets its invoice, or support refunds it
+// while no open invoice holds it; only the browser holding the code does any. Without a balance left, another name is
+// searched as usual.
+function balanceActions({ view, invoice, record }: OrderState, same?: HTMLButtonElement): { action: HTMLButtonElement; alt: HTMLElement | null } {
   const balance = session.appliedBalance(view!.id, view!.balance)
-  const action = setAction(btn("Choose another name", "", () => balance ? useBalance(balance) : go(searchLink(""))), false, record === null)
-  const alt = record && balance && !balance.held ? link("Get a refund", () => showRefund(invoice?.invoiceId ?? view!.id, REFUND)) : null
-  alt?.setAttribute("data-focus", REFUND)
-  alt?.setAttribute("aria-haspopup", "dialog")
-  return { action, alt }
+  const another = () => balance ? useBalance(balance) : go(searchLink(""))
+  const refund = record && balance && !balance.held ? link("Get a refund", () => showRefund(invoice?.invoiceId ?? view!.id, REFUND)) : null
+  refund?.setAttribute("data-focus", REFUND)
+  refund?.setAttribute("aria-haspopup", "dialog")
+  if (!same) return { action: setAction(btn("Choose another name", "", another), false, record === null), alt: refund }
+  return { action: same, alt: el("span", {}, link("Choose another name", another), refund && SEP, refund) }
 }
 
 function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {

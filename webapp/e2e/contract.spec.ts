@@ -186,10 +186,10 @@ test("a cancelled or expired order gives way to a new one of the same wallet, an
   const second = await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(draft)).request, "xmr", q.price))
   expect(second.status).toBe(200)
   await control(request, `expire/${second.json.invoiceId}`)
-  // a payment reaching the closed invoice is late: the order stays unpaid
+  // a payment reaching the closed invoice is late: the order stays unpaid, and the invoice closed, as BTCPay keeps it
   await control(request, `settle/${second.json.invoiceId}`)
   const late = await call("GET", `/api/invoice/${second.json.invoiceId}`)
-  expect([late.json.status, (late.json.registration as Json).phase]).toEqual(["paid", "unpaid"])
+  expect([late.json.status, late.json.paidInFull, (late.json.registration as Json).phase]).toEqual(["expired", true, "unpaid"])
   expect((await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(draft)).request, "card", q.price))).status).toBe(200)
 })
 
@@ -699,6 +699,9 @@ test("a late payment is credited once settled, each confirmed figure once, at th
   await control(request, `settle/${btc.invoiceId}`)
   await control(request, `settle/${btc.invoiceId}`)
   expect(await balanceOf(btc.id), "the same figure settled twice").toEqual(free(PRICE.long))
+  const settled = await call("GET", `/api/invoice/${btc.invoiceId}`)
+  expect([settled.json.status, settled.json.paidInFull, settled.json.cryptoAmountDue, (settled.json.registration as Json).latePayment], "kept closed, all of it credited")
+    .toEqual(["expired", true, "0", null])
   const card = await closed("card")
   await control(request, `settle/${card.invoiceId}`)
   expect(await balanceOf(card.id)).toEqual(free(PRICE.long))
@@ -724,6 +727,62 @@ test("a late payment is credited once settled, each confirmed figure once, at th
     await control(request, "rate", { btc: null, xmr: null })
   }
   for (const rate of [0, -1, 1.5, "32000"]) expect((await call("POST", "/control/rate", { btc: rate })).status, String(rate)).toBe(400)
+})
+
+test("a part payment confirmed on a closed invoice, also after a cancel, is credited at its share of the price, and the rest once it arrives", async ({ request }) => {
+  const label = uniqueLabel("lpp")
+  const res = await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(await draftOf(label))).request, "btc", PRICE.long))
+  const [invoiceId, id] = [res.json.invoiceId as string, (res.json.registration as Json).id as string]
+  expect(res.json.cryptoAmount).toBe("0.00156")
+  await control(request, `partial/${invoiceId}`)
+  expect(await call("POST", `/api/invoice/${invoiceId}/cancel`)).toEqual({ status: 409, json: { error: "funded" } })
+  await control(request, `expire/${invoiceId}`)
+  expect([(await viewOf(id)).latePayment, await balanceOf(id)], "seen, not confirmed").toEqual([{ waiting: "confirming" }, null])
+  await control(request, `settle/${invoiceId}`, { paid: "0.00078" })
+  const part = await call("GET", `/api/invoice/${invoiceId}`)
+  expect([part.json.status, part.json.paidInFull, part.json.cryptoAmountPaid, part.json.cryptoAmountDue]).toEqual(["expired", false, "0.00078", "0.00078"])
+  expect([(await viewOf(id)).latePayment, await balanceOf(id)]).toEqual([null, free(PRICE.long / 2)])
+  await control(request, `settle/${invoiceId}`)
+  const whole = await call("GET", `/api/invoice/${invoiceId}`)
+  expect([whole.json.status, whole.json.paidInFull, whole.json.cryptoAmountPaid, whole.json.cryptoAmountDue]).toEqual(["expired", true, "0.00156", "0"])
+  expect(await balanceOf(id)).toEqual(free(PRICE.long))
+
+  const cancelled = await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(await draftOf(uniqueLabel("lpc")))).request, "xmr", PRICE.long))
+  await call("POST", `/api/invoice/${cancelled.json.invoiceId}/cancel`)
+  await control(request, `settle/${cancelled.json.invoiceId}`, { paid: "0.125" })
+  const after = await call("GET", `/api/invoice/${cancelled.json.invoiceId}`)
+  expect([after.json.status, after.json.paidInFull], "a cancelled invoice stays closed").toEqual(["expired", false])
+  expect(await balanceOf((cancelled.json.registration as Json).id as string)).toEqual(free(PRICE.long / 5))
+})
+
+test("an overpaid invoice registers its name, leaves nothing to pay, and credits the extra at its share of the price or the lower current rate", async ({ request }) => {
+  const overpaid = async (paid: string) => {
+    const label = uniqueLabel("op")
+    const draft = await draftOf(label)
+    const built = await flow.orderRequest(draft)
+    const res = await call("POST", "/api/invoice", invoiceBody(built.request, "btc", PRICE.long))
+    const [invoiceId, id] = [res.json.invoiceId as string, (res.json.registration as Json).id as string]
+    store.saveOrder(flow.recordFor(draft, built, "btc", PRICE.long, { registrationId: id, invoiceId }))
+    await control(request, `settle/${invoiceId}`, { paid })
+    return { invoiceId, id }
+  }
+  const { invoiceId, id } = await overpaid("0.00234")
+  const read = await call("GET", `/api/invoice/${invoiceId}`)
+  expect([read.json.status, read.json.paidInFull, read.json.cryptoAmountPaid, read.json.cryptoAmountDue]).toEqual(["paid", true, "0.00234", "0"])
+  expect((await viewOf(id)).phase).not.toBe("unpaid")
+  expect(await balanceOf(id)).toEqual(free(PRICE.long / 2))
+  await flow.revealOrder(await untilRevealable(id), store.orderByRegistration(id)!)
+  expect((await untilPhase(id, ["registered"])).balance, "kept once registered").toEqual(free(PRICE.long / 2))
+  try {
+    await control(request, "rate", { btc: 32000 })
+    expect(await balanceOf((await overpaid("0.00234")).id), "0.00078 BTC at $32000").toEqual(free(2496))
+  } finally {
+    await control(request, "rate", { btc: null, xmr: null })
+  }
+  const short = await call("POST", "/api/invoice", invoiceBody((await flow.orderRequest(await draftOf(uniqueLabel("os")))).request, "btc", PRICE.long))
+  for (const paid of ["0.00078", "lots", "-1", 5]) {
+    expect((await call("POST", `/control/settle/${short.json.invoiceId}`, { paid })).status, `${paid} on an open invoice`).toBe(400)
+  }
 })
 
 test("find lists the 50 newest orders of a code and then every older one holding a balance", async ({ request }) => {

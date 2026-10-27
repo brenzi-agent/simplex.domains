@@ -1,4 +1,4 @@
-import { type Balance, type Community, holdsPayment, type InvoiceView, type RegistrationView, type SearchAnswer, type Terms } from "../api.ts"
+import { type Balance, type Community, holdsPayment, type InvoiceView, paidLate, type RegistrationView, type SearchAnswer, type Terms } from "../api.ts"
 import type { IconName } from "../icons.ts"
 import type { CodeRefusal, OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
@@ -192,16 +192,20 @@ export const sameStep = (a: RegistrationView, b: RegistrationView) => a.phase ==
 export const coinOf = (invoice: InvoiceView) => invoice.cryptoCurrency === "btc" || invoice.cryptoCurrency === "xmr" ? invoice.cryptoCurrency : null
 
 // How a closed invoice's order gets a new one: a new spend of the balance that paid part of it, once find names that
-// balance where this browser's record does not, or a new order at its price.
-export function newInvoiceBy(record: OrderRecord, invoice: InvoiceView): "spend" | "find" | "order" {
+// balance where this browser's record does not; a spend of its own balance, which money on the invoice became; or a new
+// order at its price.
+export function newInvoiceBy(record: OrderRecord, invoice: InvoiceView): "spend" | "find" | "own" | "order" {
   if (record.balanceSource) return "spend"
-  return invoice.registration.fromBalance > 0 ? "find" : "order"
+  if (invoice.registration.fromBalance > 0) return "find"
+  return invoice.registration.balance?.amount ? "own" : "order"
 }
 
-// A new invoice of an order that a balance paid part of spends that balance again, which is read only for such an order;
-// once it has grown to cover the price, the spend registers the name with nothing to pay, which its button says.
-export const spendCovers = ({ view, sourceBalance }: OrderState) =>
-  view !== null && sourceBalance !== null && !sourceBalance.held && sourceBalance.amount >= view.price
+// A new invoice spends the balance that paid part of the order, read only for such an order, or the order's own; once that
+// covers the price, the spend registers the name with nothing to pay, which its button says.
+export function spendCovers({ view, invoice, record, sourceBalance }: OrderState): boolean {
+  const paying = record && invoice && newInvoiceBy(record, invoice) === "own" ? sourceBalance ?? view?.balance ?? null : sourceBalance
+  return view !== null && paying !== null && !paying.held && paying.amount >= view.price
+}
 
 // What the order's name costs, which a move to a cheaper name lowers, and what another order's balance paid of it, the
 // rest of that payment kept as this order's balance after such a move; null for a code, which costs nothing.
@@ -246,14 +250,14 @@ export function finished(invoice: InvoiceView | null, view: RegistrationView): b
   if (view.phase === "registered") return true
   if (view.phase !== "unpaid" || !invoice || invoice.status === "open") return false
   if (view.latePayment) return view.latePayment.waiting === "support"
-  return invoice.status === "paid" && view.balance !== null
+  return paidLate(invoice) && view.balance !== null
 }
 
 // An unpaid order's invoice that takes no more payment.
 export function closedCase({ invoice, view, record }: OrderState): ClosedCase | null {
   if (!invoice || view?.phase !== "unpaid") return null
-  if (invoice.status === "paid") return "paid-late"
   if (invoice.status === "open") return null
+  if (paidLate(invoice)) return "paid-late"
   if (record?.cancelled && !holdsPayment(invoice)) return "cancelled"
   return holdsPayment(invoice) ? "received" : "expired"
 }

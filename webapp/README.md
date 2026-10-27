@@ -53,7 +53,7 @@ The backend needs two things outside this repo:
    npx hardhat compile
    ```
 
-2. Foundry's `anvil`, from the [release tarball](https://github.com/foundry-rs/foundry/releases). Hardhat's own node does not return revert data, which the mock needs to tell a taken name from a failure.
+2. Foundry's `anvil`, from the [release tarball](https://github.com/foundry-rs/foundry/releases). The backend runs on anvil only: Hardhat's node returns no revert data, which the mock needs to tell a taken name from a failure, so on it the balance, taken and contract browser tests fail. `start.sh` stops when a chain it waits for is not anvil, as when another chain already holds the port.
 
 ## Run
 
@@ -74,7 +74,7 @@ Tests and manual checks move orders along with `POST` requests to the mock:
 
 | Request | Effect |
 |---|---|
-| `/control/settle/<invoice>` | the invoice is paid; registration starts and a balance it held is spent. On a closed invoice the payment is late: the order stays unpaid and its confirmed money is credited to its balance once |
+| `/control/settle/<invoice>` `{"paid"}` | the money that reached the invoice is confirmed: its whole amount, or the coin given in `paid`. An open invoice is paid and registration starts, a balance it held is spent, and coin past the amount is credited to the order's balance; less than the amount is refused (`/control/partial` sends part). On a closed invoice the payment is late, as BTCPay keeps it: the invoice stays expired, with `paidInFull` once all of the amount arrived, the order stays unpaid, and each confirmed figure is credited to its balance once. Credit is the price's share of the coin, at the lower of the invoice's rate and the current one |
 | `/control/partial/<invoice>` | half the crypto amount arrives |
 | `/control/confirming/<invoice>` | the full amount is seen, not yet confirmed |
 | `/control/expire/<invoice>` | the invoice expires |

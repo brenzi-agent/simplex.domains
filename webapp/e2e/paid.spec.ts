@@ -7,7 +7,7 @@ import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
   blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, mockRegistration, onStep, oracleQuote, payButton, previewsShown, REGISTRATION_MS,
-  offCentre, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered, withStripeKey, AVAILABLE_BRIEF, TAKEN_BRIEF,
+  offCentre, orderOwnerCode, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered, withStripeKey, AVAILABLE_BRIEF, TAKEN_BRIEF,
 } from "./helpers.ts"
 
 // the card form these tests pay with is the dev server's stand-in; a production build loads Stripe's own
@@ -500,6 +500,8 @@ test("Skip for now shows only while no link is given, and a link edited keeps it
   const stored = () => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!) as { contact: string; channel: string }, CHECKOUT_KEY)
   const contact = contactLink("S1")
   const border = () => step.locator(".link-field .field").first().evaluate((box) => getComputedStyle(box).borderTopColor)
+  // the pointer left where Register was lies over the field, which takes the hover border whenever the browser next updates hover
+  await page.mouse.move(0, 0)
   await link.blur()
   const neutral = await border()
   await link.fill(contact)
@@ -716,9 +718,7 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   await shot(page, "N4b-cancelled")
 
   // ordering again opens Check your order with the same name code, saved already; nothing is ordered until Pay
-  const ownerCodeOf = (id: string) => page.evaluate((i) => Object.values({ ...localStorage }).map((v) => { try { return JSON.parse(v) } catch { return null } })
-    .find((o) => o?.invoiceId === i)?.ownerCode as string | undefined, id)
-  const ownerCode = await ownerCodeOf(invoiceId)
+  const ownerCode = await orderOwnerCode(page, invoiceId)
   await page.getByRole("button", { name: "Order the name again" }).click()
   await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
   expect(await checkoutOwnerCode(page), "the same name code").toBe(ownerCode)
@@ -735,7 +735,7 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   await page.waitForURL((url) => (url.searchParams.get("order") ?? invoiceId) !== invoiceId)
   const second = new URL(page.url()).searchParams.get("order")!
   expect(await checkoutOwnerCode(page).catch(() => null), "the checkout ended").toBeNull()
-  expect(await ownerCodeOf(second), "the new order's name code").toBe(ownerCode)
+  expect(await orderOwnerCode(page, second), "the new order's name code").toBe(ownerCode)
   await control(request, `expire/${second}`)
   await expect(page.getByText("Nothing was received before it closed.")).toBeVisible()
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
@@ -751,6 +751,34 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
 
   await page.goto("/#/names")
   await expect(page.locator(".list-row", { hasText: `${label}.simplex` }).first().locator(".chip")).toHaveText(/Invoice (expired|cancelled)/)
+})
+
+test("a name searched again after its invoice was cancelled keeps that order's name code, saved already", async ({ page }) => {
+  const label = uniqueLabel("keep")
+  const { invoiceId, ownerCode } = await startOrder(page, label, { method: "btc" })
+  await page.getByRole("button", { name: "Cancel this invoice" }).click()
+  await expect(page.getByText("This invoice was cancelled and nothing was received.")).toBeVisible()
+
+  await search(page, label)
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
+  expect(await checkoutOwnerCode(page), "the cancelled order's name code").toBe(ownerCode)
+  // saved already, so the links step goes on to Check your order, past the code step
+  await onStep(page).getByRole("button", { name: "Skip for now" }).click()
+  await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
+  await page.goto("/#/checkout/code")
+  await expect(onStep(page).getByRole("heading", { name: CODE_HEADING })).toBeVisible()
+  await expect(onStep(page).getByRole("checkbox", { name: SAVED })).toBeChecked()
+  await expect(await shownCode(page)).toHaveText(ownerCode)
+
+  // the cancelled order is not live, so the same code orders the name again
+  await onStep(page).getByRole("button", { name: "Continue" }).click()
+  await agreeToTerms(page)
+  await payButton(page).click()
+  await page.waitForURL((url) => (url.searchParams.get("order") ?? invoiceId) !== invoiceId)
+  expect(await orderOwnerCode(page, new URL(page.url()).searchParams.get("order")!), "the new order's name code").toBe(ownerCode)
+  await page.goto("/#/names")
+  await expect(page.locator(".list-row", { hasText: "Checkout not finished" }), "no new code is left pending").toHaveCount(0)
 })
 
 test("a replaced invoice leads to its new order until a late payment reaches it", async ({ page, browser, request }) => {
@@ -784,6 +812,7 @@ test("a replaced invoice leads to its new order until a late payment reaches it"
   for (const p of [page, restored]) {
     await p.goto(`/?order=${invoiceId}`)
     await expect(p.getByText("The payment arrived after this invoice had closed")).toBeVisible()
+    await expect(onStep(p).getByText(/Once confirmed|not the full amount/), "all of it arrived and is credited").toHaveCount(0)
     await expect(p.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
     expect(new URL(p.url()).searchParams.get("order")).toBe(invoiceId)
     await p.goto("/#/names")
@@ -807,6 +836,7 @@ test("an invoice that received part of its payment and was replaced leads on to 
   await control(request, `settle/${invoiceId}`)
   await page.goto(`/?order=${invoiceId}`)
   await expect(page.getByText("The payment arrived after this invoice had closed")).toBeVisible()
+  await expect(onStep(page).getByText(/Once confirmed|not the full amount/), "the rest arrived and all of it is credited").toHaveCount(0)
   await page.goto("/#/names")
   await expect(page.locator(".list-row:visible", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText(["Waiting for payment", "Paid late"])
   await page.goto(`/?order=${invoiceId}`)
@@ -828,6 +858,60 @@ test("an invoice that closed while its payment was confirming says a payment rea
   await expect(row).toContainText("A payment did not complete before the invoice closed")
   await expect(row.locator(".chip")).toHaveText(["Invoice expired"])
   await shot(page, "N12f-history-expired-paid")
+})
+
+test("an overpaid invoice registers its name, even where the service reads its due below zero", async ({ page, request }) => {
+  const label = uniqueLabel("over")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  // BTCPay's due for an overpaid invoice, as a service that passes it on answers it
+  await page.route(`**/api/invoice/${invoiceId}*`, async (route) => {
+    const response = await route.fetch()
+    const json = await response.json()
+    await route.fulfill({ response, json: json.paidInFull ? { ...json, cryptoAmountDue: "-0.00078" } : json })
+  })
+  await control(request, `settle/${invoiceId}`, { paid: "0.00234" })
+  await waitRegistered(page, label)
+  await page.unrouteAll({ behavior: "ignoreErrors" })
+})
+
+const KEPT_LATE = "kept as your balance for this name or another, or refunded on request; Your names shows it."
+
+test("a part payment on a closed invoice, once credited, says so and gets an invoice for the rest of the same name in the main button's place", async ({ page, request }) => {
+  const label = uniqueLabel("rest")
+  const { invoiceId } = await startOrder(page, label, { method: "btc" })
+  await control(request, `partial/${invoiceId}`)
+  await control(request, `expire/${invoiceId}`)
+  const actions = onStep(page).locator(".actions-row")
+  await expect(page.getByText(`0.00078 BTC arrived, which is not the full amount. Once confirmed, it is ${KEPT_LATE}`)).toBeVisible()
+  const place = await actions.locator(".btn").boundingBox()
+  await control(request, `settle/${invoiceId}`, { paid: "0.00078" })
+  await expect(page.getByText(`0.00078 BTC arrived, which is not the full amount. It is ${KEPT_LATE}`)).toBeVisible()
+  await expect(actions.locator(".btn"), "one main action").toHaveText(["Get a new invoice"])
+  expect(await actions.locator(".btn").boundingBox(), "the main button stays where it was").toEqual(place)
+  await expect(actions.locator(".alt a")).toHaveText(["Choose another name", "Get a refund"])
+  await shot(page, "N4g-part-credited")
+  await actions.getByRole("button", { name: "Get a new invoice" }).click()
+  await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
+  const second = new URL(page.url()).searchParams.get("order")!
+  const invoice = async (id: string) => (await request.get(`${MOCK}/api/invoice/${id}`)).json()
+  const [closed, rest] = [await invoice(invoiceId), await invoice(second)]
+  expect([rest.amount, rest.registration.price, rest.registration.fromBalance, rest.registration.labelHash], "the difference, for the same name")
+    .toEqual([5000, 10000, 5000, closed.registration.labelHash])
+  await control(request, `settle/${second}`)
+  await waitRegistered(page, label)
+})
+
+test("a whole payment after the close, once credited, says so and registers the same name with the balance", async ({ page, request }) => {
+  const label = uniqueLabel("whole")
+  const { invoiceId } = await startOrder(page, label, { method: "xmr" })
+  await control(request, `expire/${invoiceId}`)
+  await control(request, `settle/${invoiceId}`)
+  await expect(page.getByText(`The payment arrived after this invoice had closed, so nothing was registered. It is ${KEPT_LATE}`)).toBeVisible()
+  await expect(onStep(page).getByText(/Once confirmed|not the full amount/)).toHaveCount(0)
+  await expect(onStep(page).locator(".actions-row .alt a")).toHaveText(["Choose another name", "Get a refund"])
+  await onStep(page).getByRole("button", { name: "Register with your balance" }).click()
+  await page.waitForURL(/\?registration=/)
+  await waitRegistered(page, label)
 })
 
 const INVOICE_EXPIRED = "The invoice expired before the full amount arrived. Don't send more; what you sent is kept as your balance."
