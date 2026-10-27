@@ -6,6 +6,7 @@ import {
   AGREE, agreeToTerms, contactLink, control, failedOrder, MOCK, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, restoreOrder, savedToReview, search, sevenLetters,
   startOrder, takenOrder, test, toReview, uniqueLabel, waitRegistered, withStripeKey, acceptedOnChain, COMMUNITY_TERMS_HASH, communityTerms,
 } from "./helpers.ts"
+import { RETRY_MS } from "../src/screens/order.ts"
 
 const COMMUNITY_LABEL = "bakers"
 // the community name dev/deploy.ts registered under the terms, with links
@@ -380,18 +381,24 @@ test("community terms changed on chain between the order and its reveal are agre
   })
 })
 
-test("changed community terms whose first search fails are asked for once the search is made again", async ({ page, request }) => {
+test("changed community terms whose searches fail for now are asked for once a search is made again after a pause", async ({ page, request }) => {
   await orderBeforeTermsChange(page, request, "cs", async (_, invoiceId) => {
-    // the pay page checks the name too, so only the first search once the order is committed fails
-    let failed = false
+    // the pay page checks the name too, so only the searches once the order is committed fail, and past the tick at
+    // revealAfter, so that only a search made again after a pause can bring the notice
+    let failing = true
+    let failed = 0
     await page.route("**/api/name/*", async (route) => {
-      if (failed || (await invoiceViewOf(request, invoiceId)).phase !== "committed") return route.fallback()
-      failed = true
+      if (!failing || (await invoiceViewOf(request, invoiceId)).phase !== "committed") return route.fallback()
+      failed++
       await route.fulfill({ status: 503, json: { error: "provider_unavailable" } })
     })
     await control(request, `settle/${invoiceId}`)
-    await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: REGISTRATION_MS })
-    expect(failed).toBe(true)
+    await expect.poll(async () => (await invoiceViewOf(request, invoiceId)).phase, { timeout: REGISTRATION_MS }).toBe("committed")
+    const { revealAfter } = await invoiceViewOf(request, invoiceId) as { revealAfter: number }
+    await page.waitForTimeout(Math.max(0, revealAfter * 1000 - Date.now()) + 1000)
+    failing = false
+    await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: 2 * RETRY_MS })
+    expect(failed).toBeGreaterThan(1)
   })
 })
 
