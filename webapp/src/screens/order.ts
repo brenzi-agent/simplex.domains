@@ -55,7 +55,7 @@ export interface OrderState {
   ask: TermsAsk | null
   // a taken or failed order's name, as one search answered it
   nameStatus: SearchAnswer["status"] | null
-  // the search of the changed terms' ask answered the name as registered or reserved, for the commitment of this reveal key
+  // the search of the changed terms' ask answered the name as registered or reserved, for the commit of this key
   unavailable: { key: string; status: SearchAnswer["status"] } | null
   // when this page first saw the stage, or the buyer ticked changed community terms in it, on the service's clock
   since: { stage: string; at: number } | null
@@ -277,8 +277,11 @@ export const termsToAgree = (s: OrderState) => termsChanged(s) && !(termsAskedAg
 // The changed terms are asked for once the order is committed and they are not asked for yet.
 export const askAgainDue = (s: OrderState) => !!s.record && !linksRefused(s) && termsChanged(s) && !termsAskedAgain(s) && !nameUnavailable(s)
 
+// The commit an answer about its name belongs to, whatever nonces and terms its reveal signs.
+export const commitKey = (view: RegistrationView) => `${view.id} ${view.commitment} ${view.revealBefore}`
+
 // The changed terms cannot be asked for a name the search answered as registered or reserved while this commitment waits.
-export const nameUnavailable = (s: OrderState) => s.view && s.unavailable?.key === revealKey(s.view) ? s.unavailable : null
+export const nameUnavailable = (s: OrderState) => s.view && s.unavailable?.key === commitKey(s.view) ? s.unavailable : null
 
 export function refusalsOf({ view, reveal }: OrderState): number {
   return view?.phase === "committed" && reveal?.key === revealKey(view) ? reveal.refusals : 0

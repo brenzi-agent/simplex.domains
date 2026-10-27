@@ -4,7 +4,7 @@ import { NO_LEAD } from "../src/screens/hold.ts"
 import {
   CARD_SLOW_MS, closedBalance, type ClosedCase, closedCase, costOf, failedAlert, failedLead, finished, newInvoiceBy, initialState, type Note, type OrderEvent, type OrderKind,
   type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, REVEAL_ATTEMPTS, revealDue, revealKey, sameStep, screenOf, spendCovers, STALL_MARGIN_MS, stalledAt, TX_STALL_MS, unreadDelay, wakeAt,
-  askAgainDue, nameUnavailable,
+  askAgainDue, commitKey, nameUnavailable,
 } from "../src/screens/order.ts"
 import { askFor } from "../src/screens/terms.ts"
 import type { CodeRefusal, OrderRecord } from "../src/store.ts"
@@ -520,7 +520,7 @@ describe("a stalled stage", () => {
   })
   it("is not said once the search for changed terms answered the name as registered or reserved, as the order then fails once its hours to sign are over", () => {
     const asking = seen(registration({ ...committed, acceptance: acceptanceFor(CHANGED) }))
-    expect(stalledAt(reduce(asking, { type: "name-unavailable", key: revealKey(asking.view!), status: "registered" }))).toBeNull()
+    expect(stalledAt(reduce(asking, { type: "name-unavailable", key: commitKey(asking.view!), status: "registered" }))).toBeNull()
   })
 })
 
@@ -564,9 +564,11 @@ describe("reveal helpers", () => {
     expect([revealDue(listed(CHANGED, { ask })), askAgainDue(listed(CHANGED, { ask }))], "asked, not ticked").toEqual([false, false])
     expect(askAgainDue(listed(CHANGED, { record: null })), "no name code in this browser").toBe(false)
     expect(askAgainDue(listed(CHANGED, { record: record({ linksRefused: true }) })), "links refused").toBe(false)
-    const unavailable = reduce(listed(CHANGED), { type: "name-unavailable", key: revealKey(listed(CHANGED).view!), status: "reserved" })
+    const unavailable = reduce(listed(CHANGED), { type: "name-unavailable", key: commitKey(listed(CHANGED).view!), status: "reserved" })
     expect([nameUnavailable(unavailable), askAgainDue(unavailable)], "the name registered or reserved meanwhile")
-      .toEqual([{ key: revealKey(listed(CHANGED).view!), status: "reserved" }, false])
+      .toEqual([{ key: commitKey(listed(CHANGED).view!), status: "reserved" }, false])
+    const unread = { ...unavailable, view: { ...unavailable.view!, acceptance: null, unread: ["acceptance"] } }
+    expect(nameUnavailable(unread), "a view whose acceptance was not read now").toEqual(unavailable.unavailable)
     const recommitted = { ...unavailable, view: { ...unavailable.view!, commitment: `0x${"ef".repeat(32)}` } }
     expect([nameUnavailable(recommitted), askAgainDue(recommitted)], "a new commitment asks again").toEqual([null, true])
     expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true } })), "ticked").toBe(true)

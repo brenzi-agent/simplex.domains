@@ -7,7 +7,7 @@ import { clock, dateOf, dollars, methodName, SEP, shortAddress, timeOf } from ".
 import { paymentUri, qrSvg } from "../qr.ts"
 import {
   closedBalance, type ClosedCase, closedCase, coinOf, costOf, failedAlert, failedLead, finished, newInvoiceBy, spendCovers, initialState, type Note, type OrderEvent, type OrderKind,
-  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, sameStep, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt, askAgainDue, nameUnavailable, termsAskedAgain, termsToAgree,
+  type OrderState, reduce, refusalsOf, RETRY_MS, retryRefusal, sameStep, REVEAL_ATTEMPTS, REVEAL_HOURS, revealDue, revealKey, screenOf, stalledAt, unreadDelay, wakeAt, askAgainDue, commitKey, nameUnavailable, termsAskedAgain, termsToAgree,
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
 import { termsToSign } from "../screens/terms.ts"
@@ -356,7 +356,7 @@ function askAgain(record: store.OrderRecord): void {
     if (!isOpen(gen) || !askAgainDue(state)) return done()
     if (quote.status !== "available") {
       done()
-      return answer(gen, { type: "name-unavailable", key: revealKey(state.view!), status: quote.status })
+      return answer(gen, { type: "name-unavailable", key: commitKey(state.view!), status: quote.status })
     }
     if (quote.community?.terms.hash !== state.view!.acceptance!.termsHash) return later(RETRY_MS, () => reread(gen))
     done()
@@ -364,11 +364,8 @@ function askAgain(record: store.OrderRecord): void {
     // the notice is focused only while the focus is on the page, not in the header, the footer or a dialog
     const active = document.activeElement
     if (active === document.body || active?.closest("body > main")) focusOn("reveal")
-  }, (e) => {
-    const wait = api.retryDelay(e, RETRY_MS)
-    if (wait === null) done()
-    else later(wait, tick)
-  })
+  // a refusal is no answer about the name, so the search is made again after a pause as well
+  }, (e) => later(api.retryDelay(e, RETRY_MS) ?? RETRY_MS, tick))
 }
 
 function keepCodes(s: OrderState): void {
@@ -734,10 +731,12 @@ function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
     ...kept === "offer" ? balanceActions(s) : { action: closedAction(s, closed) } })
 }
 
-function agreement({ ask, view, busy }: OrderState, focus: string): HTMLElement | null {
+function agreement({ ask, view, busy, reveal }: OrderState, focus: string): HTMLElement | null {
   if (!ask) return null
   const agree = (agreed: boolean) => dispatch({ type: "terms-agreed", agreed, now: api.serviceNow() })
-  return termsBox({ ...ask, tld: view!.tld, disabled: busy !== null }, agree, focus)
+  // a reveal on its way has signed the ticked terms already
+  const signing = reveal?.sending === true && reveal.key === revealKey(view!)
+  return termsBox({ ...ask, tld: view!.tld, disabled: busy !== null || signing }, agree, focus)
 }
 
 const unagreed = ({ ask }: OrderState) => ask !== null && !ask.agreed

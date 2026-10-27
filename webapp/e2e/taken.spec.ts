@@ -61,7 +61,9 @@ test("a paid order whose name was reserved meanwhile says so, and keeps its paym
 test("a failed order whose name was registered or reserved since offers another name for it", async ({ page, request }) => {
   const label = uniqueLabel("fg")
   const { registrationId } = await failedOrder(page, request, label)
-  const searched = page.waitForResponse("**/api/name/**")
+  // a search the reloaded page makes, not one the failed page still had out
+  const reloaded = Date.now()
+  const searched = page.waitForResponse((r) => r.url().includes("/api/name/") && r.request().timing().startTime >= reloaded)
   await page.reload()
   await (await searched).finished()
   // the page draws the answer a task later
