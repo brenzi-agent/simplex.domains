@@ -989,14 +989,16 @@ const linksTaken = (records: { contact: string[]; channel: string[] }) =>
 
 // A reveal includes the owner's signature of the acceptance its view returns: a listed name's, of the terms on chain now,
 // and none for another name.
-async function checkAcceptance(reg: Registration, accepted: Record<string, unknown> | undefined, deadline: number): Promise<Registration["acceptance"]> {
+async function checkAcceptance(reg: Registration, accepted: unknown, deadline: number): Promise<Registration["acceptance"]> {
   const asked = await acceptanceOf(reg).catch(unavailable)
   if (asked === null) {
     if (accepted !== undefined) throw badRequest()
     return null
   }
-  if (typeof accepted !== "object" || accepted === null || accepted.termsHash !== asked.termsHash || accepted.nonce !== asked.nonce) throw badRequest()
-  const signature = checkSignature(accepted.signature)
+  if (typeof accepted !== "object" || accepted === null) throw badRequest()
+  const { termsHash, nonce, signature: signed } = accepted as Record<string, unknown>
+  if (termsHash !== asked.termsHash || nonce !== asked.nonce) throw badRequest()
+  const signature = checkSignature(signed)
   const acceptor = await recoverTypedDataAddress({
     domain: { name: "SimplexNamePolicy", version: "1", chainId: deployment.chainId, verifyingContract: deployment.namePolicy },
     types: { AcceptBonaFideTerms: [{ name: "commitment", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
@@ -1042,7 +1044,7 @@ export async function reveal(registrationId: string, body: Record<string, unknow
   })
   if (signer !== reg.owner) throw badRequest()
   if (BigInt(nonce) !== (await read<bigint>(sponsor, "nonces", [reg.owner]).catch(unavailable))) throw badRequest()
-  const acceptance = await checkAcceptance(reg, body.acceptance as Record<string, unknown> | undefined, deadline)
+  const acceptance = await checkAcceptance(reg, body.acceptance, deadline)
   // Refused links are the committed ones, as the commitment and the owner's signature passed: only a move fixes them.
   if (reg.linksRefused) throw new HttpError(400, "invalid_link")
   const refuse = control.refuseLinks
