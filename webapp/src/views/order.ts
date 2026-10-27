@@ -76,7 +76,7 @@ function dispatch(event: OrderEvent): void {
   if (!checksName(state)) stopWatchingName()
   if (kind === "registered") seenRegistered(state.view!, state.invoice)
   if (revealDue(state)) reveal(state.view!, state.record!)
-  else if (askAgainDue(state)) askAgain(state.record!)
+  else if (askAgainDue(state) && askingAgain !== opened) askAgain(state.record!)
   if (kind !== screenOf(before) || state.record !== before.record) keepCodes(state)
   wakeOnTime()
 }
@@ -338,7 +338,6 @@ function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
 let askingAgain: number | null = null
 function askAgain(record: store.OrderRecord): void {
   const gen = opened
-  if (askingAgain === gen) return
   askingAgain = gen
   const done = () => { if (askingAgain === gen) askingAgain = null }
   // after a pause, a search that failed for now or answered the name as not available is made again, and one that answered

@@ -365,6 +365,7 @@ test("community terms changed on chain between the order and its reveal are agre
       const { revealAfter } = await invoiceViewOf(request, invoiceId) as { revealAfter: number }
       await page.waitForTimeout(Math.max(0, revealAfter * 1000 - Date.now()) + 3000)
       expect([(await invoiceViewOf(request, invoiceId)).label, reveals]).toEqual([null, 0])
+      await expect(onStep(page).getByText("The registration is not signed yet.")).toBeVisible()
       await agreeToTerms(page)
       await waitRegistered(page, label)
       const view = await invoiceViewOf(request, invoiceId)

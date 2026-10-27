@@ -393,7 +393,7 @@ function nodeOf(labelHash: Hex): Hex {
 // community names are bakers and bakehouse, which dev/deploy.ts lists, and the service's contract run words bakers otherwise.
 // Which names are community names is the name policy's list on chain; the words only say what a listed name is for.
 const terms = { version: "2026-10-23", url: "https://simplex.chat/" }
-const communities = new Map<Hex, string>([[keccak256(toHex("bakers")), "bakers and pastry chefs"], [keccak256(toHex("bakehouse")), "a bakery's own bakers"]])
+const communities = new Map<Hex, string>([[keccak256(toHex("bakers")), "bakers and pastry chefs"]])
 
 const communityEntry = (labelHash: Hex, hash: Hex) => ({ for: communities.get(labelHash) ?? null, terms: { url: COMMUNITY_TERMS_URL, hash } })
 const termsFor = (community: ReturnType<typeof communityEntry> | null) => community ? `${terms.version}${COMMUNITY_TERMS}${community.terms.hash.slice(2)}` : terms.version
