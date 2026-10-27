@@ -897,7 +897,7 @@ async function register(reg: Registration): Promise<void> {
     reg.registerTx = await sendTx(sponsor, "registerWithCredit", [registrationTuple(reg), nonce, deadline, signature], sending)
   } catch (e) {
     if (e instanceof NotSent) throw e
-    // no answer from the chain is not a failure: the register may still be mined, so the order waits for the chain
+    // a register with no answer may still be mined, so the order waits for the chain; a relay with no answer fails the order
     if (!(e instanceof Reverted)) return reg.phase === "registering" ? awaitRegistration(reg) : fail(reg, CHAIN_FAILED)
     if ((await ownerOf(reg.labelHash).catch(() => null)) === reg.owner) return registered(reg)
     // another order of the same owner spent this nonce first, or the terms changed: the owner signs again
@@ -986,6 +986,27 @@ function linksOf(records: unknown): { contact: string[]; channel: string[] } {
 const linksTaken = (records: { contact: string[]; channel: string[] }) =>
   (["contact", "channel"] as const).every((kind) => records[kind].every((link) => linkProblem(kind, link) === null))
 
+// A reveal signs the acceptance its view asks for: a listed name's, of the terms on chain now, and none for another name.
+async function checkAcceptance(reg: Registration, body: unknown, deadline: number): Promise<Registration["acceptance"]> {
+  const asked = await acceptanceOf(reg).catch(unavailable)
+  const accepted = body as Record<string, unknown> | undefined
+  if (asked === null) {
+    if (accepted !== undefined) throw badRequest()
+    return null
+  }
+  if (typeof accepted !== "object" || accepted === null || accepted.termsHash !== asked.termsHash || accepted.nonce !== asked.nonce) throw badRequest()
+  const signature = checkSignature(accepted.signature)
+  const acceptor = await recoverTypedDataAddress({
+    domain: { name: "SimplexNamePolicy", version: "1", chainId: deployment.chainId, verifyingContract: deployment.namePolicy },
+    types: { AcceptBonaFideTerms: [{ name: "commitment", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
+    primaryType: "AcceptBonaFideTerms",
+    message: { commitment: reg.commitment, termsHash: asked.termsHash, nonce: BigInt(asked.nonce), deadline: BigInt(deadline) },
+    signature,
+  })
+  if (acceptor !== reg.owner) throw badRequest()
+  return { termsHash: asked.termsHash, nonce: BigInt(asked.nonce), signature }
+}
+
 export async function reveal(registrationId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const reg = registrations.get(registrationId)
   if (!reg) throw new HttpError(404, "not_found")
@@ -1020,24 +1041,7 @@ export async function reveal(registrationId: string, body: Record<string, unknow
   })
   if (signer !== reg.owner) throw badRequest()
   if (BigInt(nonce) !== (await read<bigint>(sponsor, "nonces", [reg.owner]).catch(unavailable))) throw badRequest()
-  // a reveal signs the acceptance its view asks for: a listed name's, of the terms on chain now, and none for another name
-  const asked = await acceptanceOf(reg).catch(unavailable)
-  const accepted = body.acceptance as Record<string, unknown> | undefined
-  if (asked === null && accepted !== undefined) throw badRequest()
-  let acceptance: Registration["acceptance"] = null
-  if (asked) {
-    if (typeof accepted !== "object" || accepted === null || accepted.termsHash !== asked.termsHash || accepted.nonce !== asked.nonce) throw badRequest()
-    const acceptSignature = checkSignature(accepted.signature)
-    const acceptor = await recoverTypedDataAddress({
-      domain: { name: "SimplexNamePolicy", version: "1", chainId: deployment.chainId, verifyingContract: deployment.namePolicy },
-      types: { AcceptBonaFideTerms: [{ name: "commitment", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
-      primaryType: "AcceptBonaFideTerms",
-      message: { commitment: reg.commitment, termsHash: asked.termsHash, nonce: BigInt(asked.nonce), deadline: BigInt(deadline) },
-      signature: acceptSignature,
-    })
-    if (acceptor !== reg.owner) throw badRequest()
-    acceptance = { termsHash: asked.termsHash, nonce: BigInt(asked.nonce), signature: acceptSignature }
-  }
+  const acceptance = await checkAcceptance(reg, body.acceptance, deadline)
   // Refused links are the committed ones, as the commitment and the owner's signature passed: only a move fixes them.
   if (reg.linksRefused) throw new HttpError(400, "invalid_link")
   const refuse = control.refuseLinks

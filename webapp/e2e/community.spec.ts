@@ -380,11 +380,16 @@ test("changed community terms whose first search fails are asked for once the se
   await listed(request, [label], async () => {
     const { invoiceId } = await startOrder(page, label)
     await withCommunityTerms(request, `the community terms, changed for ${label}`, async () => {
-      let searches = 0
-      await page.route("**/api/name/*", (route) => searches++ === 0 ? route.fulfill({ status: 503, json: { error: "provider_unavailable" } }) : route.fallback())
+      // the pay page checks the name too, so only the first search once the order is committed fails
+      let failed = false
+      await page.route("**/api/name/*", async (route) => {
+        if (failed || (await invoiceViewOf(request, invoiceId)).phase !== "committed") return route.fallback()
+        failed = true
+        await route.fulfill({ status: 503, json: { error: "provider_unavailable" } })
+      })
       await control(request, `settle/${invoiceId}`)
       await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: REGISTRATION_MS })
-      expect(searches).toBeGreaterThan(1)
+      expect(failed).toBe(true)
     })
   })
 })
