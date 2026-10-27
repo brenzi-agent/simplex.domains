@@ -884,8 +884,9 @@ async function register(reg: Registration): Promise<void> {
     return fail(reg, "The register transaction did not go through")
   }
   const { nonce, deadline, signature } = reg.intent!
+  const { acceptance } = reg
   // a community name's acceptance is relayed first unless already on chain; its revert is judged as the register's
-  const relay = reg.acceptance && await read<Hex>(namePolicy, "acceptedTerms", [reg.commitment, reg.owner]) !== reg.acceptance.termsHash ? reg.acceptance : null
+  const relay = acceptance !== null && await read<Hex>(namePolicy, "acceptedTerms", [reg.commitment, reg.owner]) !== acceptance.termsHash
   // registering only once the transaction goes out: until then the name is not on its way to the owner
   const sending = (hash: Hex) => {
     reg.phase = "registering"
@@ -893,14 +894,14 @@ async function register(reg: Registration): Promise<void> {
     changed(reg)
   }
   try {
-    if (relay) await sendTx(namePolicy, "commitUnderBonaFideCommunityTermsWithSig", [reg.commitment, relay.termsHash, reg.owner, relay.nonce, deadline, relay.signature])
+    if (relay) await sendTx(namePolicy, "commitUnderBonaFideCommunityTermsWithSig", [reg.commitment, acceptance.termsHash, reg.owner, acceptance.nonce, deadline, acceptance.signature])
     reg.registerTx = await sendTx(sponsor, "registerWithCredit", [registrationTuple(reg), nonce, deadline, signature], sending)
   } catch (e) {
     if (e instanceof NotSent) throw e
     // a register with no answer may still be mined, so the order waits for the chain; a relay with no answer fails the order
     if (!(e instanceof Reverted)) return reg.phase === "registering" ? awaitRegistration(reg) : fail(reg, CHAIN_FAILED)
     if ((await ownerOf(reg.labelHash).catch(() => null)) === reg.owner) return registered(reg)
-    // another order of the same owner spent this nonce first, or the terms changed: the owner signs again
+    // another registration by the same owner spent this nonce first, or the terms changed: the owner signs again
     if (SIGN_AGAIN.includes(e.revert ?? "")) {
       clearReveal(reg)
       reg.phase = "committed"
@@ -988,9 +989,8 @@ const linksTaken = (records: { contact: string[]; channel: string[] }) =>
 
 // A reveal includes the owner's signature of the acceptance its view returns: a listed name's, of the terms on chain now,
 // and none for another name.
-async function checkAcceptance(reg: Registration, body: unknown, deadline: number): Promise<Registration["acceptance"]> {
+async function checkAcceptance(reg: Registration, accepted: Record<string, unknown> | undefined, deadline: number): Promise<Registration["acceptance"]> {
   const asked = await acceptanceOf(reg).catch(unavailable)
-  const accepted = body as Record<string, unknown> | undefined
   if (asked === null) {
     if (accepted !== undefined) throw badRequest()
     return null
@@ -1042,7 +1042,7 @@ export async function reveal(registrationId: string, body: Record<string, unknow
   })
   if (signer !== reg.owner) throw badRequest()
   if (BigInt(nonce) !== (await read<bigint>(sponsor, "nonces", [reg.owner]).catch(unavailable))) throw badRequest()
-  const acceptance = await checkAcceptance(reg, body.acceptance, deadline)
+  const acceptance = await checkAcceptance(reg, body.acceptance as Record<string, unknown> | undefined, deadline)
   // Refused links are the committed ones, as the commitment and the owner's signature passed: only a move fixes them.
   if (reg.linksRefused) throw new HttpError(400, "invalid_link")
   const refuse = control.refuseLinks
