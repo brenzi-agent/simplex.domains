@@ -395,6 +395,7 @@ test("community terms changed after the reveal, before its relay, are agreed to 
       await control(request, "search", { unsentSeconds: 20 })
       await expect.poll(async () => (await invoiceViewOf(request, invoiceId)).label, { timeout: REGISTRATION_MS }).toBe(label)
       const { hash } = await control(request, "community-terms", { text: `the community terms, changed after the reveal of ${label}` }) as { hash: string }
+      await control(request, "search", { unsentSeconds: 0 })
       await expect(onStep(page).locator(".line", { hasText: TERMS_CHANGED })).toBeVisible({ timeout: REGISTRATION_MS })
       await agreeToTerms(page)
       await waitRegistered(page, label)

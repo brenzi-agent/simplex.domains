@@ -107,7 +107,7 @@ function revertName(e: unknown): string | null {
   }
 }
 
-// One transaction at a time from the registrar key, as the service's single sender: a dry run, the transaction made
+// One transaction at a time, as the service's single sender: a dry run, the transaction made
 // and signed, then the send and its receipt. Only a failure from the send on can leave a transaction on its way.
 // goingOut is told the transaction's hash just before it goes out; `from` is the sending account: the owner for a
 // control's change of the contracts' settings, the holder for a rival's commit.

@@ -341,8 +341,8 @@ function askAgain(record: store.OrderRecord): void {
   if (askingAgain === gen) return
   askingAgain = gen
   const done = () => { if (askingAgain === gen) askingAgain = null }
-  // after a pause, a search that failed or answered the name as not available is made again, and one that answered other
-  // community terms than the view's reads the view again
+  // after a pause, a search that failed for now or answered the name as not available is made again, and one that answered
+  // other community terms than the view's reads the view again
   const later = (delay: number, again: () => void) => setTimeout(() => { done(); again() }, delay)
   const tick = () => answer(gen, { type: "tick", now: api.serviceNow() })
   flow.quoteOf(record.label).then((quote) => {
@@ -354,7 +354,11 @@ function askAgain(record: store.OrderRecord): void {
     // the notice takes the focus from the page, never from the header, the footer or a dialog
     const active = document.activeElement
     if (active === document.body || active?.closest("body > main")) focusOn("reveal")
-  }, (e) => later(api.retryDelay(e, RETRY_MS) ?? RETRY_MS, tick))
+  }, (e) => {
+    const wait = api.retryDelay(e, RETRY_MS)
+    if (wait === null) done()
+    else later(wait, tick)
+  })
 }
 
 function keepCodes(s: OrderState): void {
