@@ -6,8 +6,8 @@ import { checksumAddress } from "../src/crypto/wallet.ts"
 import { walletOf } from "../src/flow.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, offCentre, onStep,
-  payButton, previewsShown, qrText, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
+  agreeToTerms, answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, offCentre, onStep,
+  payButton, previewsShown, qrText, savedToReview, search, searchName, sevenLetters, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
@@ -257,6 +257,11 @@ test("a code the service refuses as the order is sent says why on the review, wh
   await expect(payButton(page)).toHaveText(/^Pay \$[\d.,]+ with Bitcoin/)
   await expect(payButton(page)).toBeEnabled()
   await expect(chip(page), "the refused code pays for nothing more").toBeHidden()
+  // the refusal offers another code in its own words, and no second link under the payment choices
+  await expect(onStep(page).getByRole("button", { name: "I have a code" })).toHaveCount(0)
+  await onStep(page).getByRole("button", { name: "check another code" }).click()
+  await expect(codeField(page)).toBeFocused()
+  await expect(page.getByText("This code was already used. Pay for the name here")).toHaveCount(0)
   await page.unrouteAll({ behavior: "wait" })
 })
 
@@ -273,6 +278,103 @@ test("an order refused once the tab moved on to another checkout draws that chec
   await expect(payButton(page), "the stale page's order is no longer on its way").toHaveText(/^Pay \$[\d.,]+ with Bitcoin/)
   await expect(payButton(page)).toBeEnabled()
   await page.unrouteAll({ behavior: "wait" })
+})
+
+const haveCode = (page: Page) => onStep(page).getByRole("button", { name: "I have a code" })
+const removeCode = (page: Page) => onStep(page).getByRole("button", { name: "Remove code" })
+// the main button's top, centre and height
+const mainAt = (page: Page) => onStep(page).locator(".actions-row > .btn").evaluate((b) => {
+  const r = b.getBoundingClientRect()
+  return [r.top, r.left + r.width / 2, r.height]
+})
+// the review's content clear of the terms box, and the terms box clear of the main button, at each size a page must fit
+async function reviewFits(page: Page, what: string): Promise<void> {
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    const gaps = await onStep(page).evaluate((step) => {
+      const [review, terms, actions] = [".review", ".check.terms", ".actions-row"].map((s) => step.querySelector(s)!.getBoundingClientRect())
+      return [terms.top - review.bottom, actions.top - terms.bottom]
+    })
+    expect(Math.min(...gaps), `${what} at ${size.width} px`).toBeGreaterThanOrEqual(0)
+  }
+  await page.setViewportSize(FIT_SIZES[0])
+}
+
+test("a prepaid code entered on Check your order makes the order free in place, with the main button where it was, and removed pays again", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6, years: 5 }) as { code: string }
+  await search(page, uniqueLabel("here"))
+  await toReview(page, false)
+  // the link under the payment choices
+  expect(await onStep(page).locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["card order", "pay-with", "have-code", "notes"])
+  await reviewFits(page, "the link")
+  const at = await mainAt(page)
+  await haveCode(page).click()
+  await expect(codeField(page)).toBeFocused()
+  await expect(haveCode(page)).toHaveCount(0)
+  // the field takes the payment choices' place, and the main button waits for a code
+  await expect(page.getByRole("radio")).toHaveCount(0)
+  await expect(onStep(page).locator(".notes")).toHaveCount(0)
+  const register = onStep(page).getByRole("button", { name: REGISTER_WITH_CODE })
+  await expect(register).toBeDisabled()
+  expect(await mainAt(page), "the field opened").toEqual(at)
+  await reviewFits(page, "the field")
+
+  await codeField(page).fill(code)
+  await expect(onStep(page).locator(".code-entry .verdict")).toHaveText("This code allows you to register a free name of 6 or more letters, for 5 years.")
+  await expect(total(page)).toHaveText(FREE_TOTAL)
+  await expect(page.locator(".card.order .trow").first()).toHaveText(/^Term5 years and/)
+  await expect(register, "the terms are still to be agreed").toBeDisabled()
+  expect(await mainAt(page), "the code taken").toEqual(at)
+  await reviewFits(page, "the code taken")
+  await shot(page, "K3b-checkout-code-entered")
+  await page.reload()
+  await expect(codeField(page), "reloaded, the field still holds the code").toHaveValue(code)
+  await expect(total(page)).toHaveText(FREE_TOTAL)
+
+  await removeCode(page).click()
+  await expect(total(page)).not.toHaveText(FREE_TOTAL)
+  await expect(page.getByRole("radio")).toHaveCount(3)
+  await expect(payButton(page)).toHaveText(/^Pay \$[\d.,]+ with Bitcoin/)
+  await expect(codeField(page)).toHaveCount(0)
+  await expect(haveCode(page)).toBeFocused()
+  expect(await mainAt(page), "the code removed").toEqual(at)
+  await haveCode(page).click()
+  await expect(codeField(page), "opened again, the field is empty").toHaveValue("")
+
+  await codeField(page).fill(code)
+  await expect(total(page)).toHaveText(FREE_TOTAL)
+  await agreeToTerms(page)
+  await register.click()
+  await page.waitForURL(/\?registration=/)
+})
+
+test("a code on Check your order that is not valid, used, too short for the name or a name code says why, and the order is paid once it is removed", async ({ page, request }) => {
+  const { code: used } = await control(request, "code", { minLength: 6 }) as { code: string }
+  await control(request, "code/state", { code: used, state: "used" })
+  const { code: longer } = await control(request, "code", { minLength: 8 }) as { code: string }
+  await search(page, sevenLetters())
+  await toReview(page)
+  const at = await mainAt(page)
+  await haveCode(page).click()
+  const cases: [string, string | RegExp][] = [
+    ["SN7-BJTBP-29596-R3HJ8-25YM8", /^This code is not valid/],
+    [used, "This code was already used. Each code registers one name."],
+    [longer, "This code does not cover this name. It covers names of 8 or more letters."],
+    [await checkoutOwnerCode(page), "This is a name code. A code from SimpleX lets you register a free name."],
+  ]
+  for (const [text, says] of cases) {
+    await codeField(page).fill(text)
+    await expect(onStep(page).locator(".code-entry .verdict")).toHaveText(says)
+    await expect(total(page)).not.toHaveText(FREE_TOTAL)
+    await expect(onStep(page).getByRole("button", { name: REGISTER_WITH_CODE })).toBeDisabled()
+    expect(await mainAt(page), `${text} refused`).toEqual(at)
+    await reviewFits(page, `${text} refused`)
+  }
+  await shot(page, "K3c-checkout-code-refused")
+  await removeCode(page).click()
+  await expect(page.getByRole("radio")).toHaveCount(3)
+  await expect(payButton(page)).toBeEnabled()
+  expect(await mainAt(page)).toEqual(at)
 })
 
 test("Check your code tells a prepaid code, a name code and anything else apart, and a code for longer names says so on the home", async ({ page, request }) => {

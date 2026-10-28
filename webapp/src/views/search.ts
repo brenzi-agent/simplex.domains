@@ -204,7 +204,7 @@ function checkOut(s: SearchState, label: string, answer: Available, closedCode: 
   if (started && started.label === label && started.price === answer.price && started.chain.chainId === chain.chainId && !session.isSending(started) && sameCode) {
     const agreed = started.agreed && api.currentTerms(started) === api.currentTerms(answer)
     session.updateCheckout(label, {
-      ...quote, agreed, termsChanged: undefined, searchAt: historyPlace(), code, codeError: undefined, balance, balanceChange: undefined, ownerCode: ownerCode ?? started.ownerCode,
+      ...quote, agreed, termsChanged: undefined, searchAt: historyPlace(), code, codeError: undefined, codeHere: undefined, balance, balanceChange: undefined, ownerCode: ownerCode ?? started.ownerCode,
       saved: started.saved || saved,
     })
     return go(checkoutUrl("links"))

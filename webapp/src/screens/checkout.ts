@@ -1,6 +1,6 @@
 import type { Balance, Community, Method, Terms } from "../api.ts"
 import type { LinkKind } from "../names.ts"
-import { appliedBalance, type Checkout } from "../session.ts"
+import { type AppliedCode, appliedBalance, type Checkout } from "../session.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
 import type { CheckoutStep } from "./routes.ts"
 
@@ -33,6 +33,10 @@ export type CheckoutEvent =
   | { type: "saved"; saved: boolean }
   | { type: "agreed"; agreed: boolean }
   | { type: "method-chosen"; method: Method }
+  | { type: "code-opened" }
+  // the code the review's field holds that covers the name, or null for anything else typed there
+  | { type: "code-heard"; code: AppliedCode | null }
+  | { type: "code-removed" }
   | { type: "waiting-settled" }
   | { type: "open-order-seen"; order: OpenOrder | null }
   | { type: "send-started" }
@@ -56,8 +60,11 @@ export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial
     case "saved": return { saved: e.saved }
     case "agreed": return { agreed: e.agreed, termsChanged: undefined }
     case "method-chosen": return e.method === checkout.method || e.method === checkout.unavailable ? null : { method: e.method }
+    case "code-opened": return codeEntry(checkout) === "link" ? { codeHere: true, codeError: undefined } : null
+    case "code-heard": return checkout.codeHere && JSON.stringify(e.code) !== JSON.stringify(checkout.code) ? { code: e.code, codeError: undefined } : null
+    case "code-removed": return checkout.codeHere ? { code: null, codeHere: undefined } : null
     case "order-refused":
-      if (e.reason === "code") return { code: null, codeError: e.error }
+      if (e.reason === "code") return { code: null, codeError: e.error, codeHere: undefined }
       return e.reason === "method" ? { unavailable: methodOf(checkout), method: FALLBACK_METHOD[methodOf(checkout)] } : null
     case "price-changed": return { price: e.price }
     case "terms-changed": return { terms: e.terms, community: e.community, agreed: false, termsChanged: true }
@@ -86,7 +93,10 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
     case "link-set":
     case "saved":
     case "agreed":
-    case "method-chosen": return change ? { ...s, checkout } : s
+    case "method-chosen":
+    case "code-opened":
+    case "code-heard":
+    case "code-removed": return change ? { ...s, checkout } : s
     case "waiting-settled": return { ...s, waiting: null }
     case "open-order-seen": return { ...s, openOrder: e.order }
     case "send-started": return { ...s, sending: true, busy: true }
@@ -139,6 +149,16 @@ export const methodOf = (c: Checkout): Method => methodsFor(c).includes(c.method
 
 // an order its balance covers is paid by nothing else
 export const covered = (c: Checkout) => c.balance !== null && split(c).rest === 0
+
+// The review's code field, once opened, or the link that opens it, offered where the order is paid: not where the tab's
+// code or a balance pays it, which the header takes off.
+export function codeEntry(c: Checkout): "field" | "link" | null {
+  if (c.codeHere) return "field"
+  return c.code || c.balance ? null : "link"
+}
+
+// the open code field takes the payment choices' place, and the order waits for a code there that covers the name
+export const awaitsCode = (c: Checkout) => c.codeHere === true && c.code === null
 
 // the review opens once the name code is saved
 export function stepFor(c: Checkout, asked: CheckoutStep): CheckoutStep {

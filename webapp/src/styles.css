@@ -404,11 +404,19 @@ html.framed body > main:empty { min-height: calc(var(--step-h) + var(--screen-to
 .review:has(.line) { gap: 8px; }
 .review:has(.line) .pay-with { --block-gap: 8px; }
 .review:has(.line) .trow { padding-block: 4px; }
+/* a name that breaks over lines takes room, so the review draws as tight as with a line */
+.review:has(.order .name:not(.whole)) { gap: 8px; }
+.review:has(.order .name:not(.whole)) .trow { padding-block: 4px; }
 .screen-body:has(> .review .line) { --body-gap: 8px; }
 /* the balance's live region keeps its place in the review empty, taking no gap */
 .review > .balance-note:empty { margin-top: -14px; }
 .review:has(.line) > .balance-note:empty { margin-top: -8px; }
 .screen-body:has(> .review .line) > [role="status"]:empty { margin-top: -8px; }
+/* the link to a code just under the payment choices, and the field it opens in their place */
+.have-code { display: grid; justify-items: center; font-size: var(--fs-small); }
+.have-code:has(> a) { margin-block: -8px; line-height: 1.2; }
+.have-code > .code-entry { justify-self: stretch; }
+.have-code > .code-entry > .verdict:not(:empty) { display: block; padding: 10px 14px; font-size: var(--fs-small); }
 .notes { display: grid; gap: 4px; font-size: var(--fs-small); color: var(--ink-soft); text-align: center; text-wrap: balance; }
 /* the payment methods as the badges checkout's cards: the mark over the name, the chosen one ringed */
 /* the methods share the row evenly, three or the two left when the card cannot take a small difference */
@@ -631,7 +639,7 @@ a[aria-disabled="true"] { opacity: .6; cursor: default; }
 @media (pointer: coarse) {
   .field-copy { position: relative; }
   .field-copy::before { content: ""; position: absolute; inset: -6px; }
-  .row > a, .alt a, .acts a, .end-links a { padding-block: 12px; margin-block: -12px; }
+  .row > a, .alt a, .acts a, .end-links a, .have-code > a { padding-block: 12px; margin-block: -12px; }
 }
 
 /* a phone: its heading smaller, Back above it on a line kept on every screen, and the main button across the column with

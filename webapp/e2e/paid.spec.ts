@@ -287,7 +287,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
 
   await expect(step.getByRole("heading", { name: "Check your order" })).toBeFocused()
   // the order, then how it pays and what to know before paying, in one column, and under it the line a wait would say
-  expect(await step.locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["card order", "pay-with", "notes"])
+  expect(await step.locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["card order", "pay-with", "have-code", "notes"])
   await expect(step.locator(".screen-body > .review + [role=status] + .mid")).toHaveCount(1)
   await expect(step.locator(".card.order .name")).toHaveText(`${label}.simplex`)
   // the term holds the free days until the paid years start, which are folded into it

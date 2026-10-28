@@ -37,6 +37,8 @@ export interface Checkout {
   channel: string
   method: Method
   code: AppliedCode | null
+  // the code field opened on Check your order, whose code pays in place of the tab's, until it is removed
+  codeHere?: boolean
   // the balance that pays, under its order's name code, which owns the name too
   balance: AppliedBalance | null
   balanceChange?: BalanceChange

@@ -8,12 +8,12 @@ import type { LinkKind } from "../names.ts"
 import { CONFIRMING_READ_MS, heldWords, holderStill, holdWait } from "../screens/balance.ts"
 import { RETRY_MS, REVEAL_HOURS } from "../screens/order.ts"
 import {
-  balanceHeld, changeOf, heldForThisName, methodOf, methodsFor, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
+  awaitsCode, balanceHeld, changeOf, codeEntry, heldForThisName, methodOf, methodsFor, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
 } from "../screens/checkout.ts"
 import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
-import { CODE_ERRORS } from "./codes.ts"
+import { CODE_ERRORS, codeField, type CodeVerdict } from "./codes.ts"
 import { CHECKING_LINK, linkChat, linkFieldsFor, linksSettled } from "./links.ts"
 import {
   asStep, type Builder, currentRoute, draw, focusOn, go, goFrom, isRedraw, isRoute, kept, keptLive, limitScreen, outcome, redirect, refresh, screen, searchLink, whenLeaving,
@@ -33,7 +33,7 @@ const SIGNED_WINDOW_S = 600
 const years = (c: session.Checkout) => c.code?.years ?? c.years
 // a card order waiting for Stripe holds a second paid order; a code or a balance that covers the price pays nothing, so it holds none
 const blockedBy = ({ checkout, waiting }: CheckoutState) => checkout.code || covered(checkout) ? null : waiting
-const payLabel = (c: session.Checkout) => c.code ? "Register with your code" : covered(c) ? "Register with your balance" : `Pay ${dollars(split(c).rest)} with ${methodName(methodOf(c))}`
+const payLabel = (c: session.Checkout) => c.code || c.codeHere ? "Register with your code" : covered(c) ? "Register with your balance" : `Pay ${dollars(split(c).rest)} with ${methodName(methodOf(c))}`
 
 function waitingCardOrder(): WaitingOrder | null {
   const order = store.orders().find((o) => o.method === "card" && o.cardSubmittedAt && o.invoiceId)
@@ -305,6 +305,54 @@ function methodsBlock({ checkout: c, openOrder: order, sending }: CheckoutState)
     el("div", { class: "methods", role: "radiogroup", "aria-label": "Pay with" }, ...radios))
 }
 
+const HAVE_CODE = "have-code"
+const codeInput = () => document.querySelector<HTMLInputElement>(`body > main .${HAVE_CODE} input`)
+
+// the field's code pays for the order once it covers the name; anything else typed there pays for nothing
+function heardCode(v: CodeVerdict | null): void {
+  const event: CheckoutEvent = { type: "code-heard", code: v?.kind === "prepaid" ? v.code : null }
+  if (isRoute(pageRoute) && !state.sending && changeOf(state, event)) act(event)
+}
+
+function openCode(): void {
+  if (state.sending || !act({ type: "code-opened" })) return
+  codeInput()?.focus()
+}
+
+// the field emptied, so what it heard last pays for nothing, and closed
+function removeCode(): void {
+  if (state.sending) return
+  const input = codeInput()
+  if (input) {
+    input.value = ""
+    input.dispatchEvent(new Event("input"))
+  }
+  if (act({ type: "code-removed" })) focusOn(HAVE_CODE)
+}
+
+function codeBlock(s: CheckoutState): HTMLElement | null {
+  const c = s.checkout
+  const entry = codeEntry(c)
+  if (entry === null) return null
+  if (entry === "field") return el("div", { class: HAVE_CODE }, locked(codeField(`checkout-code-${c.label}`, "Code", heardCode, { name: c.label, code: c.code?.display }), s.sending))
+  // the line saying why the service refused a code offers another in its own words
+  return c.codeError ? null : el("div", { class: HAVE_CODE }, codeLink("I have a code"))
+}
+
+function codeLink(text: string): HTMLAnchorElement {
+  const open = link(text, openCode)
+  open.dataset.focus = HAVE_CODE
+  return open
+}
+
+// the step's other action while the code field is open, under the main button
+function removeLink(s: CheckoutState): HTMLAnchorElement | null {
+  if (codeEntry(s.checkout) !== "field") return null
+  const remove = link("Remove code", removeCode)
+  if (s.sending) remove.setAttribute("aria-disabled", "true")
+  return remove
+}
+
 const waitingNotice = (blocked: WaitingOrder) => el("section", { class: "pay-with" },
   alertBox("info", "info", "You have an order waiting to be confirmed", "A second order would be a second charge, so this one cannot start yet. When that payment is confirmed or expires, you can start a new one here."),
   el("div", {}, btn("Open the waiting order", "quiet", () => go(store.invoiceUrl(blocked.invoiceId)))))
@@ -316,7 +364,7 @@ function payButton(s: CheckoutState, blocked: boolean): HTMLButtonElement {
   const pay = own ? btn("Open your order", "", () => go(own)) : btn(actionLabel(payLabel(s.checkout), s), "", () => void submitOrder())
   pay.dataset.focus = "pay"
   if (s.checkout.balance?.held || s.checkout.balanceChange) pay.setAttribute("aria-describedby", BALANCE_LINE)
-  return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !s.checkout.agreed || payWaits(s))
+  return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !s.checkout.agreed || payWaits(s) || awaitsCode(s.checkout))
 }
 
 function agreement({ checkout: c, sending }: CheckoutState): HTMLElement {
@@ -381,14 +429,16 @@ function buildCode(s: CheckoutState): HTMLElement {
 function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
   const c = s.checkout
   const blocked = blockedBy(s)
+  const paid = !(c.code || c.codeHere || covered(c))
   // the other way to pay ends the note under the methods
   const eth = el("a", { class: "nowrap", href: DAPP_URL, target: "_blank", rel: "noopener" }, "Pay with ETH")
-  return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null) },
+  return screen({ title: "Check your order", back: checkoutUrl("code"), action: payButton(s, blocked !== null), alt: removeLink(s) },
     el("div", { class: "review" }, orderCard(c),
-      c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or check another code.`) : null,
+      c.codeError ? line("bad", "alert", `${c.codeError} Pay for the name here, or `, codeLink("check another code"), ".") : null,
       balanceNote(s),
-      c.code || covered(c) ? null : blocked ? waitingNotice(blocked) : methodsBlock(s),
-      c.code || covered(c) || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours. `, eth))),
+      !paid ? null : blocked ? waitingNotice(blocked) : methodsBlock(s),
+      codeBlock(s),
+      !paid || blocked ? null : el("div", { class: "notes" }, el("p", {}, `After paying, keep this page open, or reopen its link within ${REVEAL_HOURS} hours. `, eth))),
     payNote(s, blocked !== null, signal),
     agreement(s))
 }
@@ -430,7 +480,7 @@ const BUILDERS: Record<CheckoutKind, Builder<CheckoutState>> = {
 async function submitOrder(): Promise<void> {
   const c = session.checkout()
   if (!c) return go("/#/names")
-  if (session.isSending(c) || holding()) return
+  if (session.isSending(c) || holding() || awaitsCode(c)) return
   // a card payment awaiting confirmation, met since the page was drawn, blocks a second paid order; the page shows it
   if (!c.code && !covered(c) && waitingCardOrder()) return refresh()
   session.startSending(c)
