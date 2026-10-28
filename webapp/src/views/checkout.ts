@@ -1,8 +1,8 @@
 // The checkout's steps: the links the name opens, its name code, and Check your order with how it pays, and Pay.
 import * as api from "../api.ts"
-import { alertBox, announce, btn, codeDisplay, el, line, link, nameText, setAction } from "../dom.ts"
+import { alertBox, announce, btn, codeDisplay, el, type Kid, line, link, nameText, setAction } from "../dom.ts"
 import * as flow from "../flow.ts"
-import { dateOf, dollars, freeDays, methodName, termEnd, termOf } from "../format.ts"
+import { bonusDays, bonusHint, dateOf, dollars, freeDays, methodName, termEnd } from "../format.ts"
 import { type Method, methodMark } from "../icons.ts"
 import type { LinkKind } from "../names.ts"
 import { CONFIRMING_READ_MS, heldWords, holderStill, holdWait } from "../screens/balance.ts"
@@ -196,7 +196,23 @@ async function showOpenOrder(signal: AbortSignal): Promise<void> {
   void follow(open.invoiceId, signal, show, open)
 }
 
-const row = (what: string, value: Node | string, cls?: string) => el("div", { class: `trow${cls ? ` ${cls}` : ""}` }, el("span", {}, what), el("span", {}, value))
+const row = (what: string, value: Kid, cls?: string) => el("div", { class: `trow${cls ? ` ${cls}` : ""}` }, el("span", {}, what), el("span", {}, value))
+
+const BONUS_HINT = "bonus-hint"
+const HUSHED = "hushed"
+
+// The free days before the paid years start, with a hint saying why, which shows over the page on hover, focus or tap
+// and Escape hides.
+function term(years: number, termStart: number, now: number): Kid {
+  const free = freeDays(termStart, now)
+  if (free === 0) return `${years} years`
+  const days = el("button", { class: "days", type: "button", "aria-describedby": BONUS_HINT, "data-focus": "bonus" }, bonusDays(free))
+  const bonus = el("span", { class: "bonus" }, days, el("span", { class: "tip", id: BONUS_HINT, role: "tooltip" }, bonusHint(years, termStart)))
+  days.addEventListener("keydown", (e) => { if (e.key === "Escape") bonus.classList.add(HUSHED) })
+  days.addEventListener("blur", () => bonus.classList.remove(HUSHED))
+  bonus.addEventListener("mouseleave", () => bonus.classList.remove(HUSHED))
+  return [`${years} years `, bonus]
+}
 
 // The order as the search answered it, with the chats its links open, over its term, with the free days before it
 // starts, its end, and what it costs; a name registered with a code costs nothing. Paid from a balance, its price takes
@@ -211,7 +227,7 @@ function orderCard(c: session.Checkout): HTMLElement {
   return el("section", { class: "card order" },
     el("div", { class: "row" }, rowName(c.label, c.chain.tld, c.community, "community"), side),
     el("div", { class: "table" },
-      row("Term", termOf(y, freeDays(c.termStart, now))),
+      row("Term", term(y, c.termStart, now)),
       row("Registered until", dateOf(termEnd(y, c.termStart, now))),
       c.code ? el("div", { class: "trow total" }, el("span", {}, "Free SimpleX name"))
         : c.balance ? [row("From your balance", `\u2212${dollars(fromBalance)}`), row("To pay", dollars(rest), "total")]

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, termEnd, termOf, timeOf } from "../src/format.ts"
+import { bonusDays, bonusHint, clock, dateOf, dollars, freeDays, letters, methodName, seconds, shortAddress, termEnd, timeOf } from "../src/format.ts"
 import { deepLinkOf } from "../dev/mock/links.ts"
 import { foldLabel, labelProblem, linkKind, linkProblem, LINK_MAX_BYTES, linkTooLong } from "../src/names.ts"
 
@@ -109,10 +109,14 @@ describe("formatting", () => {
     expect([freeDays(TERM_START, TERM_START), freeDays(TERM_START, TERM_START + 5 * day)]).toEqual([0, 0])
   })
 
-  it("writes the term as its years and the free days before them, a single day in the singular, and the years alone once none are left", () => {
-    expect(termOf(2, 72)).toBe("2 years and 72 days")
-    expect(termOf(5, 1)).toBe("5 years and 1 day")
-    expect(termOf(2, 0)).toBe("2 years")
+  it("writes the free days that follow the term's years, a single day in the singular", () => {
+    expect(`2 years ${bonusDays(72)}`).toBe("2 years and 72 days")
+    expect(`5 years ${bonusDays(1)}`).toBe("5 years and 1 day")
+  })
+
+  it("explains the free days by the date the paid years start, as the order has it", () => {
+    expect(bonusHint(2, TERM_START)).toBe("Early adopter bonus: your 2 years start on 1\u00a0January 2027.")
+    expect(bonusHint(5, Date.UTC(2027, 2, 15) / 1000)).toBe("Early adopter bonus: your 5 years start on 15\u00a0March 2027.")
   })
 
   it("writes a time of day in 24 hours, its hour and minute in two digits", () => {

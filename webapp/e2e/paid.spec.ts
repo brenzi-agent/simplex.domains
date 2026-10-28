@@ -291,7 +291,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await expect(step.locator(".screen-body > .review + [role=status] + .mid")).toHaveCount(1)
   await expect(step.locator(".card.order .name")).toHaveText(`${label}.simplex`)
   // the term holds the free days until the paid years start, which are folded into it
-  await expect(step.locator(".card.order .trow")).toHaveText([/^Term2 years and (\d{2,} days|1 day)$/, /^Registered until31\u00a0December 2028$/, /^Total\$\d+$/])
+  await expect(step.locator(".card.order .trow")).toHaveText([/^Term2 years and (\d{2,} days|1 day)Early adopter bonus: your 2 years start on 1\u00a0January 2027\.$/, /^Registered until31\u00a0December 2028$/, /^Total\$\d+$/])
   // each link as the chat it opens, read only
   await expect(step.locator(".card.order .chat")).toHaveCount(2)
   await expect(step.getByRole("button", { name: "Contact F1Y8m3, contact address" })).toBeVisible()
@@ -402,6 +402,90 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await link.blur()
   await expect(page.locator(".link-field").first().locator(".entity")).toBeVisible({ timeout: 10_000 })
   await page.unrouteAll({ behavior: "wait" })
+})
+
+// where each part of the review stands, which nothing shown over it may change
+const reviewLayout = (page: Page) => onStep(page).locator(".screen-body, .card.order, .trow, .pay-with, .notes, .check.terms, .actions-row .btn")
+  .evaluateAll((nodes) => nodes.map((n) => [n.className, ...Object.values(n.getBoundingClientRect().toJSON())]))
+const bonusOf = (page: Page) => onStep(page).getByRole("button", { name: /^and (\d+ days|1 day)$/ })
+const termStartOf = (page: Page) => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).termStart as number, CHECKOUT_KEY)
+const inWindow = async (page: Page, node: Locator) => {
+  const box = (await node.boundingBox())!
+  const { width, height } = page.viewportSize()!
+  return box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height
+}
+const termLines = (page: Page) => onStep(page).locator(".trow").first().locator("> span").last()
+  .evaluate((value) => new Set([...value.getClientRects()].map((r) => Math.round(r.top))).size)
+
+test("the term's free days are the early adopter bonus, explained on hover, focus and tap, with nothing moving", async ({ page, browser, baseURL }) => {
+  await search(page, uniqueLabel("bonus"))
+  await toReview(page, false)
+  const hint = `Early adopter bonus: your 2 years start on ${dateOf(await termStartOf(page))}.`
+  const bonus = bonusOf(page)
+  const tip = onStep(page).getByRole("tooltip")
+  await expect(bonus).toHaveAccessibleDescription(hint)
+  await expect(tip).toBeHidden()
+  const okColour = await page.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement("i"))
+    probe.style.color = "var(--ok-fg)"
+    const colour = getComputedStyle(probe).color
+    probe.remove()
+    return colour
+  })
+  expect(await bonus.evaluate((b) => getComputedStyle(b).color), "the free days in the success colour").toBe(okColour)
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    expect(await termLines(page), `the term on one line at ${size.width} px`).toBe(1)
+  }
+  await page.setViewportSize(FIT_SIZES[0])
+  const before = await reviewLayout(page)
+
+  await bonus.hover()
+  await expect(tip).toBeVisible()
+  await expect(tip).toHaveText(hint)
+  expect(await inWindow(page, tip), "the hint on hover in the window").toBe(true)
+  expect(await reviewLayout(page), "the hint shown on hover moves nothing").toEqual(before)
+  await page.mouse.move(0, 0)
+  await expect(tip).toBeHidden()
+
+  // the keyboard reaches the days from Back, as the first control after it
+  await onStep(page).locator(".back").focus()
+  await page.keyboard.press("Tab")
+  await expect(bonus).toBeFocused()
+  await expect(tip).toBeVisible()
+  expect(await reviewLayout(page), "the hint shown on focus moves nothing").toEqual(before)
+  await page.keyboard.press("Escape")
+  await expect(tip, "Escape hides the hint").toBeHidden()
+  await expect(bonus).toBeFocused()
+
+  // the same checkout on a touch screen, opened at its review, as WebKit here crashes on the links step's camera check
+  const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
+  const context = await browser.newContext({ baseURL, viewport: FIT_SIZES[1], hasTouch: true, reducedMotion: "reduce" })
+  await context.addInitScript(([key, value]) => sessionStorage.setItem(key, value), [CHECKOUT_KEY, checkout])
+  const phone = await context.newPage()
+  await phone.goto("/#/checkout")
+  await expect(onStep(phone).getByRole("heading", { name: "Check your order" })).toBeVisible()
+  const phoneBefore = await reviewLayout(phone)
+  await bonusOf(phone).tap()
+  await expect(onStep(phone).getByRole("tooltip")).toBeVisible()
+  expect(await inWindow(phone, onStep(phone).getByRole("tooltip")), "the hint on tap in the window").toBe(true)
+  expect(await reviewLayout(phone), "the hint shown on tap moves nothing").toEqual(phoneBefore)
+  await context.close()
+})
+
+test("a term that has started has no free days, so no bonus or hint, which come back with the days", async ({ page }) => {
+  await search(page, uniqueLabel("nobonus"))
+  await toReview(page, false)
+  const termStart = await termStartOf(page)
+  const startAt = (at: number) => page.evaluate(([key, start]) => sessionStorage.setItem(key as string, JSON.stringify({ ...JSON.parse(sessionStorage.getItem(key as string)!), termStart: start })), [CHECKOUT_KEY, at])
+  await startAt(Math.floor(Date.now() / 1000) - 86400)
+  await page.reload()
+  await expect(onStep(page).locator(".trow").first()).toHaveText("Term2 years")
+  await expect(bonusOf(page)).toHaveCount(0)
+  await expect(onStep(page).locator("[role=tooltip]")).toHaveCount(0)
+  await startAt(termStart)
+  await page.reload()
+  await expect(bonusOf(page)).toHaveAccessibleDescription(/^Early adopter bonus/)
 })
 
 test("a link's late preview never fills the field once it holds another link, whose own preview it waits for", async ({ page, request }) => {
