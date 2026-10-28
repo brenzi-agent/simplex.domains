@@ -7,7 +7,7 @@ import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
   blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, mockRegistration, onStep, oracleQuote, payButton, previewsShown, REGISTRATION_MS,
-  offCentre, orderOwnerCode, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered, withStripeKey, AVAILABLE_BRIEF, TAKEN_BRIEF,
+  offCentre, orderOwnerCode, qrText, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered, withStripeKey, AVAILABLE_BRIEF, TAKEN_BRIEF,
 } from "./helpers.ts"
 
 // the card form these tests pay with is the dev server's stand-in; a production build loads Stripe's own
@@ -680,12 +680,25 @@ test("Continue on the links step waits for a link being checked, and takes focus
   await expect(step.getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
 })
 
+test("a Monero invoice's wallet link is monero:// for Monero GUI on a laptop and monero: on a phone, and its QR keeps monero:", async ({ page, request }) => {
+  const { invoiceId } = await startOrder(page, uniqueLabel("xmrlink"), { method: "xmr" })
+  await expect(page.getByRole("heading", { name: "Pay with Monero" })).toBeVisible()
+  const { address, cryptoAmount } = await (await request.get(`${MOCK}/api/invoice/${invoiceId}`)).json() as { address: string; cryptoAmount: string }
+  const wallet = onStep(page).getByRole("link", { name: "Open in wallet" })
+  await expect(wallet).toHaveAttribute("href", `monero://${address}?tx_amount=${cryptoAmount}`)
+  await expect(wallet.locator("xpath=..")).toHaveClass(/\bqr\b/)
+  expect(await qrText(onStep(page).locator(".card.pay .qr svg")), "the QR").toBe(`monero:${address}?tx_amount=${cryptoAmount}`)
+  await page.setViewportSize(FIT_SIZES[1])
+  await expect(wallet).toHaveClass(/\bwallet\b/)
+  await expect(wallet).toHaveAttribute("href", `monero:${address}?tx_amount=${cryptoAmount}`)
+})
+
 test("the owner code restores an order in another browser, and a bad code is refused", async ({ page, browser, request }) => {
   const label = uniqueLabel("rest")
   const { invoiceId, ownerCode } = await startOrder(page, label, { method: "xmr" })
   await expect(page.getByRole("heading", { name: "Pay with Monero" })).toBeVisible()
   const { address, cryptoAmount } = await (await request.get(`${MOCK}/api/invoice/${invoiceId}`)).json() as { address: string; cryptoAmount: string }
-  await expect(onStep(page).getByRole("link", { name: "Open in wallet" }), "the Monero URI").toHaveAttribute("href", `monero:${address}?tx_amount=${cryptoAmount}`)
+  await expect(onStep(page).getByRole("link", { name: "Open in wallet" }), "the Monero URI").toHaveAttribute("href", `monero://${address}?tx_amount=${cryptoAmount}`)
   await control(request, `confirming/${invoiceId}`)
   await expect(page.getByText("Waiting for 1 confirmation")).toBeVisible()
   await shot(page, "N5-confirming")

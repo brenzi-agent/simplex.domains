@@ -571,7 +571,8 @@ function buildPayCrypto(s: OrderState, signal: AbortSignal): HTMLElement {
   const due = partial ? inv.cryptoAmountDue! : inv.cryptoAmount!
   const uri = paymentUri(coin, inv.address!, due)
   holdEnds(signal)(s.hold !== null)
-  const qr = uri ? el("div", { class: "qr" }, qrSvg(uri, `${methodName(coin)} payment`), el("a", { href: uri }, WALLET)) : null
+  // the QR's link shows on a laptop only, as styles.css draws the phone's layout without the QR
+  const qr = uri ? el("div", { class: "qr" }, qrSvg(uri, `${methodName(coin)} payment`), el("a", { href: paymentUri(coin, inv.address!, due, true)! }, WALLET)) : null
   // labels in sentence case, as their copy buttons say them; the label style draws them in capitals
   const amount = copyField(`${partial ? "rest to send" : "amount"} in ${TICKER[coin]}`, due)
   const address = copyField(`${methodName(coin)} address`, inv.address!)
