@@ -503,7 +503,7 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 @media (min-width: 521px) { .stripe:not(:has(> .label)) { min-height: 230px; } }
 /* the development stand-in, framed as the form it stands in for */
 .stripe:has(> .label) { padding: 18px; border: 1px dashed var(--surface-line); }
-.stripe .label { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.stripe .label { margin-bottom: 4px; font-size: var(--fs-small); letter-spacing: 0; text-transform: none; color: var(--warn-fg); }
 .stripe .f { display: block; margin-top: 12px; }
 .stripe .f span { display: block; font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 6px; }
 .stripe .box { padding: 13px 14px; border-radius: 12px; border: 1px solid var(--surface-line); background: var(--surface); color: var(--ink-soft); font-weight: 600; }

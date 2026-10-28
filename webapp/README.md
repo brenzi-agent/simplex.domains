@@ -65,7 +65,7 @@ npm run dev
 
 `MIN_COMMITMENT_AGE` is the seconds a registration waits after its commit; the contracts' deploy scripts use 60.
 
-Without a Stripe key the dev server shows a stand-in card form whose Pay button acts as a submitted card; the production build shows that the card form did not load. The key goes in `index.html`'s `stripe-publishable-key` meta.
+Without a Stripe key the dev server shows a stand-in card form, labelled as a test, whose Pay button acts as a submitted card; the production build never has the stand-in, and shows that the card form did not load. The key goes in `index.html`'s `stripe-publishable-key` meta. To see Stripe's own form in development, put a test publishable key there (`pk_test_…`, from the Stripe dashboard in test mode) and keep it out of commits; the mock's client secrets are not Stripe's, so no card can be confirmed against it: that needs the service, with the account's test secret key (`sk_test_…`).
 
 ### Mock controls
 

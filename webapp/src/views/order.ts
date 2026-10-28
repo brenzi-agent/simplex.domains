@@ -670,7 +670,7 @@ function buildPayCard(s: OrderState): HTMLElement {
 
 function cardStandIn(form: HTMLElement): void {
   const f = (text: string, value: string) => el("label", { class: "f" }, el("span", {}, text), el("div", { class: "box" }, value))
-  form.append(el("div", { class: "label" }, el("span", {}, "Stripe's payment form"), el("span", {}, "Development: no card is checked.")),
+  form.append(el("p", { class: "label" }, "Test card form: no Stripe key is set, so Pay simulates a payment."),
     f("Card number", "4242 4242 4242 4242"), el("div", { class: "cols" }, f("Expiry", "12 / 30"), f("CVC", "123"), f("Country", "Portugal")))
 }
 

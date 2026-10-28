@@ -725,7 +725,7 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   await expect(onStep(page).getByRole("button", { name: /^Pay \$\d+$/ })).toBeVisible()
   await expect(onStep(page).getByText("The card form is Stripe's. Nothing is charged until you pay.")).toBeVisible()
   // the development stand-in says what it is, and the invoice can be cancelled from the form as from a crypto invoice
-  await expect(onStep(page).getByText("Development: no card is checked.")).toBeVisible()
+  await expect(onStep(page).locator(".stripe > .label")).toHaveText("Test card form: no Stripe key is set, so Pay simulates a payment.")
   await expect(onStep(page).getByRole("button", { name: "Cancel this invoice" })).toBeVisible()
   await onStep(page).getByRole("button", { name: /^Pay \$/ }).click()
   await expect(page.getByText("Waiting for Stripe to confirm")).toBeVisible()
