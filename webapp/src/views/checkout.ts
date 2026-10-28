@@ -344,7 +344,7 @@ function buildLinks(s: CheckoutState): HTMLElement {
   const linked = hasLinks(c)
   const skip = linked ? null : link("Skip for now", () => go(checkoutUrl("review")))
   skip?.setAttribute("data-focus", "skip")
-  return screen({ title: "What should your name open?", back: searchLink(c.label),
+  return screen({ title: "Your name's links", back: searchLink(c.label),
     lead: ["Paste your SimpleX contact address or channel link. ", el("span", { class: "nowrap" }, "You can change it later.")],
     alt: skip, action: continueButton(() => void linksDone(links.fields()), !linked, awaitingChecks) },
     el("span", { class: "label" }, "Link"), links.node)

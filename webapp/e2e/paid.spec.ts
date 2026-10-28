@@ -258,7 +258,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await page.getByRole("button", { name: "Register" }).click()
   const step = onStep(page)
 
-  await expect(step.getByRole("heading", { name: "What should your name open?" })).toBeFocused()
+  await expect(step.getByRole("heading", { name: "Your name's links" })).toBeFocused()
   await expect(step.locator(".lead")).toHaveText("Paste your SimpleX contact address or channel link. You can change it later.")
   await expect(step.getByRole("button", { name: "Skip for now" })).toBeVisible()
   await expect(step.getByRole("button", { name: "Continue" }), "Continue waits for a link").toBeDisabled()

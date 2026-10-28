@@ -266,7 +266,7 @@ export const checkoutOwnerCode = (page: Page) => page.evaluate((key) => JSON.par
 export const orderOwnerCode = (page: Page, invoiceId: string) => page.evaluate((id) => Object.values({ ...localStorage }).map((v) => { try { return JSON.parse(v) } catch { return null } })
   .find((o) => o?.invoiceId === id)?.ownerCode as string | undefined, invoiceId)
 
-export const LINKS_HEADING = "What should your name open?"
+export const LINKS_HEADING = "Your name's links"
 export const CODE_HEADING = "Save your name code"
 export const SAVED = "I have saved my name code"
 export const AGREE = /^I agree to SimpleX name terms/
