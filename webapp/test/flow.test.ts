@@ -499,36 +499,43 @@ describe("syncRecord", () => {
 })
 
 describe("saveLinks", () => {
-  it("sends one SetText per changed key, each with the next resolver nonce, signed by the name's key", async () => {
+  it("signs each changed link from the resolver nonce up, with one deadline, and sends them in one request", async () => {
     const { flow } = await modules()
     const built = await flow.orderRequest(draft())
     const record = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" })
     answers["POST /api/name/records"] = { tx: "0xabc" }
-    const saved: string[] = []
-    const txs = await flow.saveLinks(record, CHAIN, 5, { contact: "", channel: "simplex:/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm" }, (kind) => saved.push(kind))
-    expect(txs).toEqual(["0xabc", "0xabc"])
-    expect(saved).toEqual(["contact", "channel"])
+    const tx = await flow.saveLinks(record, CHAIN, 5, { contact: "", channel: "simplex:/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm" })
+    expect(tx).toBe("0xabc")
+    expect(calls).toHaveLength(1)
+    const { labelHash: sentHash, edits } = calls[0].body as { labelHash: string; edits: { key: string; value: string; nonce: number; deadline: number; signature: Hex }[] }
+    expect(sentHash).toBe(hex(labelHash("dynamis")))
+    expect(edits.map((e) => [e.key, e.value, e.nonce])).toEqual([[flow.KEYS.contact, "", 5], [flow.KEYS.channel, "simplex:/c#Rk27xN4pDe9Tz1Wb3Yc5Vd7Xf9Hg2Jk4Lm", 6]])
+    expect(new Set(edits.map((e) => e.deadline)).size, "one deadline for the Save").toBe(1)
     const node = namehash("simplex", "dynamis")
-    for (const [i, call] of calls.entries()) {
-      const body = call.body as { key: string; value: string; nonce: number; deadline: number; signature: Hex }
-      expect(body.nonce).toBe(5 + i)
-      const digest = setTextDigest(31337n, fromHex(CHAIN.resolver), node, body.key, body.value, BigInt(body.nonce), BigInt(body.deadline))
-      expect(await recoverAddress({ hash: hex(digest) as Hex, signature: body.signature })).toBe(OWNER)
+    for (const e of edits) {
+      const digest = setTextDigest(31337n, fromHex(CHAIN.resolver), node, e.key, e.value, BigInt(e.nonce), BigInt(e.deadline))
+      expect(await recoverAddress({ hash: hex(digest) as Hex, signature: e.signature })).toBe(OWNER)
     }
-    expect(calls.map((c) => c.body.key)).toEqual([flow.KEYS.contact, flow.KEYS.channel])
+  })
+
+  it("sends one link changed alone at the resolver nonce", async () => {
+    const { flow } = await modules()
+    const built = await flow.orderRequest(draft())
+    const record = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" })
+    answers["POST /api/name/records"] = { tx: null }
+    expect(await flow.saveLinks(record, CHAIN, 5, { channel: "" })).toBeNull()
+    expect((calls[0].body as { edits: { key: string; nonce: number }[] }).edits.map((e) => [e.key, e.nonce])).toEqual([[flow.KEYS.channel, 5]])
   })
 })
 
 describe("saveLinks after a refusal", () => {
-  it("reports only the keys saved before the refused one", async () => {
+  it("sends nothing more, as the Save went in one request", async () => {
     const { flow } = await modules()
     const built = await flow.orderRequest(draft())
     const record = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" })
-    let sent = 0
-    answers["POST /api/name/records"] = () => (++sent === 1 ? { tx: "0x1" } : new Response(JSON.stringify({ error: "bad_request" }), { status: 400 }))
-    const saved: string[] = []
-    await expect(flow.saveLinks(record, CHAIN, 5, { contact: "", channel: "" }, (kind) => saved.push(kind))).rejects.toMatchObject({ code: "bad_request" })
-    expect(saved).toEqual(["contact"])
+    answers["POST /api/name/records"] = () => new Response(JSON.stringify({ error: "bad_request" }), { status: 400 })
+    await expect(flow.saveLinks(record, CHAIN, 5, { contact: "", channel: "" })).rejects.toMatchObject({ code: "bad_request" })
+    expect(calls).toHaveLength(1)
   })
 })
 

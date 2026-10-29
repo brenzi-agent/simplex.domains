@@ -2,16 +2,17 @@
 import * as api from "../api.ts"
 import { labelHash } from "../crypto/registration.ts"
 import { hex } from "../crypto/wallet.ts"
-import { alertBox, btn, el, icon, type Kid, line, link, nameText, setAction, waitOut } from "../dom.ts"
+import { alertBox, btn, el, icon, type Kid, line, link, nameText, NO_AUTOFILL, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dollars, letters } from "../format.ts"
+import { codesOnly } from "../mode.ts"
 import { foldLabel, MAX_LABEL_LENGTH } from "../names.ts"
 import type { Hold } from "../screens/hold.ts"
 import { againLine, ranOut } from "../screens/names.ts"
-import { checkoutUrl } from "../screens/routes.ts"
+import { checkoutUrl, CODE_URL } from "../screens/routes.ts"
 import {
-  type Answer, balanceHint, codeCover, initialSearch, keptWords, moveBar, moveHint, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent,
-  orderCode, type OrderRead, ownOrders, type OwnOrders, type SearchKind, type SearchState, type CodeLoss,
+  type Answer, balanceHint, codeCover, coverOf, initialSearch, keptWords, moveBar, moveHint, type Moved, type Opening, reduce, returnedTo, screenOf, searchDue, type SearchEvent,
+  orderCode, type OrderRead, ownOrders, type OwnOrders, type SearchKind, searchLocked, type SearchState, type CodeLoss,
 } from "../screens/search.ts"
 import type { Note } from "../screens/order.ts"
 import { ticked } from "../screens/terms.ts"
@@ -19,7 +20,7 @@ import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { type Builder, CONTACT_EMAIL, currentRoute, draw, go, historyPlace, isRedraw, isRoute, kept, keptLive, throughHistory } from "./shell.ts"
 import { chatButton } from "./chats.ts"
-import { STATE_LINES } from "./codes.ts"
+import { CODES_ONLY_LINE, STATE_LINES } from "./codes.ts"
 import { moveLimitNote, noteBox } from "./order.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, secondsLeft, tabHold } from "./hold.ts"
 import { NO_ORDERS, rowName, termsChangedLine, termsChecks } from "./terms.ts"
@@ -78,9 +79,11 @@ function typed(input: HTMLInputElement): void {
 }
 
 function submit(): void {
+  const code = session.activeCode()
+  if (searchLocked(codesOnly(), state, code)) return
   const label = foldLabel(state.typed)
   const seq = state.seq
-  dispatch({ type: "searched", label, hold: tabHold() })
+  dispatch({ type: "searched", label, hold: tabHold(), minLength: coverOf(codesOnly(), state, code) })
   if (state.seq === seq || state.paused) return
   const params = new URLSearchParams(location.hash.split("?")[1] ?? "")
   if (params.get("name") !== label) {
@@ -255,7 +258,7 @@ const BUILDERS: Record<SearchKind, Builder<SearchState>> = {
 }
 
 function searchBox(): HTMLElement {
-  const input = el("input", { type: "text", placeholder: "yourname", "aria-label": "Name", autocomplete: "off", autocapitalize: "none", spellcheck: "false" })
+  const input = el("input", { type: "text", placeholder: "yourname", "aria-label": "Name", ...NO_AUTOFILL })
   field = input
   const search = el("button", { class: "btn lens", type: "button", "aria-label": "Search", "data-focus": "search", onclick: () => submit() }, icon("search"))
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit() })
@@ -279,13 +282,27 @@ function searchBox(): HTMLElement {
   return el("label", { class: "field search-field" }, input, el("span", { class: "tld" }, ".simplex"), search)
 }
 
+const CODES_ONLY_LINE_ID = "codes-only-note"
+
+// In codes-only mode without a code, the search is off, saying why, and the code is the way in.
+function codesOnlyAnswer(): Kid[] {
+  const register = btn("Register with code", "", () => go(CODE_URL))
+  register.dataset.focus = "register-code"
+  return [el("p", { class: "hint soft", id: CODES_ONLY_LINE_ID }, CODES_ONLY_LINE), register]
+}
+
 function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
   const box = kept("search-field", searchBox)
   const input = box.querySelector("input")!
   const search = box.querySelector("button")!
+  const locked = searchLocked(codesOnly(), s, session.activeCode())
   if (input.value !== s.typed) input.value = s.typed
   box.classList.toggle("bad", s.bad)
-  search.disabled = s.paused
+  box.classList.toggle("off", locked)
+  input.disabled = locked
+  if (locked) input.setAttribute("aria-describedby", CODES_ONLY_LINE_ID)
+  else input.removeAttribute("aria-describedby")
+  search.disabled = locked || s.paused
   if (s.searching) search.setAttribute("aria-busy", "true")
   else search.removeAttribute("aria-busy")
   const retry = () => {
@@ -297,7 +314,7 @@ function buildSearch(s: SearchState, signal: AbortSignal): HTMLElement {
   return el("section", { class: "home" },
     el("h1", {}, HEADLINE), el("p", { class: "sub" }, SUB),
     openingLine(s),
-    el("div", { class: "search" }, box, keptLive("search-answer", "answer", answerOf(s, retry, signal))))
+    el("div", { class: "search" }, box, keptLive("search-answer", "answer", locked ? codesOnlyAnswer() : answerOf(s, retry, signal))))
 }
 
 function openingLine(s: SearchState): HTMLElement | null {
@@ -311,6 +328,7 @@ function answerOf(s: SearchState, retry: () => void, signal: AbortSignal): Kid {
   if (s.paused && s.hold) return pauseLine(s.hold, signal)
   const answer = s.answer
   if (answer?.kind === "rule") return ruleLine(answer)
+  if (answer?.kind === "uncovered") return line("bad", "alert", `${letters(answer.label.length)}. Your code covers names of ${answer.minLength} or more letters.`)
   if (answer?.kind === "unchecked") return line("warn", "alert", "This name could not be checked. ", link("Try again", retry))
   if (answer?.kind !== "found") return answer?.kind === "checking" ? line("", "clock", "Checking the name…") : null
   const found = answer.answer

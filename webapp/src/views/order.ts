@@ -11,10 +11,13 @@ import {
 } from "../screens/order.ts"
 import { heldWords } from "../screens/balance.ts"
 import { termsToSign, ticked } from "../screens/terms.ts"
-import { checkoutUrl, CODE_FROM_ORDER_URL } from "../screens/routes.ts"
+import { CODES_ONLY, codesOnly } from "../mode.ts"
+import { checkoutUrl, CODE_FROM_ORDER_URL, CODE_URL, editUrl } from "../screens/routes.ts"
+import { hasLinks, linksAction } from "../screens/names.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
+import { CODES_ONLY_TITLE } from "./codes.ts"
 import { seenRegistered } from "./names.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
 import { NO_ORDERS, termsBox } from "./terms.ts"
@@ -716,6 +719,10 @@ function cardStandIn(form: HTMLElement): void {
 
 // what a browser without the order's record can do: take in the name code
 const withoutRecord = (cls: string, text = "Enter your name code") => btn(text, cls, () => go(CODE_FROM_ORDER_URL))
+// in codes-only mode a prepaid code is the only way to a name: nothing here orders or pays again
+const codeAction = () => btn("Register with code", "", () => go(CODE_URL))
+// a page opened before the service took codes only, refused a new invoice or a spend
+const CODES_ONLY_NOTE: Note = { tone: "warn", icon: "key", title: CODES_ONLY_TITLE, text: "Nothing was charged. ", link: { text: "Enter a code", href: CODE_URL, after: "." } }
 
 const CLOSED_TITLE = "Invoice closed"
 const KEPT_LATE = "kept as your balance for this name or another, or refunded on request; Your names shows it."
@@ -727,7 +734,7 @@ function buildClosed(s: OrderState, signal: AbortSignal): HTMLElement {
   const [tone, text] = closedWords(closed, inv, s.view!)
   const kept = closedBalance(s)
   // only a new invoice is held for the tab's wait; the balance kept pays for one of the same name
-  const reorders = kept === "offer" || ((closed === "received" || closed === "expired") && s.record !== null && !s.record.replacedBy)
+  const reorders = !codesOnly() && (kept === "offer" || ((closed === "received" || closed === "expired") && s.record !== null && !s.record.replacedBy))
   holdEnds(signal)(s.hold !== null)
   const replaced = kept === "replaced" ? el("p", { class: "note" }, "What reached this invoice is kept as your balance: you can cancel the new invoice and use the balance instead.") : null
   return outcome({ tone, icon: "alert", title: CLOSED_TITLE, text, reference: inv.invoiceId,
@@ -808,6 +815,7 @@ function closedWords(closed: ClosedCase, inv: api.InvoiceView, view: api.Registr
 function closedAction(s: OrderState, closed: ClosedCase): HTMLButtonElement {
   const { record } = s
   if (record?.replacedBy) return btn("Open the new invoice", "quiet", () => go(record.replacedBy!))
+  if (codesOnly()) return codeAction()
   if (closed === "paid-late") return btn("Search a name", "quiet", () => go(searchLink("")))
   if (!record) return withoutRecord("quiet")
   if (closed === "cancelled") {
@@ -858,12 +866,13 @@ function newInvoiceButton(s: OrderState, cls: string, get: () => void): HTMLButt
 function buildCardUnconfirmed(s: OrderState, signal: AbortSignal): HTMLElement {
   const inv = s.invoice!
   const formFailed = s.cardSubmittedAt === null
+  const reorders = formFailed && !codesOnly()
   holdEnds(signal)(s.hold !== null)
   return outcome({ tone: "warn", icon: "alert", title: "Card payment not confirmed", reference: inv.invoiceId,
     text: formFailed ? "Stripe's form was blocked or failed to load. Nothing was charged."
       : "The payment has not been confirmed. This page keeps checking: come back to it later, or quote the reference below.",
-    extra: actionNote(s, formFailed && s.record !== null ? signal : null), agreement: formFailed ? agreement(s, "reorder") : null, action: cardAction(s, formFailed),
-    alt: formFailed && s.record ? coinLinks(s) : null })
+    extra: actionNote(s, reorders && s.record !== null ? signal : null), agreement: reorders ? agreement(s, "reorder") : null, action: cardAction(s, formFailed),
+    alt: reorders && s.record ? coinLinks(s) : null })
 }
 
 // a card form that did not load leaves the coins: each cancels the card invoice and orders the name again paid with it
@@ -878,7 +887,7 @@ function coinLinks(s: OrderState): HTMLElement {
 
 // Once the service has seen a card payment, entering the card again could charge twice.
 function cardAction(s: OrderState, formFailed: boolean): HTMLButtonElement | null {
-  if (formFailed) return s.record ? newInvoiceButton(s, "", () => void reorderAfterCancel()) : withoutRecord("")
+  if (formFailed) return codesOnly() ? codeAction() : s.record ? newInvoiceButton(s, "", () => void reorderAfterCancel()) : withoutRecord("")
   return s.invoice!.amountPaid ? null : btn("Enter the card again", "", enterCardAgain)
 }
 
@@ -1029,6 +1038,7 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
     if (e instanceof api.TermsChanged) return askTerms(gen, record.label, e, true)
     if (termsUnavailable(e)) return dispatch({ type: "reorder-failed", note: noOrders("Nothing was charged. ") })
     if (e instanceof api.BalanceChanged) return dispatch({ type: "reorder-failed", note: warning("Your balance changed meanwhile. Nothing was charged. Try again.") })
+    if (e instanceof api.ApiError && e.code === CODES_ONLY) return dispatch({ type: "reorder-failed", note: CODES_ONLY_NOTE })
     if (e instanceof api.ApiError && e.code === "provider_unavailable") {
       return dispatch({ type: "reorder-failed", note: { tone: "warn", icon: "alert", title: `${methodName(method)} is unavailable right now`,
         text: "Nothing was charged. Try again later, or ", link: { text: "order the name again", href: searchLink(record.label), after: " to pay another way." } } })
@@ -1246,7 +1256,9 @@ function buildRegistered(s: OrderState): HTMLElement {
     code ? [el("div", { class: "card use" }, el("h2", {}, "Use in the app"),
       el("p", {}, "In SimpleX, open Your SimpleX address, tap Set SimpleX name and enter ", nameText(label ?? "", view.tld, "."), " For a channel, set it in the channel's profile.")),
     el("p", { class: "note center" }, "Keep your name code: it owns the name and edits its links."),
-    codeDisplay(code, "owner-code", true, (shown) => refill(qr, shown && nameCodeQr(code))), qr] : null)
+    codeDisplay(code, "owner-code", true, (shown) => refill(qr, shown && nameCodeQr(code))),
+    // under the code and over its QR, so showing the code moves it and nothing above it
+    el("div", { class: "yours-edit center" }, btn(linksAction(hasLinks(s.record!, null)), "quiet small", () => go(editUrl(view.id)))), qr] : null)
 }
 
 function registeredLead(view: api.RegistrationView, record: store.OrderRecord | null): string {
@@ -1275,9 +1287,9 @@ function buildTaken(s: OrderState): HTMLElement {
   if (!invoice && view.fromBalance === 0) return buildTakenWithCode(s)
   const label = labelOf(view, record)
   const balance = session.appliedBalance(view.id, view.balance)
+  const uses = codesOnly() ? " You can ask for a refund." : " Choose another name and pay only the difference, or ask for a refund."
   const note = balance || view.balance === null
-    ? el("div", { class: "notice plain" }, el("b", {}, "What you paid is kept as your balance."),
-      " Choose another name and pay only the difference, or ask for a refund. Your names shows the balance.")
+    ? el("div", { class: "notice plain" }, el("b", {}, "What you paid is kept as your balance."), uses, " Your names shows the balance.")
     : el("div", { class: "notice plain" }, el("b", {}, "What you paid went to your balance."), " It has been spent or refunded since; Your names shows it.")
   const reserved = s.nameStatus === "reserved"
   const title = label ? [gradName(label, view.tld), reserved ? " is\u00a0reserved" : " was\u00a0taken"] : reserved ? "The name is reserved" : "The name was taken"
@@ -1300,6 +1312,7 @@ function balanceActions({ view, invoice, record }: OrderState, same?: HTMLButton
   const refund = record && balance && !balance.held ? link("Get a refund", () => showRefund(invoice?.invoiceId ?? view!.id, REFUND)) : null
   refund?.setAttribute("data-focus", REFUND)
   refund?.setAttribute("aria-haspopup", "dialog")
+  if (codesOnly()) return { action: codeAction(), alt: refund }
   if (!same) return { action: setAction(btn("Choose another name", "", another), false, record === null), alt: refund }
   return { action: same, alt: el("span", {}, link("Choose another name", another), refund && SEP, refund) }
 }

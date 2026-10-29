@@ -12,7 +12,7 @@ import * as store from "./store.ts"
 const EDIT_DEADLINE_SECONDS = 3600
 
 // signed timestamps and deadlines are judged by the service's clock
-const now = () => Math.floor(api.serviceNow() / 1000)
+const now = api.serviceSeconds
 
 export const newOwnerCode = () => formatOwnerCode(crypto.getRandomValues(new Uint8Array(16)))
 
@@ -322,23 +322,18 @@ async function reopen(wallet: Wallet, code: string, chosen: Found): Promise<Rest
 
 export const KEYS = { contact: CONTACT_KEY, channel: CHANNEL_KEY } as const
 
-// One signed SetText per changed key, sent one at a time: each needs the nonce the previous one spent.
-export async function saveLinks(record: store.OrderRecord, chain: { chainId: number; resolver: string; tld: string }, nonce: number, changes: Partial<api.Links>, saved: (kind: keyof api.Links) => void): Promise<string[]> {
+// One signed SetText per changed key, in one request the service relays as one transaction. The resolver takes an
+// owner's intents only in nonce order, so the second is signed with the nonce the first spends.
+export async function saveLinks(record: store.OrderRecord, chain: { chainId: number; resolver: string; tld: string }, nonce: number, changes: Partial<api.Links>): Promise<string | null> {
   const wallet = walletOf(record.ownerCode)!
   const node = namehash(chain.tld, record.label)
-  const lh = hex(labelHash(record.label))
-  const txs: string[] = []
-  let next = nonce
-  for (const kind of ["contact", "channel"] as const) {
-    const value = changes[kind]
-    if (value === undefined) continue
-    const deadline = now() + EDIT_DEADLINE_SECONDS
-    const digest = setTextDigest(BigInt(chain.chainId), fromHex(chain.resolver), node, KEYS[kind], value, BigInt(next), BigInt(deadline))
-    const { tx } = await api.editRecord({ labelHash: lh, key: KEYS[kind], value, nonce: next, deadline, signature: hex(signDigest(wallet.privateKey, digest)) })
-    if (tx) txs.push(tx)
-    saved(kind)
-    next += 1
-  }
-  return txs
+  const deadline = now() + EDIT_DEADLINE_SECONDS
+  const edits = api.LINK_KINDS.filter((kind) => changes[kind] !== undefined).map((kind, i) => {
+    const value = changes[kind]!
+    const digest = setTextDigest(BigInt(chain.chainId), fromHex(chain.resolver), node, KEYS[kind], value, BigInt(nonce + i), BigInt(deadline))
+    return { key: KEYS[kind], value, nonce: nonce + i, deadline, signature: hex(signDigest(wallet.privateKey, digest)) }
+  })
+  const { tx } = await api.editRecords({ labelHash: hex(labelHash(record.label)), edits })
+  return tx
 }
 

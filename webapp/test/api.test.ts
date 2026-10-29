@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { keccak256, sha256, toHex, zeroHash } from "viem"
 import {
-  ApiError, BalanceChanged, cancelInvoice, checkCode, createOrder, currentTerms, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
+  ApiError, BalanceChanged, cancelInvoice, checkCode, createOrder, currentTerms, editRecords, EditLimited, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
   communityAgreed, readerUrl, signedHash, termsFor, termsLink, termsText, termYears,
 } from "../src/api.ts"
 
@@ -121,6 +121,36 @@ describe("service errors", () => {
     answerWith(429, "", { "retry-after": "12" })
     const e = await errorOf()
     expect([e.code, e.retryAfter]).toEqual(["rate_limited", 12])
+  })
+
+  it("reads the service's edit_limit under 429 as its own refusal, with when the next edit fits, and no wait to hold", async () => {
+    const edit = { labelHash: `0x${HASH}`, edits: [{ key: "simplex.channel", value: "", nonce: 3, deadline: 1, signature: "0x" }] }
+    answerWith(429, JSON.stringify({ error: "edit_limit", nextAt: 1824249600 }))
+    const e = await editRecords(edit).then(() => null, (e: unknown) => e)
+    expect(e).toBeInstanceOf(EditLimited)
+    expect([(e as EditLimited).code, (e as EditLimited).status, (e as EditLimited).nextAt]).toEqual(["edit_limit", 429, 1824249600])
+    expect(retryDelay(e, 5000), "asking again cannot change it").toBeNull()
+    for (const body of [{ error: "edit_limit" }, { error: "edit_limit", nextAt: "soon" }, { error: "edit_limit", nextAt: -1 }]) {
+      answerWith(429, JSON.stringify(body))
+      const bad = await editRecords(edit).then(() => null, (e: unknown) => e)
+      expect((bad as ApiError).code, JSON.stringify(body)).toBe("network")
+    }
+    // any other 429 stays a rate limit, whatever its body says
+    answerWith(429, JSON.stringify({ error: "move_limit" }), { "retry-after": "4" })
+    const limited = await editRecords(edit).then(() => null, (e: unknown) => e)
+    expect([(limited as ApiError).code, (limited as ApiError).retryAfter, limited instanceof EditLimited]).toEqual(["rate_limited", 4, false])
+  })
+
+  it("passes a registered name's record edits, and takes ones that cannot be so as no answer", async () => {
+    const answer = { status: "registered", tld: "simplex", entities: [], records: { contact: "", channel: "" }, recordsNonce: 2, community: null }
+    for (const recordEdits of [{ left: 3, nextAt: null }, { left: 0, nextAt: 1824249600 }, { left: 1, nextAt: 1824249600 }, null]) {
+      answerWith(200, JSON.stringify({ ...answer, recordEdits }))
+      expect(await searchName(HASH, 8), JSON.stringify(recordEdits)).toMatchObject({ recordEdits })
+    }
+    for (const recordEdits of [{ left: 0, nextAt: null }, { left: -1, nextAt: null }, { left: 1.5, nextAt: null }, { left: 2 }, { left: 2, nextAt: "soon" }, 3]) {
+      answerWith(200, JSON.stringify({ ...answer, recordEdits }))
+      expect((await errorOf()).code, JSON.stringify(recordEdits)).toBe("network")
+    }
   })
 
   it("takes a search answer the page cannot draw as no answer", async () => {

@@ -8,6 +8,7 @@ import {
 import { type ChatKind, communityAgreed, type Profile, termsLink } from "../../src/api.ts"
 import { codeHash, parseNameCode } from "../../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, durationFor, YEAR_S } from "../../src/crypto/registration.ts"
+import { CODES_ONLY, type Mode } from "../../src/mode.ts"
 import { labelProblem, linkKind, type LinkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
 import {
   baseRegistrar, chainNow, contractsOwner, controller, deployment, holder, mined, namePolicy, NotSent, ownerOf, read, registry, resolver, Reverted, send, sponsor,
@@ -173,9 +174,10 @@ const taking = new Map<string, Promise<void>>()
 // reads fail; each write to a registration waits writeDelayMs before its check, so a test can race two
 // the next reveal finds its links refused, as the service's link check would if it no longer took what the page took;
 // a fetch of a link in fetchDelays takes that many milliseconds;
-// a late payment is credited at the lower of its invoice's rate and the coin's current rate in cents, when one is set
-const control: { chainDown: boolean; limitedUntil: number; invoiceError: string | null; findLimitedUntil: number; unsentUntil: number; unreadUntil: number; writeDelayMs: number; refuseLinks: boolean; fetchDelays: Record<string, number>; rates: Record<Coin, bigint | null> } =
-  { chainDown: false, limitedUntil: 0, invoiceError: null, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0, writeDelayMs: 0, refuseLinks: false, fetchDelays: {}, rates: { btc: null, xmr: null } }
+// a late payment is credited at the lower of its invoice's rate and the coin's current rate in cents, when one is set;
+// in codes mode, as the service's [names] codes_only, names are registered only with prepaid codes
+const control: { mode: Mode; chainDown: boolean; limitedUntil: number; invoiceError: string | null; findLimitedUntil: number; unsentUntil: number; unreadUntil: number; writeDelayMs: number; refuseLinks: boolean; fetchDelays: Record<string, number>; rates: Record<Coin, bigint | null> } =
+  { mode: "open", chainDown: false, limitedUntil: 0, invoiceError: null, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0, writeDelayMs: 0, refuseLinks: false, fetchDelays: {}, rates: { btc: null, xmr: null } }
 
 const sendTx: typeof send = (...args) => Date.now() < control.unsentUntil ? Promise.reject(new NotSent()) : send(...args)
 // Stripe's least charge in US dollars
@@ -372,7 +374,7 @@ async function answerFor(hash: Hex, length: number, terms: Terms | null): Promis
   // Records are read only from the store's own resolver: calling whatever contract a name points at would let anyone
   // make the service run arbitrary code. A name pointed elsewhere is shown with its owner and no links.
   if (found.resolver !== getAddress(deployment.resolver)) {
-    return { status: "registered", entities: [], records: null, owner: found.owner, resolver: found.resolver, recordsNonce: null, expiresAt: found.expires, gracePeriod: found.grace, ...chain }
+    return { status: "registered", entities: [], records: null, owner: found.owner, resolver: found.resolver, recordsNonce: null, recordEdits: null, expiresAt: found.expires, gracePeriod: found.grace, ...chain }
   }
   const node = nodeOf(hash)
   let contact: string, channel: string, nonce: bigint
@@ -387,7 +389,7 @@ async function answerFor(hash: Hex, length: number, terms: Terms | null): Promis
     throw new HttpError(503, "provider_unavailable")
   }
   const entities = [...await entitiesOf("contact", contact), ...await entitiesOf("channel", channel)]
-  return { status: "registered", entities, records: { contact, channel }, owner: found.owner, resolver: found.resolver, recordsNonce: Number(nonce), expiresAt: found.expires, gracePeriod: found.grace, ...chain }
+  return { status: "registered", entities, records: { contact, channel }, owner: found.owner, resolver: found.resolver, recordsNonce: Number(nonce), recordEdits: editsLeft(hash), expiresAt: found.expires, gracePeriod: found.grace, ...chain }
 }
 
 function nodeOf(labelHash: Hex): Hex {
@@ -669,8 +671,14 @@ async function injectedRefusal(length: number): Promise<void> {
   throw new HttpError(INVOICE_ERRORS[injected], injected, extra, injected === "rate_limited" ? RETRY_AFTER_SECONDS : null)
 }
 
+// in codes mode nothing is paid: no invoice for a name, and no spend of a balance
+function refuseWhenCodesOnly(): void {
+  if (control.mode === "codes") throw new HttpError(403, CODES_ONLY)
+}
+
 export async function createInvoice(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (body.kind !== "name") throw badRequest()
+  refuseWhenCodesOnly()
   const order = orderBody(body)
   const method = body.method
   if (!isMethod(method)) throw badRequest()
@@ -1164,6 +1172,7 @@ function spendable(source: Registration, seen: number): Invoice | null {
 // Another name for the owner of the order at sourceId, paid from that order's balance: the price at once when it covers it,
 // else all of it, held until an invoice for the difference is paid.
 export async function spend(sourceId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  refuseWhenCodesOnly()
   const { price, balance, method } = body
   if (!Number.isInteger(price) || !Number.isInteger(balance) || (price as number) <= 0 || (balance as number) <= 0 || !Number.isInteger(body.timestamp)) throw badRequest()
   const difference = (price as number) > (balance as number)
@@ -1262,9 +1271,29 @@ export async function previewLink(body: Record<string, unknown>): Promise<Profil
 
 // --- the records relay
 
-// Each sent edit, by its signed body: a repeat is answered from it rather than checked anew. A refused edit is never sent,
-// so it is not kept, and its repeat is checked again.
-interface SentEdit { hash: Hex; outcome: Record<string, unknown> | HttpError | null }
+// The service's record_edits_per_year, its default and its bounds; /control/edits sets it as a restart with a new ini would.
+const RECORD_EDITS_PER_YEAR = 3
+const RECORD_EDITS_MIN = 1
+const RECORD_EDITS_MAX = 100
+let editsPerYear = RECORD_EDITS_PER_YEAR
+
+// Each name's edits that went out, by label hash. One reverted on chain gives its edit back, as one refused or never sent
+// does, which is never counted.
+interface CountedEdit { at: number; reverted: boolean }
+const nameEdits = new Map<Hex, CountedEdit[]>()
+
+// the edits a name has left in any 365 days, and when the next returns: when the oldest counted one, or a later one
+// while a lowered limit is overrun, is 365 days old
+function editsLeft(labelHash: Hex): { left: number; nextAt: number | null } {
+  const since = nowSeconds() - YEAR_S
+  const times = (nameEdits.get(labelHash) ?? []).filter((e) => !e.reverted && e.at > since).map((e) => e.at).sort((a, b) => a - b)
+  const returning = times[Math.max(0, times.length - editsPerYear)]
+  return { left: Math.max(0, editsPerYear - times.length), nextAt: returning === undefined ? null : returning + YEAR_S }
+}
+
+// Each sent request, by its signed edits: a repeat is answered from it rather than checked anew. A refused request is
+// never sent, so it is not kept, and its repeat is checked again.
+interface SentEdit { hash: Hex; outcome: Record<string, unknown> | HttpError | null; counted: CountedEdit }
 const sentEdits = new Map<string, SentEdit>()
 
 async function repeatedEdit(sent: SentEdit): Promise<Record<string, unknown>> {
@@ -1278,29 +1307,74 @@ async function repeatedEdit(sent: SentEdit): Promise<Record<string, unknown>> {
     throw new HttpError(504, "edit_pending")
   }
   sent.outcome = ok ? { tx: sent.hash } : new HttpError(409, "record_reverted", { revert: null })
+  sent.counted.reverted = !ok
   return repeatedEdit(sent)
 }
 
-export async function editRecords(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const { labelHash, key, value, nonce, deadline } = body
-  if (!isHash(labelHash) || typeof nonce !== "number" || typeof deadline !== "number" || !Number.isInteger(nonce) || !Number.isInteger(deadline)) throw badRequest()
-  const signature = checkSignature(body.signature)
-  const clear = body.clear === true
-  if (!clear) {
-    const kind = key === CONTACT_KEY ? "contact" : key === CHANNEL_KEY ? "channel" : null
-    if (kind === null || typeof value !== "string") throw badRequest()
-    if (value !== "" && linkProblem(kind, value) !== null) throw new HttpError(400, "invalid_link")
+// A Save's edits: one link of each kind at most, so two
+const MAX_EDITS = 2
+
+// One signed edit of a request: a SetText of a key, or a ClearRecords (key null).
+interface SignedEdit { key: string | null; value: string; nonce: number; deadline: number; signature: Hex }
+
+// every edit's format and key, then every link, then every signature, as the service checks them
+function signedEdits(edits: unknown): SignedEdit[] {
+  if (!Array.isArray(edits) || edits.length < 1 || edits.length > MAX_EDITS) throw badRequest()
+  const parsed = edits.map((e: unknown) => {
+    if (typeof e !== "object" || e === null) throw badRequest()
+    const { key, value, nonce, deadline, signature } = e as Record<string, unknown>
+    if (typeof nonce !== "number" || typeof deadline !== "number" || !Number.isInteger(nonce) || !Number.isInteger(deadline)) throw badRequest()
+    if ((e as Record<string, unknown>).clear === true) return { key: null, value: "", nonce, deadline, signature }
+    if ((key !== CONTACT_KEY && key !== CHANNEL_KEY) || typeof value !== "string") throw badRequest()
+    return { key, value, nonce, deadline, signature }
+  })
+  const keys = parsed.map((e) => e.key)
+  if (new Set(keys).size !== keys.length || (keys.includes(null) && parsed.length > 1)) throw badRequest()
+  if (parsed.some((e, i) => i > 0 && e.nonce !== parsed[i - 1].nonce + 1)) throw badRequest()
+  for (const { key, value } of parsed) {
+    if (key !== null && value !== "" && linkProblem(key === CONTACT_KEY ? "contact" : "channel", value) !== null) throw new HttpError(400, "invalid_link")
   }
-  const node = nodeOf(labelHash)
+  return parsed.map((e) => ({ ...e, signature: checkSignature(e.signature) }))
+}
+
+const SET_TEXT_TYPES = { SetText: [{ name: "node", type: "bytes32" }, { name: "key", type: "string" }, { name: "value", type: "string" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }
+const CLEAR_RECORDS_TYPES = { ClearRecords: [{ name: "node", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }
+
+function editDigest(node: Hex, { key, value, nonce, deadline }: SignedEdit): Hex {
   const domain = { name: "SimplexResolver", version: "1", chainId: deployment.chainId, verifyingContract: deployment.resolver }
-  const digest = clear
-    ? hashTypedData({ domain, primaryType: "ClearRecords", types: { ClearRecords: [{ name: "node", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }, message: { node, nonce: BigInt(nonce), deadline: BigInt(deadline) } })
-    : hashTypedData({ domain, primaryType: "SetText", types: { SetText: [{ name: "node", type: "bytes32" }, { name: "key", type: "string" }, { name: "value", type: "string" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }, message: { node, key: key as string, value: value as string, nonce: BigInt(nonce), deadline: BigInt(deadline) } })
-  const signer = await recoverAddress({ hash: digest, signature })
-  const editKey = JSON.stringify([labelHash, clear, key, value, nonce, deadline, signature])
+  return key === null
+    ? hashTypedData({ domain, primaryType: "ClearRecords", types: CLEAR_RECORDS_TYPES, message: { node, nonce: BigInt(nonce), deadline: BigInt(deadline) } })
+    : hashTypedData({ domain, primaryType: "SetText", types: SET_TEXT_TYPES, message: { node, key, value, nonce: BigInt(nonce), deadline: BigInt(deadline) } })
+}
+
+const editCall = (node: Hex, { key, value, nonce, deadline, signature }: SignedEdit): [string, unknown[]] =>
+  key === null ? ["clearRecordsWithSig", [node, BigInt(nonce), BigInt(deadline), signature]] : ["setTextWithSig", [node, key, value, BigInt(nonce), BigInt(deadline), signature]]
+
+// A request's one transaction: an edit alone as its own call, two as the resolver's multicall, which reverts both when
+// either fails.
+function sendEdits(node: Hex, edits: SignedEdit[], goingOut: (hash: Hex) => void): Promise<Hex> {
+  if (edits.length === 1) return sendTx(resolver, ...editCall(node, edits[0]), goingOut)
+  const calls = edits.map((e) => {
+    const [functionName, args] = editCall(node, e)
+    return encodeFunctionData({ abi: resolver.abi, functionName, args })
+  })
+  return sendTx(resolver, "multicall", [calls], goingOut)
+}
+
+export async function editRecords(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { labelHash } = body
+  if (!isHash(labelHash)) throw badRequest()
+  const edits = signedEdits(body.edits)
+  const node = nodeOf(labelHash)
+  const signers = await Promise.all(edits.map((e) => recoverAddress({ hash: editDigest(node, e), signature: e.signature })))
+  if (signers.some((a) => a !== signers[0])) throw badRequest()
+  const editKey = JSON.stringify([labelHash, edits])
   const earlier = sentEdits.get(editKey)
   if (earlier) return repeatedEdit(earlier)
-  if (deadline < nowSeconds()) throw badRequest()
+  // as the service, after the signatures and before any chain read
+  const { left, nextAt } = editsLeft(labelHash)
+  if (left === 0) throw new HttpError(429, "edit_limit", { nextAt })
+  if (Math.min(...edits.map((e) => e.deadline)) < nowSeconds()) throw badRequest()
   // a failed chain read is the provider's, not the request's
   let owner: Address, nameResolver: Address, current: bigint
   try {
@@ -1310,20 +1384,20 @@ export async function editRecords(body: Record<string, unknown>): Promise<Record
   } catch {
     throw new HttpError(503, "provider_unavailable")
   }
-  if (signer !== owner) throw badRequest()
+  if (signers[0] !== owner) throw badRequest()
   // the relay writes only the store's resolver, which a name pointed elsewhere no longer reads
   if (nameResolver !== getAddress(deployment.resolver)) throw badRequest()
-  if (BigInt(nonce) !== current) throw badRequest()
-  // kept from the moment it goes out
+  if (BigInt(edits[0].nonce) !== current) throw badRequest()
+  // kept from the moment it goes out, and counted once whatever it changes
   const edit: { sent: SentEdit | null } = { sent: null }
   const goingOut = (hash: Hex) => {
-    edit.sent = { hash, outcome: null }
+    const counted = { at: nowSeconds(), reverted: false }
+    nameEdits.set(labelHash, [...nameEdits.get(labelHash) ?? [], counted])
+    edit.sent = { hash, outcome: null, counted }
     sentEdits.set(editKey, edit.sent)
   }
   try {
-    const tx = clear
-      ? await sendTx(resolver, "clearRecordsWithSig", [node, BigInt(nonce), BigInt(deadline), signature], goingOut)
-      : await sendTx(resolver, "setTextWithSig", [node, key, value, BigInt(nonce), BigInt(deadline), signature], goingOut)
+    const tx = await sendEdits(node, edits, goingOut)
     if (edit.sent) edit.sent.outcome = { tx }
     return { tx }
   } catch (e) {
@@ -1331,7 +1405,10 @@ export async function editRecords(body: Record<string, unknown>): Promise<Record
     // a dry run that reverts sends nothing; a transaction that reverts is the edit's answer
     if (e instanceof Reverted) {
       const reverted = new HttpError(409, "record_reverted", { revert: e.revert })
-      if (edit.sent) edit.sent.outcome = reverted
+      if (edit.sent) {
+        edit.sent.outcome = reverted
+        edit.sent.counted.reverted = true
+      }
       throw reverted
     }
     // no answer from the chain is not a refusal: the edit may still be mined, which the page says
@@ -1513,6 +1590,32 @@ export function controlSearch(body: Record<string, unknown>): Record<string, unk
   const delays = body.fetchDelays
   if (typeof delays === "object" && delays !== null && Object.values(delays).every((ms) => Number.isInteger(ms) && ms >= 0)) control.fetchDelays = delays as Record<string, number>
   return { ok: true }
+}
+
+// The service's mode as a restart with codes_only on or off sets it; the dev server reads it into the page it serves.
+export function controlMode(body: Record<string, unknown>): Record<string, unknown> {
+  if (body.mode !== "open" && body.mode !== "codes") throw badRequest()
+  control.mode = body.mode
+  return { mode: control.mode }
+}
+
+export const modeNow = () => ({ mode: control.mode })
+
+// The service's record_edits_per_year as a restart with a new ini sets it, and a name's counted edits: count of them, all
+// made at `at` in unix seconds (now when not given), in place of those it has.
+export function controlEdits(body: Record<string, unknown>): Record<string, unknown> {
+  const { limit, label, count, at } = body
+  if (limit !== undefined) {
+    if (!Number.isInteger(limit) || (limit as number) < RECORD_EDITS_MIN || (limit as number) > RECORD_EDITS_MAX) throw badRequest()
+    editsPerYear = limit as number
+  }
+  if (label === undefined) return { limit: editsPerYear }
+  if (typeof label !== "string" || labelProblem(label) !== null) throw new HttpError(400, "invalid_name")
+  if (!Number.isInteger(count) || (count as number) < 0 || (at !== undefined && !Number.isInteger(at))) throw badRequest()
+  const hash = keccak256(toHex(label))
+  const made = (at as number | undefined) ?? nowSeconds()
+  nameEdits.set(hash, Array.from({ length: count as number }, () => ({ at: made, reverted: false })))
+  return { limit: editsPerYear, recordEdits: editsLeft(hash) }
 }
 
 // A name put on the chain's community list with what it is for in the ini, or taken off both with null, as the owner's

@@ -9,6 +9,7 @@ The page talks only to the names service under `/api`. In development that servi
 - `src/crypto/`: owner and prepaid codes, the wallet, the commitment and the signed messages, the sealed order.
 - `src/flow.ts`: building an order, revealing it, another name or links after a failure, another name paid from an order's balance, finding a name code's order, link edits.
 - `src/api.ts`, `src/store.ts`, `src/session.ts`: the service's API, what this browser keeps, and the tab's checkout and active prepaid code.
+- `src/mode.ts`: the service's mode, `open` or `codes`, from `index.html`'s `simplex-names-mode` meta (see Codes only).
 - `src/screens/`: each view's state and the reducer that moves it, with no clock, DOM, storage or network.
 - `src/views/`: `shell.ts`, the frame between `index.html`'s header and its invest note and footer (`draw` puts a screen in, `kept` keeps a node a reader types into across redraws, `screen` and `outcome` build the two kinds of screen, `asStep` gives a screen the steps' frame); `chrome.ts`, the phone's menu and the header's active code; and the views: `search.ts` (the home), `checkout.ts` (the Links, name code, Community terms and Check your order steps), `order.ts` (payment, registration and every ending) and `names.ts` (Your names, Check your code and Edit links). `chats.ts` draws the chats a name opens, as the app's default pictures, and their popup after the app's connection alert; `links.ts` holds the link field that the Links step and Edit links share; `codes.ts` the code field of Check your code and of Check your order.
 - `src/stripe.ts`: Stripe's Payment Element, mounted when the page carries a publishable key.
@@ -90,8 +91,10 @@ Tests and manual checks move orders along with `POST` requests to the mock:
 | `/control/general-terms` `{"text"}` or `{"link"}` | the owner sets the name policy's general terms to the link of this text, written to `dev/terms/`, to this link as it is, or back to the deployed link with a `null` text; an order or a move signing the old terms is refused with `terms_changed`, and the buyer of an order signed under them is asked to agree again before its reveal |
 | `/control/community` `{"label", "for"}` | the name goes on the name policy's community list with what it is for, or comes off it with `null`; a registered name cannot be listed |
 | `/control/community-terms` `{"text"}` or `{"link"}` | as `/control/general-terms`, for the community terms |
+| `/control/edits` `{"limit"}` or `{"label", "count", "at"}` | the link edits a name gets in any 365 days, 1 to 100, as a restart with a new `[names] record_edits_per_year` would (3 at the start); or the name's counted edits, `count` of them made at `at` (unix seconds, now when left out), in place of those it has. As the service, a name with none left is refused with `429 {"error": "edit_limit", "nextAt"}` and its search answer's `recordEdits` says when the next one returns; an edit counts once it goes out, and an edit reverted on chain gives it back |
 | `/control/code` `{"minLength", "years", "state"}` | issues a prepaid code |
 | `/control/code/state` `{"code", "state"}` | sets a prepaid code's state, as an order elsewhere taking it or letting it go |
+| `/control/mode` `{"mode"}` | `codes` refuses every name invoice and every balance spend with `403 {"error": "codes_only"}`, as the service with `[names] codes_only` on; `open`, the mock's mode at its start, takes them again. `GET /control/mode` answers it, and the dev server writes it into the page's `simplex-names-mode` meta, as the service does, or `open` when the mock does not answer |
 
 `GET /control/state` dumps the mock's registrations, invoices and balances.
 
@@ -125,6 +128,15 @@ The service worker is in the production build only, so `e2e/offline.spec.ts` run
 npm run build && npx vite preview --host 127.0.0.1
 BASE_URL=http://127.0.0.1:4173 npx playwright test e2e/offline.spec.ts e2e/track.spec.ts
 ```
+
+## Codes only
+
+Until the full launch, names are registered only with prepaid codes. The page is the same build in both modes: `index.html` carries `<meta name="simplex-names-mode" content="open">`, whose content the service rewrites to `codes` while its `[names] codes_only` is on, and leaves `open` otherwise. In `codes` mode:
+
+- The home's search field and its button are off, greyed with a not-allowed pointer, and take no focus or Enter, until the tab holds a prepaid code; one line says names can be registered with an investor code for now, and the screen's one action, Register with code, opens Check your code (`/#/code`).
+- With a code, the search answers a name shorter than the code covers at once, without asking the service, and Check your order has no payment choices, no balance and no Pay with ETH: the tab's code pays, or, once it is taken off, a code entered in the field that takes the choices' place.
+- Nothing offers a payment: a closed invoice offers no new one, a balance has no Use, and a balance the tab took before pays no more; refunds, Your names, restoring, link edits and order pages work as in `open` mode.
+- The service answers `403 {"error": "codes_only"}` to `POST /api/invoice` for a name and to `POST /api/registration/:id/spend`. A page opened before the switch meets it: Check your order then says registration is by code only for now, and a closed invoice's page says so under its button, each with a way to enter a code.
 
 ## Hosting
 

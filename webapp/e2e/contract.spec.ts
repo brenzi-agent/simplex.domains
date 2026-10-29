@@ -10,7 +10,7 @@ import * as flow from "../src/flow.ts"
 import * as store from "../src/store.ts"
 import {
   acceptedOnChain, channelLink, COMMUNITY_TERMS, COMMUNITY_TERMS_HASH, contactLink, control, GENERAL_TERMS_HASH, LISTED_TERMS, MOCK, NAME_POLICY, newClient, oracleQuote, ownerSetsResolver, ownerSetsText,
-  PLAIN_TERMS, TERMS, test, uniqueLabel,
+  PLAIN_TERMS, TERMS, test, textChangesOf, uniqueLabel,
 } from "./helpers.ts"
 
 type Json = Record<string, unknown>
@@ -383,12 +383,21 @@ async function registeredName(request: APIRequestContext, prefix: string) {
   return { label, draft, labelHash: built.request.labelHash }
 }
 
-// a contact link edit of the name, signed by its key with the name's records nonce
-async function contactEdit(name: Awaited<ReturnType<typeof registeredName>>, value: string, nonce?: number): Promise<Json> {
-  const recordsNonce = nonce ?? (await call("GET", `/api/name/${name.labelHash}?length=${name.label.length}`)).json.recordsNonce as number
+type RegisteredName = Awaited<ReturnType<typeof registeredName>>
+type LinkEdit = { key: string; value: string; nonce: number; deadline: number; signature: string }
+
+// one edit of a link of the name, signed by its key at this records nonce
+function linkEdit(name: RegisteredName, key: string, value: string, nonce: number): LinkEdit {
   const deadline = Math.floor(Date.now() / 1000) + 3600
-  const digest = setTextDigest(BigInt(name.draft.chain.chainId), fromHex(name.draft.chain.resolver), namehash("simplex", name.label), CONTACT_KEY, value, BigInt(recordsNonce), BigInt(deadline))
-  return { labelHash: name.labelHash, key: CONTACT_KEY, value, nonce: recordsNonce, deadline, signature: hex(signDigest(flow.walletOf(name.draft.ownerCode)!.privateKey, digest)) }
+  const digest = setTextDigest(BigInt(name.draft.chain.chainId), fromHex(name.draft.chain.resolver), namehash("simplex", name.label), key, value, BigInt(nonce), BigInt(deadline))
+  return { key, value, nonce, deadline, signature: hex(signDigest(flow.walletOf(name.draft.ownerCode)!.privateKey, digest)) }
+}
+
+const answerOf = async (name: RegisteredName) => (await call("GET", `/api/name/${name.labelHash}?length=${name.label.length}`)).json
+
+// a request of one contact link edit of the name, at the name's records nonce unless one is given
+async function contactEdit(name: RegisteredName, value: string, nonce?: number): Promise<{ labelHash: string; edits: LinkEdit[] }> {
+  return { labelHash: name.labelHash, edits: [linkEdit(name, CONTACT_KEY, value, nonce ?? (await answerOf(name)).recordsNonce as number)] }
 }
 
 test("a link edit repeated after it was mined is answered from the edit, not checked anew", async ({ request }) => {
@@ -398,8 +407,37 @@ test("a link edit repeated after it was mined is answered from the edit, not che
   expect(first.status, JSON.stringify(first.json)).toBe(200)
   expect(await call("POST", "/api/name/records", edit)).toEqual(first)
   // the same nonce with another value is checked anew, and its nonce has moved
-  const other = await contactEdit(name, contactLink("Cf"), edit.nonce as number)
+  const other = await contactEdit(name, contactLink("Cf"), edit.edits[0].nonce)
   expect(await call("POST", "/api/name/records", other)).toEqual({ status: 400, json: { error: "bad_request" } })
+})
+
+test("a Save's two link edits are one request and one multicall transaction, counted as one edit, and its exact resend answers it again", async ({ request }) => {
+  const name = await registeredName(request, "ct")
+  const before = await answerOf(name)
+  const nonce = before.recordsNonce as number
+  const [contact, channel] = [contactLink("Ct"), channelLink("Ct")]
+  const save = { labelHash: name.labelHash, edits: [linkEdit(name, CONTACT_KEY, contact, nonce), linkEdit(name, CHANNEL_KEY, channel, nonce + 1)] }
+  const sent = await call("POST", "/api/name/records", save)
+  expect(sent.status, JSON.stringify(sent.json)).toBe(200)
+  expect(await textChangesOf(sent.json.tx as string)).toEqual({ multicall: true, changes: [[CONTACT_KEY, contact], [CHANNEL_KEY, channel]] })
+  const after = await answerOf(name)
+  expect([after.records, after.recordsNonce, (after.recordEdits as Json).left]).toEqual([{ contact, channel }, nonce + 2, (before.recordEdits as Json).left as number - 1])
+  expect(await call("POST", "/api/name/records", save)).toEqual(sent)
+  expect(((await answerOf(name)).recordEdits as Json).left, "the resend counts nothing").toBe((after.recordEdits as Json).left)
+  // the second edit alone is another request, checked anew against the nonce both spent
+  expect(await call("POST", "/api/name/records", { labelHash: name.labelHash, edits: [save.edits[1]] })).toEqual({ status: 400, json: { error: "bad_request" } })
+})
+
+test("a records request of no edit, three, one key twice, a clear beside a set, or nonces not consecutive is bad_request", async () => {
+  const signature = `0x${"11".repeat(64)}1b`
+  const deadline = Math.floor(Date.now() / 1000) + 3600
+  // a link that is not one, which would be invalid_link had the edits' formats passed
+  const set = (key: string, nonce: number) => ({ key, value: "https://x/a", nonce, deadline, signature })
+  const labelHash = `0x${"ab".repeat(32)}`
+  for (const edits of [[], [set(CONTACT_KEY, 1), set(CHANNEL_KEY, 2), set(CONTACT_KEY, 3)], [set(CHANNEL_KEY, 1), set(CHANNEL_KEY, 2)],
+    [{ clear: true, nonce: 1, deadline, signature }, set(CONTACT_KEY, 2)], [set(CONTACT_KEY, 1), set(CHANNEL_KEY, 3)], [set(CONTACT_KEY, 2), set(CHANNEL_KEY, 1)]]) {
+    expect(await call("POST", "/api/name/records", { labelHash, edits }), JSON.stringify(edits)).toEqual({ status: 400, json: { error: "bad_request" } })
+  }
 })
 
 test("a link edit of a name pointed at another resolver is bad_request, and goes through once the name points back", async ({ request }) => {

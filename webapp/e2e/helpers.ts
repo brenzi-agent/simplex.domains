@@ -1,7 +1,7 @@
 import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Locator, type Page } from "@playwright/test"
 import { randomInt } from "node:crypto"
 import { mkdirSync, readFileSync } from "node:fs"
-import { createPublicClient, createTestClient, createWalletClient, encodeFunctionData, http, namehash, parseAbi, parseEventLogs, type Hex } from "viem"
+import { createPublicClient, createTestClient, createWalletClient, encodeFunctionData, http, namehash, parseAbi, parseEventLogs, toFunctionSelector, type Hex } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { foundry } from "viem/chains"
 import { labelHash, YEAR_S } from "../src/crypto/registration.ts"
@@ -78,6 +78,17 @@ export const NAME_POLICY = deployment.namePolicy
 const OWNER_GAS_WEI = 10n ** 18n
 // SimplexPriceOracle's attoUSD to the cent
 const ATTO_PER_CENT = 10n ** 16n
+
+const TEXT_CHANGED_ABI = parseAbi(["event TextChanged(bytes32 indexed node, string indexed indexedKey, string key, string value)"])
+const MULTICALL = toFunctionSelector("multicall(bytes[])")
+
+// The records a mined transaction set on the resolver, in order, and whether it was the resolver's multicall.
+export async function textChangesOf(tx: string): Promise<{ multicall: boolean; changes: [string, string][] }> {
+  const [receipt, sent] = await Promise.all([chain.getTransactionReceipt({ hash: tx as Hex }), chain.getTransaction({ hash: tx as Hex })])
+  expect(receipt.status, "the edit's transaction").toBe("success")
+  const logs = parseEventLogs({ abi: TEXT_CHANGED_ABI, logs: receipt.logs.filter((l) => l.address.toLowerCase() === deployment.resolver.toLowerCase()) })
+  return { multicall: sent.input.startsWith(MULTICALL), changes: logs.map((l) => [l.args.key, l.args.value]) }
+}
 
 // the time of the block that mined a transaction
 export async function blockTimeOf(tx: string): Promise<number> {
@@ -524,7 +535,7 @@ export async function fakeRegisteredName(page: Page, label: string, links: { con
   await page.route("**/api/name/**", (route) => {
     const now = records()
     return route.fulfill({ json: { status: "registered", entities: [], owner: order.owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId, records: now.links, recordsNonce: now.nonce,
-      expiresAt, tld: "simplex", community: null } })
+      recordEdits: { left: 3, nextAt: null }, expiresAt, tld: "simplex", community: null } })
   })
   return order
 }
