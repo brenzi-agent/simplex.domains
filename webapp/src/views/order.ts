@@ -12,7 +12,8 @@ import {
 import { heldWords } from "../screens/balance.ts"
 import { termsToSign } from "../screens/terms.ts"
 import { CODES_ONLY, codesOnly } from "../mode.ts"
-import { checkoutUrl, CODE_FROM_ORDER_URL, CODE_URL } from "../screens/routes.ts"
+import { checkoutUrl, CODE_FROM_ORDER_URL, CODE_URL, editUrl } from "../screens/routes.ts"
+import { hasLinks, linksAction } from "../screens/names.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
@@ -1204,7 +1205,9 @@ function buildRegistered(s: OrderState): HTMLElement {
     code ? [el("div", { class: "card use" }, el("h2", {}, "Use in the app"),
       el("p", {}, "In SimpleX, open Your SimpleX address, tap Set SimpleX name and enter ", nameText(label ?? "", view.tld, "."), " For a channel, set it in the channel's profile.")),
     el("p", { class: "note center" }, "Keep your name code: it owns the name and edits its links."),
-    codeDisplay(code, "owner-code", true, (shown) => refill(qr, shown && nameCodeQr(code))), qr] : null)
+    codeDisplay(code, "owner-code", true, (shown) => refill(qr, shown && nameCodeQr(code))),
+    // under the code and over its QR, so showing the code moves it and nothing above it
+    el("div", { class: "yours-edit center" }, btn(linksAction(hasLinks(s.record!, null)), "quiet small", () => go(editUrl(view.id)))), qr] : null)
 }
 
 function registeredLead(view: api.RegistrationView, record: store.OrderRecord | null): string {

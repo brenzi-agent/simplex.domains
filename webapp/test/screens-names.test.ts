@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { InvoiceView, RegistrationView, SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
-  balanceRows, changesOf, CODE_CHIPS, holderOf, editable, editsLine, editsShort, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
+  balanceRows, changesOf, CODE_CHIPS, holderOf, editable, editsLine, editsShort, hasLinks, linksAction, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit,
   initialList, initialRestore, lapsed, lateLine, listedOrders, nameRows, ORDER_CHIP_WORDS, rowShown, rowsDrawn, unanswered, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit, reduceList, reduceRestore, REFUSALS,
   againLine, ranOut, registrableAgain, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../src/screens/names.ts"
@@ -121,6 +121,11 @@ describe("list helpers", () => {
   })
   it("CODE_CHIPS words every state a code can be in", () => {
     expect(Object.keys(CODE_CHIPS).sort()).toEqual(["expired", "reserved", "revoked", "unpaid", "unused", "used"])
+  })
+  it("linksAction adds a name's first links, and edits links it has", () => {
+    expect(linksAction(hasLinks(record(), null))).toBe("Add links")
+    expect(linksAction(hasLinks(record({ contact: CONTACT }), null))).toBe("Edit links")
+    expect(linksAction(hasLinks(record(), registered({ contact: "", channel: CHANNEL })))).toBe("Edit links")
   })
   it("editable: a name in the app's wallet, or pointed at another resolver, is not edited here", () => {
     expect(editable(registered(), OWNER)).toBe(true)

@@ -230,6 +230,39 @@ test("Check your code checks a code with the key icon, and Search keeps the magn
   expect(lens).not.toBe(key)
 })
 
+// The boxes of the name-is-yours screen's heading and of its body's parts above Edit links, and Edit links' own.
+const yoursLayout = (page: Page) => onStep(page).evaluate((step) => {
+  const edit = step.querySelector(".yours-edit")!
+  const above = [step.querySelector(".screen-head")!, ...[...step.querySelector(".screen-body")!.children].filter((n) => n.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING)]
+  const box = (n: Element) => { const r = n.getBoundingClientRect(); return [r.top, r.left, r.width, r.height] }
+  return { above: above.map(box), edit: box(edit), clear: above.every((n) => n.getBoundingClientRect().bottom <= edit.getBoundingClientRect().top) }
+})
+
+test("the name-is-yours screen offers Edit links, a small secondary button under the name code that moves nothing above it", async ({ page, request }) => {
+  const { registrationId, label } = await registerWithCode(page, request, "cyours", { contact: contactLink("CY"), channel: channelLink("CY") })
+  await waitRegistered(page, label)
+  const edit = onStep(page).getByRole("button", { name: "Edit links" })
+  await expect(edit).toBeVisible()
+  await expect(edit, "small and quiet, not the main action").toHaveClass("btn quiet small")
+  await expect(onStep(page).locator(".actions-row .btn")).toHaveCount(0)
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    const shut = await yoursLayout(page)
+    expect(shut.clear, `everything above it ends before it at ${size.width} px`).toBe(true)
+    // the name code's QR goes under it, so showing the code moves nothing above it, nor it
+    await onStep(page).getByRole("button", { name: "Show" }).click()
+    await expect(onStep(page).locator(".code-qr svg")).toBeVisible()
+    expect(await yoursLayout(page), `${size.width} px`).toEqual(shut)
+    await onStep(page).getByRole("button", { name: "Hide" }).click()
+    await expect(onStep(page).locator(".code-qr svg")).toHaveCount(0)
+  }
+  await shot(page, "K8b-registered-edit-links")
+  await edit.click()
+  await page.waitForURL((url) => url.hash === `#/edit/${registrationId}`)
+  await expect(onStep(page).getByRole("heading", { name: "Edit links" })).toBeVisible()
+  await expect(onStep(page).getByRole("textbox", { name: "Link", exact: true })).toHaveValue(contactLink("CY"))
+})
+
 const editCount = (page: Page) => onStep(page).locator(".edit-count")
 const saveLinks = (page: Page) => onStep(page).getByRole("button", { name: "Save links" })
 // Save's box and the top and height of the line under it, whose width follows its words: a change of either moves what is around them
@@ -243,6 +276,7 @@ const YEAR_S = 365 * 86400
 test("Edit links counts the name's edits left this year under Save, one per link saved, in place and on one line", async ({ page, request }) => {
   const { registrationId, label } = await registerWithCode(page, request, "ccount")
   await waitRegistered(page, label)
+  await expect(onStep(page).getByRole("button", { name: "Add links" }), "a name without links adds them").toHaveClass("btn quiet small")
   expect((await searchName(request, label)).recordEdits, "links set at registration count no edit").toEqual({ left: 3, nextAt: null })
   await page.goto(`/#/edit/${registrationId}`)
   for (const size of FIT_SIZES) {

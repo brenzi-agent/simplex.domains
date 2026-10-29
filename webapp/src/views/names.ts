@@ -5,13 +5,13 @@ import * as flow from "../flow.ts"
 import { dateOf, dollars, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import {
-  balanceRows, type BalanceRow, CODE_CHIPS, holderOf, EDIT_RETRY_MS, editable, editsLine, editsShort, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
+  balanceRows, type BalanceRow, CODE_CHIPS, holderOf, EDIT_RETRY_MS, editable, editsLine, editsShort, hasLinks, linksAction, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
   againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, nameRows, ORDER_CHIP_WORDS, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
   reduceList, reduceRestore, REFUSALS, ROW_CHIPS, rowsDrawn, unanswered, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
 import { codesOnly } from "../mode.ts"
 import { heldWords } from "../screens/balance.ts"
-import { checkoutUrl, CODE_URL } from "../screens/routes.ts"
+import { checkoutUrl, CODE_URL, editUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import type { AppliedCode } from "../session.ts"
 import * as store from "../store.ts"
@@ -309,7 +309,7 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
   const shown = code !== null && s.shownCode === id
   const edits = registered && !lapsed(seen, s.now) && (!seen.answer || editable(seen.answer, o.owner))
   const acts = code === null ? [small("Open", `${id}-open`, () => go(store.orderUrl(o)))]
-    : [codeToggle(id, shown), edits ? small(hasLinks(o, seen.answer) ? "Edit links" : "Add links", `${id}-edit`, () => go(`/#/edit/${id}`)) : null]
+    : [codeToggle(id, shown), edits ? small(linksAction(hasLinks(o, seen.answer)), `${id}-edit`, () => go(editUrl(id))) : null]
   // a registered name shows the chats it opens, as the home's answer does
   const chats = registered && seen.answer?.status === "registered" ? seen.answer.entities.map(chatPicture) : []
   const listed = seen ? seen.view.community !== null : api.communityAgreed(o.terms)
@@ -510,7 +510,7 @@ async function readEdit(route: number): Promise<void> {
     // a forgotten unpaid order may have a newer one, found with the code
     const newer = e instanceof api.ApiError && e.code === "not_found" ? await flow.newerOrder(stored).catch(() => null) : null
     if (!isRoute(route)) return
-    if (newer) return redirect(`/#/edit/${newer.registrationId}`)
+    if (newer) return redirect(editUrl(newer.registrationId))
     return dispatchEdit({ type: "read-failed" })
   }
   if (!isRoute(route)) return
@@ -518,7 +518,7 @@ async function readEdit(route: number): Promise<void> {
     // the name may have been registered through a newer invoice that another browser made, perhaps under another name
     const newer = await flow.newerOrder(record).catch(() => null)
     if (!isRoute(route)) return
-    if (newer) return redirect(`/#/edit/${newer.registrationId}`)
+    if (newer) return redirect(editUrl(newer.registrationId))
   }
   dispatchEdit({ type: "answered", view, answer, record, now: api.serviceNow(), hold: tabHold() })
 }

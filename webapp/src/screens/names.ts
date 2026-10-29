@@ -234,6 +234,9 @@ export function editable(answer: SearchAnswer, owner: string): boolean {
   return answer.owner.toLowerCase() === owner.toLowerCase() && answer.records !== null
 }
 
+// what opens Edit links for a name: adding its first links, or editing them
+export const linksAction = (has: boolean) => has ? "Edit links" : "Add links"
+
 // whether a name opens any chat, by its records once read, else by the links it was ordered with
 export const hasLinks = (o: OrderRecord, answer: SearchAnswer | null | undefined): boolean =>
   answer?.status === "registered" && answer.records !== undefined ? Boolean(answer.records?.contact || answer.records?.channel) || answer.entities.length > 0
