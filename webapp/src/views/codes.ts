@@ -6,6 +6,7 @@ import * as flow from "../flow.ts"
 import type * as session from "../session.ts"
 import * as store from "../store.ts"
 import { holdFrom } from "./hold.ts"
+import { scanButton, scanQr } from "./scan.ts"
 import { kept, whenDropped } from "./shell.ts"
 
 export type CodeVerdict =
@@ -21,6 +22,8 @@ export const STATE_LINES: Record<Exclude<api.CodeState, "unused">, [string, stri
   unpaid: ["This code is not paid for yet", "It works once its payment is confirmed."],
 }
 
+const NOT_COVERING = "This code does not cover this name"
+
 // the service's refusals of a code an order carried
 export const CODE_ERRORS: Record<string, string> = {
   code_invalid: "This code is not valid.",
@@ -28,13 +31,18 @@ export const CODE_ERRORS: Record<string, string> = {
   code_reserved: "This code is being used for a name now.",
   code_expired: "This code has expired.",
   payment_pending: "This code is not paid for yet.",
-  code_not_covering: "This code does not cover this name.",
+  code_not_covering: `${NOT_COVERING}.`,
 }
 
 const coversLine = (code: session.AppliedCode) => `This code allows you to register a free name of ${code.minLength} or more letters, for ${code.years} years.`
 const unused = (code: session.AppliedCode): CodeVerdict => ({ kind: "prepaid", code, line: coversLine(code) })
+const notCovering = (code: session.AppliedCode): CodeVerdict => ({ kind: "refused", title: NOT_COVERING, line: `It covers names of ${code.minLength} or more letters.` })
+// a name code where a prepaid code pays for one name
+const NAME_CODE: CodeVerdict = { kind: "refused", title: "This is a name code", line: "A code from SimpleX lets you register a free name." }
 
 const MISTYPED: CodeVerdict = { kind: "refused", title: "This code is not valid", line: "Check it for a mistyped character." }
+const NO_CAMERA: CodeVerdict = { kind: "refused", title: "The camera could not be used", line: "Allow the camera, or paste the code." }
+const SCAN_HINT = "Point the camera at the QR code of your name code."
 const UNFINISHED: CodeVerdict = { kind: "refused", title: "This is not a SimpleX names code", line: "Check it and try again." }
 
 const ownerLine = (name: string) => `Name code of ${name}.simplex. Adding it shows the name in Your names, where you can edit its links.`
@@ -61,13 +69,17 @@ async function judgeNameCode(text: string): Promise<CodeVerdict> {
 }
 
 // A typo is answered on the page; a prepaid code asks the service, which spends nothing, and a name code finds its orders.
-async function judgeCode(text: string, signal: AbortSignal): Promise<CodeVerdict> {
+// A field for one name's order takes only a prepaid code that covers that name.
+async function judgeCode(text: string, signal: AbortSignal, forName?: string): Promise<CodeVerdict> {
   const parsed = parseNameCode(text)
   if (parsed === null) return MISTYPED
-  if (parsed.kind === "owner") return judgeNameCode(text)
+  if (parsed.kind === "owner") return forName === undefined ? judgeNameCode(text) : NAME_CODE
   try {
     const answer = await api.checkCode(parsed.display, signal)
-    if (answer.state === "unused") return unused({ display: parsed.display, minLength: answer.minLength, years: answer.years })
+    if (answer.state === "unused") {
+      const code = { display: parsed.display, minLength: answer.minLength, years: answer.years }
+      return forName !== undefined && forName.length < code.minLength ? notCovering(code) : unused(code)
+    }
     const [title, line] = STATE_LINES[answer.state]
     // the service names no order for a code in use; this browser's own order that holds it is linked
     const holder = answer.state === "reserved" ? store.orders().find((o) => o.prepaidCode === parsed.display) : undefined
@@ -86,7 +98,7 @@ const JUDGE_PAUSE_MS = 400
 // judged once typing pauses, and again once a wait the service asked for is over. One too short is refused once the
 // reader is done: on Enter, or as focus leaves the field for the page, not for another window. Nothing is judged once the
 // signal ends. The returned check judges the code at once.
-function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => void, signal: AbortSignal): () => void {
+function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => void, signal: AbortSignal, forName?: string): () => void {
   let seq = 0
   let pause: ReturnType<typeof setTimeout> | undefined
   const forget = () => {
@@ -95,7 +107,7 @@ function watchCode(input: HTMLInputElement, show: (v: CodeVerdict | null) => voi
   }
   signal.addEventListener("abort", forget, { once: true })
   const judge = async (mine: number) => {
-    const v = await judgeCode(input.value.trim(), signal)
+    const v = await judgeCode(input.value.trim(), signal, forName)
     if (mine !== seq || signal.aborted) return
     show(v)
     if (v.kind === "refused" && v.checkAgainIn) pause = setTimeout(() => void judge(mine), v.checkAgainIn * 1000)
@@ -129,13 +141,17 @@ const said = (v: CodeVerdict) => v.kind !== "refused" ? v.line : v.line ? `${v.t
 // what was typed in a field, by its key, shown and judged again when its page is opened again
 const typed = new Map<string, string>()
 
-// `heard` hears each verdict, and nothing while the code is being typed.
-export function codeField(key: string, label: string, heard: (v: CodeVerdict | null) => void): HTMLElement {
+// `heard` hears each verdict, and nothing while the code is being typed. A field for an order takes only a prepaid code
+// that covers its name, and starts with the order's code, if any, when nothing was typed there.
+export function codeField(key: string, label: string, heard: (v: CodeVerdict | null) => void, order?: { name: string; code?: string }): HTMLElement {
   return kept(key, () => {
     const verdictId = `${key}-verdict`
-    const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, spellcheck: "false", placeholder: "SN…", autocomplete: "off", value: typed.get(key) })
+    const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, spellcheck: "false", placeholder: "SN…", autocomplete: "off",
+      value: typed.get(key) ?? order?.code })
     const check = el("button", { class: "btn lens", type: "button", "aria-label": "Check" }, icon("search"))
-    const box = el("label", { class: "field code-input" }, input, check)
+    // a phone with a camera reads the code from its QR code, as another device shows it
+    const scan = scanButton(() => void scanned())
+    const box = el("label", { class: "field code-input" }, input, scan, check)
     const line = liveRegion("verdict")
     line.id = verdictId
     const life = new AbortController()
@@ -156,7 +172,23 @@ export function codeField(key: string, label: string, heard: (v: CodeVerdict | n
       } else refill(line, v && said(v), v?.kind === "refused" && v.link ? [" ", el("a", { href: v.link }, "Open that order")] : null)
       heard(v)
     }
-    check.addEventListener("click", watchCode(input, show, life.signal))
+    check.addEventListener("click", watchCode(input, show, life.signal, order?.name))
+    // one scan at a time, ended with the field's page; a code read is judged at once, as a pasted one is
+    async function scanned(): Promise<void> {
+      scan.disabled = true
+      try {
+        const text = await scanQr(life.signal, SCAN_HINT)
+        if (text !== null) {
+          input.value = text.trim()
+          input.dispatchEvent(new InputEvent("input", { inputType: "insertFromPaste" }))
+        }
+      } catch {
+        if (!life.signal.aborted) show(NO_CAMERA)
+      } finally {
+        scan.disabled = false
+      }
+      if (!life.signal.aborted) input.focus()
+    }
     // a name code is never kept to show again, nor most of one mistyped or cut short, as anyone who sees it can take the name
     input.addEventListener("input", () => {
       if (mayBeOwnerCode(input.value)) typed.delete(key)

@@ -39,7 +39,7 @@ test("Back is in the window and reached by the keyboard on every screen that has
 
   await search(page, uniqueLabel("back"))
   await onStep(page).getByRole("button", { name: "Register" }).click()
-  await expect(onStep(page).getByRole("heading", { name: "What should your name open?" })).toBeVisible()
+  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
   await backReady(page, "Links")
   await onStep(page).getByRole("button", { name: "Skip for now" }).click()
   await expect(onStep(page).getByRole("heading", { name: "Save your name code" })).toBeVisible()
@@ -85,7 +85,7 @@ async function moveAround(page: Page): Promise<string[]> {
   await page.getByLabel("Name", { exact: true }).press("Enter")
   await expect(page.locator(".answer .row")).toBeVisible()
   await page.getByRole("button", { name: "Register" }).click()
-  await expect(onStep(page).getByRole("heading", { name: "What should your name open?" })).toBeVisible()
+  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
   await page.locator(".top-links .theme-switch").click()
   // the switch's transitions have started two frames on, and are recorded until they end
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))

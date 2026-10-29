@@ -7,7 +7,7 @@ import { LINK_MAX_BYTES } from "../src/names.ts"
 import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
   blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, mockRegistration, onStep, oracleQuote, payButton, previewsShown, REGISTRATION_MS,
-  offCentre, orderOwnerCode, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered, withStripeKey, AVAILABLE_BRIEF, TAKEN_BRIEF,
+  offCentre, orderOwnerCode, qrText, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered, withStripeKey, AVAILABLE_BRIEF, TAKEN_BRIEF,
 } from "./helpers.ts"
 
 // the card form these tests pay with is the dev server's stand-in; a production build loads Stripe's own
@@ -258,7 +258,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await page.getByRole("button", { name: "Register" }).click()
   const step = onStep(page)
 
-  await expect(step.getByRole("heading", { name: "What should your name open?" })).toBeFocused()
+  await expect(step.getByRole("heading", { name: "Your name's links" })).toBeFocused()
   await expect(step.locator(".lead")).toHaveText("Paste your SimpleX contact address or channel link. You can change it later.")
   await expect(step.getByRole("button", { name: "Skip for now" })).toBeVisible()
   await expect(step.getByRole("button", { name: "Continue" }), "Continue waits for a link").toBeDisabled()
@@ -287,11 +287,11 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
 
   await expect(step.getByRole("heading", { name: "Check your order" })).toBeFocused()
   // the order, then how it pays and what to know before paying, in one column, and under it the line a wait would say
-  expect(await step.locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["card order", "pay-with", "notes"])
+  expect(await step.locator(".review > *").evaluateAll((nodes) => nodes.map((n) => n.className))).toEqual(["card order", "pay-with", "have-code", "notes"])
   await expect(step.locator(".screen-body > .review + [role=status] + .mid")).toHaveCount(1)
   await expect(step.locator(".card.order .name")).toHaveText(`${label}.simplex`)
   // the term holds the free days until the paid years start, which are folded into it
-  await expect(step.locator(".card.order .trow")).toHaveText([/^Term2 years and (\d{2,} days|1 day)$/, /^Registered until31\u00a0December 2028$/, /^Total\$\d+$/])
+  await expect(step.locator(".card.order .trow")).toHaveText([/^Term2 years and (\d{2,} days|1 day)Early adopter bonus: your 2 years start on 1\u00a0January 2027\.$/, /^Registered until31\u00a0December 2028$/, /^Total\$\d+$/])
   // each link as the chat it opens, read only
   await expect(step.locator(".card.order .chat")).toHaveCount(2)
   await expect(step.getByRole("button", { name: "Contact F1Y8m3, contact address" })).toBeVisible()
@@ -402,6 +402,90 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await link.blur()
   await expect(page.locator(".link-field").first().locator(".entity")).toBeVisible({ timeout: 10_000 })
   await page.unrouteAll({ behavior: "wait" })
+})
+
+// where each part of the review stands, which nothing shown over it may change
+const reviewLayout = (page: Page) => onStep(page).locator(".screen-body, .card.order, .trow, .pay-with, .notes, .check.terms, .actions-row .btn")
+  .evaluateAll((nodes) => nodes.map((n) => [n.className, ...Object.values(n.getBoundingClientRect().toJSON())]))
+const bonusOf = (page: Page) => onStep(page).getByRole("button", { name: /^and (\d+ days|1 day)$/ })
+const termStartOf = (page: Page) => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).termStart as number, CHECKOUT_KEY)
+const inWindow = async (page: Page, node: Locator) => {
+  const box = (await node.boundingBox())!
+  const { width, height } = page.viewportSize()!
+  return box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height
+}
+const termLines = (page: Page) => onStep(page).locator(".trow").first().locator("> span").last()
+  .evaluate((value) => new Set([...value.getClientRects()].map((r) => Math.round(r.top))).size)
+
+test("the term's free days are the early adopter bonus, explained on hover, focus and tap, with nothing moving", async ({ page, browser, baseURL }) => {
+  await search(page, uniqueLabel("bonus"))
+  await toReview(page, false)
+  const hint = `Early adopter bonus: your 2 years start on ${dateOf(await termStartOf(page))}.`
+  const bonus = bonusOf(page)
+  const tip = onStep(page).getByRole("tooltip")
+  await expect(bonus).toHaveAccessibleDescription(hint)
+  await expect(tip).toBeHidden()
+  const okColour = await page.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement("i"))
+    probe.style.color = "var(--ok-fg)"
+    const colour = getComputedStyle(probe).color
+    probe.remove()
+    return colour
+  })
+  expect(await bonus.evaluate((b) => getComputedStyle(b).color), "the free days in the success colour").toBe(okColour)
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    expect(await termLines(page), `the term on one line at ${size.width} px`).toBe(1)
+  }
+  await page.setViewportSize(FIT_SIZES[0])
+  const before = await reviewLayout(page)
+
+  await bonus.hover()
+  await expect(tip).toBeVisible()
+  await expect(tip).toHaveText(hint)
+  expect(await inWindow(page, tip), "the hint on hover in the window").toBe(true)
+  expect(await reviewLayout(page), "the hint shown on hover moves nothing").toEqual(before)
+  await page.mouse.move(0, 0)
+  await expect(tip).toBeHidden()
+
+  // the keyboard reaches the days from Back, as the first control after it
+  await onStep(page).locator(".back").focus()
+  await page.keyboard.press("Tab")
+  await expect(bonus).toBeFocused()
+  await expect(tip).toBeVisible()
+  expect(await reviewLayout(page), "the hint shown on focus moves nothing").toEqual(before)
+  await page.keyboard.press("Escape")
+  await expect(tip, "Escape hides the hint").toBeHidden()
+  await expect(bonus).toBeFocused()
+
+  // the same checkout on a touch screen, opened at its review, as WebKit here crashes on the links step's camera check
+  const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
+  const context = await browser.newContext({ baseURL, viewport: FIT_SIZES[1], hasTouch: true, reducedMotion: "reduce" })
+  await context.addInitScript(([key, value]) => sessionStorage.setItem(key, value), [CHECKOUT_KEY, checkout])
+  const phone = await context.newPage()
+  await phone.goto("/#/checkout")
+  await expect(onStep(phone).getByRole("heading", { name: "Check your order" })).toBeVisible()
+  const phoneBefore = await reviewLayout(phone)
+  await bonusOf(phone).tap()
+  await expect(onStep(phone).getByRole("tooltip")).toBeVisible()
+  expect(await inWindow(phone, onStep(phone).getByRole("tooltip")), "the hint on tap in the window").toBe(true)
+  expect(await reviewLayout(phone), "the hint shown on tap moves nothing").toEqual(phoneBefore)
+  await context.close()
+})
+
+test("a term that has started has no free days, so no bonus or hint, which come back with the days", async ({ page }) => {
+  await search(page, uniqueLabel("nobonus"))
+  await toReview(page, false)
+  const termStart = await termStartOf(page)
+  const startAt = (at: number) => page.evaluate(([key, start]) => sessionStorage.setItem(key as string, JSON.stringify({ ...JSON.parse(sessionStorage.getItem(key as string)!), termStart: start })), [CHECKOUT_KEY, at])
+  await startAt(Math.floor(Date.now() / 1000) - 86400)
+  await page.reload()
+  await expect(onStep(page).locator(".trow").first()).toHaveText("Term2 years")
+  await expect(bonusOf(page)).toHaveCount(0)
+  await expect(onStep(page).locator("[role=tooltip]")).toHaveCount(0)
+  await startAt(termStart)
+  await page.reload()
+  await expect(bonusOf(page)).toHaveAccessibleDescription(/^Early adopter bonus/)
 })
 
 test("a link's late preview never fills the field once it holds another link, whose own preview it waits for", async ({ page, request }) => {
@@ -596,12 +680,25 @@ test("Continue on the links step waits for a link being checked, and takes focus
   await expect(step.getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
 })
 
+test("a Monero invoice's wallet link is monero:// for Monero GUI on a laptop and monero: on a phone, and its QR keeps monero:", async ({ page, request }) => {
+  const { invoiceId } = await startOrder(page, uniqueLabel("xmrlink"), { method: "xmr" })
+  await expect(page.getByRole("heading", { name: "Pay with Monero" })).toBeVisible()
+  const { address, cryptoAmount } = await (await request.get(`${MOCK}/api/invoice/${invoiceId}`)).json() as { address: string; cryptoAmount: string }
+  const wallet = onStep(page).getByRole("link", { name: "Open in wallet" })
+  await expect(wallet).toHaveAttribute("href", `monero://${address}?tx_amount=${cryptoAmount}`)
+  await expect(wallet.locator("xpath=..")).toHaveClass(/\bqr\b/)
+  expect(await qrText(onStep(page).locator(".card.pay .qr svg")), "the QR").toBe(`monero:${address}?tx_amount=${cryptoAmount}`)
+  await page.setViewportSize(FIT_SIZES[1])
+  await expect(wallet).toHaveClass(/\bwallet\b/)
+  await expect(wallet).toHaveAttribute("href", `monero:${address}?tx_amount=${cryptoAmount}`)
+})
+
 test("the owner code restores an order in another browser, and a bad code is refused", async ({ page, browser, request }) => {
   const label = uniqueLabel("rest")
   const { invoiceId, ownerCode } = await startOrder(page, label, { method: "xmr" })
   await expect(page.getByRole("heading", { name: "Pay with Monero" })).toBeVisible()
   const { address, cryptoAmount } = await (await request.get(`${MOCK}/api/invoice/${invoiceId}`)).json() as { address: string; cryptoAmount: string }
-  await expect(onStep(page).getByRole("link", { name: "Open in wallet" }), "the Monero URI").toHaveAttribute("href", `monero:${address}?tx_amount=${cryptoAmount}`)
+  await expect(onStep(page).getByRole("link", { name: "Open in wallet" }), "the Monero URI").toHaveAttribute("href", `monero://${address}?tx_amount=${cryptoAmount}`)
   await control(request, `confirming/${invoiceId}`)
   await expect(page.getByText("Waiting for 1 confirmation")).toBeVisible()
   await shot(page, "N5-confirming")
@@ -641,7 +738,7 @@ test("a card order waits for Stripe, blocks a second card order meanwhile, then 
   await expect(onStep(page).getByRole("button", { name: /^Pay \$\d+$/ })).toBeVisible()
   await expect(onStep(page).getByText("The card form is Stripe's. Nothing is charged until you pay.")).toBeVisible()
   // the development stand-in says what it is, and the invoice can be cancelled from the form as from a crypto invoice
-  await expect(onStep(page).getByText("Development: no card is checked.")).toBeVisible()
+  await expect(onStep(page).locator(".stripe > .label")).toHaveText("Test card form: no Stripe key is set, so Pay simulates a payment.")
   await expect(onStep(page).getByRole("button", { name: "Cancel this invoice" })).toBeVisible()
   await onStep(page).getByRole("button", { name: /^Pay \$/ }).click()
   await expect(page.getByText("Waiting for Stripe to confirm")).toBeVisible()

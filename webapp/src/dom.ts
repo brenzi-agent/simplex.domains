@@ -1,6 +1,7 @@
 // Building blocks for the views, as the mockups (plans/names-codes/mockups/domains.js) draw them.
 import { seconds } from "./format.ts"
 import { icon, type IconName } from "./icons.ts"
+import { qrSvg } from "./qr.ts"
 
 export type Kid = Node | string | null | undefined | false | Kid[]
 type Attrs = Record<string, string | boolean | ((e: Event) => void) | undefined>
@@ -161,8 +162,9 @@ const MASK = "\u2022"
 // the code's prefix, its groups drawn as dots, so it can be copied without being seen
 const masked = (code: string) => code.split("-").map((group, i) => i ? MASK.repeat(group.length) : group).join("-")
 
-// A name code is shown only on Show, as anyone who sees it can take the name; Copy copies it either way.
-export function codeDisplay(code: string, testId?: string, hidden = false): HTMLElement {
+// A name code is shown only on Show, as anyone who sees it can take the name; Copy copies it either way. `onShown` hears
+// each Show and Hide.
+export function codeDisplay(code: string, testId?: string, hidden = false, onShown?: (shown: boolean) => void): HTMLElement {
   const text = el("span", { class: "code-text", "data-testid": testId }, ...(hidden ? [masked(code)] : codeText(code)))
   const buttons = el("span", { class: "code-buttons" }, copyButton(code, "field-copy", "Copy code"))
   if (hidden) {
@@ -171,12 +173,16 @@ export function codeDisplay(code: string, testId?: string, hidden = false): HTML
       refill(text, ...(shown ? codeText(code) : [masked(code)]))
       text.classList.toggle("masked", !shown)
       show.textContent = shown ? "Hide" : "Show"
+      onShown?.(shown)
     } }, "Show")
     text.classList.add("masked")
     buttons.prepend(show)
   }
   return el("div", { class: "code-display" }, text, buttons)
 }
+
+// a name code's QR code, holding the code as it is typed, for another device to scan into its code field
+export const nameCodeQr = (code: string) => el("div", { class: "qr" }, qrSvg(code, "QR code of the name code"))
 
 // one visually hidden status region outside main, for what a screen reader would not hear otherwise
 let announcer: HTMLElement | null = null

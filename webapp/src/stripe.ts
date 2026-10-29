@@ -14,6 +14,7 @@ interface PaymentElement {
 }
 interface StripeElements {
   create(kind: "payment", options: { wallets: Record<"applePay" | "googlePay" | "link", "never"> }): PaymentElement
+  update(options: { appearance: Appearance }): void
 }
 interface StripeInstance {
   elements(options: { clientSecret: string; appearance: Appearance }): StripeElements
@@ -94,20 +95,29 @@ function appearance(dark: boolean): Appearance {
 
 type ConfirmOutcome = { kind: "submitted" } | { kind: "invalid" } | { kind: "error"; message: string }
 export type MountedCard = { confirm: () => Promise<ConfirmOutcome>; destroy: () => void }
+// the page's theme: whether it is dark, and its changes, heard until the returned stop is called
+export interface Theme {
+  dark(): boolean
+  watch(follow: (dark: boolean) => void): () => void
+}
 
-// The form once ready, or null when the script, the SDK or the form fails or is not ready within the bound.
-export async function mountCard(key: string, clientSecret: string, target: HTMLElement, dark: boolean): Promise<MountedCard | null> {
+// The form once ready, or null when the script, the SDK or the form fails or is not ready within the bound. The form
+// follows the page's theme in place, as mounting it again would lose what was typed.
+export async function mountCard(key: string, clientSecret: string, target: HTMLElement, theme: Theme): Promise<MountedCard | null> {
   let stalled: ReturnType<typeof setTimeout> | undefined
   const late = new Promise<false>((done) => { stalled = setTimeout(done, CARD_FORM_TIMEOUT_MS, false) })
+  let unwatch: () => void = () => undefined
   try {
     const stripe = await Promise.race([loadStripeJs(), late])
     if (!stripe) return null
     const sdk = stripe(key)
-    const elements = sdk.elements({ clientSecret, appearance: appearance(dark) })
+    const elements = sdk.elements({ clientSecret, appearance: appearance(theme.dark()) })
+    unwatch = theme.watch((dark) => elements.update({ appearance: appearance(dark) }))
     const element = elements.create("payment", { wallets: { applePay: "never", googlePay: "never", link: "never" } })
     element.mount(target)
     const loaded = await Promise.race([new Promise<boolean>((done) => { element.on("ready", () => done(true)); element.on("loaderror", () => done(false)) }), late])
     if (!loaded) {
+      unwatch()
       element.destroy()
       return null
     }
@@ -126,10 +136,12 @@ export async function mountCard(key: string, clientSecret: string, target: HTMLE
         }
       },
       destroy: () => {
+        unwatch()
         try { element.destroy() } catch { /* already gone */ }
       },
     }
   } catch {
+    unwatch()
     return null
   } finally {
     clearTimeout(stalled)

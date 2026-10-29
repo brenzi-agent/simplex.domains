@@ -7,6 +7,8 @@ import { foundry } from "viem/chains"
 import { labelHash, YEAR_S } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import { newOwnerCode, walletOf } from "../src/flow.ts"
+import { readQr } from "../src/scan.ts"
+import { qrPixels } from "../test/qr-image.ts"
 import { mockUrl, pageUrl } from "./slots.ts"
 
 const SCREENSHOTS = process.env.SCREENSHOTS_DIR ?? "screenshots"
@@ -272,6 +274,14 @@ export async function shownCode(page: Page): Promise<Locator> {
   return page.getByTestId("owner-code")
 }
 
+// The text of a QR code as qrSvg draws it: its path's runs of dark modules, read back by jsQR.
+export async function qrText(svg: Locator): Promise<string | null> {
+  const { d, span } = await svg.evaluate((s) => ({ d: s.querySelector("path")!.getAttribute("d")!, span: Number(s.getAttribute("viewBox")!.split(" ")[2]) }))
+  const modules = Array.from({ length: span }, () => new Array<boolean>(span).fill(false))
+  for (const [, x, y, run] of d.matchAll(/M(\d+) (\d+)h(\d+)/g)) modules[Number(y)].fill(true, Number(x), Number(x) + Number(run))
+  return readQr(qrPixels(modules))
+}
+
 // where session.ts keeps the tab's checkout, with the owner code made for it
 export const CHECKOUT_KEY = "simplex-names-checkout"
 export const checkoutOwnerCode = (page: Page) => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).ownerCode as string, CHECKOUT_KEY)
@@ -279,7 +289,7 @@ export const checkoutOwnerCode = (page: Page) => page.evaluate((key) => JSON.par
 export const orderOwnerCode = (page: Page, invoiceId: string) => page.evaluate((id) => Object.values({ ...localStorage }).map((v) => { try { return JSON.parse(v) } catch { return null } })
   .find((o) => o?.invoiceId === id)?.ownerCode as string | undefined, invoiceId)
 
-export const LINKS_HEADING = "What should your name open?"
+export const LINKS_HEADING = "Your name's links"
 export const CODE_HEADING = "Save your name code"
 export const SAVED = "I have saved my name code"
 export const AGREE = /^I agree to SimpleX name terms/

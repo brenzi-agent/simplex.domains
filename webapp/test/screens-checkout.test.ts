@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
-  balanceHeld, changeOf, heldForThisName, methodOf, methodsFor, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, FALLBACK_METHOD, initialState, reduce, screenOf, split, stepFor,
+  awaitsCode, balanceHeld, changeOf, codeEntry, heldForThisName, methodOf, methodsFor, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, FALLBACK_METHOD, initialState, reduce, screenOf, split, stepFor,
 } from "../src/screens/checkout.ts"
 import { timeOf } from "../src/format.ts"
 import { BALANCE_READ_MS, CONFIRMING_READ_MS, heldWords, holderStill, holdWait } from "../src/screens/balance.ts"
@@ -223,6 +223,59 @@ describe("reduce", () => {
     const sent = reduce(s, { type: "send-started" })
     const failed = reduce(reduce(sent, { type: "open-order-seen", order: OPEN_ORDER }), { type: "order-refused", reason: "failed" })
     expect(failed).toEqual({ ...s, openOrder: OPEN_ORDER, refusal: "failed" })
+  })
+})
+
+describe("a code entered on the review", () => {
+  const OTHER = { display: "SN6-DDDDD-EEEEE-FFFFF", minLength: 6, years: 5 }
+  const BALANCE = { source: "reg-1", amount: 500, held: false, heldUntil: null }
+  const opened = reduce(open(), { type: "code-opened" })
+
+  it("is offered as a link where the order is paid, never where the tab's code or a balance pays it", () => {
+    expect(codeEntry(checkout())).toBe("link")
+    expect(codeEntry(checkout({ codeError: "This code was already used." })), "after the service refused a code").toBe("link")
+    expect(codeEntry(checkout({ code: CODE }))).toBeNull()
+    expect(codeEntry(checkout({ balance: BALANCE }))).toBeNull()
+  })
+  it("opens its field in place of the link, which stays open in the stored checkout and waits for a code", () => {
+    expect(changeOf(open(), { type: "code-opened" })).toEqual({ codeHere: true })
+    expect(codeEntry(opened.checkout)).toBe("field")
+    expect(awaitsCode(opened.checkout)).toBe(true)
+    expect(awaitsCode(checkout()), "a paid order").toBe(false)
+    expect(awaitsCode(checkout({ code: CODE })), "the tab's code").toBe(false)
+    expect(changeOf(open({ checkout: checkout({ code: CODE }) }), { type: "code-opened" }), "no field over the tab's code").toBeNull()
+  })
+  it("a code that covers the name makes the order a code order, and anything else typed after it makes it paid again", () => {
+    const coded = reduce(opened, { type: "code-heard", code: OTHER })
+    expect(coded.checkout).toMatchObject({ code: OTHER, codeHere: true })
+    expect(codeEntry(coded.checkout), "the field stays to remove the code").toBe("field")
+    expect(awaitsCode(coded.checkout)).toBe(false)
+    expect(reduce(coded, { type: "code-heard", code: OTHER }), "the same code again changes nothing").toBe(coded)
+    expect(reduce(coded, { type: "code-heard", code: null }).checkout).toMatchObject({ code: null, codeHere: true })
+  })
+  it("a code heard ends the service's refusal of the last one", () => {
+    const refused = reduce(open({ checkout: checkout({ codeError: "This code was already used.", codeHere: true }) }), { type: "code-heard", code: OTHER })
+    expect(refused.checkout.codeError).toBeUndefined()
+  })
+  it("a field never opened changes nothing, so the tab's code stays", () => {
+    const tabs = open({ checkout: checkout({ code: CODE }) })
+    expect(changeOf(tabs, { type: "code-heard", code: null })).toBeNull()
+    expect(changeOf(tabs, { type: "code-heard", code: OTHER })).toBeNull()
+  })
+  it("removed, it takes the code off and closes the field, back to the paid choices", () => {
+    const removed = reduce(reduce(opened, { type: "code-heard", code: OTHER }), { type: "code-removed" })
+    expect(removed.checkout.code).toBeNull()
+    expect(removed.checkout.codeHere).toBeUndefined()
+    expect(codeEntry(removed.checkout)).toBe("link")
+    expect(awaitsCode(removed.checkout)).toBe(false)
+    expect(changeOf(open({ checkout: checkout({ code: CODE }) }), { type: "code-removed" }), "the tab's code is taken off in the header").toBeNull()
+  })
+  it("refused by the service as the order is sent, the code is taken off and the field closed", () => {
+    const sent = reduce(reduce(opened, { type: "code-heard", code: OTHER }), { type: "send-started" })
+    const refused = reduce(sent, { type: "order-refused", reason: "code", error: "This code was already used." })
+    expect(refused.checkout).toMatchObject({ code: null, codeError: "This code was already used." })
+    expect(codeEntry(refused.checkout)).toBe("link")
+    expect(reduce(refused, { type: "code-opened" }).checkout, "another code opened ends the refusal's line").toMatchObject({ codeHere: true, codeError: undefined })
   })
 })
 

@@ -1,5 +1,5 @@
-// The camera reading a link's QR code, as the app's own scan does: the platform's detector where it has one, else jsQR.
-import { el } from "../dom.ts"
+// The camera reading a QR code into a field, as the app's own scan does: the platform's detector where it has one, else jsQR.
+import { el, icon } from "../dom.ts"
 import { readQr } from "../scan.ts"
 
 interface Detector { detect(source: HTMLVideoElement): Promise<{ rawValue: string }[]> }
@@ -12,10 +12,12 @@ const READ_EVERY_MS = 200
 // the widest frame jsQR is given: a link's QR fills much of the view, so a camera's full frame only slows it
 const READ_WIDTH = 640
 const SCAN_TITLE_ID = "scan-title"
+// a touch screen's pointer: the camera is asked about on a phone only
+const TOUCH = "(pointer: coarse)"
 
 let cameras: Promise<boolean> | null = null
 // the browser lists the kinds of devices without asking for the camera, so the button shows only where one is
-export function hasCamera(): Promise<boolean> {
+function hasCamera(): Promise<boolean> {
   cameras ??= navigator.mediaDevices?.enumerateDevices
     ? navigator.mediaDevices.enumerateDevices().then((devices) => devices.some((d) => d.kind === "videoinput"), () => false)
     : Promise.resolve(false)
@@ -44,10 +46,23 @@ function pixelReader(): Reader {
 
 const stopTracks = (stream: MediaStream) => { for (const track of stream.getTracks()) track.stop() }
 
-// Shows the rear camera over the page until it reads a QR code, resolving with its text, or with null once closed or once
-// `signal` ends, as the page that asked is left, the permission prompt open or not. A camera refused, missing or busy
-// rejects with the browser's DOMException, and so does a reader that cannot start, the camera stopped.
-export async function scanQr(signal: AbortSignal): Promise<string | null> {
+// A field's scan button, shown on a phone with a camera; `found` hears whether it has one.
+export function scanButton(onclick: () => void, found?: (camera: boolean) => void): HTMLButtonElement {
+  const scan = el("button", { class: "scan", type: "button", "aria-label": "Scan QR code", hidden: true, onclick }, icon("scan"))
+  if (matchMedia(TOUCH).matches) {
+    void hasCamera().then((camera) => {
+      scan.hidden = !camera
+      found?.(camera)
+    })
+  }
+  return scan
+}
+
+// Shows the rear camera over the page, with `hint` saying what to point it at, until it reads a QR code, resolving with
+// its text, or with null once closed or once `signal` ends, as the page that asked is left, the permission prompt open or
+// not. A camera refused, missing or busy rejects with the browser's DOMException, and so does a reader that cannot start,
+// the camera stopped.
+export async function scanQr(signal: AbortSignal, hint: string): Promise<string | null> {
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
   if (signal.aborted) {
     stopTracks(stream)
@@ -68,7 +83,7 @@ export async function scanQr(signal: AbortSignal): Promise<string | null> {
   dialog.append(el("div", { class: "modal-backdrop", onclick: close }),
     el("div", { class: "pop scan-pop" },
       el("h2", { id: SCAN_TITLE_ID }, "Scan a QR code"),
-      el("p", { class: "soft" }, "Point the camera at the QR code of your SimpleX address or channel link."),
+      el("p", { class: "soft" }, hint),
       video,
       el("button", { class: "text-link", type: "button", onclick: close }, "Cancel")))
   return new Promise((resolve) => {

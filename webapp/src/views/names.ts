@@ -1,10 +1,9 @@
 // Your names: this browser's orders and codes, restoring an order with its name code, and editing a name's links.
 import * as api from "../api.ts"
-import { alertBox, announce, btn, chip, codeDisplay, copyButton, el, type Kid, nameText, nameTitle, reducedMotion, setAction, waitOut } from "../dom.ts"
+import { alertBox, announce, btn, chip, codeDisplay, copyButton, el, type Kid, nameCodeQr, nameText, nameTitle, reducedMotion, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dateOf, dollars, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
-import { qrSvg } from "../qr.ts"
 import {
   balanceRows, type BalanceRow, CODE_CHIPS, holderOf, EDIT_RETRY_MS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
   againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, nameRows, ORDER_CHIP_WORDS, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
@@ -295,7 +294,7 @@ function codeToggle(id: string, shown: boolean): HTMLElement {
 
 const rowCode = (code: string) => el("div", { class: "row-code" },
   el("p", { class: "note" }, "The name code owns the name and edits its links. Keep it safe."),
-  codeDisplay(code), el("div", { class: "qr" }, qrSvg(code, "name code")))
+  codeDisplay(code), nameCodeQr(code))
 
 function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
   const id = o.registrationId

@@ -206,7 +206,7 @@ function checkOut(s: SearchState, label: string, answer: Available, closedCode: 
     const agreed = started.agreed && api.currentTerms(started) === api.currentTerms(answer)
     const accepted = started.accepted && api.currentTerms(started) === api.currentTerms(answer)
     session.updateCheckout(label, {
-      ...quote, agreed, accepted, termsChanged: undefined, searchAt: historyPlace(), code, codeError: undefined, balance, balanceChange: undefined, ownerCode: ownerCode ?? started.ownerCode,
+      ...quote, agreed, accepted, termsChanged: undefined, searchAt: historyPlace(), code, codeError: undefined, codeHere: undefined, balance, balanceChange: undefined, ownerCode: ownerCode ?? started.ownerCode,
       saved: started.saved || saved,
     })
     return go(checkoutUrl("links"))

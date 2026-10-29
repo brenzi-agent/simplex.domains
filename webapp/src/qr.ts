@@ -351,7 +351,7 @@ class Matrix {
   }
 }
 
-function encodeQr(payload: string): QrSymbol | null {
+export function encodeQr(payload: string): QrSymbol | null {
   const bytes = new TextEncoder().encode(payload);
   const version = versionFor(bytes.length);
   if (version === null) return null;
@@ -376,12 +376,13 @@ function encodeQr(payload: string): QrSymbol | null {
   return { version, size: matrix.size, mask: best, modules: matrix.modules };
 }
 
-export function paymentUri(method: "btc" | "xmr", address: string, amount: string): string | null {
+// Monero GUI, a laptop's wallet, opens only `monero://`; a phone's wallets and QR readers take `monero:`.
+export function paymentUri(method: "btc" | "xmr", address: string, amount: string, desktop = false): string | null {
   if (address === "" || amount === "") return null;
-  const scheme = method === "btc" ? "bitcoin" : "monero";
+  const scheme = method === "btc" ? "bitcoin:" : desktop ? "monero://" : "monero:";
   const parameter = method === "btc" ? "amount" : "tx_amount";
   // The address is percent-encoded so that a `?`, `&`, or `#` in it cannot add its own parameters to the URI.
-  return `${scheme}:${encodeURIComponent(address)}?${parameter}=${encodeURIComponent(amount)}`;
+  return `${scheme}${encodeURIComponent(address)}?${parameter}=${encodeURIComponent(amount)}`;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
