@@ -8,6 +8,7 @@ import {
 import type { ChatKind, Profile } from "../../src/api.ts"
 import { codeHash, parseNameCode } from "../../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, durationFor, YEAR_S } from "../../src/crypto/registration.ts"
+import { CODES_ONLY, type Mode } from "../../src/mode.ts"
 import { labelProblem, linkKind, type LinkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
 import {
   baseRegistrar, chainNow, controller, deployment, holder, mined, NotSent, ownerOf, read, registry, resolver, Reverted, send, sponsor,
@@ -164,9 +165,10 @@ const taking = new Map<string, Promise<void>>()
 // reads fail; each write to a registration waits writeDelayMs before its check, so a test can race two
 // the next reveal finds its links refused, as the service's link check would if it no longer took what the page took;
 // a fetch of a link in fetchDelays takes that many milliseconds;
-// a late payment is credited at the lower of its invoice's rate and the coin's current rate in cents, when one is set
-const control: { chainDown: boolean; limitedUntil: number; invoiceError: string | null; findLimitedUntil: number; unsentUntil: number; unreadUntil: number; writeDelayMs: number; refuseLinks: boolean; fetchDelays: Record<string, number>; rates: Record<Coin, bigint | null> } =
-  { chainDown: false, limitedUntil: 0, invoiceError: null, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0, writeDelayMs: 0, refuseLinks: false, fetchDelays: {}, rates: { btc: null, xmr: null } }
+// a late payment is credited at the lower of its invoice's rate and the coin's current rate in cents, when one is set;
+// in codes mode, as the service's [names] codes_only, names are registered only with prepaid codes
+const control: { mode: Mode; chainDown: boolean; limitedUntil: number; invoiceError: string | null; findLimitedUntil: number; unsentUntil: number; unreadUntil: number; writeDelayMs: number; refuseLinks: boolean; fetchDelays: Record<string, number>; rates: Record<Coin, bigint | null> } =
+  { mode: "open", chainDown: false, limitedUntil: 0, invoiceError: null, findLimitedUntil: 0, unsentUntil: 0, unreadUntil: 0, writeDelayMs: 0, refuseLinks: false, fetchDelays: {}, rates: { btc: null, xmr: null } }
 
 const sendTx: typeof send = (...args) => Date.now() < control.unsentUntil ? Promise.reject(new NotSent()) : send(...args)
 // Stripe's least charge in US dollars
@@ -620,8 +622,14 @@ async function injectedRefusal(length: number): Promise<void> {
   throw new HttpError(INVOICE_ERRORS[injected], injected, extra, injected === "rate_limited" ? RETRY_AFTER_SECONDS : null)
 }
 
+// in codes mode nothing is paid: no invoice for a name, and no spend of a balance
+function refuseWhenCodesOnly(): void {
+  if (control.mode === "codes") throw new HttpError(403, CODES_ONLY)
+}
+
 export async function createInvoice(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (body.kind !== "name") throw badRequest()
+  refuseWhenCodesOnly()
   const order = orderBody(body)
   const method = body.method
   if (!isMethod(method)) throw badRequest()
@@ -1082,6 +1090,7 @@ function spendable(source: Registration, seen: number): Invoice | null {
 // Another name for the owner of the order at sourceId, paid from that order's balance: the price at once when it covers it,
 // else all of it, held until an invoice for the difference is paid.
 export async function spend(sourceId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  refuseWhenCodesOnly()
   const { price, balance, method } = body
   if (!Number.isInteger(price) || !Number.isInteger(balance) || (price as number) <= 0 || (balance as number) <= 0 || !Number.isInteger(body.timestamp)) throw badRequest()
   const difference = (price as number) > (balance as number)
@@ -1430,6 +1439,15 @@ export function controlSearch(body: Record<string, unknown>): Record<string, unk
   if (typeof delays === "object" && delays !== null && Object.values(delays).every((ms) => Number.isInteger(ms) && ms >= 0)) control.fetchDelays = delays as Record<string, number>
   return { ok: true }
 }
+
+// The service's mode as a restart with codes_only on or off sets it; the dev server reads it into the page it serves.
+export function controlMode(body: Record<string, unknown>): Record<string, unknown> {
+  if (body.mode !== "open" && body.mode !== "codes") throw badRequest()
+  control.mode = body.mode
+  return { mode: control.mode }
+}
+
+export const modeNow = () => ({ mode: control.mode })
 
 // The service's terms setting as a restart with a new ini sets it: another version, or another page.
 export function controlTerms(body: Record<string, unknown>): Record<string, unknown> {
