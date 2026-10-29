@@ -9,7 +9,7 @@ import { dateOf } from "../src/format.ts"
 import {
   agreeToTerms, answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, offCentre, onStep,
   payButton, previewsShown, qrText, savedToReview, search, searchName, sevenLetters, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
-  acceptedOnChain, COMMUNITY_TERMS_HASH, contractsOwnerLists, NAME_TERMS_HASH,
+  acceptedOnChain, COMMUNITY_TERMS_HASH, contractsOwnerLists, GENERAL_TERMS_HASH,
 } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
@@ -145,7 +145,7 @@ test("a prepaid code from Check your code shows a name as Free and registers it 
 })
 
 // These cases need a prepaid code alone, from /control/code, so they run against the service as well as the mock.
-test("a prepaid code registers a name with its links, which its records on chain then hold, its register recording the owner's acceptance of the name terms", async ({ page, request }) => {
+test("a prepaid code registers a name with its links, which its records on chain then hold, its register recording the owner's acceptance of the general terms", async ({ page, request }) => {
   const links = { contact: contactLink("CL"), channel: channelLink("CL") }
   const { registrationId, label } = await registerWithCode(page, request, "clinks", links)
   await waitRegistered(page, label)
@@ -155,7 +155,7 @@ test("a prepaid code registers a name with its links, which its records on chain
   const owner = checksumAddress(walletOf(await ownerCodeOf(page, registrationId))!.address)
   expect(answer.owner, "the name code's wallet owns the name").toBe(owner)
   const { registerTx } = await (await request.get(`${MOCK}/api/registration/${registrationId}`)).json() as { registerTx: string }
-  expect(await acceptedOnChain(registerTx)).toEqual({ kind: "name", name: label, holder: owner, termsHash: NAME_TERMS_HASH })
+  expect(await acceptedOnChain(registerTx)).toEqual({ kind: "general", name: label, holder: owner, termsHash: GENERAL_TERMS_HASH })
   await page.goto(`/#/?name=${label}`)
   await expect(page.locator(".answer .row .chat"), "the name's answer opens both chats").toHaveCount(2)
 })

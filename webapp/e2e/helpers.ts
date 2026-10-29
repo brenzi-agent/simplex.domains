@@ -56,7 +56,7 @@ export async function mockRegistration(request: APIRequestContext, invoiceId: st
 
 // The worker's chain, read directly: the expiry the registrar holds and the price the oracle quotes.
 const deployment = JSON.parse(readFileSync(new URL(`../dev/local-chain-${SLOT}.json`, import.meta.url), "utf8")) as
-  { rpcUrl: string; chainId: number; tld: string; ens: Hex; resolver: Hex; controller: Hex; baseRegistrar: Hex; namePolicy: Hex; nameTermsLink: string; nameTermsHash: Hex
+  { rpcUrl: string; chainId: number; tld: string; ens: Hex; resolver: Hex; controller: Hex; baseRegistrar: Hex; namePolicy: Hex; generalTermsLink: string; generalTermsHash: Hex
     communityTermsLink: string; communityTermsHash: Hex; ownerKey: Hex }
 const chain = createPublicClient({ transport: http(deployment.rpcUrl) })
 const CHAIN_ABI = parseAbi([
@@ -64,14 +64,14 @@ const CHAIN_ABI = parseAbi([
   "function rentPriceUSD(string label, uint256 duration) view returns ((uint256 base, uint256 premium))",
   "function setResolver(bytes32 node, address resolver)",
   "function setText(bytes32 node, string key, string value)",
-  "event NameTermsAccepted(string name, address indexed holder, bytes32 termsHash)",
-  "event CommunityNameTermsAccepted(string name, address indexed holder, bytes32 termsHash)",
-  "function addBonaFideNames(string[] names)",
+  "event GeneralTermsAccepted(string name, address indexed holder, bytes32 termsHash)",
+  "event CommunityTermsAccepted(string name, address indexed holder, bytes32 termsHash)",
+  "function addCommunityNames(string[] names)",
 ])
 // the terms dev/deploy.ts linked on chain, by their hashes, and the terms an order of a plain and of a community name signs
-export const NAME_TERMS_HASH = deployment.nameTermsHash
+export const GENERAL_TERMS_HASH = deployment.generalTermsHash
 export const COMMUNITY_TERMS_HASH = deployment.communityTermsHash
-export const PLAIN_TERMS = NAME_TERMS_HASH.slice(2)
+export const PLAIN_TERMS = GENERAL_TERMS_HASH.slice(2)
 export const COMMUNITY_TERMS = `community/${COMMUNITY_TERMS_HASH.slice(2)}`
 export const NAME_POLICY = deployment.namePolicy
 // gas for a few of an owner's own transactions, which anvil gives the owner's wallet
@@ -106,12 +106,12 @@ export const ownerSetsText = (ownerCode: string, label: string, key: string, val
   asOwner(ownerCode, deployment.resolver, encodeFunctionData({ abi: CHAIN_ABI, functionName: "setText", args: [nodeOf(label), key, value] }))
 
 // The terms the owner accepted for the commitment before its register, of the name's kind, as the register's own
-// NameTermsAccepted or CommunityNameTermsAccepted event records them: the register consumes the acceptance, so the policy's
+// GeneralTermsAccepted or CommunityTermsAccepted event records them: the register consumes the acceptance, so the policy's
 // acceptedTerms reads zero after it.
-export async function acceptedOnChain(registerTx: string): Promise<{ kind: "name" | "community"; name: string; holder: string; termsHash: Hex } | null> {
+export async function acceptedOnChain(registerTx: string): Promise<{ kind: "general" | "community"; name: string; holder: string; termsHash: Hex } | null> {
   const receipt = await chain.getTransactionReceipt({ hash: registerTx as Hex })
-  const [log] = parseEventLogs({ abi: CHAIN_ABI, eventName: ["NameTermsAccepted", "CommunityNameTermsAccepted"], logs: receipt.logs })
-  return log ? { kind: log.eventName === "CommunityNameTermsAccepted" ? "community" : "name", ...log.args } : null
+  const [log] = parseEventLogs({ abi: CHAIN_ABI, eventName: ["GeneralTermsAccepted", "CommunityTermsAccepted"], logs: receipt.logs })
+  return log ? { kind: log.eventName === "CommunityTermsAccepted" ? "community" : "general", ...log.args } : null
 }
 
 // The contracts' owner lists the name on the name policy's community list from its own key, for a case that also runs
@@ -119,7 +119,7 @@ export async function acceptedOnChain(registerTx: string): Promise<{ kind: "name
 export async function contractsOwnerLists(label: string): Promise<void> {
   const account = privateKeyToAccount(deployment.ownerKey)
   const hash = await createWalletClient({ account, chain: { ...foundry, id: deployment.chainId }, transport: http(deployment.rpcUrl) })
-    .writeContract({ address: deployment.namePolicy, abi: CHAIN_ABI, functionName: "addBonaFideNames", args: [[label]] })
+    .writeContract({ address: deployment.namePolicy, abi: CHAIN_ABI, functionName: "addCommunityNames", args: [[label]] })
   expect((await chain.waitForTransactionReceipt({ hash })).status, "the owner's listing").toBe("success")
 }
 
@@ -297,7 +297,7 @@ export const orderOwnerCode = (page: Page, invoiceId: string) => page.evaluate((
 export const LINKS_HEADING = "Your name's links"
 export const CODE_HEADING = "Save your name code"
 export const SAVED = "I have saved my name code"
-export const AGREE = /^I agree to SimpleX name terms/
+export const AGREE = /^I agree to SimpleX general terms/
 export const COMMUNITY_HEADING = "Community terms"
 export const ACCEPT = /^I accept the community terms/
 
@@ -333,7 +333,7 @@ export async function acceptCommunityTerms(page: Page): Promise<void> {
   await onStep(page).getByRole("button", { name: "Continue" }).click()
 }
 
-// The name terms' box ticked, which a plain name's order waits for, or a community name's own box in its place.
+// The general terms' box ticked, which a plain name's order waits for, or a community name's own box in its place.
 export async function agreeToTerms(page: Page): Promise<void> {
   await tick(page, await onStep(page).getByRole("checkbox", { name: ACCEPT }).count() ? ACCEPT : AGREE)
 }
@@ -491,8 +491,8 @@ export async function waitRegistered(page: Page, label: string): Promise<void> {
 
 export const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
 // the terms an available name's answer asks the buyer to agree to, as dev/deploy.ts links them
-export const TERMS = { hash: NAME_TERMS_HASH, link: deployment.nameTermsLink }
-export const COMMUNITY_NAME_TERMS = { hash: COMMUNITY_TERMS_HASH, link: deployment.communityTermsLink }
+export const TERMS = { hash: GENERAL_TERMS_HASH, link: deployment.generalTermsLink }
+export const LISTED_TERMS = { hash: COMMUNITY_TERMS_HASH, link: deployment.communityTermsLink }
 
 export interface KeptOrder { registrationId: string; invoiceId: string | null; label: string; ownerCode: string; owner: string; request: { labelHash: string; commitment: string } }
 

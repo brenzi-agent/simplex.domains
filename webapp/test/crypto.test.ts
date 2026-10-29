@@ -183,7 +183,7 @@ describe("registration", () => {
     }))
   })
 
-  it.each([["AcceptNameTerms", false], ["AcceptCommunityNameTerms", true]] as const)("hashes the acceptance of the terms of a name's kind, %s, as the name policy's EIP-712 digest", (primaryType, community) => {
+  it.each([["AcceptGeneralTerms", false], ["AcceptCommunityTerms", true]] as const)("hashes the acceptance of the terms of a name's kind, %s, as the name policy's EIP-712 digest", (primaryType, community) => {
     const policy = "0x9A676e781A523b5d0C0e43731313A708CB607508"
     const [commitment, termsHash] = [`0x${"cd".repeat(32)}`, `0x${"c7".repeat(32)}`] as const
     expect(hex(acceptTermsDigest(community, CHAIN_ID, fromHex(policy), fromHex(commitment), fromHex(termsHash), 2n, 99n))).toBe(hashTypedData({

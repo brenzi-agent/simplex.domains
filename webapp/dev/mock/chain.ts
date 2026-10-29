@@ -19,7 +19,7 @@ export interface Deployment {
   sponsor: Address
   resolver: Address
   namePolicy: Address
-  nameTermsLink: string
+  generalTermsLink: string
   communityTermsLink: string
   ownerKey: Hex
   registrarKey: Hex

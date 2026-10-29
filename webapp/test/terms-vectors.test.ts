@@ -29,45 +29,45 @@ const SEALED_HASH = "0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a6
 type Kind = "order" | "name" | "spend"
 type Vector = { kind: Kind; terms: string; text: string; digest: Hex; signature: Hex }
 
-const PLAIN = "213536f106608428de763fe26b1e9e31f27244152e9a853614ad73c67002ee6f"
-const COMMUNITY = "community/3d2141022b4e322767cb6c8dcac2daf21b9d2c9a2b93af726099a8bd4cc15bff"
+const PLAIN = "67b989cccc7ae150142daa4029304c7b7e78ab0a4ccebeba2ec1ef8a30f8147e"
+const COMMUNITY = "community/bbc52157d9b12f23af62ae8a7eacf2ea11e7db311fa2ed5bd48ea9ba01f77c4d"
 
 const VECTORS: Vector[] = [
   {
     kind: "order", terms: PLAIN,
     text: `simplex.domains order 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${PLAIN} 1792828800`,
-    digest: "0x0ba979ab2c6935848734b7d7ff5fa66800b1bd6814e34ee0ad4f5d62d226401b",
-    signature: "0xedd5071a12ad686a493bd8d9522cc95a292aea0e1970aaa3a4ea268696ed4f773b9dbfbf12d9aa79fd48bc1ea3825a720d8a09077bb4f35332480e1be1154fdf1c",
+    digest: "0x2687afde089cba36f420243154bfdd22fe44e8f07c8cfee652bd61cd6d9271fe",
+    signature: "0x9fb22e344357679a4deffdd3d75d6bfb6be860e4d2d307661445812dc4e134c051b726fc8ae16aaf4df17c615b2eeac4e10953524691b186bff2e6b68268d0b31b",
   },
   {
     kind: "order", terms: COMMUNITY,
     text: `simplex.domains order 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${COMMUNITY} 1792828800`,
-    digest: "0x6d16887e061a31baedb6509fb0d01d7adc353c9496884b3af3d120b6aa850966",
-    signature: "0x866ffd975972fe6a668eed758e8a69b57900d5e0898aa2872d344216fb5dd5ff45e380b07792c5b0220ad9564a24c3513ad1d39ac30ff888168bbd1c8e17aa011b",
+    digest: "0x456ec129e7612ef629f004f3beaf82a58ebf01d59cc7c4e2616e01a72ca01c65",
+    signature: "0x11ade94c79f14bdfde60b23f60f217206b7fd6b29504a2e3020eaef5dabbf24c39330b92099ce6564c36c0a2e484c91a5a9cfa341285a05a169bafbb1dfd1cb01c",
   },
   {
     kind: "name", terms: PLAIN,
     text: `simplex.domains name t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${PLAIN} 1792828800`,
-    digest: "0x1f5cb2957192c0189be04450d1c1a39330e3e485b7d55bf07cfd2ad517d473b3",
-    signature: "0x8dbac86c2eb96cac72b0284c7221adf85816da3d9de83c1dc576f11531ba5d472dd6cd33d7ddaca7b3b8413746df8eda57eadfd29b14b52741a4079c0877a1061b",
+    digest: "0x9545b17da4a1fcc96d66f53b8358629c5987ec2a67d16e44f4e0a298194dc0e9",
+    signature: "0xa1ae312f7178440aaf5a04789d7ed388af7215624b214ea7aa98d43209f0c98e10b64a1c553053e88c3ecd6d21769d34ff9b6a3485e04e2d23bd4b0faabb1dc01c",
   },
   {
     kind: "name", terms: COMMUNITY,
     text: `simplex.domains name t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${COMMUNITY} 1792828800`,
-    digest: "0xbfe0f6e93445ebcee3b7c081c03c9cb6dcbeb9832b4917bd59ffbf3b87c94cc8",
-    signature: "0xd989c2fe071690005e34c8a42cd61fc4be2c1b7899259c08210ecf234808ed792cfc8ac7071d994ab3029983294e2060c01bdd8608dd8b16ab98763f99927aa11c",
+    digest: "0x5a798c69de346efc5ede90d1b4ff30854ab0eb326539ba9b60eddea1ab08005f",
+    signature: "0xdd8794dd1c65c8e11955127408e44cd63cfc8d4b7050d5fee05b65d5abfb8a3b62f6648c2a337183adc822d129b2aba3030c8812cf87b7e969c690fb160a805f1c",
   },
   {
     kind: "spend", terms: PLAIN,
     text: `simplex.domains spend t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${PLAIN} 1792828800`,
-    digest: "0x88a513cf0aaeaa0d9e3de39eb45e2d5cf5d99add5c8f11a0b96b7e1a6931eea4",
-    signature: "0x888338b834c3f9f0eafb50366a0f436361fcb86813e8feda57501bfce6c00ace417a73b3956b6fbaebb29ee3983c6cdae52ba5dbff5b76d7bc7ed30c6006f1331b",
+    digest: "0xf643f32bd75923423f92eeee3dc46c6503f4969ad37b66bddfab5587b7e7d62e",
+    signature: "0x584dfddcbd6f5a1ccaa0dd60b8f2929f629da471aa4ecae270bd429243f2853c77eff724a4820e95765ca006302c834fdb247d3b1c69c5db4074045c89957f541c",
   },
   {
     kind: "spend", terms: COMMUNITY,
     text: `simplex.domains spend t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${COMMUNITY} 1792828800`,
-    digest: "0x971b7bde57f40f45c075c4f83b882fe61e792783fbec5916e216be966e026650",
-    signature: "0x1bdb0d8d1f332cd8435d4d052f84060da55c8010a957e73fd38eb383925a5ba6606ebf04c09bce1697776670e4a7ad07d7cc2a18b4de3a7ea631e84f5cf77c6e1b",
+    digest: "0x1c02a90eaa2073c155b816d9597ddbe694dfa5ded03caafeb88feb9ed9a077e1",
+    signature: "0x61f25926cf4250e6924cfbc63748cc60e01486434984988e8904a655c893afd22f9efabc4587890f522ec91a124f066ba0d9b8acfbba9c836009d8a41609624a1b",
   },
 ]
 
@@ -157,7 +157,7 @@ describe("the page's builders reproduce Appendix C", () => {
   const draft = (terms: string) => ({ label: LABEL, links: NO_LINKS, chain: CHAIN, years: YEARS, termStart: TERM_START, ownerCode: OWNER_CODE, terms })
   const quote = { status: "available" as const, price: 10000, currency: "usd", years: YEARS, termStart: TERM_START, community: null, terms: {
     hash: `0x${PLAIN}`,
-    link: "https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/83649f66ffdf9a17fc881fbfadeb7e9aa33cdb4e/docs/terms.md#sha256=02936c81b34de0283128b131b687154eb3b4be7b08e9ee5697aab8b6344decf7",
+    link: "https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/5fb3fb63fa5a059abf6e397621ba4d7c3618c702/docs/terms.md#sha256=8b6cf03192081aa7b2cd3a82fd665fdd0f28c1ced65792837a5ac2492e6a8070",
   }, ...CHAIN }
 
   it.each(TERMS)("order with terms %s", async (terms) => {

@@ -68,7 +68,7 @@ export interface Terms {
 }
 
 // A community name: what it is for, null when the service has no words for it, and the years it is registered for. In a
-// search answer, a name on the chain's list; in an order's view, an order that signed the community name terms.
+// search answer, a name on the chain's list; in an order's view, an order that signed the community terms.
 export interface Community {
   for: string | null
   years: number
@@ -165,7 +165,7 @@ export interface RegistrationView extends ChainInfo {
   intentNonce: number | null
   // what the owner signs with the reveal to accept the terms of the name's kind on chain, while a committed order waits for
   // its reveal, the policy being the signature's verifying contract; null otherwise
-  acceptance: { kind: "name" | "community"; policy: string; termsHash: string; nonce: number } | null
+  acceptance: { kind: "general" | "community"; policy: string; termsHash: string; nonce: number } | null
   // the fields left null because the service's chain read failed; reading the view again may fill them
   unread: string[]
   expiresAt: number | null
@@ -327,7 +327,7 @@ const isSignedTerms = (v: unknown) => typeof v === "string" && /^[A-Za-z0-9._/-]
 const isHash = (v: unknown) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v)
 const isTerms = (v: unknown, chainId: number) => isObject(v) && isHash(v.hash) && typeof v.link === "string" && termsLink(v.link, chainId) !== null && keccakOf(v.link) === v.hash
 const isCommunity = (v: unknown) => v === null || (isObject(v) && nullable(v.for, (f) => typeof f === "string" && f !== "") && isCount(v.years))
-const isAcceptance = (v: unknown) => isObject(v) && (v.kind === "name" || v.kind === "community") && isText(v.policy) && isHash(v.termsHash) && Number.isInteger(v.nonce) && (v.nonce as number) >= 0
+const isAcceptance = (v: unknown) => isObject(v) && (v.kind === "general" || v.kind === "community") && isText(v.policy) && isHash(v.termsHash) && Number.isInteger(v.nonce) && (v.nonce as number) >= 0
 const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && Number.isInteger(v.version) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
   && nullable(v.label, isText) && isText(v.owner) && isText(v.commitment) && isText(v.sealed) && isCount(v.years) && isCount(v.duration) && isAmount(v.price) && Number.isInteger(v.moves)
   && isAmount(v.fromBalance) && nullable(v.balance, isBalance) && nullable(v.latePayment, (l) => isObject(l) && LATE_WAITS.includes(l.waiting as LateWait))

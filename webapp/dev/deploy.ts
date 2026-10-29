@@ -43,9 +43,9 @@ if (!ENS_CONTRACTS_DIR) throw new Error("set ENS_CONTRACTS_DIR to the compiled e
 // the terms the name policy links, the namespace repository's fixtures beside its ens-contracts as files this machine
 // serves, and their hashes, which orders sign
 const TERMS_FIXTURES = join(ENS_CONTRACTS_DIR, "..", "test", "fixtures", "terms")
-const NAME_TERMS_LINK = savedTerms(readFileSync(join(TERMS_FIXTURES, "name-terms.md")))
-const COMMUNITY_TERMS_LINK = savedTerms(readFileSync(join(TERMS_FIXTURES, "community-name-terms.md")))
-const NAME_TERMS_HASH = keccak256(Buffer.from(NAME_TERMS_LINK))
+const GENERAL_TERMS_LINK = savedTerms(readFileSync(join(TERMS_FIXTURES, "general-terms.md")))
+const COMMUNITY_TERMS_LINK = savedTerms(readFileSync(join(TERMS_FIXTURES, "community-terms.md")))
+const GENERAL_TERMS_HASH = keccak256(Buffer.from(GENERAL_TERMS_LINK))
 const COMMUNITY_TERMS_HASH = keccak256(Buffer.from(COMMUNITY_TERMS_LINK))
 
 const [owner, guardian, registrar, holder] = [0, 1, 2, 3].map((i) => mnemonicToAccount(MNEMONIC, { addressIndex: i }))
@@ -111,9 +111,9 @@ await write(owner, baseRegistrar, "addController", [namePolicy.address])
 await write(owner, controller, "setNamePolicy", [namePolicy.address])
 await write(owner, baseRegistrar, "setNamePolicy", [namePolicy.address])
 await write(owner, namePolicy, "addReservedNames", [["support", "simplex", "official"], RESERVED_INTERNAL])
-await write(owner, namePolicy, "setNameTerms", [NAME_TERMS_LINK])
-await write(owner, namePolicy, "setCommunityNameTerms", [COMMUNITY_TERMS_LINK])
-await write(owner, namePolicy, "addBonaFideNames", [COMMUNITY_NAMES])
+await write(owner, namePolicy, "setGeneralTerms", [GENERAL_TERMS_LINK])
+await write(owner, namePolicy, "setCommunityTerms", [COMMUNITY_TERMS_LINK])
+await write(owner, namePolicy, "addCommunityNames", [COMMUNITY_NAMES])
 
 const chainId = await publicClient.getChainId()
 const holderAccount = privateKeyToAccount(holderKey)
@@ -155,7 +155,7 @@ for (const registration of seeds) {
   const commitment = await publicClient.readContract({ ...controller, functionName: "makeCommitment", args: [registration] }) as Hex
   // committed under the terms of the name's kind, as the policy needs
   const community = COMMUNITY_NAMES.includes(registration.label)
-  await write(holder, namePolicy, community ? "commitUnderCommunityNameTerms" : "commitUnderNameTerms", [commitment, community ? COMMUNITY_TERMS_HASH : NAME_TERMS_HASH])
+  await write(holder, namePolicy, community ? "commitUnderCommunityTerms" : "commitUnderGeneralTerms", [commitment, community ? COMMUNITY_TERMS_HASH : GENERAL_TERMS_HASH])
   const committedAt = await publicClient.readContract({ ...controller, functionName: "commitments", args: [commitment] }) as bigint
   revealAfter = Number(committedAt + MIN_COMMITMENT_AGE)
 }
@@ -182,8 +182,8 @@ const deployment = {
   sponsor: sponsor.address,
   resolver: resolver.address,
   namePolicy: namePolicy.address,
-  nameTermsLink: NAME_TERMS_LINK,
-  nameTermsHash: NAME_TERMS_HASH,
+  generalTermsLink: GENERAL_TERMS_LINK,
+  generalTermsHash: GENERAL_TERMS_HASH,
   communityTermsLink: COMMUNITY_TERMS_LINK,
   communityTermsHash: COMMUNITY_TERMS_HASH,
   owner: owner.address,

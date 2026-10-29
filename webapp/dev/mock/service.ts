@@ -409,11 +409,11 @@ const orderYears = (o: { terms: string }, years: number) => communityAgreed(o.te
 interface Terms { hash: Hex; link: string }
 const termsOf = (link: string): Terms | null => link === "" ? null : { hash: keccak256(toHex(link)), link }
 const termsFor = (listed: boolean, terms: Terms) => `${listed ? COMMUNITY_TERMS : ""}${terms.hash.slice(2)}`
-const policyLinks = () => Promise.all([read<string>(namePolicy, "nameTermsLink"), read<string>(namePolicy, "communityNameTermsLink")])
+const policyLinks = () => Promise.all([read<string>(namePolicy, "generalTermsLink"), read<string>(namePolicy, "communityTermsLink")])
 
 async function nameTerms(labelHash: Hex): Promise<{ listed: boolean; terms: Terms | null }> {
-  const [listed, [nameLink, communityLink]] = await Promise.all([read<boolean>(namePolicy, "bonaFideNames", [labelHash]), policyLinks()])
-  return { listed, terms: termsOf(listed ? communityLink : nameLink) }
+  const [listed, [generalLink, communityLink]] = await Promise.all([read<boolean>(namePolicy, "communityNames", [labelHash]), policyLinks()])
+  return { listed, terms: termsOf(listed ? communityLink : generalLink) }
 }
 
 async function termsText(terms: Terms): Promise<string | null> {
@@ -429,7 +429,7 @@ async function termsText(terms: Terms): Promise<string | null> {
   }
 }
 
-// the entry of the community name terms an order signed, which the view shows without reading the chain
+// the entry of the community terms an order signed, which the view shows without reading the chain
 const signedCommunity = (reg: Registration) => communityAgreed(reg.terms) ? communityEntry(reg.labelHash) : null
 
 // an order or a move signs the terms of the name's kind the service has now, which it takes no order without
@@ -456,11 +456,11 @@ async function viewRead<T>(field: string, unread: string[], f: () => Promise<T>)
 }
 
 // What the owner signs to accept the terms of the name's kind.
-async function acceptanceOf(reg: Registration): Promise<{ kind: "name" | "community"; policy: Address; termsHash: Hex; nonce: number }> {
+async function acceptanceOf(reg: Registration): Promise<{ kind: "general" | "community"; policy: Address; termsHash: Hex; nonce: number }> {
   const { listed, terms } = await nameTerms(reg.labelHash)
   // before the policy has these terms there are none to accept: the view leaves it unread, and a reveal waits
   if (!terms) throw new Error("the name policy has not set these terms yet")
-  return { kind: listed ? "community" : "name", policy: deployment.namePolicy, termsHash: terms.hash, nonce: Number(await read<bigint>(namePolicy, "nonces", [reg.owner])) }
+  return { kind: listed ? "community" : "general", policy: deployment.namePolicy, termsHash: terms.hash, nonce: Number(await read<bigint>(namePolicy, "nonces", [reg.owner])) }
 }
 
 async function registrationView(reg: Registration): Promise<Record<string, unknown>> {
@@ -925,7 +925,7 @@ async function register(reg: Registration): Promise<void> {
   }
   try {
     if (relay) {
-      const withSig = acceptance.community ? "commitUnderCommunityNameTermsWithSig" : "commitUnderNameTermsWithSig"
+      const withSig = acceptance.community ? "commitUnderCommunityTermsWithSig" : "commitUnderGeneralTermsWithSig"
       await sendTx(namePolicy, withSig, [reg.commitment, acceptance.termsHash, reg.owner, acceptance.nonce, deadline, acceptance.signature]).catch(async (e) => {
         if (!(e instanceof Reverted) || await accepted() !== acceptance.termsHash) throw e
       })
@@ -1029,7 +1029,7 @@ async function checkAcceptance(reg: Registration, accepted: unknown, deadline: n
   const { termsHash, nonce, signature: signed } = accepted as Record<string, unknown>
   if (termsHash !== asked.termsHash || nonce !== asked.nonce) throw badRequest()
   const signature = checkSignature(signed)
-  const primaryType = asked.kind === "community" ? "AcceptCommunityNameTerms" : "AcceptNameTerms"
+  const primaryType = asked.kind === "community" ? "AcceptCommunityTerms" : "AcceptGeneralTerms"
   const acceptor = await recoverTypedDataAddress({
     domain: { name: "SimplexNamePolicy", version: "1", chainId: deployment.chainId, verifyingContract: deployment.namePolicy },
     types: { [primaryType]: [{ name: "commitment", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
@@ -1473,7 +1473,7 @@ export function controlTake(label: unknown): Record<string, unknown> {
     const commitment = await read<Hex>(controller, "makeCommitment", [tuple])
     // committed under the terms of the name's kind, as the policy needs
     const { listed, terms } = await nameTerms(keccak256(toHex(label)))
-    await send(namePolicy, listed ? "commitUnderCommunityNameTerms" : "commitUnderNameTerms", [commitment, terms?.hash ?? zeroHash], undefined, holder)
+    await send(namePolicy, listed ? "commitUnderCommunityTerms" : "commitUnderGeneralTerms", [commitment, terms?.hash ?? zeroHash], undefined, holder)
     await untilChainTime(Number(await read<bigint>(controller, "commitments", [commitment])) + deployment.minCommitmentAge, chainNow)
     const turn = holderTurn.then(() => registerForHolder(tuple))
     holderTurn = turn.catch(() => undefined)
@@ -1522,7 +1522,7 @@ export async function controlCommunity(body: Record<string, unknown>): Promise<R
   if (typeof label !== "string" || labelProblem(label) !== null) throw new HttpError(400, "invalid_name")
   if (text !== null && (typeof text !== "string" || text.length === 0 || text.length > COMMUNITY_TEXT_MAX || /\p{Cc}/u.test(text))) throw badRequest()
   const hash = keccak256(toHex(label))
-  await send(namePolicy, text === null ? "removeBonaFideNames" : "addBonaFideNames", [[label]], undefined, contractsOwner)
+  await send(namePolicy, text === null ? "removeCommunityNames" : "addCommunityNames", [[label]], undefined, contractsOwner)
   if (text === null) communities.delete(hash)
   else communities.set(hash, text)
   return { community: (await nameTerms(hash)).listed ? communityEntry(hash) : null }
@@ -1538,8 +1538,8 @@ async function setTerms(setter: string, deployed: string, body: Record<string, u
   return { link: next, hash: keccak256(toHex(next)) }
 }
 
-export const controlNameTerms = (body: Record<string, unknown>) => setTerms("setNameTerms", deployment.nameTermsLink, body)
-export const controlCommunityTerms = (body: Record<string, unknown>) => setTerms("setCommunityNameTerms", deployment.communityTermsLink, body)
+export const controlGeneralTerms = (body: Record<string, unknown>) => setTerms("setGeneralTerms", deployment.generalTermsLink, body)
+export const controlCommunityTerms = (body: Record<string, unknown>) => setTerms("setCommunityTerms", deployment.communityTermsLink, body)
 
 // The text of either current terms by their hash, with their link, as the service fetches it.
 export async function currentTerms(hash: string): Promise<Record<string, unknown>> {

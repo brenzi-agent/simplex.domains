@@ -27,7 +27,7 @@ afterEach(() => {
 describe("termsLink", () => {
   const DIGEST = "0b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff001"
   it("takes a file at a commit of simplex-chat on git.simplex.chat, with the sha256 of its bytes, on any chain", () => {
-    for (const path of ["docs/name-terms.md", "a.md", "x/.md", "docs/v1.2/name_terms-2.md"]) {
+    for (const path of ["docs/general-terms.md", "a.md", "x/.md", "docs/v1.2/general_terms-2.md"]) {
       expect(termsLink(`${FORGEJO}/${path}#sha256=${DIGEST}`, 1), path).toEqual({ commit: COMMIT, digest: DIGEST })
     }
   })
@@ -40,10 +40,10 @@ describe("termsLink", () => {
   })
   it("refuses any other link", () => {
     for (const link of [
-      `${FORGEJO}/docs/name-terms.md`, `${FORGEJO}/docs/name-terms.md#sha256=${DIGEST.toUpperCase()}`, `${FORGEJO}/docs/name-terms.md#sha256=${DIGEST.slice(1)}`,
-      `${FORGEJO}/docs/name-terms.txt#sha256=${DIGEST}`, `${FORGEJO}/.md#sha256=${DIGEST}`, `${FORGEJO}/docs//name-terms.md#sha256=${DIGEST}`,
-      `${FORGEJO}/docs/./name-terms.md#sha256=${DIGEST}`, `${FORGEJO}/docs/../name-terms.md#sha256=${DIGEST}`, `${FORGEJO}/docs/name%20terms.md#sha256=${DIGEST}`,
-      `${FORGEJO}/docs/name-terms.md?raw=1#sha256=${DIGEST}`, `${FORGEJO.replace(COMMIT, COMMIT.toUpperCase())}/a.md#sha256=${DIGEST}`,
+      `${FORGEJO}/docs/general-terms.md`, `${FORGEJO}/docs/general-terms.md#sha256=${DIGEST.toUpperCase()}`, `${FORGEJO}/docs/general-terms.md#sha256=${DIGEST.slice(1)}`,
+      `${FORGEJO}/docs/general-terms.txt#sha256=${DIGEST}`, `${FORGEJO}/.md#sha256=${DIGEST}`, `${FORGEJO}/docs//general-terms.md#sha256=${DIGEST}`,
+      `${FORGEJO}/docs/./general-terms.md#sha256=${DIGEST}`, `${FORGEJO}/docs/../general-terms.md#sha256=${DIGEST}`, `${FORGEJO}/docs/general%20terms.md#sha256=${DIGEST}`,
+      `${FORGEJO}/docs/general-terms.md?raw=1#sha256=${DIGEST}`, `${FORGEJO.replace(COMMIT, COMMIT.toUpperCase())}/a.md#sha256=${DIGEST}`,
       `${FORGEJO.replace(COMMIT, COMMIT.slice(1))}/a.md#sha256=${DIGEST}`, `${FORGEJO.replace("https:", "http:")}/a.md#sha256=${DIGEST}`,
       `https://github.com/simplex-chat/simplex-chat/raw/commit/${COMMIT}/a.md#sha256=${DIGEST}`, `http://localhost:8098/a.md#sha256=${DIGEST}`,
     ]) {
@@ -51,14 +51,14 @@ describe("termsLink", () => {
     }
   })
   it("opens a file at a commit on its page there, and a file on this machine as it is", () => {
-    expect(readerUrl(`${FORGEJO}/docs/name-terms.md#sha256=${DIGEST}`)).toBe(`https://git.simplex.chat/simplex-chat/simplex-chat/src/commit/${COMMIT}/docs/name-terms.md`)
+    expect(readerUrl(`${FORGEJO}/docs/general-terms.md#sha256=${DIGEST}`)).toBe(`https://git.simplex.chat/simplex-chat/simplex-chat/src/commit/${COMMIT}/docs/general-terms.md`)
     expect(readerUrl(`http://127.0.0.1:8098/terms/a.md#sha256=${DIGEST}`)).toBe("http://127.0.0.1:8098/terms/a.md")
   })
 })
 
 describe("termsText", () => {
-  const TEXT = "# Community name terms\n\nUse the name for its community, café included.\n"
-  const LINK = `${FORGEJO}/docs/community-name-terms.md#sha256=${sha256(toHex(TEXT)).slice(2)}`
+  const TEXT = "# Community terms\n\nUse the name for its community, café included.\n"
+  const LINK = `${FORGEJO}/docs/community-terms.md#sha256=${sha256(toHex(TEXT)).slice(2)}`
   const terms = termsOf(LINK)
   it("asks the service for the terms by their hash and reads the text once it is the file their link names", async () => {
     const fetched = vi.fn(async () => new Response(JSON.stringify({ link: LINK, text: TEXT }), { status: 200 }))
@@ -135,7 +135,7 @@ describe("service errors", () => {
     }
   })
 
-  const TERMS = termsOf(`${FORGEJO}/docs/name-terms.md#sha256=${"0b".repeat(32)}`)
+  const TERMS = termsOf(`${FORGEJO}/docs/general-terms.md#sha256=${"0b".repeat(32)}`)
   const PROFILE = { type: "channel", kind: "channel", displayName: "Alice", fullName: "Alice's news", image: null, subscribers: 12, profile: "ok" }
 
   it("passes a search answer the page can draw", async () => {
@@ -333,14 +333,14 @@ describe("service errors", () => {
 
   describe("terms and community names", () => {
     const COMMUNITY = { for: "bakers and pastry chefs", years: 2 }
-    const COMMUNITY_TERMS = termsOf(`${FORGEJO}/docs/community-name-terms.md#sha256=${"c7".repeat(32)}`)
+    const COMMUNITY_TERMS = termsOf(`${FORGEJO}/docs/community-terms.md#sha256=${"c7".repeat(32)}`)
     const LOCAL_TERMS = termsOf(`http://127.0.0.1:8098/terms/${"c7".repeat(32)}.md#sha256=${"c7".repeat(32)}`)
     const SIGNED = `community/${COMMUNITY_TERMS.hash.slice(2)}`
     const OLDER_SIGNED = `2026-10-23/community/${"c7".repeat(32)}`
     const AVAILABLE = { status: "available", price: 10000, currency: "usd", years: 2, termStart: 1798761600, resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex", community: COMMUNITY, terms: COMMUNITY_TERMS }
     const ORDER = { labelHash: `0x${"ab".repeat(32)}`, length: 6, duration: 2 * 365 * 86400, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`, sealed: "sealed", terms: SIGNED, timestamp: 1, signature: "0x" }
 
-    it("signs the name terms' hash for a name not on the community list, and community/ with the community name terms' hash for one on it", () => {
+    it("signs the general terms' hash for a name not on the community list, and community/ with the community terms' hash for one on it", () => {
       expect(termsFor(TERMS, null)).toBe(TERMS.hash.slice(2))
       expect(termsFor(COMMUNITY_TERMS, COMMUNITY)).toBe(SIGNED)
       expect(currentTerms(AVAILABLE as never)).toBe(SIGNED)
@@ -402,12 +402,12 @@ describe("service errors", () => {
 
     it("passes the acceptance a committed name's reveal signs, of either kind, and takes one it cannot sign as no answer", async () => {
       const acceptance = { kind: "community", policy: "0x3", termsHash: COMMUNITY_TERMS.hash, nonce: 0 }
-      for (const change of [{ acceptance }, { acceptance: { ...acceptance, kind: "name", termsHash: TERMS.hash } }, { acceptance: null }]) {
+      for (const change of [{ acceptance }, { acceptance: { ...acceptance, kind: "general", termsHash: TERMS.hash } }, { acceptance: null }]) {
         answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
         expect(await readRegistration("r1"), JSON.stringify(change)).toMatchObject(change)
       }
       for (const change of [{ acceptance: undefined }, { acceptance: { ...acceptance, termsHash: "0x1" } }, { acceptance: { ...acceptance, nonce: -1 } }, { acceptance: { ...acceptance, nonce: 1.5 } },
-        { acceptance: { ...acceptance, policy: 3 } }, { acceptance: { ...acceptance, kind: undefined } }, { acceptance: { ...acceptance, kind: "bona fide" } }]) {
+        { acceptance: { ...acceptance, policy: 3 } }, { acceptance: { ...acceptance, kind: undefined } }, { acceptance: { ...acceptance, kind: "name" } }]) {
         answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
         const e = await readRegistration("r1").then(() => null, (e: unknown) => e)
         expect((e as ApiError).code, JSON.stringify(change)).toBe("network")

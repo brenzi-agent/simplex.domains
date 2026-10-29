@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { isIP } from "node:net"
 import { takeCodeToken } from "./mock/limits.ts"
 import {
-  cancelInvoice, checkCode, controlCommunity, controlCommunityTerms, controlCredit, controlInvoice, controlLate, controlNameTerms, controlRate, controlRefund, controlRegistration, controlSearch, controlTake, createInvoice, currentTerms, dump, editRecords, find,
+  cancelInvoice, checkCode, controlCommunity, controlCommunityTerms, controlCredit, controlGeneralTerms, controlInvoice, controlLate, controlRate, controlRefund, controlRegistration, controlSearch, controlTake, createInvoice, currentTerms, dump, editRecords, find,
   HttpError, issueCode, oneOrderAtATime, setCodeState, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retry, reveal, search, spend,
 } from "./mock/service.ts"
 
@@ -55,7 +55,7 @@ const routes: [string, RegExp, Handler, Limit?][] = [
   ["POST", /^\/control\/refund\/([^/]+)$/, (m, b) => controlRefund(m[1], b.cents)],
   ["POST", /^\/control\/rate$/, (_, b) => controlRate(b)],
   ["POST", /^\/control\/search$/, (_, b) => controlSearch(b)],
-  ["POST", /^\/control\/name-terms$/, (_, b) => controlNameTerms(b)],
+  ["POST", /^\/control\/general-terms$/, (_, b) => controlGeneralTerms(b)],
   ["POST", /^\/control\/community$/, (_, b) => controlCommunity(b)],
   ["POST", /^\/control\/community-terms$/, (_, b) => controlCommunityTerms(b)],
   ["POST", /^\/control\/code\/state$/, (_, b) => setCodeState(b.code, b.state)],

@@ -58,7 +58,7 @@ const SIGNED = `0x${"c7".repeat(32)}`
 const CHANGED = `0x${"d8".repeat(32)}`
 const communityEntry = (text: string | null = null) => ({ for: text, years: 2 })
 const termsOf = (hash: string) => ({ hash, link: `https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/${"83".repeat(20)}/docs/terms.md#sha256=${"02".repeat(32)}` })
-const acceptanceFor = (termsHash: string, kind: "name" | "community" = "community") => ({ kind, policy: "0x3", termsHash, nonce: 0 })
+const acceptanceFor = (termsHash: string, kind: "general" | "community" = "community") => ({ kind, policy: "0x3", termsHash, nonce: 0 })
 const reask = (hash = CHANGED) => askFor(record().label, termsOf(hash), communityEntry(), true)
 
 const SLOW = read(card(), undefined, { record: record({ method: "card" }), cardSubmittedAt: submittedAgo(CARD_SLOW_MS + 1000) })
@@ -609,15 +609,15 @@ describe("reveal helpers", () => {
     expect(nameUnavailable(unread), "a view whose acceptance was not read now").toEqual(unavailable.unavailable)
     const recommitted = { ...unavailable, view: { ...unavailable.view!, commitment: `0x${"ef".repeat(32)}` } }
     expect([nameUnavailable(recommitted), askAgainDue(recommitted)], "a new commitment asks again").toEqual([null, true])
-    expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true } })), "the name terms' box alone").toBe(false)
+    expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true } })), "the general terms' box alone").toBe(false)
     expect(revealDue(listed(CHANGED, { ask: { ...ask, accepted: true } })), "ticked").toBe(true)
     expect(revealDue(listed(CHANGED, { ask: { ...reask(SIGNED), accepted: true } })), "ticked other terms").toBe(false)
     expect(revealDue(read(null, registration({ ...committed, unread: ["acceptance"] }))), "an acceptance the service could not read").toBe(false)
   })
-  it("revealDue and askAgainDue for a plain name: the reveal waits for changed name terms to be ticked, and for terms an older page signed as a version", () => {
+  it("revealDue and askAgainDue for a plain name: the reveal waits for changed general terms to be ticked, and for terms an older page signed as a version", () => {
     const PLAIN = `0x${"21".repeat(32)}`
     const plain = (termsHash: string, terms: string, change: Partial<OrderState> = {}) =>
-      read(null, registration({ ...committed, acceptance: acceptanceFor(termsHash, "name"), terms }), change)
+      read(null, registration({ ...committed, acceptance: acceptanceFor(termsHash, "general"), terms }), change)
     expect([revealDue(plain(PLAIN, PLAIN.slice(2))), askAgainDue(plain(PLAIN, PLAIN.slice(2)))]).toEqual([true, false])
     expect([revealDue(plain(CHANGED, PLAIN.slice(2))), askAgainDue(plain(CHANGED, PLAIN.slice(2)))], "terms changed on chain since the order").toEqual([false, true])
     expect([revealDue(plain(PLAIN, "2026-10-23")), askAgainDue(plain(PLAIN, "2026-10-23"))], "a version an older page signed").toEqual([false, true])

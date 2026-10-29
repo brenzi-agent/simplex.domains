@@ -17,7 +17,7 @@ describe("termsToSign", () => {
     expect(termsToSign("alice1", SIGNED, SIGNED, null)).toBe(SIGNED)
   })
 
-  it("asks first when the order signed other terms, the name terms of a name now on the community list, a version an older page signed, or none", () => {
+  it("asks first when the order signed other terms, the general terms of a name now on the community list, a version an older page signed, or none", () => {
     expect(termsToSign("alice1", NEWER_PLAIN, PLAIN, null)).toBeNull()
     expect(termsToSign("alice1", SIGNED, PLAIN, null)).toBeNull()
     expect(termsToSign("alice1", PLAIN, SIGNED, null)).toBeNull()
@@ -32,7 +32,7 @@ describe("termsToSign", () => {
     expect(termsToSign("alice1", NEWER_SIGNED, null, { ...askFor("alice1", NEWER_COMMUNITY, BAKERS, true), accepted: true })).toBe(NEWER_SIGNED)
   })
 
-  it("asks again for a community name until its own box is ticked, whatever the name terms' box says", () => {
+  it("asks again for a community name until its own box is ticked, whatever the general terms' box says", () => {
     expect(termsToSign("alice1", NEWER_SIGNED, null, { ...askFor("alice1", NEWER_COMMUNITY, BAKERS, true), agreed: true })).toBeNull()
   })
 
@@ -55,7 +55,7 @@ describe("askFor", () => {
 })
 
 describe("ticked", () => {
-  it("is the name terms' box ticked, or a community name's own box in its place", () => {
+  it("is the general terms' box ticked, or a community name's own box in its place", () => {
     expect(ticked({ agreed: true, accepted: false, community: null })).toBe(true)
     expect(ticked({ agreed: false, accepted: true, community: null })).toBe(false)
     expect(ticked({ agreed: false, accepted: true, community: BAKERS })).toBe(true)

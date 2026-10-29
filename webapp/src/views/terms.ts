@@ -64,7 +64,7 @@ export interface Agreement {
 export function termsCheck(a: Agreement, agree: (agreed: boolean) => void): HTMLLabelElement {
   const box = el("input", { type: "checkbox", checked: a.agreed, disabled: a.disabled, "data-focus": "agreed" })
   box.addEventListener("change", () => agree(box.checked))
-  const terms = el("a", { class: "nowrap", href: api.readerUrl(a.terms.link), target: "_blank", rel: "noopener" }, "SimpleX name terms")
+  const terms = el("a", { class: "nowrap", href: api.readerUrl(a.terms.link), target: "_blank", rel: "noopener" }, "SimpleX general terms")
   return el("label", { class: "check terms" }, box, el("span", { class: "box" }), el("span", {}, "I agree to ", terms, " and do not knowingly violate any trademarks."))
 }
 
@@ -81,7 +81,7 @@ export function communityCheck(a: Agreement, accept: (accepted: boolean) => void
       onclick: () => showCommunity(a.label, a.tld, community, INFO_KEY) }, icon("info"))))
 }
 
-// the name terms' box, or a community name's own tick in its place, as its community terms include the name terms
+// the general terms' box, or a community name's own tick in its place, as its community terms include the general terms
 export function termsChecks(a: Agreement, agree: (agreed: boolean) => void, accept?: (accepted: boolean) => void): HTMLElement {
   return a.community && accept ? communityCheck(a, accept) : termsCheck(a, agree)
 }

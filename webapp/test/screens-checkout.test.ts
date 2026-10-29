@@ -13,8 +13,8 @@ const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor:
 const CODE = { display: "SN6-AAAAA-BBBBB-CCCCC", minLength: 6, years: 3 }
 const WAITING = { registrationId: "reg-0", invoiceId: "inv-0" }
 const OPEN_ORDER = { invoiceId: "inv-9", confirming: false }
-const TERMS = { hash: `0x${"21".repeat(32)}`, link: `https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/${"83".repeat(20)}/docs/name-terms.md#sha256=${"02".repeat(32)}` }
-const NEWER = { hash: `0x${"f6".repeat(32)}`, link: `https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/${"ff".repeat(20)}/docs/name-terms.md#sha256=${"ea".repeat(32)}` }
+const TERMS = { hash: `0x${"21".repeat(32)}`, link: `https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/${"83".repeat(20)}/docs/general-terms.md#sha256=${"02".repeat(32)}` }
+const NEWER = { hash: `0x${"f6".repeat(32)}`, link: `https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/${"ff".repeat(20)}/docs/general-terms.md#sha256=${"ea".repeat(32)}` }
 const BAKERS = { for: "bakers and pastry chefs", years: 2 }
 
 function checkout(change: Partial<Checkout> = {}): Checkout {

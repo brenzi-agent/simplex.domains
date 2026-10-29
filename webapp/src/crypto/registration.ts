@@ -87,7 +87,7 @@ export function clearRecordsDigest(chainId: bigint, resolver: Uint8Array, node: 
 }
 
 export function acceptTermsDigest(community: boolean, chainId: bigint, policy: Uint8Array, commitment: Uint8Array, termsHash: Uint8Array, nonce: bigint, deadline: bigint): Uint8Array {
-  const type = community ? "AcceptCommunityNameTerms" : "AcceptNameTerms"
+  const type = community ? "AcceptCommunityTerms" : "AcceptGeneralTerms"
   const intent = hashStruct(`${type}(bytes32 commitment,bytes32 termsHash,uint256 nonce,uint256 deadline)`, [commitment, termsHash, uint256(nonce), uint256(deadline)])
   return typedDigest(domainSeparator("SimplexNamePolicy", chainId, policy), intent)
 }

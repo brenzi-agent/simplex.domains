@@ -15,8 +15,8 @@ const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor:
 // a term that starts in ten days, so an order carries free days
 const TERM_START = Math.floor(Date.now() / 1000) + 10 * 86400
 const TERMS = {
-  hash: "0x213536f106608428de763fe26b1e9e31f27244152e9a853614ad73c67002ee6f",
-  link: "https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/83649f66ffdf9a17fc881fbfadeb7e9aa33cdb4e/docs/terms.md#sha256=02936c81b34de0283128b131b687154eb3b4be7b08e9ee5697aab8b6344decf7",
+  hash: "0x67b989cccc7ae150142daa4029304c7b7e78ab0a4ccebeba2ec1ef8a30f8147e",
+  link: "https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/5fb3fb63fa5a059abf6e397621ba4d7c3618c702/docs/terms.md#sha256=8b6cf03192081aa7b2cd3a82fd665fdd0f28c1ced65792837a5ac2492e6a8070",
 }
 const SIGNED = TERMS.hash.slice(2)
 const COMMUNITY_SIGNED = `community/${"c7".repeat(32)}`
@@ -248,7 +248,7 @@ describe("paidWith", () => {
 })
 
 // A spend vector for the page's own builder, beside Appendix C's (test/terms-vectors.test.ts): the fixture key, 21 October
-// 2026 09:15 UTC, a sealed order whose IV is 12 zero bytes, the service's fixture chain, and its name terms' hash.
+// 2026 09:15 UTC, a sealed order whose IV is 12 zero bytes, the service's fixture chain, and its general terms' hash.
 const SPEND = {
   registrationId: "t2Jk8RmQ4vXw9NcP3yLb6g",
   now: Date.UTC(2026, 9, 21, 9, 15),
@@ -261,8 +261,8 @@ const SPEND = {
   sealedHash: "0x51431a705eb4903084cc8dbf3c1b966c9372914511c4623c889d49fdb8047da4",
   terms: SIGNED,
   timestamp: 1792574100,
-  digest: "0x6be206f8a6efcf20a59dee14cfc96890ed802782279ef40d2ef3d5aa67b66def",
-  signature: "0xd0a8c2364912a21448bf9bcadb9bb2d6b6ca7f8e8b25b03b3d32a10b19a92b654dfc853f93560f3bcb01eadce3d4d9fb6a6eb5ff3ca0e78add0d13e335e995931c",
+  digest: "0xa418356436125807f5e02b4e0e15372eb03cbea34b6861aa7f98512136667b94",
+  signature: "0x903446f2d6f44a63a2d82cf6af2ffc6bd962aa4ce3a4ffac2aa8d1be523078cf68b0c1bf69eb246b8453bee23a3627d6f5c9a41562a106d9c66cd0be4fb4543e1c",
 }
 
 describe("spendBalance", () => {

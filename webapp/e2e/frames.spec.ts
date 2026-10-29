@@ -143,14 +143,14 @@ test("a name taken first, its balance's search and Your names swap without a nea
 test("terms changed while ordering show their notice without a near-empty frame", async ({ page, request }) => {
   await search(page, uniqueLabel("frterms"))
   await toReview(page)
-  await control(request, "name-terms", { text: "# SimpleX name terms\n\nChanged while ordering.\n" })
+  await control(request, "general-terms", { text: "# SimpleX general terms\n\nChanged while ordering.\n" })
   try {
     await expectNoEmptyFrame(page, "review to its terms notice", async () => {
       await payButton(page).click()
       await expect(onStep(page).getByText("The terms changed. Agree to them again.")).toBeVisible()
     })
   } finally {
-    await control(request, "name-terms", { text: null })
+    await control(request, "general-terms", { text: null })
   }
 })
 
