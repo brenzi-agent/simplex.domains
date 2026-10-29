@@ -1,4 +1,4 @@
-import { type APIRequestContext, type Browser, expect, type Page } from "@playwright/test"
+import { type APIRequestContext, type Browser, expect, type Locator, type Page } from "@playwright/test"
 import { CODE_LIMIT } from "../dev/mock/limits.ts"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import type { Links } from "../src/api.ts"
@@ -214,6 +214,20 @@ test("Edit links on a name registered with a code adds its links on chain, then 
   await save.click()
   await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
   expect((await searchName(request, label)).records).toEqual({ contact: nextContact, channel })
+})
+
+test("Check your code checks a code with the key icon, and Search keeps the magnifying glass", async ({ page }) => {
+  const pathOf = (scope: Locator) => scope.locator("svg path").getAttribute("d")
+  // a page that shows the key icon by itself: Edit links of an order this browser has no code for
+  await page.goto("/#/edit/nosuchname")
+  const key = await pathOf(onStep(page).locator(".notice"))
+  await page.goto("/#/code")
+  const check = onStep(page).getByRole("button", { name: "Check", exact: true })
+  expect(await pathOf(check)).toBe(key)
+  await page.goto("/")
+  const lens = await pathOf(page.getByRole("button", { name: "Search", exact: true }))
+  expect(lens, "the magnifying glass").toMatch(/^M10\.5 17a6\.5 6\.5/)
+  expect(lens).not.toBe(key)
 })
 
 const editCount = (page: Page) => onStep(page).locator(".edit-count")

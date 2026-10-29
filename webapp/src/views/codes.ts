@@ -152,7 +152,7 @@ export function codeField(key: string, label: string, heard: (v: CodeVerdict | n
     const verdictId = `${key}-verdict`
     const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, spellcheck: "false", placeholder: "SN…", autocomplete: "off",
       value: typed.get(key) ?? order?.code })
-    const check = el("button", { class: "btn lens", type: "button", "aria-label": "Check" }, icon("search"))
+    const check = el("button", { class: "btn lens", type: "button", "aria-label": "Check" }, icon("key"))
     // a phone with a camera reads the code from its QR code, as another device shows it
     const scan = scanButton(() => void scanned())
     const box = el("label", { class: "field code-input" }, input, scan, check)
