@@ -7,7 +7,8 @@ import { walletOf } from "../src/flow.ts"
 import { dateOf } from "../src/format.ts"
 import {
   agreeToTerms, answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, offCentre, onStep,
-  payButton, previewsShown, qrText, savedToReview, search, searchName, sevenLetters, shot, shownCode, SLOW_FETCH_MS, startOrder, test, toCodeStep, restoreOrder, toReview, uniqueLabel, useCode, waitRegistered,
+  payButton, previewsShown, qrText, savedToReview, search, searchName, sevenLetters, shot, shownCode, SLOW_FETCH_MS, startOrder, test, textChangesOf, toCodeStep, restoreOrder, toReview, uniqueLabel,
+  useCode, waitRegistered,
 } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
@@ -186,7 +187,7 @@ test("a name's link whose data cannot be read now shows as its kind's default pi
   await expect(open).toHaveAttribute("href", `simplex:/a#${contact.split("#")[1]}?h=smp8.simplex.im`)
 })
 
-test("Edit links on a name registered with a code adds its links on chain, then changes one", async ({ page, request }) => {
+test("Edit links on a name registered with a code adds both its links on chain in one transaction, then changes one", async ({ page, request }) => {
   const { registrationId, label } = await registerWithCode(page, request, "cedit")
   await waitRegistered(page, label)
   await page.goto("/#/names")
@@ -200,8 +201,13 @@ test("Edit links on a name registered with a code adds its links on chain, then 
   await onStep(page).getByRole("textbox", { name: "Channel", exact: true }).fill(channel)
   await previewsShown(page)
   const save = onStep(page).getByRole("button", { name: "Save links" })
+  const sends = recordsSent(page)
+  const answered = page.waitForResponse((res) => res.request().method() === "POST" && new URL(res.url()).pathname === "/api/name/records")
   await save.click()
   await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
+  expect(sends.map((body) => body.edits.map((e) => [e.key, e.value])), "one request with both links").toEqual([[["simplex.contact", contact], ["simplex.channel", channel]]])
+  const { tx } = await (await answered).json() as { tx: string }
+  expect(await textChangesOf(tx), "one multicall that set both records").toEqual({ multicall: true, changes: [["simplex.contact", contact], ["simplex.channel", channel]] })
   expect((await searchName(request, label)).records).toEqual({ contact, channel })
 
   // read again from the chain, the page shows the saved links, and a second edit spends the next nonce
@@ -364,6 +370,14 @@ test("no field offers autofill, autocorrect or a password manager: the name sear
 
 const editCount = (page: Page) => onStep(page).locator(".edit-count")
 const saveLinks = (page: Page) => onStep(page).getByRole("button", { name: "Save links" })
+// The bodies of the record edits the page sends from now on.
+function recordsSent(page: Page): { edits: { key: string; value: string; nonce: number }[] }[] {
+  const bodies: { edits: { key: string; value: string; nonce: number }[] }[] = []
+  page.on("request", (req) => {
+    if (req.method() === "POST" && new URL(req.url()).pathname === "/api/name/records") bodies.push(req.postDataJSON())
+  })
+  return bodies
+}
 // Save's box and the top and height of the line under it, whose width follows its words: a change of either moves what is around them
 async function saveRow(page: Page): Promise<unknown[]> {
   await expect(saveLinks(page)).toBeVisible()
@@ -372,7 +386,7 @@ async function saveRow(page: Page): Promise<unknown[]> {
 }
 const YEAR_S = 365 * 86400
 
-test("Edit links counts the name's edits left this year under Save, one per link saved, in place and on one line", async ({ page, request }) => {
+test("Edit links counts the name's edits left this year under Save, one per Save of one link or both, in place and on one line", async ({ page, request }) => {
   const { registrationId, label } = await registerWithCode(page, request, "ccount")
   await waitRegistered(page, label)
   await expect(onStep(page).getByRole("button", { name: "Add links" }), "a name without links adds them").toHaveClass("btn quiet small")
@@ -387,19 +401,31 @@ test("Edit links counts the name's edits left this year under Save, one per link
   }
   const before = await saveRow(page)
   const link = onStep(page).getByRole("textbox", { name: "Link", exact: true })
-  await link.fill(contactLink("CC"))
+  const contact = contactLink("CC")
+  await link.fill(contact)
+  await onStep(page).getByRole("button", { name: "Add a channel link" }).click()
+  await onStep(page).getByRole("textbox", { name: "Channel", exact: true }).fill(channelLink("CC"))
   await previewsShown(page)
-  await expect(editCount(page)).toHaveText("3 edits left this year.")
+  await expect(editCount(page), "both links take one edit").toHaveText("3 edits left this year.")
+  const sends = recordsSent(page)
   await saveLinks(page).click()
   await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
   await expect(editCount(page)).toHaveText("2 edits left this year.")
+  expect(sends.map((body) => body.edits.map((e) => e.key)), "one request").toEqual([["simplex.contact", "simplex.channel"]])
+  const { nonce } = sends[0].edits[0]
+  expect(sends[0].edits.map((e) => e.nonce), "consecutive nonces").toEqual([nonce, nonce + 1])
   expect(await saveRow(page), "Save and the count keep their place").toEqual(before)
+  await link.fill(contactLink("CD"))
+  await previewsShown(page)
+  await saveLinks(page).click()
+  await expect(editCount(page)).toHaveText("1 edit left this year.")
+  expect(sends.map((body) => body.edits.map((e) => e.nonce)), "the next Save from the nonce both spent").toEqual([[nonce, nonce + 1], [nonce + 2]])
   await page.reload()
-  await expect(editCount(page)).toHaveText("2 edits left this year.")
-  expect((await searchName(request, label)).recordEdits).toMatchObject({ left: 2 })
+  await expect(editCount(page)).toHaveText("1 edit left this year.")
+  expect((await searchName(request, label)).recordEdits).toMatchObject({ left: 1 })
 })
 
-test("Edit links turns Save off, saying why, when the edits left cannot cover both links, and when none are left until they return", async ({ page, request }) => {
+test("Edit links saves both links with the last edit left, then keeps Save off until the edits return", async ({ page, request }) => {
   const { registrationId, label } = await registerWithCode(page, request, "cnone")
   await waitRegistered(page, label)
   const made = Math.floor(Date.now() / 1000) - 86400
@@ -408,18 +434,17 @@ test("Edit links turns Save off, saying why, when the edits left cannot cover bo
   await expect(editCount(page)).toHaveText("1 edit left this year.")
   const before = await saveRow(page)
   const link = onStep(page).getByRole("textbox", { name: "Link", exact: true })
-  await link.fill(contactLink("CN"))
+  const contact = contactLink("CN")
+  const channel = channelLink("CN")
+  await link.fill(contact)
   await onStep(page).getByRole("button", { name: "Add a channel link" }).click()
-  const channel = onStep(page).getByRole("textbox", { name: "Channel", exact: true })
-  await channel.fill(channelLink("CN"))
+  await onStep(page).getByRole("textbox", { name: "Channel", exact: true }).fill(channel)
   await previewsShown(page)
-  await expect(editCount(page)).toHaveText("1 edit left this year; both links take 2.")
-  await expect(saveLinks(page)).toBeDisabled()
-  await channel.fill("")
   await expect(editCount(page)).toHaveText("1 edit left this year.")
   await expect(saveLinks(page)).toBeEnabled()
   await saveLinks(page).click()
   await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
+  expect((await searchName(request, label)).records).toEqual({ contact, channel })
   const again = `You can edit links again on ${dateOf(made + YEAR_S)}.`
   await expect(editCount(page)).toHaveText(again)
   await link.fill("")
@@ -437,7 +462,7 @@ test("Edit links turns Save off, saying why, when the edits left cannot cover bo
   await shot(page, "N12c-edit-links-used-up")
 })
 
-test("a save from a tab opened before the name's edits ran out says when they return, and which link reached the chain", async ({ page, request }) => {
+test("a Save of both links from a tab opened before the name's edits ran out says when they return, and changes neither link", async ({ page, request }) => {
   const { registrationId, label } = await registerWithCode(page, request, "cstale")
   await waitRegistered(page, label)
   await page.goto(`/#/edit/${registrationId}`)
@@ -446,32 +471,15 @@ test("a save from a tab opened before the name's edits ran out says when they re
   const again = `You can edit links again on ${dateOf(made + YEAR_S)}.`
   // used up elsewhere: nothing is sent, and nothing else is said
   await control(request, "edits", { label, count: 3, at: made })
-  const link = onStep(page).getByRole("textbox", { name: "Link", exact: true })
-  await link.fill(contactLink("CS"))
+  await onStep(page).getByRole("textbox", { name: "Link", exact: true }).fill(contactLink("CS"))
+  await onStep(page).getByRole("button", { name: "Add a channel link" }).click()
+  await onStep(page).getByRole("textbox", { name: "Channel", exact: true }).fill(channelLink("CS"))
   await previewsShown(page)
   await saveLinks(page).click()
   await expect(editCount(page)).toHaveText(again)
   await expect(saveLinks(page)).toBeDisabled()
   await expect(onStep(page).locator(".notice")).toHaveCount(0)
   expect((await searchName(request, label)).records).toEqual({ contact: "", channel: "" })
-
-  // two used elsewhere while this tab counts three: the address goes out, the channel meets the limit
-  await control(request, "edits", { label, count: 0 })
-  await page.reload()
-  await expect(editCount(page)).toHaveText("3 edits left this year.")
-  const contact = contactLink("CT")
-  await link.fill(contact)
-  await onStep(page).getByRole("button", { name: "Add a channel link" }).click()
-  await onStep(page).getByRole("textbox", { name: "Channel", exact: true }).fill(channelLink("CT"))
-  await previewsShown(page)
-  await control(request, "edits", { label, count: 2, at: made })
-  await saveLinks(page).click()
-  const notice = onStep(page).locator(".notice")
-  await expect(notice).toContainText("The address was saved; the channel was not.")
-  await expect(notice).toContainText("This name's edits for the year are used up.")
-  await expect(editCount(page)).toHaveText(again)
-  await expect(saveLinks(page)).toBeDisabled()
-  expect((await searchName(request, label)).records).toEqual({ contact, channel: "" })
 })
 
 test("the tab's code pays for each name it covers until it is taken off, which takes it off the checkout too", async ({ page, request }) => {

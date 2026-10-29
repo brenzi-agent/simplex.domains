@@ -184,41 +184,37 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
   expect((await searchName(request, label)).records).toEqual({ contact: "", channel })
 
-  // links are sent one at a time, so a refusal after the first says which one is on chain
+  // a Save of both links is one request, so a refusal leaves both as the chain has them
   const nextChannel = channelLink("C3")
-  let sent = 0
-  await page.route("**/api/name/records", (route) => ++sent === 1 ? route.continue() : route.fulfill({ status: 429, headers: { "retry-after": "2" }, json: { error: "rate_limited" } }))
+  const refused: { edits: { key: string }[] }[] = []
+  await page.route("**/api/name/records", (route) => {
+    refused.push(route.request().postDataJSON())
+    return route.fulfill({ status: 429, headers: { "retry-after": "2" }, json: { error: "rate_limited" } })
+  })
   await link.fill(contact)
   await channelField.fill(nextChannel)
   await expect(page.locator(".link-field").nth(1)).toHaveAttribute("data-state", "ok")
   await page.getByRole("button", { name: "Save links" }).click()
-  await expect(page.locator("[aria-hidden=true]", { hasText: /^The address was saved; the channel was not\. Try again in/ })).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator("[aria-hidden=true]", { hasText: /^The links were not saved\. Try again in/ })).toBeVisible({ timeout: 30_000 })
+  expect(refused.map((body) => body.edits.map((e) => e.key))).toEqual([["simplex.contact", "simplex.channel"]])
+  expect((await searchName(request, label)).records).toEqual({ contact: "", channel })
   await page.unroute("**/api/name/records")
   await expect(page.getByRole("button", { name: "Save links" })).toBeEnabled({ timeout: 10_000 })
   await page.getByRole("button", { name: "Save links" }).click()
   await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
   expect((await searchName(request, label)).records).toEqual({ contact, channel: nextChannel })
 
-  const nonceMoved = (ahead: number, records?: { contact: string; channel: string }) => page.route(/\/api\/name\/(0x)?[0-9a-f]{64}/, async (route) => {
+  // a Save refused because an earlier one moved the nonce shows the links on chain in both fields
+  const nonceMoved = (ahead: number, records: { contact: string; channel: string }) => page.route(/\/api\/name\/(0x)?[0-9a-f]{64}/, async (route) => {
     const res = await route.fetch()
     const json = await res.json() as { recordsNonce: number }
-    await route.fulfill({ response: res, json: { ...json, recordsNonce: json.recordsNonce + ahead, ...(records ? { records } : {}) } })
+    await route.fulfill({ response: res, json: { ...json, recordsNonce: json.recordsNonce + ahead, records } })
   })
-  const refusedChannel = channelLink("D4")
-  sent = 0
-  await page.route("**/api/name/records", (route) => ++sent === 1 ? route.continue() : route.fulfill({ status: 400, json: { error: "bad_request" } }))
-  await nonceMoved(1)
-  await link.fill("")
-  await channelField.fill(refusedChannel)
-  await expect(page.locator(".link-field").nth(1)).toHaveAttribute("data-state", "ok")
-  await page.getByRole("button", { name: "Save links" }).click()
-  const partly = page.getByText("Another save reached the chain first. The channel is still as you typed it: save again to send it.")
-  await expect(partly).toBeVisible({ timeout: 30_000 })
-  await expect(link).toHaveValue("")
-  await expect(channelField).toHaveValue(refusedChannel)
-  await page.unroute(/\/api\/name\/(0x)?[0-9a-f]{64}/)
-
+  await page.route("**/api/name/records", (route) => route.fulfill({ status: 400, json: { error: "bad_request" } }))
   await nonceMoved(2, { contact, channel: nextChannel })
+  await link.fill("")
+  await channelField.fill(channelLink("D4"))
+  await expect(page.locator(".link-field").nth(1)).toHaveAttribute("data-state", "ok")
   await page.getByRole("button", { name: "Save links" }).click()
   await expect(page.getByText("An earlier save got there first")).toBeVisible({ timeout: 30_000 })
   await expect(link).toHaveValue(contact)
@@ -228,6 +224,13 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   await expect(page.getByText("An earlier save got there first")).toBeVisible()
   await page.unroute(/\/api\/name\/(0x)?[0-9a-f]{64}/)
   await page.unroute("**/api/name/records")
+  // read again, the page signs with the chain's own nonce
+  await page.reload()
+  await expect(link).toHaveValue(contact)
+  await link.fill("")
+  await page.getByRole("button", { name: "Save links" }).click()
+  await expect(page.getByText("Links saved")).toBeVisible({ timeout: 30_000 })
+  expect((await searchName(request, label)).records).toEqual({ contact: "", channel: nextChannel })
 
   await page.goto("/#/names")
   const row = page.locator(".list-row", { hasText: `${label}.simplex` })
@@ -629,7 +632,7 @@ test("Skip for now shows only while no link is given, and a link edited keeps it
 
 test("Edit links keeps several links on chain as the contact address they hold, and emptying the field removes them", async ({ page }) => {
   const { registrationId } = await fakeRegisteredName(page, uniqueLabel("several"), { contact: `${contactLink("M1")};${contactLink("M2")}`, channel: "" })
-  const sent: Record<string, unknown>[] = []
+  const sent: { edits: { key: string; value: string }[] }[] = []
   await page.route("**/api/name/records", (route) => {
     sent.push(route.request().postDataJSON())
     return route.fulfill({ json: { tx: "0x04" } })
@@ -641,7 +644,7 @@ test("Edit links keeps several links on chain as the contact address they hold, 
   await step.locator(".link-field").first().getByRole("button", { name: "Remove link" }).click()
   await step.getByRole("button", { name: "Save links" }).click()
   await expect(step.getByText("Links saved")).toBeVisible()
-  expect(sent.map(({ key, value }) => ({ key, value })), "the edits sent").toEqual([{ key: CONTACT_KEY, value: "" }])
+  expect(sent.map(({ edits }) => edits.map(({ key, value }) => ({ key, value }))), "the edits sent").toEqual([[{ key: CONTACT_KEY, value: "" }]])
 })
 
 test("Check your order draws a link whose profile cannot be read as its kind's default picture, named by the link", async ({ page }) => {

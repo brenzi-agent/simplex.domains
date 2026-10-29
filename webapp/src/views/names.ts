@@ -6,8 +6,8 @@ import { dateOf, dollars, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import {
   balanceRows, type BalanceRow, CODE_CHIPS, holderOf, EDIT_RETRY_MS, editable, editsLine, editsShort, hasLinks, linksAction, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
-  againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, nameRows, ORDER_CHIP_WORDS, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
-  reduceList, reduceRestore, REFUSALS, ROW_CHIPS, rowsDrawn, unanswered, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
+  againLine, initialRestore, lapsed, lateLine, ranOut, moneyReached, nameRows, ORDER_CHIP_WORDS, paidLine, type ListEvent, type ListState, NOT_SAVED, phaseChip, reduceEdit,
+  reduceList, reduceRestore, REFUSALS, ROW_CHIPS, rowsDrawn, unanswered, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, waitsToSign,
 } from "../screens/names.ts"
 import { codesOnly } from "../mode.ts"
 import { heldWords } from "../screens/balance.ts"
@@ -568,10 +568,9 @@ function resultNode(f: EditForm, signal: AbortSignal): HTMLElement | null {
     case "nothing": return alertBox("info", "info", null, "Nothing has changed.")
     case "saved": return alertBox("ok", "check", "Links saved", "The change is on chain; the app shows it within a few minutes.")
     case "unanswered": return alertBox("warn", "clock", "No answer yet", "The change may still go through. Reload this page in a few minutes to see whether it did before saving again.")
-    case "moved": return alertBox("warn", "clock", f.sent.length ? notSaved(f) : "An earlier save got there first",
-      f.sent.length ? `Another save reached the chain first. The ${LINK_NAMES[unsent(f.changes, f.sent)!]} is still as you typed it: save again to send it.` : "It was still on its way when this one was signed. The fields now show the links on chain: change them and save again.")
-    case "refused": return alertBox("danger", "alert", notSaved(f), "Try again in a moment.")
-    case "limited": return alertBox("warn", "clock", notSaved(f), "This name's edits for the year are used up.")
+    case "moved": return alertBox("warn", "clock", "An earlier save got there first",
+      "It was still on its way when this one was signed. The fields now show the links on chain: change them and save again.")
+    case "refused": return alertBox("danger", "alert", NOT_SAVED, "Try again in a moment.")
   }
 }
 
@@ -591,8 +590,8 @@ async function saveLinks(links: LinkFields): Promise<void> {
   const { record, read, form } = edit
   if (!form?.saving) return
   try {
-    await flow.saveLinks(record!, read!.view, form.nonce, form.changes, (kind) => answerEdit(route, { type: "link-saved", kind, at: api.serviceSeconds() }))
-    answerEdit(route, { type: "save-done" })
+    await flow.saveLinks(record!, read!.view, form.nonce, form.changes)
+    answerEdit(route, { type: "save-done", at: api.serviceSeconds() })
   } catch (e) {
     // no answer is not a refusal: the edit may still be mined, and sending it again would pay for it twice
     if (e instanceof api.ApiError && (e.code === "network" || e.code === "edit_pending")) {
@@ -609,14 +608,9 @@ async function saveLinks(links: LinkFields): Promise<void> {
     const now = edit.form!
     const nonce = fresh?.status === "registered" && fresh.recordsNonce != null && fresh.recordsNonce > now.nonce ? fresh.recordsNonce : null
     const records = nonce !== null && fresh?.status === "registered" && fresh.records ? fresh.records : null
-    if (records) showChain(records, now, links)
+    if (records) for (const kind of api.LINK_KINDS) links.show(kind, records[kind])
     dispatchEdit({ type: "save-refused", moved: nonce === null ? null : { nonce, records }, edits: fresh?.status === "registered" ? fresh.recordEdits : null })
   }
-}
-
-// the links on chain take the fields' place, except a link this save sent none of yet, which stays as typed
-function showChain(records: api.Links, f: EditForm, links: LinkFields): void {
-  for (const kind of api.LINK_KINDS) if (!(f.sent.length && kind in f.changes && !f.sent.includes(kind))) links.show(kind, records[kind])
 }
 
 function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {

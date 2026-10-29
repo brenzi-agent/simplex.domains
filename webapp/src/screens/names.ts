@@ -269,14 +269,13 @@ export function reduceRestore(s: RestoreState, e: RestoreEvent): RestoreState {
 export const EDIT_RETRY_MS = 5000
 export type EditKind = "edit" | "edit-unreadable" | "edit-no-code" | "edit-expired" | "edit-in-app" | "edit-elsewhere" | "edit-not-registered"
 interface EditRead { view: RegistrationView; answer: SearchAnswer; now: number }
-type EditResult = "sending" | "nothing" | "saved" | "unanswered" | "moved" | "refused" | "limited"
+type EditResult = "sending" | "nothing" | "saved" | "unanswered" | "moved" | "refused"
 
 export interface EditForm {
   current: Links
   values: Links
   nonce: number
   changes: Partial<Links>
-  sent: (keyof Links)[]
   saving: boolean
   unanswered: boolean
   settled: boolean
@@ -302,8 +301,7 @@ export type EditEvent =
   | { type: "read-started" }
   | { type: "field-changed"; kind: keyof Links; value: string }
   | { type: "save-started" }
-  | { type: "link-saved"; kind: keyof Links; at: number }
-  | { type: "save-done" }
+  | { type: "save-done"; at: number }
   // counted: the service took the edit, which goes on without an answer
   | { type: "save-unanswered"; counted: boolean; at: number }
   | { type: "save-held"; until: number }
@@ -312,8 +310,6 @@ export type EditEvent =
   | { type: "hold-ended" }
 
 export const initialEdit = (registrationId: string, record: OrderRecord | null): EditState => ({ registrationId, record, read: null, form: null, failures: 0, reading: false })
-
-export const LINK_NAMES: Record<keyof Links, string> = { contact: "address", channel: "channel" }
 
 export const changesOf = (f: EditForm): Partial<Links> => Object.fromEntries(LINK_KINDS.filter((k) => f.values[k] !== f.current[k]).map((k) => [k, f.values[k]]))
 
@@ -334,32 +330,23 @@ export function againLine(expiresAt: number | null, answer: SearchAnswer, now: n
   return again.when === "from" ? `It can be registered again from ${dateOf(again.at)}.` : "It has been registered again since."
 }
 
-export const unsent = (changes: Partial<Links>, sent: (keyof Links)[]) => (Object.keys(changes) as (keyof Links)[]).find((k) => !sent.includes(k))
-
-// Each link saved is one edit of the name's yearly count, which returns 365 days after it was made, so the oldest
-// counted edit, or this one when none was counted, is the next to return. At is the service's time in seconds.
+// Each Save is one edit of the name's yearly count, whatever it changes, and returns 365 days after it was made, so the
+// oldest counted edit, or this one when none was counted, is the next to return. At is the service's time in seconds.
 const spent = (edits: RecordEdits | null, at: number): RecordEdits | null =>
   edits && { left: Math.max(0, edits.left - 1), nextAt: edits.nextAt ?? at + YEAR_S }
 
-const editsNeeded = (f: EditForm) => Object.keys(changesOf(f)).length
-
-export const editsShort = (f: EditForm) => f.edits !== null && (f.edits.left === 0 || editsNeeded(f) > f.edits.left)
+export const editsShort = (f: EditForm) => f.edits !== null && f.edits.left === 0
 
 const editCount = (n: number) => n === 1 ? "1 edit" : `${n} edits`
 
 export function editsLine(f: EditForm): string {
   if (!f.edits) return ""
   const { left, nextAt } = f.edits
-  if (left === 0) return `You can edit links again on ${dateOf(nextAt!)}.`
-  const needed = editsNeeded(f)
-  return needed > left ? `${editCount(left)} left this year; both links take ${needed}.` : `${editCount(left)} left this year.`
+  return left === 0 ? `You can edit links again on ${dateOf(nextAt!)}.` : `${editCount(left)} left this year.`
 }
 
-// an edit sends each link on its own, so one can be on chain when the next fails
-export function notSaved({ changes, sent }: EditForm): string {
-  const rest = unsent(changes, sent)
-  return sent.length && rest ? `The ${LINK_NAMES[sent[0]]} was saved; the ${LINK_NAMES[rest]} was not.` : "The links were not saved."
-}
+// a Save is one transaction, so a Save that fails changed no link
+export const NOT_SAVED = "The links were not saved."
 
 const owns = (answer: SearchAnswer, owner: string) => answer.status === "registered" && answer.owner !== undefined && answer.owner.toLowerCase() === owner.toLowerCase()
 
@@ -376,7 +363,7 @@ export function screenOfEdit(s: EditState): EditKind {
 
 function formOf(answer: SearchAnswer, hold: Hold | null): EditForm | null {
   if (answer.status !== "registered" || !answer.records || answer.recordsNonce == null) return null
-  return { current: { ...answer.records }, values: { ...answer.records }, nonce: answer.recordsNonce, changes: {}, sent: [],
+  return { current: { ...answer.records }, values: { ...answer.records }, nonce: answer.recordsNonce, changes: {},
     saving: false, unanswered: false, settled: false, result: null, hold, edits: answer.recordEdits ?? null }
 }
 
@@ -391,14 +378,16 @@ function applyToForm(f: EditForm, e: EditEvent): EditForm {
     case "save-started": {
       const changes = changesOf(f)
       if (Object.keys(changes).length === 0) return { ...f, result: "nothing" }
-      return { ...f, changes, sent: [], saving: true, result: "sending" }
+      return { ...f, changes, saving: true, result: "sending" }
     }
-    case "link-saved": return { ...f, nonce: f.nonce + 1, sent: [...f.sent, e.kind], current: { ...f.current, [e.kind]: f.changes[e.kind] ?? f.current[e.kind] }, edits: spent(f.edits, e.at) }
-    case "save-done": return { ...f, saving: false, result: "saved", settled: Object.keys(changesOf(f)).length === 0 }
+    case "save-done": {
+      const saved = { ...f, nonce: f.nonce + Object.keys(f.changes).length, current: { ...f.current, ...f.changes }, edits: spent(f.edits, e.at) }
+      return { ...saved, saving: false, result: "saved", settled: Object.keys(changesOf(saved)).length === 0 }
+    }
     case "save-unanswered": return { ...f, saving: false, unanswered: true, result: "unanswered", edits: e.counted ? spent(f.edits, e.at) : f.edits }
-    case "save-held": return { ...f, saving: false, result: null, hold: { until: e.until, lead: `${notSaved(f)} ` } }
-    // the edits line says when they return; a notice only says what reached the chain
-    case "save-limited": return { ...f, saving: false, result: f.sent.length ? "limited" : null, edits: { left: 0, nextAt: e.nextAt } }
+    case "save-held": return { ...f, saving: false, result: null, hold: { until: e.until, lead: `${NOT_SAVED} ` } }
+    // the edits line says when they return
+    case "save-limited": return { ...f, saving: false, result: null, edits: { left: 0, nextAt: e.nextAt } }
     case "save-refused": {
       const edits = e.edits ?? f.edits
       if (!e.moved) return { ...f, saving: false, result: "refused", edits }

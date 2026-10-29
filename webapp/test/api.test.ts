@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
-  ApiError, BalanceChanged, cancelInvoice, checkCode, createOrder, currentTerms, editRecord, EditLimited, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
+  ApiError, BalanceChanged, cancelInvoice, checkCode, createOrder, currentTerms, editRecords, EditLimited, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
   communityAgreed, termsFor,
 } from "../src/api.ts"
 
@@ -61,20 +61,20 @@ describe("service errors", () => {
   })
 
   it("reads the service's edit_limit under 429 as its own refusal, with when the next edit fits, and no wait to hold", async () => {
-    const edit = { labelHash: `0x${HASH}`, key: "simplex.channel", value: "", nonce: 3, deadline: 1, signature: "0x" }
+    const edit = { labelHash: `0x${HASH}`, edits: [{ key: "simplex.channel", value: "", nonce: 3, deadline: 1, signature: "0x" }] }
     answerWith(429, JSON.stringify({ error: "edit_limit", nextAt: 1824249600 }))
-    const e = await editRecord(edit).then(() => null, (e: unknown) => e)
+    const e = await editRecords(edit).then(() => null, (e: unknown) => e)
     expect(e).toBeInstanceOf(EditLimited)
     expect([(e as EditLimited).code, (e as EditLimited).status, (e as EditLimited).nextAt]).toEqual(["edit_limit", 429, 1824249600])
     expect(retryDelay(e, 5000), "asking again cannot change it").toBeNull()
     for (const body of [{ error: "edit_limit" }, { error: "edit_limit", nextAt: "soon" }, { error: "edit_limit", nextAt: -1 }]) {
       answerWith(429, JSON.stringify(body))
-      const bad = await editRecord(edit).then(() => null, (e: unknown) => e)
+      const bad = await editRecords(edit).then(() => null, (e: unknown) => e)
       expect((bad as ApiError).code, JSON.stringify(body)).toBe("network")
     }
     // any other 429 stays a rate limit, whatever its body says
     answerWith(429, JSON.stringify({ error: "move_limit" }), { "retry-after": "4" })
-    const limited = await editRecord(edit).then(() => null, (e: unknown) => e)
+    const limited = await editRecords(edit).then(() => null, (e: unknown) => e)
     expect([(limited as ApiError).code, (limited as ApiError).retryAfter, limited instanceof EditLimited]).toEqual(["rate_limited", 4, false])
   })
 

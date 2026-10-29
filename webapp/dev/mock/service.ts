@@ -1209,8 +1209,8 @@ function editsLeft(labelHash: Hex): { left: number; nextAt: number | null } {
   return { left: Math.max(0, editsPerYear - times.length), nextAt: returning === undefined ? null : returning + YEAR_S }
 }
 
-// Each sent edit, by its signed body: a repeat is answered from it rather than checked anew. A refused edit is never sent,
-// so it is not kept, and its repeat is checked again.
+// Each sent request, by its signed edits: a repeat is answered from it rather than checked anew. A refused request is
+// never sent, so it is not kept, and its repeat is checked again.
 interface SentEdit { hash: Hex; outcome: Record<string, unknown> | HttpError | null; counted: CountedEdit }
 const sentEdits = new Map<string, SentEdit>()
 
@@ -1229,29 +1229,70 @@ async function repeatedEdit(sent: SentEdit): Promise<Record<string, unknown>> {
   return repeatedEdit(sent)
 }
 
-export async function editRecords(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const { labelHash, key, value, nonce, deadline } = body
-  if (!isHash(labelHash) || typeof nonce !== "number" || typeof deadline !== "number" || !Number.isInteger(nonce) || !Number.isInteger(deadline)) throw badRequest()
-  const signature = checkSignature(body.signature)
-  const clear = body.clear === true
-  if (!clear) {
-    const kind = key === CONTACT_KEY ? "contact" : key === CHANNEL_KEY ? "channel" : null
-    if (kind === null || typeof value !== "string") throw badRequest()
-    if (value !== "" && linkProblem(kind, value) !== null) throw new HttpError(400, "invalid_link")
+// A Save's edits: one link of each kind at most, so two
+const MAX_EDITS = 2
+
+// One signed edit of a request: a SetText of a key, or a ClearRecords (key null).
+interface SignedEdit { key: string | null; value: string; nonce: number; deadline: number; signature: Hex }
+
+// every edit's format and key, then every link, then every signature, as the service checks them
+function signedEdits(edits: unknown): SignedEdit[] {
+  if (!Array.isArray(edits) || edits.length < 1 || edits.length > MAX_EDITS) throw badRequest()
+  const parsed = edits.map((e: unknown) => {
+    if (typeof e !== "object" || e === null) throw badRequest()
+    const { key, value, nonce, deadline, signature } = e as Record<string, unknown>
+    if (typeof nonce !== "number" || typeof deadline !== "number" || !Number.isInteger(nonce) || !Number.isInteger(deadline)) throw badRequest()
+    if ((e as Record<string, unknown>).clear === true) return { key: null, value: "", nonce, deadline, signature }
+    if ((key !== CONTACT_KEY && key !== CHANNEL_KEY) || typeof value !== "string") throw badRequest()
+    return { key, value, nonce, deadline, signature }
+  })
+  const keys = parsed.map((e) => e.key)
+  if (new Set(keys).size !== keys.length || (keys.includes(null) && parsed.length > 1)) throw badRequest()
+  if (parsed.some((e, i) => i > 0 && e.nonce !== parsed[i - 1].nonce + 1)) throw badRequest()
+  for (const { key, value } of parsed) {
+    if (key !== null && value !== "" && linkProblem(key === CONTACT_KEY ? "contact" : "channel", value) !== null) throw new HttpError(400, "invalid_link")
   }
-  const node = nodeOf(labelHash)
+  return parsed.map((e) => ({ ...e, signature: checkSignature(e.signature) }))
+}
+
+const SET_TEXT_TYPES = { SetText: [{ name: "node", type: "bytes32" }, { name: "key", type: "string" }, { name: "value", type: "string" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }
+const CLEAR_RECORDS_TYPES = { ClearRecords: [{ name: "node", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }
+
+function editDigest(node: Hex, { key, value, nonce, deadline }: SignedEdit): Hex {
   const domain = { name: "SimplexResolver", version: "1", chainId: deployment.chainId, verifyingContract: deployment.resolver }
-  const digest = clear
-    ? hashTypedData({ domain, primaryType: "ClearRecords", types: { ClearRecords: [{ name: "node", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }, message: { node, nonce: BigInt(nonce), deadline: BigInt(deadline) } })
-    : hashTypedData({ domain, primaryType: "SetText", types: { SetText: [{ name: "node", type: "bytes32" }, { name: "key", type: "string" }, { name: "value", type: "string" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }, message: { node, key: key as string, value: value as string, nonce: BigInt(nonce), deadline: BigInt(deadline) } })
-  const signer = await recoverAddress({ hash: digest, signature })
-  const editKey = JSON.stringify([labelHash, clear, key, value, nonce, deadline, signature])
+  return key === null
+    ? hashTypedData({ domain, primaryType: "ClearRecords", types: CLEAR_RECORDS_TYPES, message: { node, nonce: BigInt(nonce), deadline: BigInt(deadline) } })
+    : hashTypedData({ domain, primaryType: "SetText", types: SET_TEXT_TYPES, message: { node, key, value, nonce: BigInt(nonce), deadline: BigInt(deadline) } })
+}
+
+const editCall = (node: Hex, { key, value, nonce, deadline, signature }: SignedEdit): [string, unknown[]] =>
+  key === null ? ["clearRecordsWithSig", [node, BigInt(nonce), BigInt(deadline), signature]] : ["setTextWithSig", [node, key, value, BigInt(nonce), BigInt(deadline), signature]]
+
+// A request's one transaction: an edit alone as its own call, two as the resolver's multicall, which reverts both when
+// either fails.
+function sendEdits(node: Hex, edits: SignedEdit[], goingOut: (hash: Hex) => void): Promise<Hex> {
+  if (edits.length === 1) return sendTx(resolver, ...editCall(node, edits[0]), goingOut)
+  const calls = edits.map((e) => {
+    const [functionName, args] = editCall(node, e)
+    return encodeFunctionData({ abi: resolver.abi, functionName, args })
+  })
+  return sendTx(resolver, "multicall", [calls], goingOut)
+}
+
+export async function editRecords(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { labelHash } = body
+  if (!isHash(labelHash)) throw badRequest()
+  const edits = signedEdits(body.edits)
+  const node = nodeOf(labelHash)
+  const signers = await Promise.all(edits.map((e) => recoverAddress({ hash: editDigest(node, e), signature: e.signature })))
+  if (signers.some((a) => a !== signers[0])) throw badRequest()
+  const editKey = JSON.stringify([labelHash, edits])
   const earlier = sentEdits.get(editKey)
   if (earlier) return repeatedEdit(earlier)
-  // as the service, after the signature and before any chain read
+  // as the service, after the signatures and before any chain read
   const { left, nextAt } = editsLeft(labelHash)
   if (left === 0) throw new HttpError(429, "edit_limit", { nextAt })
-  if (deadline < nowSeconds()) throw badRequest()
+  if (Math.min(...edits.map((e) => e.deadline)) < nowSeconds()) throw badRequest()
   // a failed chain read is the provider's, not the request's
   let owner: Address, nameResolver: Address, current: bigint
   try {
@@ -1261,11 +1302,11 @@ export async function editRecords(body: Record<string, unknown>): Promise<Record
   } catch {
     throw new HttpError(503, "provider_unavailable")
   }
-  if (signer !== owner) throw badRequest()
+  if (signers[0] !== owner) throw badRequest()
   // the relay writes only the store's resolver, which a name pointed elsewhere no longer reads
   if (nameResolver !== getAddress(deployment.resolver)) throw badRequest()
-  if (BigInt(nonce) !== current) throw badRequest()
-  // kept from the moment it goes out
+  if (BigInt(edits[0].nonce) !== current) throw badRequest()
+  // kept from the moment it goes out, and counted once whatever it changes
   const edit: { sent: SentEdit | null } = { sent: null }
   const goingOut = (hash: Hex) => {
     const counted = { at: nowSeconds(), reverted: false }
@@ -1274,9 +1315,7 @@ export async function editRecords(body: Record<string, unknown>): Promise<Record
     sentEdits.set(editKey, edit.sent)
   }
   try {
-    const tx = clear
-      ? await sendTx(resolver, "clearRecordsWithSig", [node, BigInt(nonce), BigInt(deadline), signature], goingOut)
-      : await sendTx(resolver, "setTextWithSig", [node, key, value, BigInt(nonce), BigInt(deadline), signature], goingOut)
+    const tx = await sendEdits(node, edits, goingOut)
     if (edit.sent) edit.sent.outcome = { tx }
     return { tx }
   } catch (e) {
