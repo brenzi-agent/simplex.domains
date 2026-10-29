@@ -75,15 +75,16 @@ export interface Community {
 }
 
 const COMMUNITY_TERMS = "community/"
+const COMMUNITY_AGREED = /^(?:[A-Za-z0-9._-]+\/)?community\//
 
 export const termsFor = (terms: Terms, community: Community | null) => `${community ? COMMUNITY_TERMS : ""}${terms.hash.slice(2)}`
 export const currentTerms = (a: { terms: Terms; community: Community | null }) => termsFor(a.terms, a.community)
 // a community name is registered for its own years, whatever years its code or order pays for
 export const termYears = (community: Community | null, years: number) => community?.years ?? years
-export const communityAgreed = (terms: string | null | undefined) => terms?.startsWith(COMMUNITY_TERMS) === true
+export const communityAgreed = (terms: string | null | undefined) => COMMUNITY_AGREED.test(terms ?? "")
 
 export function signedHash(terms: string | null | undefined): string | null {
-  const hash = communityAgreed(terms) ? terms!.slice(COMMUNITY_TERMS.length) : terms
+  const hash = terms?.startsWith(COMMUNITY_TERMS) ? terms.slice(COMMUNITY_TERMS.length) : terms
   return hash && /^[0-9a-f]{64}$/.test(hash) ? `0x${hash}` : null
 }
 
@@ -322,7 +323,7 @@ const isEntity = (e: unknown) => isPreview(e) && isText((e as Record<string, unk
 const isChain = (a: Record<string, unknown>) => isText(a.resolver) && isText(a.sponsor) && typeof a.chainId === "number" && isText(a.tld)
 const PHASES: Phase[] = ["unpaid", "queued", "committing", "committed", "registering", "registered", "taken", "failed"]
 const isBalance = (v: unknown) => isObject(v) && isAmount(v.amount) && typeof v.held === "boolean" && nullable(v.heldUntil, isText) && isAmount(v.refunded)
-const isSignedTerms = (v: unknown) => typeof v === "string" && /^[A-Za-z0-9._/-]{1,74}$/.test(v)
+const isSignedTerms = (v: unknown) => typeof v === "string" && /^[A-Za-z0-9._/-]{1,112}$/.test(v)
 const isHash = (v: unknown) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v)
 const isTerms = (v: unknown, chainId: number) => isObject(v) && isHash(v.hash) && typeof v.link === "string" && termsLink(v.link, chainId) !== null && keccakOf(v.link) === v.hash
 const isCommunity = (v: unknown) => v === null || (isObject(v) && nullable(v.for, (f) => typeof f === "string" && f !== "") && isCount(v.years))

@@ -5,7 +5,7 @@ import {
   encodeFunctionData, getAddress, hashTypedData, isAddress, keccak256, namehash, recoverAddress, recoverMessageAddress, recoverTypedDataAddress, toHex,
   zeroHash, type Address, type Hex,
 } from "viem"
-import { type ChatKind, type Profile, termsLink } from "../../src/api.ts"
+import { type ChatKind, communityAgreed, type Profile, termsLink } from "../../src/api.ts"
 import { codeHash, parseNameCode } from "../../src/crypto/code.ts"
 import { CHANNEL_KEY, CONTACT_KEY, durationFor, YEAR_S } from "../../src/crypto/registration.ts"
 import { labelProblem, linkKind, type LinkKind, linkProblem, MAX_LABEL_LENGTH, MIN_LABEL_LENGTH } from "../../src/names.ts"
@@ -57,8 +57,9 @@ const CHAIN_FAILED = "The blockchain did not answer"
 // a contract's revert name is no message for a buyer
 const REFUSED = "The blockchain refused the transaction"
 const SEALED_MAX = 11095
-// the terms an order signs: the hash of the terms of the name's kind, after COMMUNITY_TERMS for a community name
-const SIGNED_TERMS = /^[A-Za-z0-9._/-]{1,74}$/
+// the terms an order signs: the hash of the terms of the name's kind, after COMMUNITY_TERMS for a community name, or the
+// version an older page signed, with /community/ and the community terms' hash after it for a community name
+const SIGNED_TERMS = /^[A-Za-z0-9._/-]{1,112}$/
 const COMMUNITY_TERMS = "community/"
 const TERMS_FETCH_MS = 10_000
 const TERMS_WAIT_S = 30
@@ -403,7 +404,7 @@ const communities = new Map<Hex, string>([[keccak256(toHex("bakers")), "bakers a
 
 const communityEntry = (labelHash: Hex) => ({ for: communities.get(labelHash) ?? null, years: COMMUNITY_YEARS })
 // a community name's order pays for these years, whatever years its code gives
-const orderYears = (o: { terms: string }, years: number) => o.terms.startsWith(COMMUNITY_TERMS) ? COMMUNITY_YEARS : years
+const orderYears = (o: { terms: string }, years: number) => communityAgreed(o.terms) ? COMMUNITY_YEARS : years
 
 interface Terms { hash: Hex; link: string }
 const termsOf = (link: string): Terms | null => link === "" ? null : { hash: keccak256(toHex(link)), link }
@@ -429,7 +430,7 @@ async function termsText(terms: Terms): Promise<string | null> {
 }
 
 // the entry of the community name terms an order signed, which the view shows without reading the chain
-const signedCommunity = (reg: Registration) => reg.terms.startsWith(COMMUNITY_TERMS) ? communityEntry(reg.labelHash) : null
+const signedCommunity = (reg: Registration) => communityAgreed(reg.terms) ? communityEntry(reg.labelHash) : null
 
 // an order or a move signs the terms of the name's kind the service has now, which it takes no order without
 async function checkTerms(o: Pick<OrderBody, "labelHash" | "terms">): Promise<void> {

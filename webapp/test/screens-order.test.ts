@@ -591,11 +591,13 @@ describe("reveal helpers", () => {
     // the sponsor's nonce the service could not read leaves nothing to sign with
     expect(revealDue(read(null, registration({ ...committed, intentNonce: null, unread: ["intentNonce"] })))).toBe(false)
   })
-  it("revealDue and askAgainDue for a community name: the reveal waits for changed terms to be ticked, which are asked for once, only with the name code and links not refused", () => {
+  it("revealDue and askAgainDue for a community name: the reveal waits for changed terms, or terms an older page signed as a version, to be ticked, which are asked for once, only with the name code and links not refused", () => {
     const listed = (termsHash: string, change: Partial<OrderState> = {}) =>
       read(null, registration({ ...committed, acceptance: acceptanceFor(termsHash), community: communityEntry(), terms: `community/${SIGNED.slice(2)}` }), change)
     expect([revealDue(listed(SIGNED)), askAgainDue(listed(SIGNED))]).toEqual([true, false])
     expect([revealDue(listed(CHANGED)), askAgainDue(listed(CHANGED))], "terms changed on chain since the order").toEqual([false, true])
+    const older = read(null, registration({ ...committed, acceptance: acceptanceFor(SIGNED), community: communityEntry(), terms: `2026-10-23/community/${SIGNED.slice(2)}` }))
+    expect([revealDue(older), askAgainDue(older)], "a version an older page signed").toEqual([false, true])
     const ask = reask()
     expect([revealDue(listed(CHANGED, { ask })), askAgainDue(listed(CHANGED, { ask }))], "asked, not ticked").toEqual([false, false])
     expect(askAgainDue(listed(CHANGED, { record: null })), "no name code in this browser").toBe(false)

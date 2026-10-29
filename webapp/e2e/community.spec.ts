@@ -1,6 +1,7 @@
 // Community names and the terms every signature for a name waits for (contract section 1, Terms and community names).
 // The first cases need no /control endpoint, so they run against the service too, which has words of its own for bakers,
 // a name dev/deploy.ts lists.
+import { createHash } from "node:crypto"
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test"
 import {
   ACCEPT, acceptCommunityTerms, AGREE, agreeToTerms, COMMUNITY_HEADING, contactLink, control, failedOrder, MOCK, onStep, payButton, previewsShown, REGISTRATION_MS, registrationOf, restoreOrder, savedToReview, search, sevenLetters,
@@ -155,6 +156,29 @@ test("a community name's order shows its community terms on their own step befor
   await onStep(page).getByRole("link", { name: "Back" }).click()
   await expect(onStep(page).getByRole("heading", { name: COMMUNITY_HEADING })).toBeVisible()
   await expect(onStep(page).getByRole("checkbox", { name: ACCEPT }), "the step gone back to keeps its tick").toBeChecked()
+})
+
+test("community terms at a commit of git.simplex.chat link that commit's page under their text", async ({ page }) => {
+  const text = "# Community terms\n\n- Use the name for its community.\n"
+  const digest = createHash("sha256").update(text).digest("hex")
+  const commit = "4cb24444a1f2e3d4c5b6a7980716253443526170"
+  const path = `simplex-chat/simplex-chat/raw/commit/${commit}/docs/community-name-terms.md`
+  const link = `https://git.simplex.chat/${path}#sha256=${digest}`
+  const hash = keccak256(toHex(link))
+  await page.route("**/api/name/*", async (route) => {
+    const response = await route.fetch()
+    const json = await response.json()
+    await route.fulfill({ response, json: json.status === "available" ? { ...json, terms: { hash, link } } : json })
+  })
+  await page.route(`**/api/terms/${hash}`, (route) => route.fulfill({ json: { link, text } }))
+  await search(page, COMMUNITY_LABEL)
+  await toCodeStep(page)
+  await onStep(page).getByText(SAVED).click()
+  await onStep(page).getByRole("button", { name: "Continue" }).click()
+  await expect(onStep(page).getByRole("heading", { name: COMMUNITY_HEADING })).toBeVisible()
+  await expect(onStep(page).locator(".terms-text h3")).toHaveText("Community terms")
+  await expect(onStep(page).getByRole("link", { name: `View at commit ${commit.slice(0, 7)}` }))
+    .toHaveAttribute("href", `https://git.simplex.chat/${path.replace("/raw/commit/", "/src/commit/")}`)
 })
 
 test("an order refused for terms changed meanwhile unticks the box and says so in place, the box and Pay staying put, and signs the new terms once ticked", async ({ page, request }) => {

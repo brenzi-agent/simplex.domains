@@ -336,6 +336,7 @@ describe("service errors", () => {
     const COMMUNITY_TERMS = termsOf(`${FORGEJO}/docs/community-name-terms.md#sha256=${"c7".repeat(32)}`)
     const LOCAL_TERMS = termsOf(`http://127.0.0.1:8098/terms/${"c7".repeat(32)}.md#sha256=${"c7".repeat(32)}`)
     const SIGNED = `community/${COMMUNITY_TERMS.hash.slice(2)}`
+    const OLDER_SIGNED = `2026-10-23/community/${"c7".repeat(32)}`
     const AVAILABLE = { status: "available", price: 10000, currency: "usd", years: 2, termStart: 1798761600, resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex", community: COMMUNITY, terms: COMMUNITY_TERMS }
     const ORDER = { labelHash: `0x${"ab".repeat(32)}`, length: 6, duration: 2 * 365 * 86400, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`, sealed: "sealed", terms: SIGNED, timestamp: 1, signature: "0x" }
 
@@ -348,7 +349,7 @@ describe("service errors", () => {
     it("reads the hash of the terms an order signed, and none from the version an older page signed", () => {
       expect(signedHash(SIGNED)).toBe(COMMUNITY_TERMS.hash)
       expect(signedHash(TERMS.hash.slice(2))).toBe(TERMS.hash)
-      for (const terms of ["2026-10-23", `2026-10-23/community/${COMMUNITY_TERMS.hash.slice(2)}`, TERMS.hash, TERMS.hash.slice(2).toUpperCase(), null, undefined]) {
+      for (const terms of ["2026-10-23", OLDER_SIGNED, TERMS.hash, TERMS.hash.slice(2).toUpperCase(), null, undefined]) {
         expect(signedHash(terms), String(terms)).toBeNull()
       }
     })
@@ -358,9 +359,9 @@ describe("service errors", () => {
       expect(termYears(null, 5)).toBe(5)
     })
 
-    it("tells signed terms that agreed to a community name's wording", () => {
-      expect(communityAgreed(SIGNED)).toBe(true)
-      for (const terms of [TERMS.hash.slice(2), `2026-10-23/community/${"c7".repeat(32)}`, null, undefined]) expect(communityAgreed(terms), String(terms)).toBe(false)
+    it("tells signed terms that agreed to a community name's wording, also under the version an older page signed", () => {
+      for (const terms of [SIGNED, OLDER_SIGNED]) expect(communityAgreed(terms), terms).toBe(true)
+      for (const terms of [TERMS.hash.slice(2), "2026-10-23", null, undefined]) expect(communityAgreed(terms), String(terms)).toBe(false)
     })
 
     it("passes a community entry in every search answer, and the terms of the name's kind in the available one, null while they can't be read", async () => {
@@ -387,12 +388,12 @@ describe("service errors", () => {
       }
     })
 
-    it("passes an order's community entry and the terms it signed, null for an order stored without them", async () => {
-      for (const change of [{ community: COMMUNITY, terms: SIGNED }, { community: null, terms: null }, { terms: "v1.2_3" }, { terms: "t".repeat(74) }]) {
+    it("passes an order's community entry and the terms it signed, also the version an older page signed, null for an order stored without them", async () => {
+      for (const change of [{ community: COMMUNITY, terms: SIGNED }, { community: COMMUNITY, terms: OLDER_SIGNED }, { community: null, terms: null }, { terms: "v1.2_3" }, { terms: "t".repeat(112) }]) {
         answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
         expect(await readRegistration("r1"), JSON.stringify(change)).toMatchObject(change)
       }
-      for (const change of [{ community: undefined }, { community: { ...COMMUNITY, for: 1 } }, { terms: undefined }, { terms: 5 }, { terms: "" }, { terms: "a b" }, { terms: "t".repeat(75) }]) {
+      for (const change of [{ community: undefined }, { community: { ...COMMUNITY, for: 1 } }, { terms: undefined }, { terms: 5 }, { terms: "" }, { terms: "a b" }, { terms: "t".repeat(113) }]) {
         answerWith(200, JSON.stringify({ ...REGISTRATION, ...change }))
         const e = await readRegistration("r1").then(() => null, (e: unknown) => e)
         expect((e as ApiError).code, JSON.stringify(change)).toBe("network")
