@@ -239,8 +239,8 @@ function orderCard(c: session.Checkout): HTMLElement {
       row("Registered until", dateOf(termEnd(y, c.termStart, now))),
       c.code ? el("div", { class: "trow total" }, el("span", {}, "Free SimpleX name"))
         : c.balance ? [row("From your balance", `\u2212${dollars(fromBalance)}`), row("To pay", dollars(rest), "total")]
-        : row("Total", dollars(c.price), "total")),
-    c.code && y < c.code.years ? el("p", { class: "hint" }, `A community name is registered for ${y} years: your code's other ${c.code.years - y} years are not used.`) : null)
+        : row("Total", dollars(c.price), "total"),
+      c.code && y < c.code.years ? el("p", { class: "hint" }, `A community name is registered for ${y} years, not your code's ${c.code.years}.`) : null))
 }
 
 const BALANCE_NOTE = "balance-note"
@@ -528,7 +528,7 @@ async function sendOrder(): Promise<void> {
   dispatch({ type: "send-started" })
   const links = { contact: c.contact, channel: c.channel }
   const terms = api.termsFor(c.terms, c.community)
-  const draft: flow.Draft = source ? flow.spendDraft(source, c.label, links, { ...c.chain, price: c.price, years: years(c), termStart: c.termStart, community: c.community }, terms)
+  const draft: flow.Draft = source ? flow.spendDraft(source, c.label, links, { ...c.chain, price: c.price, years: c.years, termStart: c.termStart, community: c.community }, terms)
     : { label: c.label, links, chain: c.chain, years: years(c), termStart: c.termStart, ownerCode: c.ownerCode!, terms }
   // The order is kept whatever the buyer did meanwhile. Its checkout ends, and the order opens, only while this checkout
   // is still the tab's: the buyer may have started another name, by Back and Forward too.

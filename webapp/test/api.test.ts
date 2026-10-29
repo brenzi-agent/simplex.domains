@@ -326,7 +326,7 @@ describe("service errors", () => {
 
     it("takes an answer without its community, or the available one without terms it can sign and link, as no answer", async () => {
       for (const body of [
-        { ...AVAILABLE, community: undefined }, { ...AVAILABLE, community: "bakers" }, { ...AVAILABLE, community: { ...COMMUNITY, for: 5 } }, { ...AVAILABLE, community: { ...COMMUNITY, for: "" } },
+        { ...AVAILABLE, community: undefined }, { ...AVAILABLE, community: "bakers" }, { ...AVAILABLE, community: { ...COMMUNITY, for: 5 } }, { ...AVAILABLE, community: { ...COMMUNITY, for: "" } }, { ...AVAILABLE, community: { ...COMMUNITY, years: 0 } },
         { ...AVAILABLE, community: { for: COMMUNITY.for } }, { ...AVAILABLE, community: { ...COMMUNITY, terms: { url: COMMUNITY.terms.url } } },
         { ...AVAILABLE, community: { ...COMMUNITY, terms: { ...COMMUNITY.terms, hash: "0xc7" } } }, { ...AVAILABLE, community: { ...COMMUNITY, terms: { ...COMMUNITY.terms, url: "https://simplex.chat/community-terms" } } },
         { ...AVAILABLE, terms: undefined }, { ...AVAILABLE, terms: null }, { ...AVAILABLE, terms: { url: TERMS.url } }, { ...AVAILABLE, terms: { ...TERMS, version: "" } },

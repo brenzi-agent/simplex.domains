@@ -153,7 +153,7 @@ describe("retargetOrder", () => {
     expect(store.orderByRegistration("reg1")).toMatchObject({ label: "another", owner: OWNER, request: { labelHash: body.labelHash }, terms: "2026-10-23/community" })
   })
 
-  it("moves an order to a community name, and drafts one again, for the community's years, keeping the record's", async () => {
+  it("moves a code order to a community name for the community's years, keeping the record's, and a paid order for the answer's", async () => {
     const { flow, store } = await modules()
     const fiveYears = { ...draft(), years: 5 }
     const built = await flow.orderRequest(fiveYears)
@@ -164,8 +164,18 @@ describe("retargetOrder", () => {
     await flow.retargetOrder(record, "another", LINKS, community, `2026-10-23/community/${"c7".repeat(32)}`)
     expect(Math.floor((calls[0].body as { duration: number }).duration / YEAR_S)).toBe(2)
     expect(store.orderByRegistration("reg1")?.years).toBe(5)
-    expect(flow.draftAgain(record, community, TERMS.version).years).toBe(2)
-    expect(flow.draftAgain(record, QUOTE, TERMS.version).years).toBe(5)
+    const paid = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg2", invoiceId: "inv2" })
+    answers["POST /api/registration/reg2/name"] = view(built.request)
+    await flow.retargetOrder(paid, "another", LINKS, { ...QUOTE, years: 3 }, TERMS.version)
+    expect(Math.floor((calls[1].body as { duration: number }).duration / YEAR_S)).toBe(3)
+  })
+
+  it("drafts a new invoice for the answer's years, or a community name's own", async () => {
+    const { flow } = await modules()
+    const record = flow.recordFor(draft(), await flow.orderRequest(draft()), "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" })
+    const community = { for: null, years: 2, terms: { url: "/api/community-terms/0xc7", hash: `0x${"c7".repeat(32)}` } }
+    expect(flow.draftAgain(record, { ...QUOTE, years: 3 }, TERMS.version).years).toBe(3)
+    expect(flow.draftAgain(record, { ...QUOTE, years: 3, community }, TERMS.version).years).toBe(2)
   })
 })
 

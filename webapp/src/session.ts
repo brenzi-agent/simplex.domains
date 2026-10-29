@@ -26,7 +26,7 @@ export type BalanceChange = "changed" | "gone"
 
 export interface Checkout {
   label: string
-  // the search answer's price, for its years, and when the paid years start
+  // the search answer's price, for its years or a community name's own, and when the paid years start
   price: number
   years: number
   termStart: number

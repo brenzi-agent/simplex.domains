@@ -176,7 +176,7 @@ test("a prepaid code for 5 years registers a community name for its 2 years and 
   await expect(page.locator(".answer .row .deal")).toHaveText("Free / 2 years")
   await toReview(page)
   await expect(page.locator(".card.order .trow").first()).toHaveText(/^Term2 years and /)
-  await expect(page.locator(".card.order .hint")).toHaveText("A community name is registered for 2 years: your code's other 3 years are not used.")
+  await expect(page.locator(".card.order .hint")).toHaveText("A community name is registered for 2 years, not your code's 5.")
   await onStep(page).getByRole("button", { name: REGISTER_WITH_CODE }).click()
   await page.waitForURL(/\?registration=/)
   await waitRegistered(page, label)

@@ -308,7 +308,7 @@ const isSignedTerms = (v: unknown) => typeof v === "string" && /^[A-Za-z0-9._/-]
 // the checkbox links the terms page, which is only ever an https page
 const isTerms = (v: unknown) => isObject(v) && isVersion(v.version) && typeof v.url === "string" && v.url.startsWith("https://")
 const isHash = (v: unknown) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v)
-const isCommunity = (v: unknown) => v === null || (isObject(v) && nullable(v.for, (f) => typeof f === "string" && f !== "")
+const isCommunity = (v: unknown) => v === null || (isObject(v) && nullable(v.for, (f) => typeof f === "string" && f !== "") && isCount(v.years)
   && isObject(v.terms) && isHash(v.terms.hash) && v.terms.url === `/api/community-terms/${v.terms.hash}`)
 const isAcceptance = (v: unknown) => isObject(v) && isText(v.policy) && isHash(v.termsHash) && Number.isInteger(v.nonce) && (v.nonce as number) >= 0
 const isRegistration = (v: unknown) => isObject(v) && isChain(v) && isText(v.id) && Number.isInteger(v.version) && PHASES.includes(v.phase as Phase) && isText(v.labelHash)
