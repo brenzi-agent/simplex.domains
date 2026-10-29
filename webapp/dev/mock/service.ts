@@ -363,7 +363,7 @@ async function answerFor(hash: Hex, length: number): Promise<Record<string, unkn
   // Records are read only from the store's own resolver: calling whatever contract a name points at would let anyone
   // make the service run arbitrary code. A name pointed elsewhere is shown with its owner and no links.
   if (found.resolver !== getAddress(deployment.resolver)) {
-    return { status: "registered", entities: [], records: null, owner: found.owner, resolver: found.resolver, recordsNonce: null, expiresAt: found.expires, gracePeriod: found.grace, ...chain }
+    return { status: "registered", entities: [], records: null, owner: found.owner, resolver: found.resolver, recordsNonce: null, recordEdits: null, expiresAt: found.expires, gracePeriod: found.grace, ...chain }
   }
   const node = nodeOf(hash)
   let contact: string, channel: string, nonce: bigint
@@ -378,7 +378,7 @@ async function answerFor(hash: Hex, length: number): Promise<Record<string, unkn
     throw new HttpError(503, "provider_unavailable")
   }
   const entities = [...await entitiesOf("contact", contact), ...await entitiesOf("channel", channel)]
-  return { status: "registered", entities, records: { contact, channel }, owner: found.owner, resolver: found.resolver, recordsNonce: Number(nonce), expiresAt: found.expires, gracePeriod: found.grace, ...chain }
+  return { status: "registered", entities, records: { contact, channel }, owner: found.owner, resolver: found.resolver, recordsNonce: Number(nonce), recordEdits: editsLeft(hash), expiresAt: found.expires, gracePeriod: found.grace, ...chain }
 }
 
 function nodeOf(labelHash: Hex): Hex {
@@ -1189,9 +1189,29 @@ export async function previewLink(body: Record<string, unknown>): Promise<Profil
 
 // --- the records relay
 
+// The service's record_edits_per_year, its default and its bounds; /control/edits sets it as a restart with a new ini would.
+const RECORD_EDITS_PER_YEAR = 3
+const RECORD_EDITS_MIN = 1
+const RECORD_EDITS_MAX = 100
+let editsPerYear = RECORD_EDITS_PER_YEAR
+
+// Each name's edits that went out, by label hash. One reverted on chain gives its edit back, as one refused or never sent
+// does, which is never counted.
+interface CountedEdit { at: number; reverted: boolean }
+const nameEdits = new Map<Hex, CountedEdit[]>()
+
+// the edits a name has left in any 365 days, and when the next returns: when the oldest counted one, or a later one
+// while a lowered limit is overrun, is 365 days old
+function editsLeft(labelHash: Hex): { left: number; nextAt: number | null } {
+  const since = nowSeconds() - YEAR_S
+  const times = (nameEdits.get(labelHash) ?? []).filter((e) => !e.reverted && e.at > since).map((e) => e.at).sort((a, b) => a - b)
+  const returning = times[Math.max(0, times.length - editsPerYear)]
+  return { left: Math.max(0, editsPerYear - times.length), nextAt: returning === undefined ? null : returning + YEAR_S }
+}
+
 // Each sent edit, by its signed body: a repeat is answered from it rather than checked anew. A refused edit is never sent,
 // so it is not kept, and its repeat is checked again.
-interface SentEdit { hash: Hex; outcome: Record<string, unknown> | HttpError | null }
+interface SentEdit { hash: Hex; outcome: Record<string, unknown> | HttpError | null; counted: CountedEdit }
 const sentEdits = new Map<string, SentEdit>()
 
 async function repeatedEdit(sent: SentEdit): Promise<Record<string, unknown>> {
@@ -1205,6 +1225,7 @@ async function repeatedEdit(sent: SentEdit): Promise<Record<string, unknown>> {
     throw new HttpError(504, "edit_pending")
   }
   sent.outcome = ok ? { tx: sent.hash } : new HttpError(409, "record_reverted", { revert: null })
+  sent.counted.reverted = !ok
   return repeatedEdit(sent)
 }
 
@@ -1227,6 +1248,9 @@ export async function editRecords(body: Record<string, unknown>): Promise<Record
   const editKey = JSON.stringify([labelHash, clear, key, value, nonce, deadline, signature])
   const earlier = sentEdits.get(editKey)
   if (earlier) return repeatedEdit(earlier)
+  // as the service, after the signature and before any chain read
+  const { left, nextAt } = editsLeft(labelHash)
+  if (left === 0) throw new HttpError(429, "edit_limit", { nextAt })
   if (deadline < nowSeconds()) throw badRequest()
   // a failed chain read is the provider's, not the request's
   let owner: Address, nameResolver: Address, current: bigint
@@ -1244,7 +1268,9 @@ export async function editRecords(body: Record<string, unknown>): Promise<Record
   // kept from the moment it goes out
   const edit: { sent: SentEdit | null } = { sent: null }
   const goingOut = (hash: Hex) => {
-    edit.sent = { hash, outcome: null }
+    const counted = { at: nowSeconds(), reverted: false }
+    nameEdits.set(labelHash, [...nameEdits.get(labelHash) ?? [], counted])
+    edit.sent = { hash, outcome: null, counted }
     sentEdits.set(editKey, edit.sent)
   }
   try {
@@ -1258,7 +1284,10 @@ export async function editRecords(body: Record<string, unknown>): Promise<Record
     // a dry run that reverts sends nothing; a transaction that reverts is the edit's answer
     if (e instanceof Reverted) {
       const reverted = new HttpError(409, "record_reverted", { revert: e.revert })
-      if (edit.sent) edit.sent.outcome = reverted
+      if (edit.sent) {
+        edit.sent.outcome = reverted
+        edit.sent.counted.reverted = true
+      }
       throw reverted
     }
     // no answer from the chain is not a refusal: the edit may still be mined, which the page says
@@ -1456,6 +1485,23 @@ export function controlTerms(body: Record<string, unknown>): Record<string, unkn
   if (url !== undefined && (typeof url !== "string" || !url.startsWith("https://"))) throw badRequest()
   Object.assign(terms, version === undefined ? {} : { version }, url === undefined ? {} : { url })
   return { terms }
+}
+
+// The service's record_edits_per_year as a restart with a new ini sets it, and a name's counted edits: count of them, all
+// made at `at` in unix seconds (now when not given), in place of those it has.
+export function controlEdits(body: Record<string, unknown>): Record<string, unknown> {
+  const { limit, label, count, at } = body
+  if (limit !== undefined) {
+    if (!Number.isInteger(limit) || (limit as number) < RECORD_EDITS_MIN || (limit as number) > RECORD_EDITS_MAX) throw badRequest()
+    editsPerYear = limit as number
+  }
+  if (label === undefined) return { limit: editsPerYear }
+  if (typeof label !== "string" || labelProblem(label) !== null) throw new HttpError(400, "invalid_name")
+  if (!Number.isInteger(count) || (count as number) < 0 || (at !== undefined && !Number.isInteger(at))) throw badRequest()
+  const hash = keccak256(toHex(label))
+  const made = (at as number | undefined) ?? nowSeconds()
+  nameEdits.set(hash, Array.from({ length: count as number }, () => ({ at: made, reverted: false })))
+  return { limit: editsPerYear, recordEdits: editsLeft(hash) }
 }
 
 // A name put on the community list with what it is for, or taken off it with null, as an edit of the ini and a restart would.

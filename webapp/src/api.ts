@@ -34,6 +34,15 @@ export class TermsChanged extends ApiError {
   }
 }
 
+// a link edit refused because the name's yearly edits are used up, until nextAt in unix seconds
+export class EditLimited extends ApiError {
+  readonly nextAt: number
+  constructor(e: ApiError, nextAt: number) {
+    super(e.code, e.status, e.retryAfter, e.body)
+    this.nextAt = nextAt
+  }
+}
+
 // How long to wait before asking again: what a rate limit asks for, or the usual pause. Null for a refusal that asking
 // again cannot change, such as a request this device's clock signed outside the service's window.
 export function retryDelay(e: unknown, usual: number): number | null {
@@ -74,9 +83,15 @@ export const termsFor = (terms: Terms, community: Community | null) => community
 export const currentTerms = (a: { terms: Terms; community: Community | null }) => termsFor(a.terms, a.community)
 export const communityAgreed = (terms: string | null | undefined) => terms?.endsWith(COMMUNITY_TERMS) === true
 
+// the link edits a name has left in any 365 days, and when the next one returns: null while none is counted
+export interface RecordEdits {
+  left: number
+  nextAt: number | null
+}
+
 export type SearchAnswer =
   | ({ status: "available"; price: number; currency: string; years: number; termStart: number; community: Community | null; terms: Terms } & ChainInfo)
-  | { status: "registered"; entities: Entity[]; records?: Links | null; owner?: string; resolver?: string; recordsNonce?: number | null; expiresAt?: number; gracePeriod?: number; chainId?: number; tld: string; community: Community | null }
+  | { status: "registered"; entities: Entity[]; records?: Links | null; owner?: string; resolver?: string; recordsNonce?: number | null; recordEdits?: RecordEdits | null; expiresAt?: number; gracePeriod?: number; chainId?: number; tld: string; community: Community | null }
   | { status: "reserved"; community: Community | null }
 
 export type ChatKind = "contact" | "channel" | "business" | "bot"
@@ -198,6 +213,8 @@ const EDIT_TIMEOUT_MS = 10 * 60_000
 // a wait asked for longer than this is taken as this long, as the badge web client does
 const MAX_RETRY_AFTER_S = 300
 const TOO_MANY_REQUESTS = 429
+// the one refusal under 429 that is the service's own, not a rate limit
+const EDIT_LIMIT = "edit_limit"
 // a proxy's answer when the service is down or slow: the request may never have reached the service
 const GATEWAY_FAILURES = [502, 503, 504]
 // a rate limit that names no wait is waited out for this long
@@ -208,6 +225,7 @@ let clockOffsetMs = 0
 // counts changes of the offset, so a request signed before one can be signed again
 let clockChanges = 0
 export const serviceNow = () => Date.now() + clockOffsetMs
+export const serviceSeconds = () => Math.floor(serviceNow() / 1000)
 export const clockVersion = () => clockChanges
 
 async function call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal, timeoutMs: number | null = REQUEST_TIMEOUT_MS): Promise<T> {
@@ -256,7 +274,7 @@ function answer<T>(res: Response, json: Record<string, unknown>): T {
   if (!res.ok) {
     const retry = retryAfter(res.headers.get("retry-after"))
     // a rate limit or a gateway failure a proxy answers carries no error code of the service's
-    const code = res.status === TOO_MANY_REQUESTS ? "rate_limited"
+    const code = res.status === TOO_MANY_REQUESTS ? (json.error === EDIT_LIMIT ? EDIT_LIMIT : "rate_limited")
       : typeof json.error === "string" ? json.error
       : GATEWAY_FAILURES.includes(res.status) ? "network" : "internal"
     throw new ApiError(code, res.status, retry, json)
@@ -310,12 +328,14 @@ const isInvoice = (v: unknown) => isObject(v) && isText(v.invoiceId) && ["open",
 const clampDue = (inv: InvoiceView): InvoiceView => inv.cryptoAmountDue?.startsWith("-") ? { ...inv, cryptoAmountDue: "0" } : inv
 const checkedInvoice = (answer: Promise<unknown>) => checked<InvoiceView>(answer, isInvoice).then(clampDue)
 const isRecords = (v: unknown) => isObject(v) && isText(v.contact) && isText(v.channel)
+// none left only while an edit is counted, which returns at nextAt
+const isRecordEdits = (v: unknown) => isObject(v) && Number.isInteger(v.left) && (v.left as number) >= 0 && nullable(v.nextAt, isAmount) && (v.left !== 0 || v.nextAt !== null)
 
 export const searchName = (labelHash: string, length: number) => checked<SearchAnswer>(call("GET", `/api/name/${labelHash}?length=${length}`), (a) => isCommunity(a.community) && (
   a.status === "reserved"
   || (a.status === "available" && isAmount(a.price) && isCount(a.years) && isAmount(a.termStart) && isText(a.currency) && isChain(a) && isTerms(a.terms))
   || (a.status === "registered" && isText(a.tld) && Array.isArray(a.entities) && a.entities.every(isEntity) && optional(a.owner, isText)
-    && optional(a.resolver, isText) && optional(a.records, (r) => nullable(r, isRecords)) && optional(a.recordsNonce, (n) => nullable(n, isAmount))
+    && optional(a.resolver, isText) && optional(a.records, (r) => nullable(r, isRecords)) && optional(a.recordsNonce, (n) => nullable(n, isAmount)) && optional(a.recordEdits, (r) => nullable(r, isRecordEdits))
     && optional(a.expiresAt, isAmount) && optional(a.gracePeriod, isAmount) && optional(a.chainId, isAmount))))
 export const previewLink = (link: string) => checked<Profile>(call("POST", "/api/link/preview", { link }), isPreview)
 const CODE_STATES = ["unused", "used", "reserved", "expired", "unpaid", "revoked"] as const
@@ -385,5 +405,11 @@ export interface FoundOrder {
 export const findRegistrations = (owner: string, timestamp: number, signature: string) =>
   checked<{ registrations: FoundOrder[] }>(
     call("POST", "/api/registration/find", { owner, timestamp, signature }), (a) => Array.isArray(a.registrations) && a.registrations.every(isFound))
-export const editRecord = (body: { labelHash: string; key?: string; value?: string; clear?: boolean; nonce: number; deadline: number; signature: string }) =>
-  checked<{ tx: string | null }>(call("POST", "/api/name/records", body, undefined, EDIT_TIMEOUT_MS), (a) => nullable(a.tx, isText))
+export const editRecord = (body: { labelHash: string; key?: string; value?: string; clear?: boolean; nonce: number; deadline: number; signature: string }) => {
+  const sent = call("POST", "/api/name/records", body, undefined, EDIT_TIMEOUT_MS).catch((e: unknown) => {
+    if (!(e instanceof ApiError && e.code === EDIT_LIMIT)) throw e
+    if (!isAmount(e.body.nextAt)) throw noAnswer()
+    throw new EditLimited(e, e.body.nextAt as number)
+  })
+  return checked<{ tx: string | null }>(sent, (a) => nullable(a.tx, isText))
+}

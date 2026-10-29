@@ -5,7 +5,7 @@ import * as flow from "../flow.ts"
 import { dateOf, dollars, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import {
-  balanceRows, type BalanceRow, CODE_CHIPS, holderOf, EDIT_RETRY_MS, editable, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
+  balanceRows, type BalanceRow, CODE_CHIPS, holderOf, EDIT_RETRY_MS, editable, editsLine, editsShort, hasLinks, type EditEvent, type EditForm, type EditKind, type EditState, hasRecords, initialEdit, initialList,
   againLine, initialRestore, lapsed, lateLine, LINK_NAMES, ranOut, moneyReached, nameRows, ORDER_CHIP_WORDS, paidLine, type ListEvent, type ListState, notSaved, phaseChip, reduceEdit,
   reduceList, reduceRestore, REFUSALS, ROW_CHIPS, rowsDrawn, unanswered, type RestoreEvent, type RestoreState, type RowSeen, type CodeCheck, screenOfEdit, type Stored, unsent, waitsToSign,
 } from "../screens/names.ts"
@@ -560,6 +560,7 @@ function resultNode(f: EditForm, signal: AbortSignal): HTMLElement | null {
     case "moved": return alertBox("warn", "clock", f.sent.length ? notSaved(f) : "An earlier save got there first",
       f.sent.length ? `Another save reached the chain first. The ${LINK_NAMES[unsent(f.changes, f.sent)!]} is still as you typed it: save again to send it.` : "It was still on its way when this one was signed. The fields now show the links on chain: change them and save again.")
     case "refused": return alertBox("danger", "alert", notSaved(f), "Try again in a moment.")
+    case "limited": return alertBox("warn", "clock", notSaved(f), "This name's edits for the year are used up.")
   }
 }
 
@@ -579,11 +580,15 @@ async function saveLinks(links: LinkFields): Promise<void> {
   const { record, read, form } = edit
   if (!form?.saving) return
   try {
-    await flow.saveLinks(record!, read!.view, form.nonce, form.changes, (kind) => answerEdit(route, { type: "link-saved", kind }))
+    await flow.saveLinks(record!, read!.view, form.nonce, form.changes, (kind) => answerEdit(route, { type: "link-saved", kind, at: api.serviceSeconds() }))
     answerEdit(route, { type: "save-done" })
   } catch (e) {
     // no answer is not a refusal: the edit may still be mined, and sending it again would pay for it twice
-    if (e instanceof api.ApiError && (e.code === "network" || e.code === "edit_pending")) return answerEdit(route, { type: "save-unanswered" })
+    if (e instanceof api.ApiError && (e.code === "network" || e.code === "edit_pending")) {
+      return answerEdit(route, { type: "save-unanswered", counted: e.code === "edit_pending", at: api.serviceSeconds() })
+    }
+    // a tab opened before the name's edits ran out
+    if (e instanceof api.EditLimited) return answerEdit(route, { type: "save-limited", nextAt: e.nextAt })
     // Save stays off for the wait the service asked for, whatever the fields do meanwhile
     if (holdFrom(e)) return answerEdit(route, { type: "save-held", until: holdEnd() })
     // A refused edit may mean the nonce moved: an earlier save, from a page reloaded before it was mined, or from
@@ -594,7 +599,7 @@ async function saveLinks(links: LinkFields): Promise<void> {
     const nonce = fresh?.status === "registered" && fresh.recordsNonce != null && fresh.recordsNonce > now.nonce ? fresh.recordsNonce : null
     const records = nonce !== null && fresh?.status === "registered" && fresh.records ? fresh.records : null
     if (records) showChain(records, now, links)
-    dispatchEdit({ type: "save-refused", moved: nonce === null ? null : { nonce, records } })
+    dispatchEdit({ type: "save-refused", moved: nonce === null ? null : { nonce, records }, edits: fresh?.status === "registered" ? fresh.recordEdits : null })
   }
 }
 
@@ -607,7 +612,8 @@ function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {
   const f = s.form!
   // the fields check the links they open with as they are made, which is no change to send
   const links = kept("edit-links", () => linkFieldsFor(f.current, (kind, value) => dispatchEdit({ type: "field-changed", kind, value })))
-  const save = setAction(btn(awaitingChecks ? CHECKING_LINK : "Save links", "", () => void saveLinks(links)), f.saving || awaitingChecks, f.hold !== null || f.unanswered || f.settled)
+  const save = setAction(btn(awaitingChecks ? CHECKING_LINK : "Save links", "", () => void saveLinks(links)), f.saving || awaitingChecks,
+    f.hold !== null || f.unanswered || f.settled || editsShort(f))
   save.dataset.focus = "save"
   const answer = resultNode(f, signal)
   // Save, turned off by its answer, hands focus to the answer, which shares its key
@@ -616,7 +622,17 @@ function buildEditForm(s: EditState, signal: AbortSignal): HTMLElement {
     answer.dataset.focus = "save"
   }
   holdEnder(signal, () => dispatchEdit({ type: "hold-ended" }))(f.hold !== null)
-  return screen({ title: EDIT_TITLE, back: NAMES, lead: [nameText(s.record!.label, s.record!.tld, "."), " Your name code signs the change; ", el("span", { class: "nowrap" }, "nothing to pay.")], action: save },
+  // one line under Save, kept for the route, which says why Save is off when the edits left do not cover the change
+  const count = keptLive("edit-count", "note edit-count", editsLine(f))
+  // Save, turned off by the edits left, hands focus to this line
+  if (editsShort(f)) {
+    count.tabIndex = -1
+    count.dataset.focus = "save"
+  } else {
+    count.removeAttribute("tabindex")
+    delete count.dataset.focus
+  }
+  return screen({ title: EDIT_TITLE, back: NAMES, lead: [nameText(s.record!.label, s.record!.tld, "."), " Your name code signs the change; ", el("span", { class: "nowrap" }, "nothing to pay.")], action: save, alt: count },
     el("span", { class: "label" }, "Link"), links.node, keptLive("edit-answer", undefined, answer))
 }
 

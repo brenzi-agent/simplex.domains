@@ -15,6 +15,16 @@ const STAND_IN_ONLY = "needs the dev server's card stand-in"
 // a production build's service worker answers the page's requests past Playwright's routes, in WebKit
 test.use({ serviceWorkers: "block" })
 
+// A test that raised the mock's yearly limit of link edits puts back the service's default. Only the mock has the
+// control, so the cases the service's contract run takes from here never reach it.
+const EDITS_PER_YEAR = 3
+let editsRaised = false
+test.afterEach(async ({ request }) => {
+  if (!editsRaised) return
+  editsRaised = false
+  await control(request, "edits", { limit: EDITS_PER_YEAR })
+})
+
 // a field's focus ring reaches 4 px past it, and keeps clear of the label over it
 const RING_ROOM_PX = 6
 
@@ -151,6 +161,9 @@ test("a Bitcoin order pays in two parts, registers on chain, takes its links on 
   await expect(page.locator(".answer").getByRole("button", { name: "Contact A1Y8m3, contact address" })).toBeVisible()
   await expect(page.locator(".answer .row").getByRole("link", { name: "Your name" })).toHaveAttribute("href", "/#/names")
   await shot(page, "N2a-taken-own")
+  // the saves below are more than a name's yearly limit of edits
+  editsRaised = true
+  await control(request, "edits", { limit: 100 })
   await page.goto(`/#/edit/${registrationId}`)
   await expect(link).toHaveValue(contact)
   await expect(channelField).toHaveValue(channel)

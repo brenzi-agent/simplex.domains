@@ -476,7 +476,7 @@ export async function fakeRegisteredName(page: Page, label: string, links: { con
   await page.route("**/api/name/**", (route) => {
     const now = records()
     return route.fulfill({ json: { status: "registered", entities: [], owner: order.owner, resolver: CHAIN.resolver, chainId: CHAIN.chainId, records: now.links, recordsNonce: now.nonce,
-      expiresAt, tld: "simplex", community: null } })
+      recordEdits: { left: 3, nextAt: null }, expiresAt, tld: "simplex", community: null } })
   })
   return order
 }

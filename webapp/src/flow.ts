@@ -12,7 +12,7 @@ import * as store from "./store.ts"
 const EDIT_DEADLINE_SECONDS = 3600
 
 // signed timestamps and deadlines are judged by the service's clock
-const now = () => Math.floor(api.serviceNow() / 1000)
+const now = api.serviceSeconds
 
 export const newOwnerCode = () => formatOwnerCode(crypto.getRandomValues(new Uint8Array(16)))
 
