@@ -101,7 +101,7 @@ async function sha256Hex(text: string): Promise<string> {
 // Another name, or other links, for a failed order or one whose links were refused, on the same wallet so the same code
 // owns it, at the new name's price, which caps any later move.
 export async function retargetOrder(record: store.OrderRecord, label: string, links: api.Links, quote: Quote, terms: string): Promise<api.RegistrationView> {
-  const draft: Draft = { label, links, chain: chainOf(quote), years: api.termYears(quote.community, record.method === "code" ? record.years : quote.years), termStart: quote.termStart, ownerCode: record.ownerCode, terms }
+  const draft: Draft = { label, links, chain: chainOf(quote), years: api.termYears(quote.community, record.years), termStart: quote.termStart, ownerCode: record.ownerCode, terms }
   const built = await orderRequest(draft)
   const wallet = walletOf(record.ownerCode)!
   const timestamp = now()
@@ -141,19 +141,19 @@ export async function spendRequest(record: BalanceSource, draft: Draft, price: n
 
 // The spend sent as it was built, so a resend after a lost answer is the same order; the new order is kept with the
 // record's code. A balance changed since it was read throws BalanceChanged.
-export async function sendSpend(record: BalanceSource, draft: Draft, built: BuiltSpend): Promise<store.OrderRecord> {
+export async function sendSpend(record: BalanceSource, draft: Draft, built: BuiltSpend, years: number): Promise<store.OrderRecord> {
   const res = await api.spend(record.registrationId, built.spend)
   const paidBy = "invoiceId" in res
     ? { ...paidWith(res), ids: { registrationId: res.registration.id, invoiceId: res.invoiceId } }
     : { method: "balance" as const, paid: built.spend.price, ids: { registrationId: res.registrationId, invoiceId: null } }
-  const next = { ...recordFor(draft, built, paidBy.method, paidBy.paid, paidBy.ids), balanceSource: record.registrationId }
+  const next = { ...recordFor(draft, built, paidBy.method, paidBy.paid, paidBy.ids), years, balanceSource: record.registrationId }
   store.saveOrder(next)
   return next
 }
 
 export async function spendBalance(record: BalanceSource, label: string, links: api.Links, quote: Priced, balance: number, method: api.Method, terms: string): Promise<store.OrderRecord> {
   const draft = spendDraft(record, label, links, quote, terms)
-  return sendSpend(record, draft, await spendRequest(record, draft, quote.price, balance, method))
+  return sendSpend(record, draft, await spendRequest(record, draft, quote.price, balance, method), quote.years)
 }
 
 // The order whose invoice holds a balance now, as the code's find names it, kept in this browser's records; null when

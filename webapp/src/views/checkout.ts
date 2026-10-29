@@ -554,7 +554,7 @@ async function sendOrder(): Promise<void> {
     try {
       if (source) {
         // a spend's `of` names its balance, so the order kept for it holds the spend
-        const next = await flow.sendSpend(source, draft, { request: built.request, owner: built.owner, spend: built.spend! })
+        const next = await flow.sendSpend(source, draft, { request: built.request, owner: built.owner, spend: built.spend! }, c.years)
         // the balance is spent, or held by the new order's invoice, so it pays for nothing more in this tab
         session.updateActiveBalance(source.registrationId, null)
         return done(store.orderUrl(next))
@@ -568,7 +568,7 @@ async function sendOrder(): Promise<void> {
       }
       const res = await api.createOrder(built.request, method, c.price)
       const paidBy = flow.paidWith(res)
-      store.saveOrder(flow.recordFor(draft, built, paidBy.method, paidBy.paid, { registrationId: res.registration.id, invoiceId: res.invoiceId }))
+      store.saveOrder({ ...flow.recordFor(draft, built, paidBy.method, paidBy.paid, { registrationId: res.registration.id, invoiceId: res.invoiceId }), years: c.years })
       done(store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id }))
     } catch (e) {
       if (!(e instanceof api.ApiError && e.code === "order_exists")) throw e

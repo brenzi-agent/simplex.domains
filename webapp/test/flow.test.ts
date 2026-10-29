@@ -153,7 +153,7 @@ describe("retargetOrder", () => {
     expect(store.orderByRegistration("reg1")).toMatchObject({ label: "another", owner: OWNER, request: { labelHash: body.labelHash }, terms: "2026-10-23/community" })
   })
 
-  it("moves a code order to a community name for the community's years, keeping the record's, and a paid order for the answer's", async () => {
+  it("moves an order for its own years, kept with its record, or a community name for the community's", async () => {
     const { flow, store } = await modules()
     const fiveYears = { ...draft(), years: 5 }
     const built = await flow.orderRequest(fiveYears)
@@ -164,9 +164,9 @@ describe("retargetOrder", () => {
     await flow.retargetOrder(record, "another", LINKS, community, `2026-10-23/community/${"c7".repeat(32)}`)
     expect(Math.floor((calls[0].body as { duration: number }).duration / YEAR_S)).toBe(2)
     expect(store.orderByRegistration("reg1")?.years).toBe(5)
-    const paid = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg2", invoiceId: "inv2" })
+    const paid = { ...flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg2", invoiceId: "inv2" }), years: 3 }
     answers["POST /api/registration/reg2/name"] = view(built.request)
-    await flow.retargetOrder(paid, "another", LINKS, { ...QUOTE, years: 3 }, TERMS.version)
+    await flow.retargetOrder(paid, "another", LINKS, QUOTE, TERMS.version)
     expect(Math.floor((calls[1].body as { duration: number }).duration / YEAR_S)).toBe(3)
   })
 
@@ -349,9 +349,9 @@ describe("spendBalance", () => {
     const built = await flow.spendRequest(record, spend, 10000, 20000, "btc")
     let sent = 0
     answers[`POST /api/registration/${SPEND.registrationId}/spend`] = () => ++sent === 1 ? new Response("", { status: 502 }) : { registrationId: "reg2" }
-    await expect(flow.sendSpend(record, spend, built)).rejects.toMatchObject({ code: "network" })
+    await expect(flow.sendSpend(record, spend, built, 2)).rejects.toMatchObject({ code: "network" })
     expect(store.orderByRegistration("reg2"), "nothing kept for an unanswered spend").toBeUndefined()
-    const next = await flow.sendSpend(record, spend, built)
+    const next = await flow.sendSpend(record, spend, built, 2)
     expect(calls.map((c) => c.body)).toEqual([built.spend, built.spend])
     expect(next).toMatchObject({ registrationId: "reg2", request: built.request, method: "balance", balanceSource: SPEND.registrationId })
   })
