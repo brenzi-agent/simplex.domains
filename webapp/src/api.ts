@@ -71,6 +71,7 @@ export interface Terms {
 // signed community terms, with those terms.
 export interface Community {
   for: string | null
+  years: number
   terms: { url: string; hash: string }
 }
 
@@ -78,6 +79,8 @@ const COMMUNITY_TERMS = "/community/"
 
 export const termsFor = (terms: Terms, community: Community | null) => community ? `${terms.version}${COMMUNITY_TERMS}${community.terms.hash.slice(2)}` : terms.version
 export const currentTerms = (a: { terms: Terms; community: Community | null }) => termsFor(a.terms, a.community)
+// a community name is registered for its own years, whatever years its code or order pays for
+export const termYears = (community: Community | null, years: number) => community?.years ?? years
 export const communityAgreed = (terms: string | null | undefined) => terms?.includes(COMMUNITY_TERMS) === true
 
 export type SearchAnswer =

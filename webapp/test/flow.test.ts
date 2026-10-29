@@ -152,6 +152,21 @@ describe("retargetOrder", () => {
     expect(await recoverMessageAddress({ message, signature: body.signature })).toBe(OWNER)
     expect(store.orderByRegistration("reg1")).toMatchObject({ label: "another", owner: OWNER, request: { labelHash: body.labelHash }, terms: "2026-10-23/community" })
   })
+
+  it("moves an order to a community name, and drafts one again, for the community's years, keeping the record's", async () => {
+    const { flow, store } = await modules()
+    const fiveYears = { ...draft(), years: 5 }
+    const built = await flow.orderRequest(fiveYears)
+    const record = flow.recordFor(fiveYears, built, "code", 0, { registrationId: "reg1", invoiceId: null })
+    store.saveOrder(record)
+    answers["POST /api/registration/reg1/name"] = view(built.request)
+    const community = { ...QUOTE, community: { for: null, years: 2, terms: { url: "/api/community-terms/0xc7", hash: `0x${"c7".repeat(32)}` } } }
+    await flow.retargetOrder(record, "another", LINKS, community, `2026-10-23/community/${"c7".repeat(32)}`)
+    expect(Math.floor((calls[0].body as { duration: number }).duration / YEAR_S)).toBe(2)
+    expect(store.orderByRegistration("reg1")?.years).toBe(5)
+    expect(flow.draftAgain(record, community, TERMS.version).years).toBe(2)
+    expect(flow.draftAgain(record, QUOTE, TERMS.version).years).toBe(5)
+  })
 })
 
 describe("restore", () => {
@@ -307,6 +322,14 @@ describe("spendBalance", () => {
     expect(refused).toBeInstanceOf(api.BalanceChanged)
     expect(refused).toMatchObject({ code: "balance_changed", status: 409, balance: now })
     expect(store.orders().map((o) => o.registrationId)).toEqual([SPEND.registrationId])
+  })
+
+  it("drafts a spend for a community name for the community's years, else for the answer's", async () => {
+    const { flow, store } = await modules()
+    const record = await source(store, flow)
+    const community = { for: null, years: 2, terms: { url: "/api/community-terms/0xc7", hash: `0x${"c7".repeat(32)}` } }
+    expect(flow.spendDraft(record, "another", NO_LINKS, { ...quote(10000), years: 3, community }, SPEND.terms).years).toBe(2)
+    expect(flow.spendDraft(record, "another", NO_LINKS, { ...quote(10000), years: 3 }, SPEND.terms).years).toBe(3)
   })
 
   it("sends a spend built once as the same body again after a lost answer, so the service takes it as an exact resend", async () => {

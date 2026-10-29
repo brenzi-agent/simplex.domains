@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { keccak256, toHex, zeroHash } from "viem"
 import {
   ApiError, BalanceChanged, cancelInvoice, checkCode, createOrder, currentTerms, findRegistrations, previewLink, readInvoice, readRegistration, registerWithCode, retarget, retryDelay, searchName, seenOf, spend, TermsChanged,
-  communityAgreed, communityTerms, termsFor,
+  communityAgreed, communityTerms, termsFor, termYears,
 } from "../src/api.ts"
 
 const HASH = "ab".repeat(32)
@@ -292,7 +292,7 @@ describe("service errors", () => {
 
   describe("terms and community names", () => {
     const COMMUNITY_HASH = `0x${"c7".repeat(32)}`
-    const COMMUNITY = { for: "bakers and pastry chefs", terms: { url: `/api/community-terms/${COMMUNITY_HASH}`, hash: COMMUNITY_HASH } }
+    const COMMUNITY = { for: "bakers and pastry chefs", years: 2, terms: { url: `/api/community-terms/${COMMUNITY_HASH}`, hash: COMMUNITY_HASH } }
     const SIGNED = `2026-10-23/community/${"c7".repeat(32)}`
     const AVAILABLE = { status: "available", price: 10000, currency: "usd", years: 2, termStart: 1798761600, resolver: "0x1", sponsor: "0x2", chainId: 31337, tld: "simplex", community: COMMUNITY, terms: TERMS }
     const ORDER = { labelHash: `0x${"ab".repeat(32)}`, length: 6, duration: 2 * 365 * 86400, owner: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", commitment: `0x${"cd".repeat(32)}`, sealed: "sealed", terms: SIGNED, timestamp: 1, signature: "0x" }
@@ -301,6 +301,11 @@ describe("service errors", () => {
       expect(termsFor(TERMS, null)).toBe("2026-10-23")
       expect(termsFor(TERMS, COMMUNITY)).toBe(SIGNED)
       expect(currentTerms(AVAILABLE as never)).toBe(SIGNED)
+    })
+
+    it("registers a community name for its own years, whatever years a code or an order pays for", () => {
+      expect(termYears(COMMUNITY, 5)).toBe(2)
+      expect(termYears(null, 5)).toBe(5)
     })
 
     it("tells signed terms that agreed to a community name's wording", () => {

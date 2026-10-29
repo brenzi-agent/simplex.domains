@@ -56,7 +56,7 @@ const committed = { phase: "committed", commitTx: "0xc0", revealAfter: NOW / 100
 // buyer's ask of them
 const SIGNED = `0x${"c7".repeat(32)}`
 const CHANGED = `0x${"d8".repeat(32)}`
-const communityEntry = (hash: string, text: string | null = null) => ({ for: text, terms: { url: "https://simplex.chat/community-terms", hash } })
+const communityEntry = (hash: string, text: string | null = null) => ({ for: text, years: 2, terms: { url: "https://simplex.chat/community-terms", hash } })
 const acceptanceFor = (termsHash: string) => ({ policy: "0x3", termsHash, nonce: 0 })
 const reask = (hash = CHANGED) => askFor(record().label, { version: "2026-10-23", url: "https://simplex.chat/" }, communityEntry(hash), true)
 

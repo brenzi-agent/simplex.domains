@@ -49,7 +49,7 @@ export async function quoteOf(label: string): Promise<Quote | null> {
 
 // An order of a record's name and links again, as a new order of its code: a new commitment for the term from now.
 export const draftAgain = (record: store.OrderRecord, quote: Quote, terms: string): Draft =>
-  ({ label: record.label, links: { contact: record.contact, channel: record.channel }, chain: chainOf(quote), years: record.years, termStart: quote.termStart, ownerCode: record.ownerCode, terms })
+  ({ label: record.label, links: { contact: record.contact, channel: record.channel }, chain: chainOf(quote), years: api.termYears(quote.community, record.years), termStart: quote.termStart, ownerCode: record.ownerCode, terms })
 
 export type BuiltOrder = { request: api.SignedOrder; owner: string }
 
@@ -101,7 +101,7 @@ async function sha256Hex(text: string): Promise<string> {
 // Another name, or other links, for a failed order or one whose links were refused, on the same wallet so the same code
 // owns it, at the new name's price, which caps any later move.
 export async function retargetOrder(record: store.OrderRecord, label: string, links: api.Links, quote: Quote, terms: string): Promise<api.RegistrationView> {
-  const draft: Draft = { label, links, chain: chainOf(quote), years: record.years, termStart: quote.termStart, ownerCode: record.ownerCode, terms }
+  const draft: Draft = { label, links, chain: chainOf(quote), years: api.termYears(quote.community, record.years), termStart: quote.termStart, ownerCode: record.ownerCode, terms }
   const built = await orderRequest(draft)
   const wallet = walletOf(record.ownerCode)!
   const timestamp = now()
@@ -113,7 +113,7 @@ export async function retargetOrder(record: store.OrderRecord, label: string, li
 }
 
 // what an order from a balance needs of the name's search answer: its price and term, and the chain
-export type Priced = Pick<Quote, "price" | "years" | "termStart"> & api.ChainInfo
+export type Priced = Pick<Quote, "price" | "years" | "termStart" | "community"> & api.ChainInfo
 
 export type BuiltSpend = BuiltOrder & { spend: api.SpendRequest }
 // the order whose balance pays, and its name code, which signs the spend
@@ -121,7 +121,7 @@ export type BalanceSource = Pick<store.OrderRecord, "registrationId" | "ownerCod
 
 // the order of another name under the record's code, as the service makes the paying order's owner the new order's
 export const spendDraft = (record: BalanceSource, label: string, links: api.Links, quote: Priced, terms: string): Draft =>
-  ({ label, links, chain: chainOf(quote), years: quote.years, termStart: quote.termStart, ownerCode: record.ownerCode, terms })
+  ({ label, links, chain: chainOf(quote), years: api.termYears(quote.community, quote.years), termStart: quote.termStart, ownerCode: record.ownerCode, terms })
 
 // Another name paid from the record's balance as the page read it, `draft` being spendDraft's: the order and the spend,
 // signed by the record's code. When the balance does not cover the price, all of it pays and an invoice in `method` is

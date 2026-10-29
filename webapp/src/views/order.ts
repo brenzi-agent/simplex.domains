@@ -417,9 +417,10 @@ const UNKNOWN_NAME = "The name shows once it is registered"
 // what the order is for and what it cost, after its name where the screen has not said it already
 function termLine({ view, invoice }: OrderState): Kid[] {
   const paid = costOf(view!, invoice)
-  if (!paid) return [el("span", { class: "nowrap" }, `${view!.years} years`), SEP, "With a code"]
+  const years = api.termYears(view!.community, view!.years)
+  if (!paid) return [el("span", { class: "nowrap" }, `${years} years`), SEP, "With a code"]
   const { cost, fromBalance } = paid
-  return [el("span", { class: "nowrap" }, `${dollars(cost)} / ${view!.years} years`),
+  return [el("span", { class: "nowrap" }, `${dollars(cost)} / ${years} years`),
     fromBalance ? [SEP, el("span", { class: "nowrap" }, fromBalance === cost ? "Paid from your balance" : `${dollars(fromBalance)} from your balance`)] : null]
 }
 

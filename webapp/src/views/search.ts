@@ -353,8 +353,8 @@ function availableAnswer(s: SearchState, label: string, answer: Available, signa
   const words = !retarget ? "Register" : cover ? "Register with your code" : "Register with your payment"
   const button = setAction(btn(words, "small", () => void register()), s.register.busy, unpayable || own !== null || s.hold !== null || (asks && !ticked({ ...s, community: answer.community })))
   button.dataset.focus = "register"
-  const deal = free ? [el("b", { class: "price" }, "Free"), el("span", { class: "soft" }, ` / ${free.years} years`)]
-    : [el("b", { class: "price" }, dollars(answer.price)), el("span", { class: "soft" }, ` / ${answer.years} years`)]
+  const deal = free ? [el("b", { class: "price" }, "Free"), el("span", { class: "soft" }, ` / ${api.termYears(answer.community, free.years)} years`)]
+    : [el("b", { class: "price" }, dollars(answer.price)), el("span", { class: "soft" }, ` / ${api.termYears(answer.community, answer.years)} years`)]
   return [
     el("div", { class: "card row buy" }, rowName(label, answer.tld, answer.community, "community"), el("div", { class: "offer" }, el("span", { class: "deal" }, deal), button)),
     !code && short ? el("p", { class: "hint" }, `Your code allows you to register a free name of ${short.minLength} or more letters. `,

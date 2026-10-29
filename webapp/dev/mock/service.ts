@@ -19,6 +19,7 @@ import { addressFor } from "./addresses.ts"
 import { deepLinkOf } from "./links.ts"
 
 const YEARS = 2
+const COMMUNITY_YEARS = 2
 // SimplexPriceOracle's attoUSD to the cent
 const ATTO_PER_CENT = 10n ** 16n
 // how far an order's free days may be from the service's own count: the page's clock is set from the service's Date header
@@ -400,7 +401,9 @@ function nodeOf(labelHash: Hex): Hex {
 const terms = { version: "2026-10-23", url: "https://simplex.chat/" }
 const communities = new Map<Hex, string>([[keccak256(toHex("bakers")), "bakers and pastry chefs"]])
 
-const communityEntry = (labelHash: Hex, hash: Hex) => ({ for: communities.get(labelHash) ?? null, terms: { url: `/api/community-terms/${hash}`, hash } })
+const communityEntry = (labelHash: Hex, hash: Hex) => ({ for: communities.get(labelHash) ?? null, years: COMMUNITY_YEARS, terms: { url: `/api/community-terms/${hash}`, hash } })
+// a community name's order pays for these years, whatever years its code gives
+const orderYears = (o: { terms: string }, years: number) => o.terms.includes(COMMUNITY_TERMS) ? COMMUNITY_YEARS : years
 const termsFor = (community: ReturnType<typeof communityEntry> | null) => community ? `${terms.version}${COMMUNITY_TERMS}${community.terms.hash.slice(2)}` : terms.version
 
 // a listed name's entry with the community terms on chain now; a failed read throws
@@ -762,7 +765,7 @@ export async function registerWithCode(body: Record<string, unknown>): Promise<R
   const resent = existingOrder(order, orderHash)
   if (resent) return { registrationId: resent.id }
   freshTimestamp(body.timestamp)
-  checkDuration(order.duration, row.years)
+  checkDuration(order.duration, orderYears(order, row.years))
   await checkTerms(order)
   await nameFree(order.labelHash)
   const error = CODE_ERRORS[row.state]
@@ -1109,10 +1112,10 @@ export async function retarget(registrationId: string, body: Record<string, unkn
   if (reg.moves >= MAX_ORDER_MOVES) throw new HttpError(409, "move_limit", { registration: await registrationView(reg) })
   const version = reg.version
   existingOrder(order, null, reg)
-  checkDuration(order.duration, reg.years)
+  checkDuration(order.duration, orderYears(order, reg.years))
   await checkTerms(order)
   await nameFree(order.labelHash)
-  const price = reg.method === "code" ? 0 : await chainPrice(order.length, reg.years)
+  const price = reg.method === "code" ? 0 : await chainPrice(order.length, orderYears(order, reg.years))
   if (price > reg.paid) throw new HttpError(409, "price_too_high", { price })
   const row = reg.prepaidCode ? codes.get(reg.prepaidCode) : undefined
   if (row) codeStillPays(row, reg, order.length)

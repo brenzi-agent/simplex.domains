@@ -2,6 +2,7 @@ import { type APIRequestContext, type Browser, expect, type Page } from "@playwr
 import { CODE_LIMIT } from "../dev/mock/limits.ts"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import type { Links } from "../src/api.ts"
+import { YEAR_S } from "../src/crypto/registration.ts"
 import { checksumAddress } from "../src/crypto/wallet.ts"
 import { walletOf } from "../src/flow.ts"
 import { dateOf } from "../src/format.ts"
@@ -164,6 +165,24 @@ test("a prepaid code registers a name the contracts' owner listed on chain, its 
   await waitRegistered(page, label)
   const view = await (await request.get(`${MOCK}/api/registration/${new URL(page.url()).searchParams.get("registration")}`)).json() as { owner: string; registerTx: string }
   expect(await acceptedOnChain(view.registerTx)).toEqual({ name: label, holder: view.owner, termsHash: COMMUNITY_TERMS_HASH })
+})
+
+test("a prepaid code for 5 years registers a community name for its 2 years and the free days, saying the code's other years are not used", async ({ page, request }) => {
+  const { code } = await control(request, "code", { minLength: 6, years: 5 }) as { code: string }
+  const label = uniqueLabel("cfive")
+  await contractsOwnerLists(label)
+  await useCode(page, code)
+  await search(page, label)
+  await expect(page.locator(".answer .row .deal")).toHaveText("Free / 2 years")
+  await toReview(page)
+  await expect(page.locator(".card.order .trow").first()).toHaveText(/^Term2 years and /)
+  await expect(page.locator(".card.order .hint")).toHaveText("A community name is registered for 2 years: your code's other 3 years are not used.")
+  await onStep(page).getByRole("button", { name: REGISTER_WITH_CODE }).click()
+  await page.waitForURL(/\?registration=/)
+  await waitRegistered(page, label)
+  const view = await (await request.get(`${MOCK}/api/registration/${new URL(page.url()).searchParams.get("registration")}`)).json() as { duration: number; registerTx: string }
+  expect(Math.floor(view.duration / YEAR_S), "2 years and the free days").toBe(2)
+  expect(await chainExpiry(label)).toBe(await blockTimeOf(view.registerTx) + view.duration)
 })
 
 test("a code order's name code, entered in another browser before the reveal, lets that browser reveal and register the name", async ({ page, browser, request }) => {

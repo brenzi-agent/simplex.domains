@@ -895,7 +895,7 @@ test("a spend whose difference is below the card's least charge refuses the card
 const COMMUNITY_LABEL = "bakers"
 const TERMS_VERSION = "2026-10-23"
 const COMMUNITY_TERMS = communityTerms(TERMS_VERSION)
-const communityEntry = (text: unknown) => ({ for: text, terms: { url: `/api/community-terms/${COMMUNITY_TERMS_HASH}`, hash: COMMUNITY_TERMS_HASH } })
+const communityEntry = (text: unknown) => ({ for: text, years: 2, terms: { url: `/api/community-terms/${COMMUNITY_TERMS_HASH}`, hash: COMMUNITY_TERMS_HASH } })
 
 // The service's terms at another version while `f` runs, as after a restart with a new terms_version.
 async function atVersion<T>(request: APIRequestContext, version: string, f: () => Promise<T>): Promise<T> {

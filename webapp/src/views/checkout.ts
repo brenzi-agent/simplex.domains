@@ -31,7 +31,7 @@ const DAPP_URL = "https://app.simplex.domains"
 // the service takes a signed order's timestamp within this many seconds; an older one is signed anew
 const SIGNED_WINDOW_S = 600
 
-const years = (c: session.Checkout) => c.code?.years ?? c.years
+const years = (c: session.Checkout) => api.termYears(c.community, c.code?.years ?? c.years)
 // a card order waiting for Stripe holds a second paid order; a code or a balance that covers the price pays nothing, so it holds none
 const blockedBy = ({ checkout, waiting }: CheckoutState) => checkout.code || covered(checkout) ? null : waiting
 const payLabel = (c: session.Checkout) => c.code || c.codeHere ? "Register with your code" : covered(c) ? "Register with your balance" : `Pay ${dollars(split(c).rest)} with ${methodName(methodOf(c))}`
@@ -239,7 +239,8 @@ function orderCard(c: session.Checkout): HTMLElement {
       row("Registered until", dateOf(termEnd(y, c.termStart, now))),
       c.code ? el("div", { class: "trow total" }, el("span", {}, "Free SimpleX name"))
         : c.balance ? [row("From your balance", `\u2212${dollars(fromBalance)}`), row("To pay", dollars(rest), "total")]
-        : row("Total", dollars(c.price), "total")))
+        : row("Total", dollars(c.price), "total")),
+    c.code && y < c.code.years ? el("p", { class: "hint" }, `A community name is registered for ${y} years: your code's other ${c.code.years - y} years are not used.`) : null)
 }
 
 const BALANCE_NOTE = "balance-note"
@@ -527,7 +528,7 @@ async function sendOrder(): Promise<void> {
   dispatch({ type: "send-started" })
   const links = { contact: c.contact, channel: c.channel }
   const terms = api.termsFor(c.terms, c.community)
-  const draft: flow.Draft = source ? flow.spendDraft(source, c.label, links, { ...c.chain, price: c.price, years: years(c), termStart: c.termStart }, terms)
+  const draft: flow.Draft = source ? flow.spendDraft(source, c.label, links, { ...c.chain, price: c.price, years: years(c), termStart: c.termStart, community: c.community }, terms)
     : { label: c.label, links, chain: c.chain, years: years(c), termStart: c.termStart, ownerCode: c.ownerCode!, terms }
   // The order is kept whatever the buyer did meanwhile. Its checkout ends, and the order opens, only while this checkout
   // is still the tab's: the buyer may have started another name, by Back and Forward too.
@@ -562,7 +563,7 @@ async function sendOrder(): Promise<void> {
         const res = await api.registerWithCode(built.request, c.code.display)
         // the code is the order's now, so it pays for nothing more in this tab
         session.dropActiveCode(c.code.display)
-        store.saveOrder({ ...flow.recordFor(draft, built, "code", 0, { registrationId: res.registrationId, invoiceId: null }), prepaidCode: c.code.display })
+        store.saveOrder({ ...flow.recordFor(draft, built, "code", 0, { registrationId: res.registrationId, invoiceId: null }), years: c.code.years, prepaidCode: c.code.display })
         return done(store.orderUrl({ invoiceId: null, registrationId: res.registrationId }))
       }
       const res = await api.createOrder(built.request, method, c.price)

@@ -3,7 +3,7 @@ import { askFor, termsToSign, ticked } from "../src/screens/terms.ts"
 
 const TERMS = { version: "2026-10-23", url: "https://simplex.chat/" }
 const NEWER = { version: "2026-11-01", url: "https://simplex.chat/" }
-const BAKERS = { for: "bakers and pastry chefs", terms: { url: "https://simplex.chat/community-terms", hash: `0x${"c7".repeat(32)}` } }
+const BAKERS = { for: "bakers and pastry chefs", years: 2, terms: { url: "https://simplex.chat/community-terms", hash: `0x${"c7".repeat(32)}` } }
 const SIGNED = `2026-10-23/community/${"c7".repeat(32)}`
 const NEWER_SIGNED = `2026-11-01/community/${"c7".repeat(32)}`
 
