@@ -2,7 +2,7 @@
 import * as api from "../api.ts"
 import { labelHash } from "../crypto/registration.ts"
 import { hex } from "../crypto/wallet.ts"
-import { alertBox, btn, el, icon, type Kid, line, link, nameText, setAction, waitOut } from "../dom.ts"
+import { alertBox, btn, el, icon, type Kid, line, link, nameText, NO_AUTOFILL, setAction, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dollars, letters } from "../format.ts"
 import { codesOnly } from "../mode.ts"
@@ -256,7 +256,7 @@ const BUILDERS: Record<SearchKind, Builder<SearchState>> = {
 }
 
 function searchBox(): HTMLElement {
-  const input = el("input", { type: "text", placeholder: "yourname", "aria-label": "Name", autocomplete: "off", autocapitalize: "none", spellcheck: "false" })
+  const input = el("input", { type: "text", placeholder: "yourname", "aria-label": "Name", ...NO_AUTOFILL })
   field = input
   const search = el("button", { class: "btn lens", type: "button", "aria-label": "Search", "data-focus": "search", onclick: () => submit() }, icon("search"))
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit() })

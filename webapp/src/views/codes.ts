@@ -1,7 +1,7 @@
 // The code field of Check your code, judged as it is typed: a prepaid code that registers a free name, or a name code that owns one.
 import * as api from "../api.ts"
 import { codeProgress, mayBeOwnerCode, parseNameCode } from "../crypto/code.ts"
-import { el, icon, liveRegion, refill, waitOut } from "../dom.ts"
+import { el, icon, liveRegion, NO_AUTOFILL, refill, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import type * as session from "../session.ts"
 import * as store from "../store.ts"
@@ -150,7 +150,7 @@ const typed = new Map<string, string>()
 export function codeField(key: string, label: string, heard: (v: CodeVerdict | null) => void, order?: { name: string; code?: string }): HTMLElement {
   return kept(key, () => {
     const verdictId = `${key}-verdict`
-    const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, spellcheck: "false", placeholder: "SN…", autocomplete: "off",
+    const input = el("input", { type: "text", "aria-label": label, "aria-describedby": verdictId, placeholder: "SN…", ...NO_AUTOFILL,
       value: typed.get(key) ?? order?.code })
     const check = el("button", { class: "btn lens", type: "button", "aria-label": "Check" }, icon("key"))
     // a phone with a camera reads the code from its QR code, as another device shows it

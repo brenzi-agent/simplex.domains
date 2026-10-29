@@ -263,6 +263,38 @@ test("the name-is-yours screen offers Edit links, a small secondary button under
   await expect(onStep(page).getByRole("textbox", { name: "Link", exact: true })).toHaveValue(contactLink("CY"))
 })
 
+// what keeps browsers and password managers from filling, correcting or capitalizing a field
+const NO_AUTOFILL = { autocomplete: "off", autocorrect: "off", autocapitalize: "none", spellcheck: "false", "data-1p-ignore": "", "data-lpignore": "true", "data-bwignore": "", "data-form-type": "other" }
+async function noAutofill(page: Page, where: string, fields: number): Promise<void> {
+  const inputs = page.locator("body > main input[type=text]")
+  await expect(inputs, where).toHaveCount(fields)
+  for (const input of await inputs.all()) {
+    const attrs = await input.evaluate((n, names) => Object.fromEntries(names.map((a) => [a, n.getAttribute(a)])), Object.keys(NO_AUTOFILL))
+    expect(attrs, `${where}: ${await input.getAttribute("aria-label")}`).toEqual(NO_AUTOFILL)
+  }
+}
+
+test("no field offers autofill, autocorrect or a password manager: the name search, both code fields and every link field", async ({ page }) => {
+  await page.goto("/")
+  await noAutofill(page, "the name search", 1)
+  await page.goto("/#/code")
+  await noAutofill(page, "Check your code", 1)
+  const label = uniqueLabel("nofill")
+  await search(page, label)
+  await onStep(page).getByRole("button", { name: "Register" }).click()
+  await expect(onStep(page).getByRole("heading", { name: LINKS_HEADING })).toBeVisible()
+  await fillLinks(page, contactLink("NF"), channelLink("NF"))
+  await noAutofill(page, "the links step", 2)
+  await search(page, uniqueLabel("nofillr"))
+  await toReview(page)
+  await onStep(page).getByRole("button", { name: "I have a code" }).click()
+  await noAutofill(page, "the checkout's code field", 1)
+  const { registrationId } = await fakeRegisteredName(page, uniqueLabel("nofille"), { contact: contactLink("NF"), channel: channelLink("NF") })
+  await page.goto(`/#/edit/${registrationId}`)
+  await expect(onStep(page).getByRole("heading", { name: "Edit links" })).toBeVisible()
+  await noAutofill(page, "Edit links", 2)
+})
+
 const editCount = (page: Page) => onStep(page).locator(".edit-count")
 const saveLinks = (page: Page) => onStep(page).getByRole("button", { name: "Save links" })
 // Save's box and the top and height of the line under it, whose width follows its words: a change of either moves what is around them
