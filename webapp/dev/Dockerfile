@@ -3,7 +3,7 @@
 # Built from the simplex.domains repository root, as compose.yaml does: the page's fonts and images live there.
 
 FROM node:24-bookworm AS contracts
-ARG NAMESPACE_COMMIT=2550a3cffdda807a5ec5dd079682708ae3963e3b
+ARG NAMESPACE_COMMIT=e3ba0a50d9475dab8336b5a4026ab0fc5f79ebd4
 ARG ENS_CONTRACTS_COMMIT=6ccb5c52c80619493db32a4128ee5067f4274ac2
 WORKDIR /src
 RUN git clone https://github.com/brenzi/simplex-namespace-contract.git . \
