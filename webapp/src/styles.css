@@ -312,6 +312,10 @@ html.framed body > main:empty { min-height: calc(var(--step-h) + var(--screen-to
 .offer { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
 .price { font-weight: 700; font-variant-numeric: tabular-nums; }
 .chats { display: inline-flex; gap: 2px; }
+/* a row's pictures open their chats in the room they take as pictures, so they darken on hover rather than grow a circle */
+.list-row .chat { width: 32px; height: 32px; }
+.list-row .chat:hover { background: none; filter: brightness(.9); }
+.list-row .name.opens { cursor: pointer; }
 .chat { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 50%; background: none; cursor: pointer; }
 .chat:hover { background: var(--chip); }
 .chat-pic { display: grid; place-items: center; width: 32px; height: 32px; flex: none; color: var(--avatar); }

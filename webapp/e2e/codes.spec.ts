@@ -263,6 +263,73 @@ test("the name-is-yours screen offers Edit links, a small secondary button under
   await expect(onStep(page).getByRole("textbox", { name: "Link", exact: true })).toHaveValue(contactLink("CY"))
 })
 
+// The boxes of a Your names row's parts, and whether its chat pictures take the room they did as plain pictures: the
+// picture's 32 px each and the gap between them, whatever room their buttons give the pointer.
+const rowLayout = (row: Locator) => row.evaluate((r) => {
+  const box = (n: Element) => { const b = n.getBoundingClientRect(); return [b.top, b.left, b.width, b.height] }
+  const chats = r.querySelector(".chats")
+  const pics = [...r.querySelectorAll(".chats .chat-pic")]
+  const gap = chats ? parseFloat(getComputedStyle(chats).columnGap) : 0
+  const room = pics.reduce((w, p) => w + p.getBoundingClientRect().width, 0) + gap * Math.max(0, pics.length - 1)
+  return { parts: [...r.querySelectorAll(".name, .sub, .chats, .chat-pic, .acts > *")].map(box), asPictures: chats ? chats.getBoundingClientRect().width === room && chats.getBoundingClientRect().height === 32 : true }
+})
+// what a chat's popup says and offers, from its heading to its actions
+const popupContent = (page: Page) => page.locator(".modal[open] .pop").evaluate((pop) => ({
+  text: pop.textContent, qr: pop.querySelector(".pop-qr svg")?.getAttribute("aria-label") ?? null,
+  acts: [...pop.querySelectorAll(".pop-acts > *")].map((a) => [a.textContent, a.getAttribute("href")]),
+}))
+
+test("Your names opens a registered name's chat popup from its name or its picture, as the search answer does, and nothing in its row moves", async ({ page, request }) => {
+  const links = { contact: contactLink("CP"), channel: channelLink("CP") }
+  const { label } = await registerWithCode(page, request, "cpop", links)
+  await waitRegistered(page, label)
+  // the search answer's own popup of the name's first chat
+  await page.goto(`/#/?name=${label}`)
+  const answerChats = page.locator(".answer .row .chat")
+  await expect(answerChats).toHaveCount(2)
+  await answerChats.first().click()
+  await expect(page.locator(".modal[open]")).toBeVisible()
+  const contactPopup = await popupContent(page)
+  expect(contactPopup.qr, "the link's QR code").not.toBeNull()
+  await page.keyboard.press("Escape")
+  await answerChats.nth(1).click()
+  const channelPopup = await popupContent(page)
+  await page.keyboard.press("Escape")
+
+  await page.goto("/#/names")
+  const row = page.locator(".list-row", { hasText: `${label}.simplex` })
+  const chats = row.locator(".chats .chat")
+  await expect(chats).toHaveCount(2)
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize(size)
+    const before = await rowLayout(row)
+    expect(before.asPictures, `the pictures take their own room at ${size.width} px`).toBe(true)
+    await row.locator(".name .tld").click()
+    await expect(page.locator(".modal[open]")).toBeVisible()
+    expect(await popupContent(page), "the name opens its first chat's popup").toEqual(contactPopup)
+    await page.keyboard.press("Escape")
+    await expect(page.locator(".modal[open]")).toHaveCount(0)
+    await expect(chats.first(), "focus goes back to the picture whose popup it is").toBeFocused()
+    await chats.nth(1).hover()
+    await chats.nth(1).click()
+    expect(await popupContent(page)).toEqual(channelPopup)
+    await page.keyboard.press("Escape")
+    expect(await rowLayout(row), `nothing in the row moved at ${size.width} px`).toEqual(before)
+  }
+  await shot(page, "N13-names-chat-pictures")
+
+  // a name without links has nothing to open
+  const bare = uniqueLabel("cbare")
+  await fakeRegisteredName(page, bare, { contact: "", channel: "" })
+  await page.goto("/#/names")
+  const bareRow = page.locator(".list-row", { hasText: `${bare}.simplex` })
+  await expect(bareRow.getByRole("button", { name: "Add links" })).toBeVisible()
+  await expect(bareRow.locator(".chats")).toHaveCount(0)
+  expect(await bareRow.locator(".name").evaluate((n) => getComputedStyle(n).cursor)).toBe("auto")
+  await bareRow.locator(".name .tld").click()
+  await expect(page.locator(".modal[open]")).toHaveCount(0)
+})
+
 // what keeps browsers and password managers from filling, correcting or capitalizing a field
 const NO_AUTOFILL = { autocomplete: "off", autocorrect: "off", autocapitalize: "none", spellcheck: "false", "data-1p-ignore": "", "data-lpignore": "true", "data-bwignore": "", "data-form-type": "other" }
 async function noAutofill(page: Page, where: string, fields: number): Promise<void> {

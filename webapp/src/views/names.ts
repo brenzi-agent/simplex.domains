@@ -15,7 +15,7 @@ import { checkoutUrl, CODE_URL, editUrl } from "../screens/routes.ts"
 import * as session from "../session.ts"
 import type { AppliedCode } from "../session.ts"
 import * as store from "../store.ts"
-import { chatPicture } from "./chats.ts"
+import { chatButton } from "./chats.ts"
 import { codeField, type CodeVerdict } from "./codes.ts"
 import { CHECKING_LINK, type LinkFields, linkFieldsFor, linksSettled } from "./links.ts"
 import {
@@ -310,12 +310,23 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
   const edits = registered && !lapsed(seen, s.now) && (!seen.answer || editable(seen.answer, o.owner))
   const acts = code === null ? [small("Open", `${id}-open`, () => go(store.orderUrl(o)))]
     : [codeToggle(id, shown), edits ? small(linksAction(hasLinks(o, seen.answer)), `${id}-edit`, () => go(editUrl(id))) : null]
-  // a registered name shows the chats it opens, as the home's answer does
-  const chats = registered && seen.answer?.status === "registered" ? seen.answer.entities.map(chatPicture) : []
-  const listed = seen ? seen.view.community !== null : api.communityAgreed(o.terms)
+  const community = seen?.view.community ?? null
+  // a registered name shows the chats it opens, each opening its popup as the home's answer does
+  const chats = registered && seen.answer?.status === "registered"
+    ? seen.answer.entities.map((e, i) => chatButton(e, `${label}.${tld}`, `${id}-chat-${i}`, community !== null)) : []
+  const listed = seen ? community !== null : api.communityAgreed(o.terms)
   const state = rowChip(s, o, seen)
-  return row(id, rowName(label, tld, seen?.view.community ?? null, `${id}-community`, listed), seen ? subLine(o, seen, s.now) : paidLine(o, null, null), state && chipRoom(state),
+  const title = rowName(label, tld, community, `${id}-community`, listed)
+  if (chats.length) opensFirstChat(title, chats[0])
+  return row(id, title, seen ? subLine(o, seen, s.now) : paidLine(o, null, null), state && chipRoom(state),
     [chats.length ? el("span", { class: "chats" }, chats) : null, ...acts], shown ? rowCode(code) : null)
+}
+
+// A pointer on the name opens its first chat as its picture does; the picture is the control a keyboard reaches, as a
+// button in the name could hold no community marker's button.
+function opensFirstChat(title: HTMLElement, first: HTMLButtonElement): void {
+  title.classList.add("opens")
+  title.addEventListener("click", (e) => { if (!(e.target as Element).closest("button")) first.click() })
 }
 
 const sizer = (...kids: Kid[]) => el("span", { class: "sizer", "aria-hidden": "true" }, ...kids)
