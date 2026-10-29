@@ -43,11 +43,11 @@ npx playwright install chromium firefox webkit
 
 The backend needs two things outside this repo:
 
-1. The contracts: ens-contracts at PR #47 (23bc1b3, whose name policy links the terms of each kind), the submodule of [simplex-namespace-contract](https://github.com/brenzi/simplex-namespace-contract) at its PR #10 (73c8032), whose `test/fixtures/terms/` holds the terms' texts, compiled:
+1. The contracts: ens-contracts at PR #47 (6ccb5c5, whose name policy links the terms of each kind), the submodule of [simplex-namespace-contract](https://github.com/brenzi/simplex-namespace-contract) at its PR #10 (2550a3c), whose `test/fixtures/terms/` holds the terms' texts, compiled:
 
    ```
    git clone https://github.com/brenzi/simplex-namespace-contract.git && cd simplex-namespace-contract
-   git fetch origin 73c80328c0e3e3cfad098a042936a7c820256d7d && git checkout 73c8032
+   git fetch origin 2550a3cffdda807a5ec5dd079682708ae3963e3b && git checkout 2550a3c
    git submodule update --init ens-contracts && cd ens-contracts
    npx pnpm@9 install --frozen-lockfile --ignore-scripts
    npx hardhat compile
