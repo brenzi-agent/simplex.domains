@@ -1,4 +1,4 @@
-import { type Balance, type Community, holdsPayment, type InvoiceView, paidLate, type RegistrationView, type SearchAnswer, type Terms } from "../api.ts"
+import { type Balance, type Community, holdsPayment, type InvoiceView, paidLate, type RegistrationView, type SearchAnswer, signedHash, type Terms } from "../api.ts"
 import type { IconName } from "../icons.ts"
 import type { CodeRefusal, OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
@@ -57,7 +57,7 @@ export interface OrderState {
   nameStatus: SearchAnswer["status"] | null
   // the search of the changed terms' ask answered the name as registered or reserved, for the commit of this key
   unavailable: { key: string; status: SearchAnswer["status"] } | null
-  // when this page first saw the stage, or the buyer ticked changed community terms in it, on the service's clock
+  // when this page first saw the stage, or the buyer ticked changed terms in it, on the service's clock
   since: { stage: string; at: number } | null
 }
 
@@ -121,7 +121,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "card-failed": return { ...s, cardFailed: true }
     case "card-started": return start(s, "card")
     case "card-refused": return end(s, "card", { note: e.note })
-    // at a reveal, the ask is kept only for the changed community terms whose acceptance the reveal includes
+    // at a reveal, the ask is kept only for the changed terms whose acceptance the reveal includes
     case "reveal-sent": return { ...s, ask: termsAskedAgain(s) ? s.ask : null, reveal: { key: e.key, sending: true, refusals: s.reveal?.key === e.key ? s.reveal.refusals : 0 } }
     case "reveal-refused": return s.reveal?.key === e.key ? { ...s, reveal: { ...s.reveal, sending: false, refusals: s.reveal.refusals + 1 } } : s
     case "reveal-failed": return s.reveal?.key === e.key ? { ...s, reveal: { ...s.reveal, sending: false } } : s
@@ -140,7 +140,7 @@ function apply(s: OrderState, e: OrderEvent): OrderState {
     case "code-check-due": return { ...s, codeCheckAt: e.at }
     case "source-read": return s.busy === "reorder" ? end(s, "reorder", { sourceBalance: e.balance }) : { ...s, sourceBalance: e.balance }
     case "terms-asked": return { ...s, busy: null, ask: askFor(e.label, e.terms, e.community, e.changed) }
-    // agreeing to changed community terms times the stall from then
+    // agreeing to changed terms times the stall from then
     case "terms-agreed": return s.ask ? { ...s, ask: { ...s.ask, agreed: e.agreed, changed: false }, since: termsAskedAgain(s) && s.since ? { ...s.since, at: e.now } : s.since } : s
     case "terms-accepted": return s.ask ? { ...s, ask: { ...s.ask, accepted: e.accepted, changed: false }, since: termsAskedAgain(s) && s.since ? { ...s.since, at: e.now } : s.since } : s
     case "name-unavailable": return { ...s, unavailable: { key: e.key, status: e.status } }
@@ -271,13 +271,13 @@ function paymentKind(s: OrderState, invoice: InvoiceView): OrderKind {
 
 export const revealKey = (view: RegistrationView) => `${view.id} ${view.commitment} ${view.intentNonce} ${view.revealBefore}${view.acceptance ? ` ${view.acceptance.policy} ${view.acceptance.termsHash} ${view.acceptance.nonce}` : ""}`
 
-// The community terms on chain are not the ones the order signed, so the buyer agrees to them again before the reveal.
-const termsChanged = ({ view }: OrderState) => !!view?.acceptance && view.acceptance.termsHash !== view.community?.terms.hash
+// The terms of the name's kind on chain are not the ones the order signed, so the buyer agrees to them again before the reveal.
+const termsChanged = ({ view }: OrderState) => !!view?.acceptance && view.acceptance.termsHash !== signedHash(view.terms)
 
-// The buyer is asked for the changed community terms, ticked or not.
-export const termsAskedAgain = (s: OrderState) => termsChanged(s) && s.ask?.community?.terms.hash === s.view!.acceptance!.termsHash
+// The buyer is asked for the changed terms, ticked or not.
+export const termsAskedAgain = (s: OrderState) => termsChanged(s) && s.ask?.terms.hash === s.view!.acceptance!.termsHash
 
-// The reveal waits until the buyer ticks the changed community terms.
+// The reveal waits until the buyer ticks the changed terms.
 export const termsToAgree = (s: OrderState) => termsChanged(s) && !(termsAskedAgain(s) && ticked(s.ask!))
 
 // The changed terms are asked for once the order is committed and they are not asked for yet.

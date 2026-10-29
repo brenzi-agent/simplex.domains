@@ -99,10 +99,11 @@ function write(key: string, value: unknown): void {
 export const scrolled = (): Record<number, number> => read<Record<number, number>>(SCROLLED) ?? {}
 export const setScrolled = (at: number, y: number) => write(SCROLLED, { ...scrolled(), [at]: y })
 
-// a checkout without its name, chain, term or terms is a leftover, not one to continue; one kept without its step opens the review, which sends it on
+// a checkout without its name, chain, term or terms, or with the terms version an older page kept, is a leftover, not one to
+// continue; one kept without its step opens the review, which sends it on
 export function checkout(): Checkout | null {
   const c = read<Checkout>(CHECKOUT)
-  return c?.label && c.chain && c.terms && typeof c.termStart === "number" ? { ...c, step: c.step ?? "review", balance: c.balance ?? null } : null
+  return c?.label && c.chain && typeof c.terms?.hash === "string" && typeof c.termStart === "number" ? { ...c, step: c.step ?? "review", balance: c.balance ?? null } : null
 }
 export const setCheckout = (c: Checkout | null) => write(CHECKOUT, c)
 

@@ -6,7 +6,7 @@ import type { CheckoutStep } from "./routes.ts"
 
 export const FALLBACK_METHOD: Record<Method, Method> = { card: "btc", btc: "xmr", xmr: "btc" }
 
-export type Refusal = "price-changed" | "too-many" | "failed" | "taken"
+export type Refusal = "price-changed" | "too-many" | "failed" | "taken" | "unavailable"
 export type CheckoutKind = CheckoutStep | `status:${Refusal}`
 
 export interface WaitingOrder { registrationId: string; invoiceId: string }
@@ -45,7 +45,7 @@ export type CheckoutEvent =
   | { type: "open-order-seen"; order: OpenOrder | null }
   | { type: "send-started" }
   | { type: "order-refused"; reason: "code"; error: string }
-  | { type: "order-refused"; reason: "method" | "failed" | "taken" }
+  | { type: "order-refused"; reason: "method" | "failed" | "taken" | "unavailable" }
   | { type: "price-changed"; price: number }
   | { type: "terms-changed"; terms: Terms; community: Community | null }
   | { type: "balance-changed"; balance: Balance | null }
@@ -72,7 +72,7 @@ export function changeOf({ checkout }: CheckoutState, e: CheckoutEvent): Partial
       if (e.reason === "code") return { code: null, codeError: e.error, codeHere: undefined }
       return e.reason === "method" ? { unavailable: methodOf(checkout), method: FALLBACK_METHOD[methodOf(checkout)] } : null
     case "price-changed": return { price: e.price }
-    case "terms-changed": return { terms: e.terms, community: e.community, agreed: false, accepted: checkout.accepted && e.community?.terms.hash === checkout.community?.terms.hash, termsChanged: true }
+    case "terms-changed": return { terms: e.terms, community: e.community, agreed: false, accepted: false, termsChanged: true }
     case "balance-changed":
     case "balance-read": return balanceNow(checkout, e.balance)
     default: return null
@@ -107,7 +107,7 @@ export function reduce(s: CheckoutState, e: CheckoutEvent): CheckoutState {
     case "waiting-settled": return { ...s, waiting: null }
     case "open-order-seen": return { ...s, openOrder: e.order }
     case "send-started": return { ...s, sending: true, busy: true }
-    case "order-refused": return unsent(s, { checkout, refusal: e.reason === "failed" || e.reason === "taken" ? e.reason : null })
+    case "order-refused": return unsent(s, { checkout, refusal: e.reason === "method" || e.reason === "code" ? null : e.reason })
     case "price-changed": return unsent(s, { checkout, refusal: "price-changed" })
     case "terms-changed": return unsent(s, { checkout })
     case "balance-changed": return unsent(s, { checkout })

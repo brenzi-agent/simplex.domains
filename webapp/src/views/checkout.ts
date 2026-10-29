@@ -12,6 +12,7 @@ import {
   awaitsCode, balanceHeld, changeOf, codeEntry, heldForThisName, methodOf, methodsFor, payWaits, tookOwnOrder, type CheckoutEvent, type CheckoutKind, type CheckoutState, covered, initialState, reduce, screenOf, split, stepFor, type WaitingOrder,
 } from "../screens/checkout.ts"
 import { type CheckoutStep, checkoutUrl } from "../screens/routes.ts"
+import { ticked } from "../screens/terms.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { CODE_ERRORS, codeField, type CodeVerdict } from "./codes.ts"
@@ -22,7 +23,7 @@ import {
 import { after } from "./effects.ts"
 import { holdEnd, holdEnder, holdFrom, holding, holdNotice, tabHold } from "./hold.ts"
 import { openedInstead } from "./order.ts"
-import { CANT_SHOW, communityCheck, NO_TERMS, NOT_SET, rowName, termsBox, termsChangedLine, termsText } from "./terms.ts"
+import { CANT_SHOW, commitLink, communityCheck, NO_ORDERS, rowName, termsBox, termsChangedLine, termsText } from "./terms.ts"
 
 const CHECKOUT_NOTE = "checkout-note"
 const SAVED_LABEL = "I have saved my name code"
@@ -65,7 +66,7 @@ export function checkoutPage(asked: CheckoutStep): void {
   if (step !== "review" && step !== "community") return
   const reads = new AbortController()
   whenLeaving(() => reads.abort())
-  if (step === "community") return void readTerms(c.community!, reads.signal)
+  if (step === "community") return void readTerms(c, reads.signal)
   if (state.waiting) void settleWaiting(state.waiting, reads.signal)
   else void showOpenOrder(reads.signal)
   if (c.balance) void watchBalance(c.balance.source, reads.signal)
@@ -122,10 +123,10 @@ async function watchBalance(source: string, signal: AbortSignal): Promise<void> 
   }
 }
 
-// the community terms' text for their step, which a name policy without terms has none of
-async function readTerms(community: api.Community, signal: AbortSignal): Promise<void> {
-  const text = community.terms.hash === NO_TERMS ? null : await api.communityTerms(community.terms, signal).catch(() => null)
-  if (!signal.aborted) dispatch({ type: "community-read", hash: community.terms.hash, text })
+// the community terms' text for their step
+async function readTerms(c: session.Checkout, signal: AbortSignal): Promise<void> {
+  const text = await api.termsText(c.terms, c.chain.chainId, signal).catch(() => null)
+  if (!signal.aborted) dispatch({ type: "community-read", hash: c.terms.hash, text })
 }
 
 function dispatch(event: CheckoutEvent): void {
@@ -373,12 +374,13 @@ function payButton(s: CheckoutState, blocked: boolean): HTMLButtonElement {
   const pay = own ? btn("Open your order", "", () => go(own)) : btn(actionLabel(payLabel(s.checkout), s), "", () => void submitOrder())
   pay.dataset.focus = "pay"
   if (s.checkout.balance?.held || s.checkout.balanceChange) pay.setAttribute("aria-describedby", BALANCE_LINE)
-  return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !s.checkout.agreed || payWaits(s) || awaitsCode(s.checkout))
+  return setAction(pay, s.busy, blocked || s.sending || s.hold !== null || !ticked(s.checkout) || payWaits(s) || awaitsCode(s.checkout))
 }
 
-function agreement({ checkout: c, sending }: CheckoutState): HTMLElement {
+function agreement({ checkout: c, sending }: CheckoutState): HTMLElement | null {
+  if (c.community) return null
   const agree = (agreed: boolean) => { if (!state.sending && !act({ type: "agreed", agreed })) refresh() }
-  return termsBox({ terms: c.terms, community: c.community, agreed: c.agreed, changed: c.termsChanged === true, label: c.label, tld: c.chain.tld, disabled: sending }, agree, "pay")
+  return termsBox({ terms: c.terms, community: c.community, agreed: c.agreed, changed: c.termsChanged === true, label: c.label, tld: c.chain.tld, chainId: c.chain.chainId, disabled: sending }, agree, "pay")
 }
 
 function payNote(s: CheckoutState, blocked: boolean, signal: AbortSignal): HTMLElement {
@@ -439,17 +441,16 @@ function buildCode(s: CheckoutState): HTMLElement {
 function buildCommunity(s: CheckoutState): HTMLElement {
   const c = s.checkout
   const community = c.community!
-  const read = s.communityText?.hash === community.terms.hash ? s.communityText : null
+  const read = s.communityText?.hash === c.terms.hash ? s.communityText : null
   const accept = (accepted: boolean) => { if (!state.sending && !act({ type: "accepted", accepted })) refresh() }
-  const text = community.terms.hash === NO_TERMS ? line("bad", "alert", NOT_SET)
-    : !read ? el("p", { class: "note center" }, "Loading the terms…")
+  const text = !read ? el("p", { class: "note center" }, "Loading the terms…")
     : read.text === null ? line("bad", "alert", CANT_SHOW)
-    : termsText(read.text)
+    : [termsText(read.text), commitLink(c.terms, c.chain.chainId)]
   return screen({ title: "Community terms", lead: [nameText(c.label, c.chain.tld), " is a community name. Its owner accepts these terms."], back: checkoutUrl("code"),
     action: continueButton(() => go(checkoutUrl("review")), !c.accepted) },
     c.termsChanged ? termsChangedLine("continue") : null,
     text,
-    communityCheck({ ...c, community, changed: false, tld: c.chain.tld, disabled: s.sending || !read?.text }, accept, true))
+    communityCheck({ ...c, community, changed: false, tld: c.chain.tld, chainId: c.chain.chainId, disabled: s.sending || !read?.text }, accept, true))
 }
 
 function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
@@ -493,6 +494,12 @@ function buildFailed(s: CheckoutState): HTMLElement {
     action: retry, alt: link("Back", () => go(searchLink(c.label))) })
 }
 
+function buildUnavailable(s: CheckoutState): HTMLElement {
+  const retry = setAction(btn("Try again", "", () => void submitOrder()), s.busy, false)
+  return outcome({ tone: "warn", icon: "alert", title: NO_ORDERS, text: "Its terms can't be read now. Nothing was charged. Try again later.",
+    action: retry, alt: link("Back", () => go(searchLink(s.checkout.label))) })
+}
+
 const BUILDERS: Record<CheckoutKind, Builder<CheckoutState>> = {
   links: buildLinks,
   code: buildCode,
@@ -502,6 +509,7 @@ const BUILDERS: Record<CheckoutKind, Builder<CheckoutState>> = {
   "status:too-many": buildTooMany,
   "status:failed": buildFailed,
   "status:taken": buildTaken,
+  "status:unavailable": buildUnavailable,
 }
 
 async function submitOrder(): Promise<void> {
@@ -560,13 +568,13 @@ async function sendOrder(): Promise<void> {
         return done(store.orderUrl(next))
       }
       if (c.code) {
-        const res = await api.registerWithCode(built.request, c.code.display)
+        const res = await api.registerWithCode(built.request, c.code.display, c.chain.chainId)
         // the code is the order's now, so it pays for nothing more in this tab
         session.dropActiveCode(c.code.display)
         store.saveOrder({ ...flow.recordFor(draft, built, "code", 0, { registrationId: res.registrationId, invoiceId: null }), years: c.code.years, prepaidCode: c.code.display })
         return done(store.orderUrl({ invoiceId: null, registrationId: res.registrationId }))
       }
-      const res = await api.createOrder(built.request, method, c.price)
+      const res = await api.createOrder(built.request, method, c.price, c.chain.chainId)
       const paidBy = flow.paidWith(res)
       store.saveOrder({ ...flow.recordFor(draft, built, paidBy.method, paidBy.paid, { registrationId: res.registration.id, invoiceId: res.invoiceId }), years: c.years })
       done(store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id }))
@@ -630,6 +638,7 @@ function orderError(e: unknown, c: session.Checkout): void {
     return void act({ type: "order-refused", reason: "code", error: CODE_ERRORS[code] })
   }
   if (code === "provider_unavailable") return void act({ type: "order-refused", reason: "method" })
+  if (code === "terms_unavailable") return void act({ type: "order-refused", reason: "unavailable" })
   if (code === "catalog_changed" && e instanceof api.ApiError && typeof e.body.price === "number") return void act({ type: "price-changed", price: e.body.price })
   // the tab's wait started as the order was refused; the page holds for what is left of it
   if (code === "rate_limited") return dispatch({ type: "hold-started", until: holdEnd() })

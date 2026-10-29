@@ -29,42 +29,45 @@ const SEALED_HASH = "0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a6
 type Kind = "order" | "name" | "spend"
 type Vector = { kind: Kind; terms: string; text: string; digest: Hex; signature: Hex }
 
+const PLAIN = "213536f106608428de763fe26b1e9e31f27244152e9a853614ad73c67002ee6f"
+const COMMUNITY = "community/3d2141022b4e322767cb6c8dcac2daf21b9d2c9a2b93af726099a8bd4cc15bff"
+
 const VECTORS: Vector[] = [
   {
-    kind: "order", terms: "2026-10-23",
-    text: "simplex.domains order 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 2026-10-23 1792828800",
-    digest: "0x50dfb031e558f78b83fa07c7ea0207c02a98d73751e43bc754dd26b7bc92b840",
-    signature: "0x17107b11494e25098efc348aca64a2469ffb832bcc79dc57377a1b26a4004b6701ad73648f50af8b39d4079820a3de7e681ddf15f8cf15b5cff02b4a48cf1fe61c",
+    kind: "order", terms: PLAIN,
+    text: `simplex.domains order 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${PLAIN} 1792828800`,
+    digest: "0x0ba979ab2c6935848734b7d7ff5fa66800b1bd6814e34ee0ad4f5d62d226401b",
+    signature: "0xedd5071a12ad686a493bd8d9522cc95a292aea0e1970aaa3a4ea268696ed4f773b9dbfbf12d9aa79fd48bc1ea3825a720d8a09077bb4f35332480e1be1154fdf1c",
   },
   {
-    kind: "order", terms: "2026-10-23/community",
-    text: "simplex.domains order 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 2026-10-23/community 1792828800",
-    digest: "0xf8521525761939c4cef8979cb54217e9e32b1a57999fc2f03e486f4eb1903802",
-    signature: "0x03eccb591b79ab4e3e6f22ccbeb77a6ac32c6dad8cb318557836258c390bc31d78852a3279c6c8cc2ef8d1025641d45ba4101f54dfd84c264deb2ab391c1cbc61c",
+    kind: "order", terms: COMMUNITY,
+    text: `simplex.domains order 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${COMMUNITY} 1792828800`,
+    digest: "0x6d16887e061a31baedb6509fb0d01d7adc353c9496884b3af3d120b6aa850966",
+    signature: "0x866ffd975972fe6a668eed758e8a69b57900d5e0898aa2872d344216fb5dd5ff45e380b07792c5b0220ad9564a24c3513ad1d39ac30ff888168bbd1c8e17aa011b",
   },
   {
-    kind: "name", terms: "2026-10-23",
-    text: "simplex.domains name t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 2026-10-23 1792828800",
-    digest: "0x01eda78f875428396a940b658b910b6eb6dc0bce82860c17d59f8f16e7767d25",
-    signature: "0x1d29abf2489da963d59d0982074b5af770efbaf96be3c756afbd6a7fea672b507e756944da0901724e2a5d7cfe2419ccb7573310ae65e65f4fd35d7c6fe494b51c",
+    kind: "name", terms: PLAIN,
+    text: `simplex.domains name t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${PLAIN} 1792828800`,
+    digest: "0x1f5cb2957192c0189be04450d1c1a39330e3e485b7d55bf07cfd2ad517d473b3",
+    signature: "0x8dbac86c2eb96cac72b0284c7221adf85816da3d9de83c1dc576f11531ba5d472dd6cd33d7ddaca7b3b8413746df8eda57eadfd29b14b52741a4079c0877a1061b",
   },
   {
-    kind: "name", terms: "2026-10-23/community",
-    text: "simplex.domains name t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 2026-10-23/community 1792828800",
-    digest: "0x4f1af02904f9f8863e92169f6e1a1d6733a3a25c5d22ffde7ac00f09a660c022",
-    signature: "0x30d027224b85cd9ac638edec1266748f21f46279eda72e68448f97b8fce73ca06c401035ad5416fc1e48f39646d0637fcaad1588ec74562ff842821b33e299361b",
+    kind: "name", terms: COMMUNITY,
+    text: `simplex.domains name t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${COMMUNITY} 1792828800`,
+    digest: "0xbfe0f6e93445ebcee3b7c081c03c9cb6dcbeb9832b4917bd59ffbf3b87c94cc8",
+    signature: "0xd989c2fe071690005e34c8a42cd61fc4be2c1b7899259c08210ecf234808ed792cfc8ac7071d994ab3029983294e2060c01bdd8608dd8b16ab98763f99927aa11c",
   },
   {
-    kind: "spend", terms: "2026-10-23",
-    text: "simplex.domains spend t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 2026-10-23 1792828800",
-    digest: "0x109f0bd4f5eb1aa054f17c82a0b04dbd5d1e7b23c5ee91cf69464fb1435eb034",
-    signature: "0x20e930097b35350861332afa4b0b5dcff746aa879875269cc784575e6bb871711d3f6b1e11437d0a616a37a8b5b1ebbdd4c98aee04e09405ac3fa55a6af6ff831b",
+    kind: "spend", terms: PLAIN,
+    text: `simplex.domains spend t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${PLAIN} 1792828800`,
+    digest: "0x88a513cf0aaeaa0d9e3de39eb45e2d5cf5d99add5c8f11a0b96b7e1a6931eea4",
+    signature: "0x888338b834c3f9f0eafb50366a0f436361fcb86813e8feda57501bfce6c00ace417a73b3956b6fbaebb29ee3983c6cdae52ba5dbff5b76d7bc7ed30c6006f1331b",
   },
   {
-    kind: "spend", terms: "2026-10-23/community",
-    text: "simplex.domains spend t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 2026-10-23/community 1792828800",
-    digest: "0xd114398466a7a6d7d9a183feb4624e06c41d1dcdfb6b69e896ff9d74c70845c3",
-    signature: "0x90d2ab549b2cf5fd51442ac3f410b934e7fa45bd12853cfbfa2f8ab4876ed5600b9fe3a90459140f180949353e7dc3f56cd1447de31ae5c05e12f7bf6a113f061c",
+    kind: "spend", terms: COMMUNITY,
+    text: `simplex.domains spend t2Jk8RmQ4vXw9NcP3yLb6g 0xbcc46b7948ff6be55bc3ff4db5bc4be16638f29e818a89244dae11caaed7c9c6 11 69292800 0x5e62a4cb7da596cb38169a6a552b5f69db2acee279b53be6693a78e03c3dfaa5 0x22709445157a2a1f7cb7e284e3ccf6c7ebc3b4d857002af452853c4a65907fe2 ${COMMUNITY} 1792828800`,
+    digest: "0x971b7bde57f40f45c075c4f83b882fe61e792783fbec5916e216be966e026650",
+    signature: "0x1bdb0d8d1f332cd8435d4d052f84060da55c8010a957e73fd38eb383925a5ba6606ebf04c09bce1697776670e4a7ad07d7cc2a18b4de3a7ea631e84f5cf77c6e1b",
   },
 ]
 
@@ -152,7 +155,10 @@ describe("the page's builders reproduce Appendix C", () => {
   })
 
   const draft = (terms: string) => ({ label: LABEL, links: NO_LINKS, chain: CHAIN, years: YEARS, termStart: TERM_START, ownerCode: OWNER_CODE, terms })
-  const quote = { status: "available" as const, price: 10000, currency: "usd", years: YEARS, termStart: TERM_START, community: null, terms: { version: "2026-10-23", url: "https://simplex.chat/" }, ...CHAIN }
+  const quote = { status: "available" as const, price: 10000, currency: "usd", years: YEARS, termStart: TERM_START, community: null, terms: {
+    hash: `0x${PLAIN}`,
+    link: "https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/83649f66ffdf9a17fc881fbfadeb7e9aa33cdb4e/docs/terms.md#sha256=02936c81b34de0283128b131b687154eb3b4be7b08e9ee5697aab8b6344decf7",
+  }, ...CHAIN }
 
   it.each(TERMS)("order with terms %s", async (terms) => {
     const { flow } = await builders()

@@ -17,7 +17,7 @@ import * as store from "../store.ts"
 import { type MountedCard, mountCard, publishableKey } from "../stripe.ts"
 import { seenRegistered } from "./names.ts"
 import { holdEnd, holdEnder, holdFrom, holdNotice, tabHold } from "./hold.ts"
-import { termsBox } from "./terms.ts"
+import { NO_ORDERS, termsBox } from "./terms.ts"
 import {
   asStep, type Builder, CONTACT_EMAIL, currentRoute, draw, drawLoading, focusOn, go, historyPlace, isRedraw, isRoute, kept, keptLive, outcome, pageTheme, redirect, referenceLine, refresh, screen,
   searchLink, showRefund, useBalance, whenDropped, whenLeaving,
@@ -30,6 +30,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const ORDER_NOTE = "order-note"
 const warning = (text: string): Note => ({ tone: "warn", icon: "alert", title: null, text })
+const termsUnavailable = (e: unknown) => e instanceof api.ApiError && e.code === "terms_unavailable"
+const noOrders = (lead: string) => warning(`${NO_ORDERS}. ${lead}Try again later.`)
 
 let state: OrderState = initialState("", null)
 let opened = 0
@@ -341,14 +343,14 @@ function reveal(view: api.RegistrationView, record: store.OrderRecord): void {
   })
 }
 
-// Community terms that changed on chain since the order are agreed to again before the owner signs their acceptance at
-// the reveal, under the name terms the search has now.
+// Terms of the name's kind that changed on chain since the order are agreed to again before the owner signs their
+// acceptance at the reveal.
 let askingAgain: number | null = null
 function askAgain(record: store.OrderRecord): void {
   const gen = opened
   askingAgain = gen
   const done = () => { if (askingAgain === gen) askingAgain = null }
-  // after a pause, a search that failed for now is made again, and after one that answered other community terms than the
+  // after a pause, a search that failed for now is made again, and after one that answered other terms than the
   // view's, the view is read again; one that answered the name as registered or reserved ends the ask, which the page says
   const later = (delay: number, again: () => void) => setTimeout(() => { done(); again() }, delay)
   const tick = () => answer(gen, { type: "tick", now: api.serviceNow() })
@@ -358,7 +360,7 @@ function askAgain(record: store.OrderRecord): void {
       done()
       return answer(gen, { type: "name-unavailable", key: commitKey(state.view!), status: quote.status })
     }
-    if (quote.community?.terms.hash !== state.view!.acceptance!.termsHash) return later(RETRY_MS, () => reread(gen))
+    if (!flow.orderable(quote) || quote.terms.hash !== state.view!.acceptance!.termsHash) return later(RETRY_MS, () => reread(gen))
     done()
     askTerms(gen, record.label, quote, true)
     // the notice is focused only while the focus is on the page, not in the header, the footer or a dialog
@@ -739,7 +741,7 @@ function agreement({ ask, view, busy, reveal }: OrderState, focus: string): HTML
   const accept = (accepted: boolean) => dispatch({ type: "terms-accepted", accepted, now: api.serviceNow() })
   // a reveal on its way has signed the ticked terms already
   const signing = reveal?.sending === true && reveal.key === revealKey(view!)
-  return termsBox({ ...ask, tld: view!.tld, disabled: busy !== null || signing }, agree, focus, accept)
+  return termsBox({ ...ask, tld: view!.tld, chainId: view!.chainId, disabled: busy !== null || signing }, agree, focus, accept)
 }
 
 const unagreed = ({ ask }: OrderState) => ask !== null && !ticked(ask)
@@ -776,7 +778,9 @@ async function agreedFirst(gen: number, record: store.OrderRecord, invoice: api.
     if (!quote || !await signsHere(record, invoice)) return true
     return termsOrAsk(gen, record, invoice.registration.terms ?? record.terms, quote) !== null
   } catch (e) {
-    if (!holdOn(e, "The invoice is still open. ", gen)) answer(gen, { type: "reorder-failed", note: warning("The name could not be checked now. Try again in a moment.") })
+    if (!holdOn(e, "The invoice is still open. ", gen)) {
+      answer(gen, { type: "reorder-failed", note: termsUnavailable(e) ? noOrders("The invoice is still open. ") : warning("The name could not be checked now. Try again in a moment.") })
+    }
     return false
   }
 }
@@ -831,7 +835,7 @@ async function orderAgain(record: store.OrderRecord): Promise<void> {
     balance = record.balanceSource ? await balanceOf(record.balanceSource) : null
   } catch (e) {
     if (holdOn(e, "Nothing was charged. ", gen)) return
-    return answer(gen, { type: "reorder-failed", note: warning("The name could not be checked now. Try again in a moment.") })
+    return answer(gen, { type: "reorder-failed", note: termsUnavailable(e) ? noOrders("Nothing was charged. ") : warning("The name could not be checked now. Try again in a moment.") })
   }
   if (!isOpen(gen)) return
   if (!quote) return go(searchLink(record.label))
@@ -1004,7 +1008,7 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
     const terms = termsOrAsk(gen, record, signed, quote)
     if (terms === null) return
     const built = await flow.orderRequest(flow.draftAgain(record, quote, terms))
-    const res = await api.createOrder(built.request, method, invoice.amount)
+    const res = await api.createOrder(built.request, method, invoice.amount, quote.chainId)
     const next = store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id })
     // the old record is the stored owner code until the new one is stored too
     store.saveOrder({ ...record, request: built.request, terms, registrationId: res.registration.id, invoiceId: res.invoiceId, ...flow.paidWith(res), cancelled: false, cardSubmittedAt: undefined, replacedBy: undefined, createdAt: new Date(api.serviceNow()).toISOString() })
@@ -1023,6 +1027,7 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
     }
     if (e instanceof api.ApiError && e.code === "catalog_changed" && typeof e.body.price === "number") return dispatch({ type: "price-changed", price: e.body.price })
     if (e instanceof api.TermsChanged) return askTerms(gen, record.label, e, true)
+    if (termsUnavailable(e)) return dispatch({ type: "reorder-failed", note: noOrders("Nothing was charged. ") })
     if (e instanceof api.BalanceChanged) return dispatch({ type: "reorder-failed", note: warning("Your balance changed meanwhile. Nothing was charged. Try again.") })
     if (e instanceof api.ApiError && e.code === "provider_unavailable") {
       return dispatch({ type: "reorder-failed", note: { tone: "warn", icon: "alert", title: `${methodName(method)} is unavailable right now`,
@@ -1217,7 +1222,7 @@ async function moveWithoutLinks(): Promise<void> {
         view: now, record: state.record, cardSubmittedAt: state.cardSubmittedAt, nameStatus: state.nameStatus })
       return answer(gen, { type: "move-failed", note: null })
     }
-    answer(gen, { type: "move-failed", note: limit ? moveLimitNote(reference) : warning("That did not go through. Nothing changed. Try again in a moment.") })
+    answer(gen, { type: "move-failed", note: limit ? moveLimitNote(reference) : termsUnavailable(e) ? noOrders("Nothing changed. ") : warning("That did not go through. Nothing changed. Try again in a moment.") })
     if (now) reread(gen)
   }
 }

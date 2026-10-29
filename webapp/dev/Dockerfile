@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
-# The names webapp with its whole dev backend: a local chain with the PR #45 contracts and the mock names service.
+# The names webapp with its whole dev backend: a local chain with the PR #47 contracts and the mock names service.
 # Built from the simplex.domains repository root, as compose.yaml does: the page's fonts and images live there.
 
 FROM node:24-bookworm AS contracts
-ARG NAMESPACE_COMMIT=15af3a61a17aa8413ad40c8ff196de34c979a2e9
-ARG ENS_CONTRACTS_COMMIT=bbd7c45cecf21bd4b600a739d71f2ff7476c844e
+ARG NAMESPACE_COMMIT=73c80328c0e3e3cfad098a042936a7c820256d7d
+ARG ENS_CONTRACTS_COMMIT=23bc1b3eae0fc44d7e695949558b187c50b44f13
 WORKDIR /src
 RUN git clone https://github.com/brenzi/simplex-namespace-contract.git . \
  && git fetch origin "$NAMESPACE_COMMIT" \
@@ -26,8 +26,8 @@ FROM node:24-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 COPY --from=anvil /usr/local/bin/anvil /usr/local/bin/anvil
 COPY --from=contracts /src/ens-contracts/artifacts /contracts/artifacts
-# the community terms dev/deploy.ts sets, beside ENS_CONTRACTS_DIR as in the namespace repository
-COPY --from=contracts /src/bona-fide-terms.simplex.md /bona-fide-terms.simplex.md
+# the terms dev/deploy.ts links, beside ENS_CONTRACTS_DIR as in the namespace repository
+COPY --from=contracts /src/test/fixtures/terms /test/fixtures/terms
 WORKDIR /repo/webapp
 COPY webapp/package.json webapp/package-lock.json ./
 RUN npm ci

@@ -56,9 +56,10 @@ const committed = { phase: "committed", commitTx: "0xc0", revealAfter: NOW / 100
 // buyer's ask of them
 const SIGNED = `0x${"c7".repeat(32)}`
 const CHANGED = `0x${"d8".repeat(32)}`
-const communityEntry = (hash: string, text: string | null = null) => ({ for: text, years: 2, terms: { url: "https://simplex.chat/community-terms", hash } })
-const acceptanceFor = (termsHash: string) => ({ policy: "0x3", termsHash, nonce: 0 })
-const reask = (hash = CHANGED) => askFor(record().label, { version: "2026-10-23", url: "https://simplex.chat/" }, communityEntry(hash), true)
+const communityEntry = (text: string | null = null) => ({ for: text, years: 2 })
+const termsOf = (hash: string) => ({ hash, link: `https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/${"83".repeat(20)}/docs/terms.md#sha256=${"02".repeat(32)}` })
+const acceptanceFor = (termsHash: string, kind: "name" | "community" = "community") => ({ kind, policy: "0x3", termsHash, nonce: 0 })
+const reask = (hash = CHANGED) => askFor(record().label, termsOf(hash), communityEntry(), true)
 
 const SLOW = read(card(), undefined, { record: record({ method: "card" }), cardSubmittedAt: submittedAgo(CARD_SLOW_MS + 1000) })
 
@@ -592,7 +593,7 @@ describe("reveal helpers", () => {
   })
   it("revealDue and askAgainDue for a community name: the reveal waits for changed terms to be ticked, which are asked for once, only with the name code and links not refused", () => {
     const listed = (termsHash: string, change: Partial<OrderState> = {}) =>
-      read(null, registration({ ...committed, acceptance: acceptanceFor(termsHash), community: communityEntry(SIGNED) }), change)
+      read(null, registration({ ...committed, acceptance: acceptanceFor(termsHash), community: communityEntry(), terms: `community/${SIGNED.slice(2)}` }), change)
     expect([revealDue(listed(SIGNED)), askAgainDue(listed(SIGNED))]).toEqual([true, false])
     expect([revealDue(listed(CHANGED)), askAgainDue(listed(CHANGED))], "terms changed on chain since the order").toEqual([false, true])
     const ask = reask()
@@ -606,10 +607,20 @@ describe("reveal helpers", () => {
     expect(nameUnavailable(unread), "a view whose acceptance was not read now").toEqual(unavailable.unavailable)
     const recommitted = { ...unavailable, view: { ...unavailable.view!, commitment: `0x${"ef".repeat(32)}` } }
     expect([nameUnavailable(recommitted), askAgainDue(recommitted)], "a new commitment asks again").toEqual([null, true])
-    expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true } })), "the name terms ticked alone").toBe(false)
-    expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true, accepted: true } })), "ticked").toBe(true)
-    expect(revealDue(listed(CHANGED, { ask: { ...reask(SIGNED), agreed: true, accepted: true } })), "ticked other terms").toBe(false)
+    expect(revealDue(listed(CHANGED, { ask: { ...ask, agreed: true } })), "the name terms' box alone").toBe(false)
+    expect(revealDue(listed(CHANGED, { ask: { ...ask, accepted: true } })), "ticked").toBe(true)
+    expect(revealDue(listed(CHANGED, { ask: { ...reask(SIGNED), accepted: true } })), "ticked other terms").toBe(false)
     expect(revealDue(read(null, registration({ ...committed, unread: ["acceptance"] }))), "an acceptance the service could not read").toBe(false)
+  })
+  it("revealDue and askAgainDue for a plain name: the reveal waits for changed name terms to be ticked, and for terms an older page signed as a version", () => {
+    const PLAIN = `0x${"21".repeat(32)}`
+    const plain = (termsHash: string, terms: string, change: Partial<OrderState> = {}) =>
+      read(null, registration({ ...committed, acceptance: acceptanceFor(termsHash, "name"), terms }), change)
+    expect([revealDue(plain(PLAIN, PLAIN.slice(2))), askAgainDue(plain(PLAIN, PLAIN.slice(2)))]).toEqual([true, false])
+    expect([revealDue(plain(CHANGED, PLAIN.slice(2))), askAgainDue(plain(CHANGED, PLAIN.slice(2)))], "terms changed on chain since the order").toEqual([false, true])
+    expect([revealDue(plain(PLAIN, "2026-10-23")), askAgainDue(plain(PLAIN, "2026-10-23"))], "a version an older page signed").toEqual([false, true])
+    const ask = { ...askFor(record().label, termsOf(CHANGED), null, true), agreed: true }
+    expect(revealDue(plain(CHANGED, PLAIN.slice(2), { ask })), "ticked").toBe(true)
   })
   it("unreadDelay reads a view with unread fields again after 5 s, 15 s, then every 30 s", () => {
     expect([0, 1, 2, 3, 10].map(unreadDelay)).toEqual([5000, 15000, 30000, 30000, 30000])
@@ -662,8 +673,8 @@ describe("wakeAt", () => {
 })
 
 describe("the terms of the same name again", () => {
-  const TERMS = { version: "2026-11-01", url: "https://simplex.chat/" }
-  const BAKERS = communityEntry(SIGNED, "bakers and pastry chefs")
+  const TERMS = termsOf(`0x${"f6".repeat(32)}`)
+  const BAKERS = communityEntry("bakers and pastry chefs")
 
   it("terms-asked ends a new invoice's or a move's work and asks for the name's terms, unticked", () => {
     for (const started of ["reorder-started", "move-started"] as const) {

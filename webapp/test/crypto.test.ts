@@ -183,12 +183,12 @@ describe("registration", () => {
     }))
   })
 
-  it("hashes a community name's acceptance of its terms as the name policy's EIP-712 digest", () => {
+  it.each([["AcceptNameTerms", false], ["AcceptCommunityNameTerms", true]] as const)("hashes the acceptance of the terms of a name's kind, %s, as the name policy's EIP-712 digest", (primaryType, community) => {
     const policy = "0x9A676e781A523b5d0C0e43731313A708CB607508"
     const [commitment, termsHash] = [`0x${"cd".repeat(32)}`, `0x${"c7".repeat(32)}`] as const
-    expect(hex(acceptTermsDigest(CHAIN_ID, fromHex(policy), fromHex(commitment), fromHex(termsHash), 2n, 99n))).toBe(hashTypedData({
-      domain: { name: "SimplexNamePolicy", version: "1", chainId: Number(CHAIN_ID), verifyingContract: policy }, primaryType: "AcceptBonaFideTerms",
-      types: { AcceptBonaFideTerms: [{ name: "commitment", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
+    expect(hex(acceptTermsDigest(community, CHAIN_ID, fromHex(policy), fromHex(commitment), fromHex(termsHash), 2n, 99n))).toBe(hashTypedData({
+      domain: { name: "SimplexNamePolicy", version: "1", chainId: Number(CHAIN_ID), verifyingContract: policy }, primaryType,
+      types: { [primaryType]: [{ name: "commitment", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
       message: { commitment, termsHash, nonce: 2n, deadline: 99n },
     }))
   })

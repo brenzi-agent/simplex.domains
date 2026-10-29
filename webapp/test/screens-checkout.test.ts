@@ -13,9 +13,9 @@ const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor:
 const CODE = { display: "SN6-AAAAA-BBBBB-CCCCC", minLength: 6, years: 3 }
 const WAITING = { registrationId: "reg-0", invoiceId: "inv-0" }
 const OPEN_ORDER = { invoiceId: "inv-9", confirming: false }
-const TERMS = { version: "2026-10-23", url: "https://simplex.chat/" }
-const NEWER = { version: "2026-11-01", url: "https://simplex.chat/terms" }
-const BAKERS = { for: "bakers and pastry chefs", years: 2, terms: { url: "https://simplex.chat/community-terms", hash: `0x${"c7".repeat(32)}` } }
+const TERMS = { hash: `0x${"21".repeat(32)}`, link: `https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/${"83".repeat(20)}/docs/name-terms.md#sha256=${"02".repeat(32)}` }
+const NEWER = { hash: `0x${"f6".repeat(32)}`, link: `https://git.simplex.chat/simplex-chat/simplex-chat/raw/commit/${"ff".repeat(20)}/docs/name-terms.md#sha256=${"ea".repeat(32)}` }
+const BAKERS = { for: "bakers and pastry chefs", years: 2 }
 
 function checkout(change: Partial<Checkout> = {}): Checkout {
   return {
@@ -39,6 +39,7 @@ const STATES: Record<CheckoutKind, CheckoutState> = {
   "status:too-many": open({ hold: { until: NOW + 30_000, lead: NO_LEAD }, refusal: "too-many" }),
   "status:failed": open({ refusal: "failed" }),
   "status:taken": open({ refusal: "taken" }),
+  "status:unavailable": open({ refusal: "unavailable" }),
 }
 
 describe("screenOf", () => {
@@ -54,6 +55,7 @@ describe("screenOf", () => {
     ["an order that met a rate limit", STATES["status:too-many"], "status:too-many"],
     ["an order that did not go through", STATES["status:failed"], "status:failed"],
     ["an order for a name registered meanwhile", STATES["status:taken"], "status:taken"],
+    ["an order refused while its terms can't be read", STATES["status:unavailable"], "status:unavailable"],
   ]
   it.each(cases)("%s", (_, state, kind) => {
     expect(screenOf(state)).toBe(kind)
@@ -143,21 +145,19 @@ describe("reduce", () => {
     expect(reduce(ticked, { type: "accepted", accepted: false }).checkout.accepted).toBe(false)
   })
   it("community-read keeps the community terms' text read for their hash, or that it cannot be shown", () => {
-    const { hash } = BAKERS.terms
+    const { hash } = NEWER
     expect(reduce(STATES.community, { type: "community-read", hash, text: "the terms" }).communityText).toEqual({ hash, text: "the terms" })
     expect(reduce(STATES.community, { type: "community-read", hash, text: null }).communityText).toEqual({ hash, text: null })
   })
-  it("terms-changed keeps the community terms accepted while their hash is the same, and drops them for other terms or none", () => {
+  it("terms-changed drops the terms ticked of either kind, as the service answers it only for other terms", () => {
     const accepted = open({ checkout: checkout({ community: BAKERS, agreed: true, accepted: true }) })
-    expect(reduce(accepted, { type: "terms-changed", terms: NEWER, community: BAKERS }).checkout).toMatchObject({ agreed: false, accepted: true })
-    const other = { ...BAKERS, terms: { ...BAKERS.terms, hash: `0x${"d8".repeat(32)}` } }
-    expect(reduce(accepted, { type: "terms-changed", terms: TERMS, community: other }).checkout.accepted).toBe(false)
-    expect(reduce(accepted, { type: "terms-changed", terms: TERMS, community: null }).checkout.accepted).toBe(false)
+    expect(reduce(accepted, { type: "terms-changed", terms: NEWER, community: BAKERS }).checkout).toMatchObject({ agreed: false, accepted: false })
+    expect(reduce(accepted, { type: "terms-changed", terms: TERMS, community: null }).checkout).toMatchObject({ agreed: false, accepted: false })
   })
   it("terms-changed takes the terms and community entry the service gave, unticks the box and says the terms changed, ending the send", () => {
     const sending = reduce({ ...s, checkout: { ...s.checkout, agreed: true } }, { type: "send-started" })
     const changed = reduce(sending, { type: "terms-changed", terms: NEWER, community: BAKERS })
-    expect(changed).toEqual({ ...s, checkout: { ...s.checkout, terms: NEWER, community: BAKERS, agreed: false, termsChanged: true } })
+    expect(changed).toEqual({ ...s, checkout: { ...s.checkout, terms: NEWER, community: BAKERS, agreed: false, accepted: false, termsChanged: true } })
     expect(screenOf(changed)).toBe("review")
   })
   it("agreed after the terms changed ends the notice, which stays off if the box is unticked again", () => {
@@ -206,6 +206,9 @@ describe("reduce", () => {
   })
   it("order-refused for a name registered meanwhile says so, with the checkout as it was", () => {
     expect(reduce({ ...s, sending: true, busy: true }, { type: "order-refused", reason: "taken" })).toEqual({ ...s, refusal: "taken" })
+  })
+  it("order-refused while the terms can't be read says names can't be ordered now, with the checkout as it was", () => {
+    expect(reduce({ ...s, sending: true, busy: true }, { type: "order-refused", reason: "unavailable" })).toEqual({ ...s, refusal: "unavailable" })
   })
   it("price-changed keeps the new price and says so", () => {
     expect(reduce({ ...s, sending: true, busy: true }, { type: "price-changed", price: 2500 })).toEqual({ ...s, checkout: checkout({ price: 2500 }), refusal: "price-changed" })

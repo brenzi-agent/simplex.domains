@@ -6,10 +6,8 @@ import { POPUP_TITLE, showPopup } from "./shell.ts"
 const TERMS_CHANGED = "The terms changed. Agree to them again."
 const INFO_KEY = "community-info"
 const TERMS_KEY = "community-terms"
-// the terms hash of a name policy that has no community terms yet, under which a community name cannot be ordered
-export const NO_TERMS = `0x${"0".repeat(64)}`
 export const CANT_SHOW = "The community terms can't be shown now. Try again in a moment."
-export const NOT_SET = "This community name can't be ordered yet: its community terms are not set."
+export const NO_ORDERS = "Names can't be ordered right now"
 
 function showCommunity(label: string, tld: string, community: api.Community | null, key: string): void {
   showPopup(key, [
@@ -31,11 +29,16 @@ export function termsText(text: string): HTMLDivElement {
     : el(b.ordered ? "ol" : "ul", {}, b.items.map((item) => el("li", {}, inline(item))))))
 }
 
-// the community terms' text as the service reads it from the chain
-function showTerms(community: api.Community, key: string): void {
+export function commitLink(terms: api.Terms, chainId: number): HTMLElement | null {
+  const commit = api.termsLink(terms.link, chainId)?.commit
+  return commit ? el("p", { class: "note center" }, el("a", { href: api.readerUrl(terms.link), target: "_blank", rel: "noopener" }, `View at commit ${commit.slice(0, 7)}`)) : null
+}
+
+// the community terms' text as the service fetches it by the chain's link
+function showTerms(terms: api.Terms, chainId: number, key: string): void {
   const reading = el("p", { class: "note" }, "Loading the terms…")
   showPopup(key, [el("h2", { id: POPUP_TITLE }, "Community terms"), reading], null)
-  api.communityTerms(community.terms).then((read) => reading.replaceWith(termsText(read)), () => { reading.textContent = CANT_SHOW })
+  api.termsText(terms, chainId).then((read) => reading.replaceWith(termsText(read), commitLink(terms, chainId) ?? ""), () => { reading.textContent = CANT_SHOW })
 }
 
 // `listed` marks a community name whose entry is not read yet, so the marker takes its place before the entry comes
@@ -54,17 +57,15 @@ export interface Agreement {
   changed: boolean
   label: string
   tld: string
+  chainId: number
   disabled: boolean
 }
 
 export function termsCheck(a: Agreement, agree: (agreed: boolean) => void): HTMLLabelElement {
-  const unset = a.community?.terms.hash === NO_TERMS
-  const box = el("input", { type: "checkbox", checked: a.agreed, disabled: a.disabled || unset, "data-focus": "agreed" })
+  const box = el("input", { type: "checkbox", checked: a.agreed, disabled: a.disabled, "data-focus": "agreed" })
   box.addEventListener("change", () => agree(box.checked))
-  const terms = el("a", { class: "nowrap", href: a.terms.url, target: "_blank", rel: "noopener" }, "SimpleX name terms")
-  const words = unset ? [NOT_SET]
-    : ["I agree to ", terms, " and do not knowingly violate any trademarks."]
-  return el("label", { class: "check terms" }, box, el("span", { class: "box" }), el("span", {}, ...words))
+  const terms = el("a", { class: "nowrap", href: api.readerUrl(a.terms.link), target: "_blank", rel: "noopener" }, "SimpleX name terms")
+  return el("label", { class: "check terms" }, box, el("span", { class: "box" }), el("span", {}, "I agree to ", terms, " and do not knowingly violate any trademarks."))
 }
 
 // A community name's own tick: its words open the community terms' text, unless their step shows it above them, and its ⓘ
@@ -74,16 +75,15 @@ export function communityCheck(a: Agreement, accept: (accepted: boolean) => void
   const box = el("input", { type: "checkbox", checked: a.accepted, disabled: a.disabled, "data-focus": "accepted" })
   box.addEventListener("change", () => accept(box.checked))
   const terms = shown ? "community terms" : el("button", { class: "text-link", type: "button", "aria-haspopup": "dialog", "data-focus": TERMS_KEY,
-    onclick: () => showTerms(community, TERMS_KEY) }, "community terms")
+    onclick: () => showTerms(a.terms, a.chainId, TERMS_KEY) }, "community terms")
   return el("label", { class: "check terms" }, box, el("span", { class: "box" }), el("span", {}, "I accept the ", terms, " and will use this name for its community.",
     el("button", { class: "cinfo", type: "button", "aria-label": "Which community this name is for", "aria-haspopup": "dialog", "data-focus": INFO_KEY,
       onclick: () => showCommunity(a.label, a.tld, community, INFO_KEY) }, icon("info"))))
 }
 
-// the name terms' box, under a community name's own tick where an order signs both
+// the name terms' box, or a community name's own tick in its place, as its community terms include the name terms
 export function termsChecks(a: Agreement, agree: (agreed: boolean) => void, accept?: (accepted: boolean) => void): HTMLElement {
-  const name = termsCheck(a, agree)
-  return a.community && accept && a.community.terms.hash !== NO_TERMS ? el("div", { class: "checks" }, communityCheck(a, accept), name) : name
+  return a.community && accept ? communityCheck(a, accept) : termsCheck(a, agree)
 }
 
 export function termsChangedLine(focus: string): HTMLElement {

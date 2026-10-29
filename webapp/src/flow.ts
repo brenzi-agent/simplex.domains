@@ -38,13 +38,17 @@ export interface Draft {
   terms: string
 }
 
-export type Quote = Extract<api.SearchAnswer, { status: "available" }>
+type Available = Extract<api.SearchAnswer, { status: "available" }>
+export type Quote = Available & { terms: api.Terms }
+export const orderable = (a: Available): a is Quote => a.terms !== null
 export const chainOf = (q: api.ChainInfo): api.ChainInfo => ({ resolver: q.resolver, sponsor: q.sponsor, chainId: q.chainId, tld: q.tld })
 
 // The name's search answer as an order needs it, or null when it can no longer be ordered.
 export async function quoteOf(label: string): Promise<Quote | null> {
   const answer = await api.searchName(hex(labelHash(label)), label.length)
-  return answer.status === "available" ? answer : null
+  if (answer.status !== "available") return null
+  if (!orderable(answer)) throw new api.ApiError("terms_unavailable", 503, null, {})
+  return answer
 }
 
 // An order of a record's name and links again, as a new order of its code: a new commitment for the term from now.
@@ -84,7 +88,7 @@ export async function revealOrder(view: api.RegistrationView, record: store.Orde
   const a = view.acceptance
   const acceptance = a ? {
     termsHash: a.termsHash, nonce: a.nonce,
-    signature: hex(signDigest(wallet.privateKey, acceptTermsDigest(BigInt(view.chainId), fromHex(a.policy), fromHex(view.commitment), fromHex(a.termsHash), BigInt(a.nonce), BigInt(view.revealBefore!)))),
+    signature: hex(signDigest(wallet.privateKey, acceptTermsDigest(a.kind === "community", BigInt(view.chainId), fromHex(a.policy), fromHex(view.commitment), fromHex(a.termsHash), BigInt(a.nonce), BigInt(view.revealBefore!)))),
   } : undefined
   await api.reveal(view.id, {
     label: record.label, secret: hex(r.secret),
@@ -107,7 +111,7 @@ export async function retargetOrder(record: store.OrderRecord, label: string, li
   const timestamp = now()
   const { labelHash: lh, length, duration, commitment, sealed } = built.request
   const message = `simplex.domains name ${record.registrationId} ${lh} ${length} ${duration} ${commitment} ${await sha256Hex(sealed)} ${terms} ${timestamp}`
-  const view = await api.retarget(record.registrationId, { labelHash: lh, length, duration, commitment, sealed, terms, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) })
+  const view = await api.retarget(record.registrationId, { labelHash: lh, length, duration, commitment, sealed, terms, timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(message))) }, quote.chainId)
   store.saveOrder({ ...record, label, ...links, paid: view.price, request: built.request, terms, linksRefused: undefined })
   return view
 }
@@ -142,7 +146,7 @@ export async function spendRequest(record: BalanceSource, draft: Draft, price: n
 // The spend sent as it was built, so a resend after a lost answer is the same order; the new order is kept with the
 // record's code. A balance changed since it was read throws BalanceChanged.
 export async function sendSpend(record: BalanceSource, draft: Draft, built: BuiltSpend, years: number): Promise<store.OrderRecord> {
-  const res = await api.spend(record.registrationId, built.spend)
+  const res = await api.spend(record.registrationId, built.spend, draft.chain.chainId)
   const paidBy = "invoiceId" in res
     ? { ...paidWith(res), ids: { registrationId: res.registration.id, invoiceId: res.invoiceId } }
     : { method: "balance" as const, paid: built.spend.price, ids: { registrationId: res.registrationId, invoiceId: null } }

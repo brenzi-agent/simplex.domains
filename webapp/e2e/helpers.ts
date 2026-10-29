@@ -56,19 +56,23 @@ export async function mockRegistration(request: APIRequestContext, invoiceId: st
 
 // The worker's chain, read directly: the expiry the registrar holds and the price the oracle quotes.
 const deployment = JSON.parse(readFileSync(new URL(`../dev/local-chain-${SLOT}.json`, import.meta.url), "utf8")) as
-  { rpcUrl: string; chainId: number; tld: string; ens: Hex; resolver: Hex; controller: Hex; baseRegistrar: Hex; namePolicy: Hex; communityTermsHash: Hex; ownerKey: Hex }
+  { rpcUrl: string; chainId: number; tld: string; ens: Hex; resolver: Hex; controller: Hex; baseRegistrar: Hex; namePolicy: Hex; nameTermsLink: string; nameTermsHash: Hex
+    communityTermsLink: string; communityTermsHash: Hex; ownerKey: Hex }
 const chain = createPublicClient({ transport: http(deployment.rpcUrl) })
 const CHAIN_ABI = parseAbi([
   "function nameExpires(uint256 id) view returns (uint256)",
   "function rentPriceUSD(string label, uint256 duration) view returns ((uint256 base, uint256 premium))",
   "function setResolver(bytes32 node, address resolver)",
   "function setText(bytes32 node, string key, string value)",
-  "event BonaFideTermsAccepted(string name, address indexed holder, bytes32 termsHash)",
+  "event NameTermsAccepted(string name, address indexed holder, bytes32 termsHash)",
+  "event CommunityNameTermsAccepted(string name, address indexed holder, bytes32 termsHash)",
   "function addBonaFideNames(string[] names)",
 ])
-// the community terms dev/deploy.ts put on chain, by their hash, and the terms an order of a community name signs at a version
+// the terms dev/deploy.ts linked on chain, by their hashes, and the terms an order of a plain and of a community name signs
+export const NAME_TERMS_HASH = deployment.nameTermsHash
 export const COMMUNITY_TERMS_HASH = deployment.communityTermsHash
-export const communityTerms = (version: string) => `${version}/community/${COMMUNITY_TERMS_HASH.slice(2)}`
+export const PLAIN_TERMS = NAME_TERMS_HASH.slice(2)
+export const COMMUNITY_TERMS = `community/${COMMUNITY_TERMS_HASH.slice(2)}`
 export const NAME_POLICY = deployment.namePolicy
 // gas for a few of an owner's own transactions, which anvil gives the owner's wallet
 const OWNER_GAS_WEI = 10n ** 18n
@@ -101,12 +105,13 @@ export const ownerSetsResolver = (ownerCode: string, label: string, resolver: He
 export const ownerSetsText = (ownerCode: string, label: string, key: string, value: string) =>
   asOwner(ownerCode, deployment.resolver, encodeFunctionData({ abi: CHAIN_ABI, functionName: "setText", args: [nodeOf(label), key, value] }))
 
-// The community terms the owner accepted for the commitment before its register, as the register's own
-// BonaFideTermsAccepted event records them: the register consumes the acceptance, so the policy's acceptedTerms reads zero after it.
-export async function acceptedOnChain(registerTx: string): Promise<{ name: string; holder: string; termsHash: Hex } | null> {
+// The terms the owner accepted for the commitment before its register, of the name's kind, as the register's own
+// NameTermsAccepted or CommunityNameTermsAccepted event records them: the register consumes the acceptance, so the policy's
+// acceptedTerms reads zero after it.
+export async function acceptedOnChain(registerTx: string): Promise<{ kind: "name" | "community"; name: string; holder: string; termsHash: Hex } | null> {
   const receipt = await chain.getTransactionReceipt({ hash: registerTx as Hex })
-  const [log] = parseEventLogs({ abi: CHAIN_ABI, eventName: "BonaFideTermsAccepted", logs: receipt.logs })
-  return log?.args ?? null
+  const [log] = parseEventLogs({ abi: CHAIN_ABI, eventName: ["NameTermsAccepted", "CommunityNameTermsAccepted"], logs: receipt.logs })
+  return log ? { kind: log.eventName === "CommunityNameTermsAccepted" ? "community" : "name", ...log.args } : null
 }
 
 // The contracts' owner lists the name on the name policy's community list from its own key, for a case that also runs
@@ -304,8 +309,8 @@ export async function toCodeStep(page: Page): Promise<void> {
   await expect(onStep(page).getByRole("heading", { name: CODE_HEADING })).toBeVisible()
 }
 
-// On from the name code step, its box ticked, to Check your order, through a community name's terms step, accepted, its
-// terms agreed to unless `agree` is false.
+// On from the name code step, its box ticked, to Check your order, through a community name's terms step, accepted, or a
+// plain name's terms agreed to unless `agree` is false.
 export async function savedToReview(page: Page, agree = true): Promise<void> {
   const box = onStep(page).getByRole("checkbox", { name: SAVED })
   // a code step gone back to keeps its box ticked
@@ -315,9 +320,10 @@ export async function savedToReview(page: Page, agree = true): Promise<void> {
   const review = onStep(page).getByRole("heading", { name: "Check your order" })
   const community = onStep(page).getByRole("heading", { name: COMMUNITY_HEADING })
   await expect(review.or(community)).toBeVisible()
-  if (await community.isVisible()) await acceptCommunityTerms(page)
+  const listed = await community.isVisible()
+  if (listed) await acceptCommunityTerms(page)
   await expect(review).toBeVisible()
-  if (agree) await agreeToTerms(page)
+  if (agree && !listed) await agreeToTerms(page)
 }
 
 // A community name's terms step: its text shown, its box ticked, and Continue.
@@ -327,10 +333,9 @@ export async function acceptCommunityTerms(page: Page): Promise<void> {
   await onStep(page).getByRole("button", { name: "Continue" }).click()
 }
 
-// The name terms' box ticked, which every order waits for, and a community name's own box where it stands beside it.
+// The name terms' box ticked, which a plain name's order waits for, or a community name's own box in its place.
 export async function agreeToTerms(page: Page): Promise<void> {
-  await tick(page, AGREE)
-  if (await onStep(page).getByRole("checkbox", { name: ACCEPT }).count()) await tick(page, ACCEPT)
+  await tick(page, await onStep(page).getByRole("checkbox", { name: ACCEPT }).count() ? ACCEPT : AGREE)
 }
 
 // A terms box ticked, pressed on its square, as its words hold links; a box gone back to keeps its tick.
@@ -485,8 +490,9 @@ export async function waitRegistered(page: Page, label: string): Promise<void> {
 }
 
 export const CHAIN = { resolver: "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318", sponsor: "0x0B306BF915C4d645ff596e518fAf3F9669b97016", chainId: 31337, tld: "simplex" }
-// the terms an available name's answer asks the buyer to agree to, as the mock's start sets them
-export const TERMS = { version: "2026-10-23", url: "https://simplex.chat/" }
+// the terms an available name's answer asks the buyer to agree to, as dev/deploy.ts links them
+export const TERMS = { hash: NAME_TERMS_HASH, link: deployment.nameTermsLink }
+export const COMMUNITY_NAME_TERMS = { hash: COMMUNITY_TERMS_HASH, link: deployment.communityTermsLink }
 
 export interface KeptOrder { registrationId: string; invoiceId: string | null; label: string; ownerCode: string; owner: string; request: { labelHash: string; commitment: string } }
 
@@ -506,7 +512,7 @@ export async function keepOrder(page: Page, registrationId: string, invoiceId: s
 export const registrationView = (o: KeptOrder, change: Record<string, unknown> = {}) => ({
   ...CHAIN, id: o.registrationId, version: 1, unread: [], moves: 0, phase: "unpaid", labelHash: o.request.labelHash, label: o.label, owner: o.owner, commitment: o.request.commitment, sealed: "sealed",
   years: 2, duration: 2 * YEAR_S, price: 10000, fromBalance: 0, balance: null, commitTx: null, registerTx: null, revealAfter: null, revealBefore: null, intentNonce: null, acceptance: null, expiresAt: null, error: null, linksRefused: false, latePayment: null,
-  community: null, terms: TERMS.version, ...change,
+  community: null, terms: PLAIN_TERMS, ...change,
 })
 
 // A registered name of this browser's code, as the service answers it, holding `links` until `records` answers otherwise.

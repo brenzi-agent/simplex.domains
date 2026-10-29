@@ -564,10 +564,7 @@ html:not(.theming) .notice.name-check { transition: background-color 200ms, bord
 .cinfo { all: unset; cursor: pointer; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 2px; vertical-align: -3px; border-radius: 50%; color: var(--primary); }
 .cinfo svg.i { width: 17px; height: 17px; }
 .cinfo:focus-visible { outline: 2px solid var(--accent); }
-/* a community name's own tick over the name terms' box, the two in the box's place, its words' link a button */
-.checks { display: grid; gap: 10px; justify-self: center; }
-.checks > .check { justify-self: start; }
-.mid > .checks { grid-row: 2; }
+/* a community name's own tick, its words' link a button */
 .check.terms .text-link { padding: 0; font: inherit; font-weight: 600; }
 /* the community terms' text: on their step it fills the frame over its tick and scrolls; in a popup, most of the window */
 .screen-body:has(> .terms-text) { display: flex; flex-direction: column; }

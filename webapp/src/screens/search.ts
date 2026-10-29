@@ -1,4 +1,4 @@
-import { type Community, currentTerms, type InvoiceView, type Phase, type SearchAnswer, type Terms } from "../api.ts"
+import { type Community, type InvoiceView, type Phase, type SearchAnswer, type Terms, termsFor } from "../api.ts"
 import { parseNameCode } from "../crypto/code.ts"
 import { dollars } from "../format.ts"
 import { heldWords } from "./balance.ts"
@@ -18,7 +18,7 @@ export type Answer =
 
 export type Moved = { url: string; label: string; tld: string }
 export type CodeLoss = "used" | "reserved" | "expired" | "revoked"
-type RegisterRefusal = { why: "taken" | "failed" | "dearer" | "uncovered" } | { why: "other"; url: string } | { why: "limit"; reference: string }
+type RegisterRefusal = { why: "taken" | "failed" | "dearer" | "uncovered" | "unavailable" } | { why: "other"; url: string } | { why: "limit"; reference: string }
   | { why: "code"; state: CodeLoss; reference: string }
 
 export interface SearchState {
@@ -101,7 +101,7 @@ function searched(s: SearchState, e: Extract<SearchEvent, { type: "searched" }>)
   return { ...started, searching: { label: e.label } }
 }
 
-const termsOf = (a: SearchAnswer) => a.status === "available" ? currentTerms(a) : null
+const termsOf = (a: SearchAnswer) => a.status === "available" && a.terms ? termsFor(a.terms, a.community) : null
 
 function answered(s: SearchState, e: Extract<SearchEvent, { type: "answered" }>): SearchState {
   if (e.seq !== s.seq) return s

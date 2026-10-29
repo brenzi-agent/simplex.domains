@@ -1,4 +1,4 @@
-// Deploys the .simplex contracts (ens-contracts PR #45) to a running local node for the names webapp,
+// Deploys the .simplex contracts (ens-contracts PR #47) to a running local node for the names webapp,
 // wired as the PR's test fixture wires them, and seeds names in every state search can answer.
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
@@ -10,6 +10,7 @@ import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts"
 import { foundry } from "viem/chains"
 import { durationFor } from "../src/crypto/registration.ts"
 import { BLOCK_POLL_MS, TERM_START_S, untilChainTime } from "./chain-time.ts"
+import { savedTerms } from "./serve-terms.ts"
 
 const RPC_URL = process.env.RPC_URL ?? "http://127.0.0.1:8545"
 const ENS_CONTRACTS_DIR = process.env.ENS_CONTRACTS_DIR
@@ -39,10 +40,13 @@ const COMMUNITY_NAMES = ["bakers", "bakehouse"]
 const MNEMONIC = "test test test test test test test test test test test junk"
 
 if (!ENS_CONTRACTS_DIR) throw new Error("set ENS_CONTRACTS_DIR to the compiled ens-contracts submodule of a simplex-namespace-contract checkout")
-// the community terms the name policy keeps on chain, the namespace repository's text beside its ens-contracts, and their
-// hash, which orders sign
-const COMMUNITY_TERMS = readFileSync(join(ENS_CONTRACTS_DIR, "..", "bona-fide-terms.simplex.md"), "utf8")
-const COMMUNITY_TERMS_HASH = keccak256(Buffer.from(COMMUNITY_TERMS))
+// the terms the name policy links, the namespace repository's fixtures beside its ens-contracts as files this machine
+// serves, and their hashes, which orders sign
+const TERMS_FIXTURES = join(ENS_CONTRACTS_DIR, "..", "test", "fixtures", "terms")
+const NAME_TERMS_LINK = savedTerms(readFileSync(join(TERMS_FIXTURES, "name-terms.md")))
+const COMMUNITY_TERMS_LINK = savedTerms(readFileSync(join(TERMS_FIXTURES, "community-name-terms.md")))
+const NAME_TERMS_HASH = keccak256(Buffer.from(NAME_TERMS_LINK))
+const COMMUNITY_TERMS_HASH = keccak256(Buffer.from(COMMUNITY_TERMS_LINK))
 
 const [owner, guardian, registrar, holder] = [0, 1, 2, 3].map((i) => mnemonicToAccount(MNEMONIC, { addressIndex: i }))
 const registrarKey = toHex(registrar.getHdKey().privateKey!)
@@ -107,7 +111,8 @@ await write(owner, baseRegistrar, "addController", [namePolicy.address])
 await write(owner, controller, "setNamePolicy", [namePolicy.address])
 await write(owner, baseRegistrar, "setNamePolicy", [namePolicy.address])
 await write(owner, namePolicy, "addReservedNames", [["support", "simplex", "official"], RESERVED_INTERNAL])
-await write(owner, namePolicy, "setTerms", [COMMUNITY_TERMS])
+await write(owner, namePolicy, "setNameTerms", [NAME_TERMS_LINK])
+await write(owner, namePolicy, "setCommunityNameTerms", [COMMUNITY_TERMS_LINK])
 await write(owner, namePolicy, "addBonaFideNames", [COMMUNITY_NAMES])
 
 const chainId = await publicClient.getChainId()
@@ -148,8 +153,9 @@ const seeds = [
 let revealAfter = 0
 for (const registration of seeds) {
   const commitment = await publicClient.readContract({ ...controller, functionName: "makeCommitment", args: [registration] }) as Hex
-  // committed under the community terms, as a listed name needs and a plain name allows
-  await write(holder, namePolicy, "commitUnderBonaFideCommunityTerms", [commitment, COMMUNITY_TERMS_HASH])
+  // committed under the terms of the name's kind, as the policy needs
+  const community = COMMUNITY_NAMES.includes(registration.label)
+  await write(holder, namePolicy, community ? "commitUnderCommunityNameTerms" : "commitUnderNameTerms", [commitment, community ? COMMUNITY_TERMS_HASH : NAME_TERMS_HASH])
   const committedAt = await publicClient.readContract({ ...controller, functionName: "commitments", args: [commitment] }) as bigint
   revealAfter = Number(committedAt + MIN_COMMITMENT_AGE)
 }
@@ -176,6 +182,9 @@ const deployment = {
   sponsor: sponsor.address,
   resolver: resolver.address,
   namePolicy: namePolicy.address,
+  nameTermsLink: NAME_TERMS_LINK,
+  nameTermsHash: NAME_TERMS_HASH,
+  communityTermsLink: COMMUNITY_TERMS_LINK,
   communityTermsHash: COMMUNITY_TERMS_HASH,
   owner: owner.address,
   ownerKey: toHex(owner.getHdKey().privateKey!),
