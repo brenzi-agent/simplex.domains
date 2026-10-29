@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest"
 import type { SearchAnswer } from "../src/api.ts"
 import { type Hold, NO_LEAD } from "../src/screens/hold.ts"
 import {
-  balanceHint, codeCover, initialSearch, keptWords, moveBar, moveHint, type Opening, orderCode, type OrderRead, ownOrders, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent,
-  type SearchKind, type SearchState, screenOf,
+  balanceHint, codeCover, coverOf, initialSearch, keptWords, moveBar, moveHint, type Opening, orderCode, type OrderRead, ownOrders, reduce, REGISTER_LEAD, returnedTo, searchDue, type SearchEvent,
+  searchLocked, type SearchKind, type SearchState, screenOf,
 } from "../src/screens/search.ts"
 import { timeOf } from "../src/format.ts"
 import type { OrderRecord } from "../src/store.ts"
@@ -30,7 +30,7 @@ const openedEvent = (change: Partial<Extract<SearchEvent, { type: "opened" }>> =
 const open = (change: Partial<Extract<SearchEvent, { type: "opened" }>> = {}) => reduce(initialSearch(), openedEvent(change))
 const run = (s: SearchState, ...events: SearchEvent[]) => events.reduce(reduce, s)
 const wait = (until: number): Hold => ({ until, lead: NO_LEAD })
-const searchedEvent = (label: string, hold: Hold | null = null): SearchEvent => ({ type: "searched", label, hold })
+const searchedEvent = (label: string, hold: Hold | null = null, minLength: number | null = null): SearchEvent => ({ type: "searched", label, hold, minLength })
 const answered = (s: SearchState, answer: SearchAnswer = AVAILABLE, label = s.searching!.label): SearchEvent => ({ type: "answered", seq: s.seq, label, answer, mine: false, now: NOW })
 function shown(label = "alice1", answer: SearchAnswer = AVAILABLE, change: Partial<Extract<SearchEvent, { type: "opened" }>> = {}): SearchState {
   const s = open({ name: label, ...change })
@@ -159,8 +159,8 @@ describe("reduce: typing and searching", () => {
 
 describe("reduce: searching", () => {
   it("a search under way keeps the last answer on screen until the new one comes", () => {
-    const found = reduce(reduce(initialSearch(), { type: "searched", label: "bakery", hold: null }), { type: "answered", seq: 1, label: "bakery", answer: AVAILABLE, mine: false, now: 0 })
-    const next = reduce({ ...found, typed: "harbour" }, { type: "searched", label: "harbour", hold: null })
+    const found = reduce(reduce(initialSearch(), { type: "searched", label: "bakery", hold: null, minLength: null }), { type: "answered", seq: 1, label: "bakery", answer: AVAILABLE, mine: false, now: 0 })
+    const next = reduce({ ...found, typed: "harbour" }, { type: "searched", label: "harbour", hold: null, minLength: null })
     expect(next.searching).toEqual({ label: "harbour" })
     expect(next.answer).toEqual(found.answer)
   })
@@ -481,5 +481,42 @@ describe("orderCode", () => {
   })
   it("takes the paying code as saved when it is the closed order's own", () => {
     expect(orderCode(CLOSED, CLOSED)).toEqual({ ownerCode: CLOSED, saved: true })
+  })
+})
+
+describe("codes-only mode", () => {
+  const CODE = { display: "SN7-AAAAA-BBBBB-CCCCC", minLength: 7, years: 2 }
+
+  it("locks a plain search until the tab holds a prepaid code", () => {
+    expect(searchLocked(true, open(), null)).toBe(true)
+    expect(searchLocked(true, open(), CODE)).toBe(false)
+    expect(searchLocked(false, open(), null), "open mode searches without a code").toBe(false)
+  })
+  it("leaves a code order's move to another name open, which its own code pays for", () => {
+    const moving = open({ opening: "retarget", retarget: record({ method: "code", prepaidCode: CODE.display, paid: 0 }) })
+    expect(searchLocked(true, moving, null)).toBe(false)
+    expect(coverOf(true, moving, CODE), "the move's own code bounds its names").toBeNull()
+  })
+  it("bounds a plain search by the letters the tab's code covers, in codes-only mode only", () => {
+    expect(coverOf(true, open(), CODE)).toBe(7)
+    expect(coverOf(true, open(), null)).toBeNull()
+    expect(coverOf(false, open(), CODE)).toBeNull()
+  })
+  it("answers a name shorter than the code covers at once, without searching it", () => {
+    const s = reduce(open({ name: "alice1" }), searchedEvent("alice1", null, 7))
+    expect(s).toMatchObject({ searching: null, searched: "alice1", answer: { kind: "uncovered", label: "alice1", minLength: 7 }, bad: true })
+    expect(searchDue(s)).toBe(false)
+  })
+  it("searches a name the code covers", () => {
+    const s = reduce(open({ name: "alice12" }), searchedEvent("alice12", null, 7))
+    expect(s).toMatchObject({ searching: { label: "alice12" }, answer: null, bad: false })
+  })
+  it("says a name's own fault first, as a name of 3 letters breaks the rule before the code", () => {
+    const s = reduce(open({ name: "ali" }), searchedEvent("ali", null, 7))
+    expect(s.answer).toEqual({ kind: "rule", label: "ali", problem: "short" })
+  })
+  it("leaves no uncovered answer to return to, so a name searched again is bounded again", () => {
+    const s = reduce(open({ name: "alice1" }), searchedEvent("alice1", null, 7))
+    expect(returnedTo(s, "plain", "alice1", [])).toEqual(initialSearch())
   })
 })

@@ -3,7 +3,7 @@ import { parseNameCode } from "../crypto/code.ts"
 import { dollars } from "../format.ts"
 import { heldWords } from "./balance.ts"
 import { foldLabel, type LabelProblem, labelProblem } from "../names.ts"
-import type { AppliedBalance } from "../session.ts"
+import type { AppliedBalance, AppliedCode } from "../session.ts"
 import type { OrderRecord } from "../store.ts"
 import { type Hold, NO_LEAD } from "./hold.ts"
 
@@ -12,6 +12,7 @@ export type SearchKind = `search:${Opening}`
 
 export type Answer =
   | { kind: "rule"; label: string; problem: LabelProblem }
+  | { kind: "uncovered"; label: string; minLength: number }
   | { kind: "found"; label: string; answer: SearchAnswer; mine: boolean; now: number }
   | { kind: "unchecked" }
   | { kind: "checking" }
@@ -46,7 +47,8 @@ export type SearchEvent =
   | { type: "opened"; opening: Opening; name: string; retarget: OrderRecord | null; balance: AppliedBalance | null; hold: Hold | null }
   | { type: "balance-read"; balance: AppliedBalance | null }
   | { type: "typed"; text: string }
-  | { type: "searched"; label: string; hold: Hold | null }
+  // minLength: the least letters the tab's code covers, where only a code registers names
+  | { type: "searched"; label: string; hold: Hold | null; minLength: number | null }
   | { type: "answered"; seq: number; label: string; answer: SearchAnswer; mine: boolean; now: number }
   | { type: "unanswered"; seq: number }
   | { type: "search-held"; seq: number; until: number }
@@ -96,6 +98,7 @@ function searched(s: SearchState, e: Extract<SearchEvent, { type: "searched" }>)
   const started = { ...s, seq, name: e.label, searched: e.label, typed: e.label, register: IDLE }
   const problem = labelProblem(e.label)
   if (problem) return { ...started, searching: null, answer: { kind: "rule", label: e.label, problem }, bad: true }
+  if (e.minLength !== null && e.label.length < e.minLength) return { ...started, searching: null, answer: { kind: "uncovered", label: e.label, minLength: e.minLength }, bad: true }
   return { ...started, searching: { label: e.label } }
 }
 
@@ -166,6 +169,11 @@ export function orderCode(paying: string | null, closed: string | null): { owner
   const ownerCode = paying ?? closed
   return { ownerCode, saved: ownerCode !== null && ownerCode === closed }
 }
+
+// In codes-only mode a plain search opens only with the tab's prepaid code, and only for the names that code covers; a
+// code order's move to another name is bounded by its own code.
+export const searchLocked = (codesOnly: boolean, s: SearchState, code: AppliedCode | null) => codesOnly && s.opening === "plain" && code === null
+export const coverOf = (codesOnly: boolean, s: SearchState, code: AppliedCode | null) => codesOnly && s.opening === "plain" ? code?.minLength ?? null : null
 
 export function screenOf(s: SearchState): SearchKind {
   return `search:${s.opening}`

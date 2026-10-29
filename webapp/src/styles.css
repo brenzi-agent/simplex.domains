@@ -288,6 +288,11 @@ html.framed body > main:empty { min-height: calc(var(--step-h) + var(--screen-to
 .search-field { padding: 0 5px 0 20px; }
 .search-field .tld { color: var(--faint); font-weight: 600; }
 .answer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; min-height: var(--room); }
+/* codes-only mode's search without a code: greyed, nothing in it takes the pointer, and the code's button leads on */
+.search-field.off { background: var(--disabled); border-color: transparent; }
+.search-field.off, .search-field.off :is(input, .btn) { cursor: not-allowed; }
+.search-field.off :is(input, .tld), .search-field.off input::placeholder { color: var(--on-disabled); }
+.answer > .btn { justify-self: center; }
 /* one row as the app lists a chat: the name, the chats it opens, and whose it is or its price; the same room above and
    under them whether the name takes one line or four */
 .row { display: flex; align-items: center; gap: 16px; min-height: 72px; padding: 16px 18px 16px 22px; }

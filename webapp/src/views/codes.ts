@@ -22,6 +22,10 @@ export const STATE_LINES: Record<Exclude<api.CodeState, "unused">, [string, stri
   unpaid: ["This code is not paid for yet", "It works once its payment is confirmed."],
 }
 
+// what codes-only mode says, until the full launch opens payments
+export const CODES_ONLY_TITLE = "Registration is by code only for now"
+export const CODES_ONLY_LINE = "Names can be registered with an investor code for now."
+
 const NOT_COVERING = "This code does not cover this name"
 
 // the service's refusals of a code an order carried
