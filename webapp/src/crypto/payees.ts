@@ -61,7 +61,7 @@ function legacyAddress(address: string, hrp: string): boolean {
 
 export const bitcoinAddress = (address: string, hrp: string) => segwitAddress(address, hrp) || legacyAddress(address, hrp)
 
-export const hashToScalar =(...parts: Uint8Array[]) => bytesToNumberLE(keccak_256(concatBytes(...parts))) % L
+export const hashToScalar = (...parts: Uint8Array[]) => bytesToNumberLE(keccak_256(concatBytes(...parts))) % L
 
 const scalarOf = (hex: string) => {
   if (!SCALAR.test(hex)) return null
