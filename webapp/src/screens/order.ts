@@ -22,7 +22,7 @@ const UNREAD_PACING_MS = [5_000, 15_000, 30_000]
 export const unreadDelay = (reads: number) => UNREAD_PACING_MS[Math.min(reads, UNREAD_PACING_MS.length - 1)]
 
 export type OrderKind = "pay-crypto" | "pay-card" | "confirming" | "registering" | "registered" | "ended" | "taken" | "failed" | "status:no-code"
-  | "status:closed" | "status:card-unconfirmed" | "status:paid-by-invoice" | "status:unreadable" | "status:unknown-link" | "status:price-changed"
+  | "status:closed" | "status:card-unconfirmed" | "status:unreadable" | "status:unknown-link" | "status:price-changed"
 
 export type ClosedCase = "paid-late" | "cancelled" | "received" | "expired" | "reversed"
 
@@ -220,8 +220,7 @@ export function screenOf(s: OrderState): OrderKind {
   const { invoice, view, record } = s
   if (!view) return "status:unreadable"
   if (closedCase(s)) return "status:closed"
-  if (invoice && unpaidOrClosed(view)) return paymentKind(s, invoice)
-  if (unpaidOrClosed(view)) return "status:paid-by-invoice"
+  if (unpaidOrClosed(view)) return invoice ? paymentKind(s, invoice) : "status:unreadable"
   if (view.phase.type === "registered") return "registered"
   if (view.phase.type === "ended") return "ended"
   if (view.phase.type === "taken") return "taken"

@@ -361,12 +361,6 @@ function buildUnknownLink(): HTMLElement {
     action: btn("Search a name", "", () => go("/#/")) })
 }
 
-function buildPaidByInvoice({ view, record }: OrderState): HTMLElement {
-  return outcome({ tone: "info", icon: "link", title: "This order is paid by invoice", text: "Its page is the payment link it was made with.",
-    action: record?.invoiceId ? btn("Open its payment", "", () => go(store.orderUrl(record))) : btn("Search a name", "quiet", () => go(searchLink(""))),
-    reference: view!.id })
-}
-
 // a browser without the order's record learns the name only once it is revealed on chain
 const labelOf = (view: api.RegistrationView, record: store.OrderRecord | null) => record?.label ?? view.label ?? null
 const UNKNOWN_NAME = "The name shows once it is registered"
@@ -1265,7 +1259,6 @@ const BUILDERS: Record<OrderKind, Builder<OrderState>> = {
   "status:no-code": buildNoCode,
   "status:closed": buildClosed,
   "status:card-unconfirmed": buildCardUnconfirmed,
-  "status:paid-by-invoice": buildPaidByInvoice,
   "status:unreadable": buildUnreadable,
   "status:unknown-link": buildUnknownLink,
   "status:price-changed": buildPriceChanged,

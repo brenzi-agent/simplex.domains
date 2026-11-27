@@ -75,7 +75,6 @@ const STATES: Record<OrderKind, OrderState> = {
   "status:no-code": read(null, registration({ phase: "committing" }), { record: null }),
   "status:closed": read(crypto({ status: "expired" })),
   "status:card-unconfirmed": read(card(), undefined, { record: record({ method: "card" }), cardFailed: true }),
-  "status:paid-by-invoice": read(null, registration(), { reference: "reg-1" }),
   "status:unreadable": initialState("inv-1", null),
   "status:unknown-link": read(crypto({ status: "expired" }), undefined, { gone: true }),
   "status:price-changed": read(crypto({ status: "expired" }), undefined, { price: 2500 }),
@@ -98,7 +97,7 @@ describe("screenOf", () => {
     ["an invoice cancelled with nothing received", read(crypto({ status: "expired" }), undefined, { record: record({ cancelled: true }) }), "status:closed"],
     ["a cancelled invoice that money reached", read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }), undefined, { record: record({ cancelled: true }) }), "status:closed"],
     ["an expired invoice with nothing received", STATES["status:closed"], "status:closed"],
-    ["a registration link of an unpaid order", STATES["status:paid-by-invoice"], "status:paid-by-invoice"],
+    ["an unpaid order read without its invoice", read(null, registration(), { reference: "reg-1" }), "status:unreadable"],
     ["a registered order", STATES.registered, "registered"],
     ["a registration ended in its dispute period", STATES.ended, "ended"],
     ["a registration ended, seen without the name code", read(null, registration({ phase: "ended", label: "alice" }), { record: null }), "ended"],
@@ -142,7 +141,7 @@ describe("closedCase", () => {
   it.each([
     ["an open invoice nobody cancelled", STATES["pay-crypto"]],
     ["a paid invoice whose registration went on", STATES.taken],
-    ["a registration link without an invoice", STATES["status:paid-by-invoice"]],
+    ["an unpaid order read without its invoice", read(null, registration(), { reference: "reg-1" })],
     ["an order not read yet", initialState("inv-1", null)],
   ])("%s is not closed", (_, s) => {
     expect(closedCase(s)).toBeNull()
