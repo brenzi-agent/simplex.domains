@@ -1142,6 +1142,13 @@ function buildTaken(s: OrderState): HTMLElement {
 
 const REFUND = "refund"
 
+function refundLink(record: store.OrderRecord, method: api.Method, cents: number): HTMLAnchorElement {
+  const refund = link("Get a refund", () => showRefund(record, method, cents, REFUND))
+  refund.setAttribute("data-focus", REFUND)
+  refund.setAttribute("aria-haspopup", "dialog")
+  return refund
+}
+
 // A name is selected for a taken code order, or a taken paid order whose payment is kept, and a closed one is given a new invoice for its own
 // name by `same`; support refunds the payment kept. Only the browser holding the code asks for either. Otherwise another
 // name is searched as usual.
@@ -1149,9 +1156,7 @@ function balanceActions({ view, invoice, record }: OrderState, same?: HTMLButton
   const kept = same !== undefined || api.paymentKept(view!)
   const another = () => go(searchLink("", api.selectable(view!) ? record?.handle : undefined))
   const { payment, balance } = view!
-  const refund = record && kept && payment.type === "invoice" && balance ? link("Get a refund", () => showRefund(record, payment.method, balance.amount, REFUND)) : null
-  refund?.setAttribute("data-focus", REFUND)
-  refund?.setAttribute("aria-haspopup", "dialog")
+  const refund = record && kept && payment.type === "invoice" && balance ? refundLink(record, payment.method, balance.amount) : null
   if (codesOnly() && invoice) return { action: codeAction(), alt: refund }
   if (!same) return { action: setAction(btn("Choose another name", "", another), false, record === null), alt: refund }
   return { action: same, alt: refund }
@@ -1169,7 +1174,7 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   holdEnds(signal)(s.hold !== null)
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
   const reference = invoice?.invoiceId ?? view.id
-  return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: settled ? undefined : failedLead(s), action },
+  return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: settled ? undefined : failedLead(s), action, alt: failedRefund(s) },
     el("p", { class: "note center" }, ...orderLine(s)),
     stages(failedAt),
     alertBox("danger", "alert", failedAlert(s), settled ? supportText(settled, view, reference) : [...contactSupport("Contact", reference), "."]),
@@ -1177,6 +1182,13 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
     actionNote(s, signal),
     referenceLine(reference, proofOf(s)),
     continues && s.ask?.label === s.record!.label ? agreement(s, TERMS_AGAIN) : null)
+}
+
+function failedRefund({ view, record }: OrderState): HTMLAnchorElement | null {
+  const { payment, phase, price, balance } = view!
+  if (!record || payment.type !== "invoice" || phase.type !== "failed") return null
+  const cents = phase.reason === "monthEnded" ? balance?.amount ?? 0 : price + (balance?.amount ?? 0)
+  return cents > 0 ? refundLink(record, payment.method, cents) : null
 }
 
 function supportText(settled: SupportCase, view: api.RegistrationView, reference: string): Kid[] {
