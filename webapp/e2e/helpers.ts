@@ -1,3 +1,4 @@
+import { secp256k1 } from "@noble/curves/secp256k1"
 import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Frame, type Locator, type Page } from "@playwright/test"
 import { randomInt } from "node:crypto"
 import { mkdirSync, readFileSync } from "node:fs"
@@ -5,6 +6,7 @@ import { createPublicClient, createTestClient, createWalletClient, encodeFunctio
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import { foundry } from "viem/chains"
 import { LOCAL } from "../src/config.ts"
+import { p2wpkh } from "../src/crypto/payees.ts"
 import { labelHash, YEAR_S } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import { KEYS, newOwnerCode, walletOf } from "../src/flow.ts"
@@ -49,6 +51,24 @@ export async function control(request: APIRequestContext, path: string, body: Re
 export async function registrationOf(request: APIRequestContext, invoiceId: string): Promise<string> {
   const res = await request.get(`${MOCK}/control/invoice/${invoiceId}`)
   return (await res.json()).registration.id
+}
+
+export const HANDLE = /^[A-Za-z0-9_-]{22}$/
+
+export async function shownOrder(page: Page): Promise<{ handle: string; invoiceId: string | null; registrationId: string }> {
+  await page.waitForURL(/\?o=/)
+  const handle = new URL(page.url()).searchParams.get("o")!
+  const record = await page.evaluate((h) => Object.values({ ...localStorage }).map((v) => { try { return JSON.parse(v) } catch { return null } })
+    .find((o) => o?.handle === h) as { invoiceId: string | null; registrationId: string } | undefined, handle)
+  expect(record, `this browser's record of the order ${handle}`).toBeDefined()
+  return { handle, invoiceId: record!.invoiceId, registrationId: record!.registrationId }
+}
+
+export const BUYER_BITCOIN = p2wpkh(LOCAL.bitcoinHrp, secp256k1.getPublicKey(new Uint8Array(32).fill(7), true))
+
+export async function supportRefunds(request: APIRequestContext, line: string): Promise<Record<string, unknown>> {
+  const [, reference, cents, destination, timestamp, signature] = line.split(" ")
+  return control(request, `refund/${reference}`, { cents: Number(cents), destination, timestamp: Number(timestamp), signature })
 }
 
 interface MockRegistration { invoiceId: string | null; phase: string; revealAfter: number | null; label: string | null; createdAt: string }

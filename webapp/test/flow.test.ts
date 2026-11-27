@@ -665,4 +665,59 @@ describe("store", () => {
     store.addCode({ code: "SN6-X", minLength: 6, years: 2, addedAt: "2026-01-01T00:00:00Z" })
     expect(store.codes()).toHaveLength(1)
   })
+
+  const HANDLE_LINK = /^\/\?o=[A-Za-z0-9_-]{22}$/
+  const olderRecord = (registrationId: string, invoiceId: string | null, change: Record<string, unknown> = {}) => ({
+    registrationId, invoiceId, label: "a", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "btc", paid: 10000, years: 2, tld: "simplex",
+    request: { labelHash: "0x", length: 6, duration: 2 * YEAR_S, owner: OWNER, commitment: "0x", sealed: "sealed" }, createdAt: "2026-01-01T00:00:00Z", ...change,
+  })
+  const keptByOlderPage = (...records: ReturnType<typeof olderRecord>[]) => {
+    const storage = (globalThis as unknown as { window: { localStorage: Storage } }).window.localStorage
+    for (const r of records) storage.setItem(`simplex-names:order:${r.registrationId}`, JSON.stringify(r))
+  }
+
+  it("links each order by a handle of 16 random bytes, made with its record and kept by every save, in place of its ids", async () => {
+    const { flow, store } = await modules()
+    store.saveOrder(flow.recordFor(draft(), await flow.orderRequest(draft()), "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" }))
+    store.saveOrder(flow.recordFor(draft(), await flow.orderRequest(draft()), "code", 0, { registrationId: "reg2", invoiceId: null }))
+    const [paid, coded] = ["reg1", "reg2"].map((id) => store.orderUrl(store.orderByRegistration(id)!))
+    expect([paid, coded]).toEqual([expect.stringMatching(HANDLE_LINK), expect.stringMatching(HANDLE_LINK)])
+    expect(paid).not.toBe(coded)
+    store.updateOrder("reg1", { cancelled: true })
+    expect(store.orderUrl(store.orderByInvoice("inv1")!)).toBe(paid)
+  })
+
+  it("gives an order an older page kept its handle at its first read, which a later page reads", async () => {
+    const { store } = await modules()
+    keptByOlderPage(olderRecord("reg1", "inv1"))
+    const link = store.orderUrl(store.orderByRegistration("reg1")!)
+    expect(link).toMatch(HANDLE_LINK)
+    vi.resetModules()
+    const later = await import("../src/store.ts")
+    expect(later.orders().map((o) => later.orderUrl(o))).toEqual([link])
+  })
+
+  it("reads the link of a replacing order an older page kept as that order's handle link, and none for an order this browser has no record of", async () => {
+    const { store } = await modules()
+    keptByOlderPage(olderRecord("reg1", "inv1", { replacedBy: "/?order=inv2" }), olderRecord("reg2", "inv2", { replacedBy: "/?registration=reg3" }), olderRecord("reg3", null),
+      olderRecord("reg4", "inv4", { replacedBy: "/?order=inv9" }))
+    const replacedBy = (id: string) => store.orderByRegistration(id)!.replacedBy
+    expect(replacedBy("reg1")).toMatch(HANDLE_LINK)
+    expect([replacedBy("reg1"), replacedBy("reg2")]).toEqual([store.orderUrl(store.orderByRegistration("reg2")!), store.orderUrl(store.orderByRegistration("reg3")!)])
+    expect(replacedBy("reg4")).toBeUndefined()
+  })
+})
+
+describe("refundRequest", () => {
+  it.each<[string, string | null, string]>([
+    ["the card of an invoice", "inv1", "card"], ["a Monero address, for an invoice", "inv1", LOCAL.moneroPrimaryAddresses[0]], ["the card, by the registration of an order without an invoice", null, "card"],
+  ])("signs the refund of the cents to %s as a request of the order's name key, by its reference, at the service's time", async (_, invoiceId, destination) => {
+    const { flow } = await modules()
+    const record = flow.recordFor(draft(), await flow.orderRequest(draft()), "btc", 20000, { registrationId: "reg1", invoiceId })
+    const [word, reference, cents, to, timestamp, signature, ...rest] = flow.refundRequest(record, 20000, destination).split(" ")
+    expect([word, reference, cents, to, rest]).toEqual(["refund", invoiceId ?? "reg1", "20000", destination, []])
+    expect(Math.abs(Number(timestamp) - Date.now() / 1000)).toBeLessThan(2)
+    const message = `simplex.domains order ${reference} refund 20000 ${destination} ${timestamp}`
+    expect(await recoverMessageAddress({ message, signature: signature as Hex })).toBe(OWNER)
+  })
 })
