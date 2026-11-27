@@ -187,6 +187,14 @@ export function codeDisplay(code: string, testId?: string, hidden = false, onSho
   return el("div", { class: "code-display" }, text, buttons)
 }
 
+export function copyField(label: string, value: string, copied = value): HTMLElement {
+  // A long value, as an address, may break between any two letters, which the field's balance evens out: WebKit
+  // balances only between the breaks it is given, Firefox only in a word that breaks anywhere (.word).
+  const shown = [...value].flatMap((ch, i) => i ? [el("wbr"), ch] : [ch])
+  return el("div", { class: "copy-field" }, el("span", { class: "label" }, label),
+    el("div", { class: "val" }, el("span", { class: "word" }, ...shown), copyButton(copied, "field-copy", `Copy ${label}`)))
+}
+
 // a name code's QR code, holding the code as it is typed, for another device to scan into its code field
 export const nameCodeQr = (code: string) => el("div", { class: "qr" }, qrSvg(code, "QR code of the name code"))
 

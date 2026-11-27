@@ -349,6 +349,9 @@ html.framed body > main:empty { min-height: calc(var(--step-h) + var(--screen-to
 .pop .text-link { padding: 8px 12px; color: var(--ink-soft); }
 .pop > p { margin-top: 4px; }
 .pop > .code-display { justify-self: stretch; margin-top: 10px; padding-left: 14px; font-size: 14px; }
+.pop > :is(.refund-address, .refund-request) { justify-self: stretch; margin-top: 10px; text-align: start; }
+.pop > .refund-request:empty { display: none; }
+.refund-address .label { display: block; margin-bottom: 6px; }
 @media (max-width: 520px) { .pop-qr { display: none; } }
 
 /* Check your order: the search's row for the name over a table of what it costs, as the badges checkout's

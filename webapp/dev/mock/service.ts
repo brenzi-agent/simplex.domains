@@ -45,6 +45,7 @@ function wholeEnv(name: string, fallback: number): number {
 const HOLD_MS = 20_000
 const SIGNED_REQUEST_SECONDS = 600
 const SIGNATURE_SECONDS = 7 * 86400
+const REFUND_SECONDS = 30 * 86400
 // find lists an owner's newest orders, at most this many
 const FOUND_MAX = 50
 // how long a register with no answer is followed on chain before it counts as failed: 12 × 5 s
@@ -1535,18 +1536,23 @@ export async function controlUnregister(registrationId: string): Promise<Record<
   return { ok: true }
 }
 
-// A refund support records, by the order's invoice id or registration id, of the whole balance: the cents given, else all of it.
-export function controlRefund(reference: string, cents: unknown): Record<string, unknown> {
+// A refund support records, by the order's invoice id or registration id, of the whole balance, on the refund request its
+// owner signed: to the card that paid, or to the address the request names.
+export async function controlRefund(reference: string, { cents, destination, timestamp, signature }: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (!Number.isInteger(cents) || (cents as number) <= 0 || typeof destination !== "string" || !/^\S+$/.test(destination) || !Number.isInteger(timestamp)) throw badRequest()
+  const age = nowSeconds() - (timestamp as number)
+  if (age > REFUND_SECONDS || age < -SIGNED_REQUEST_SECONDS) throw badRequest()
   const reg = registrations.get(reference) ?? registrations.get(invoices.get(reference)?.registrationId ?? "")
-  if (!reg) throw new HttpError(404, "not_found")
-  if (cents !== undefined && (!Number.isInteger(cents) || (cents as number) <= 0)) throw badRequest()
+  const message = `simplex.domains order ${reference} refund ${cents} ${destination} ${timestamp}`
+  const signer = typeof signature === "string" && isHex(signature) ? await recoverMessageAddress({ message, signature }).catch(() => null) : null
+  if (!reg || signer !== reg.owner) throw new HttpError(404, "not_found")
+  if ((destination === "card") !== (reg.method === "card")) throw badRequest()
   const b = balances.get(reg.id)
   if (!b || b.amount === 0) throw new HttpError(409, "no_balance")
-  const refund = (cents ?? b.amount) as number
-  if (refund !== b.amount) throw new HttpError(409, "balance_changed", { balance: balanceView(reg.id) })
+  if (cents !== b.amount) throw new HttpError(409, "balance_changed", { balance: balanceView(reg.id) })
   b.amount = 0
-  b.refunded += refund
-  return { registrationId: reg.id, cents: refund }
+  b.refunded += cents as number
+  return { registrationId: reg.id, cents, destination }
 }
 
 // The coins' current rates in whole dollars, for late payments; null goes back to the invoice's own rate.

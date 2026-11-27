@@ -9,7 +9,7 @@ import { LOCAL } from "../src/config.ts"
 import { p2wpkh } from "../src/crypto/payees.ts"
 import { labelHash, YEAR_S } from "../src/crypto/registration.ts"
 import { checksumAddress, hex } from "../src/crypto/wallet.ts"
-import { KEYS, newOwnerCode, walletOf } from "../src/flow.ts"
+import { KEYS, newOwnerCode, refundRequest, walletOf } from "../src/flow.ts"
 import { readQr } from "../src/scan.ts"
 import { qrPixels } from "../test/qr-image.ts"
 import { codesPageUrl, mockUrl, pageUrl } from "./slots.ts"
@@ -92,9 +92,20 @@ export async function invoiceMade(page: Page, act: () => Promise<void>): Promise
 
 export const BUYER_BITCOIN = p2wpkh(LOCAL.bitcoinHrp, secp256k1.getPublicKey(new Uint8Array(32).fill(7), true))
 
-export async function supportRefunds(request: APIRequestContext, line: string): Promise<Record<string, unknown>> {
+export function refundFields(line: string): { reference: string; body: Record<string, unknown> } {
   const [, reference, cents, destination, timestamp, signature] = line.split(" ")
-  return control(request, `refund/${reference}`, { cents: Number(cents), destination, timestamp: Number(timestamp), signature })
+  return { reference, body: { cents: Number(cents), destination, timestamp: Number(timestamp), signature } }
+}
+
+export async function supportRefunds(request: APIRequestContext, line: string): Promise<Record<string, unknown>> {
+  const { reference, body } = refundFields(line)
+  return control(request, `refund/${reference}`, body)
+}
+
+export async function bitcoinRefundOf(page: Page, invoiceId: string, cents: number): Promise<string> {
+  const order = (await pageOrders(page)).find((o) => o.invoiceId === invoiceId)
+  expect(order, `this browser's record of the invoice ${invoiceId}`).toBeDefined()
+  return refundRequest(order!, cents, BUYER_BITCOIN)
 }
 
 interface MockRegistration { invoiceId: string | null; phase: string; revealAfter: number | null; label: string | null; createdAt: string }

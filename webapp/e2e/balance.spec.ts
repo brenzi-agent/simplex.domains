@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
-  addNameCode, BUYER_BITCOIN, control, FIT_SIZES, keepOrder, MOCK, onStep, registrationOf, sevenLetters, shot, supportRefunds, takenOrder, registrationView, test, uniqueLabel,
+  addNameCode, bitcoinRefundOf, BUYER_BITCOIN, FIT_SIZES, keepOrder, MOCK, onStep, registrationOf, sevenLetters, shot, supportRefunds, takenOrder, registrationView, test, uniqueLabel,
 } from "./helpers.ts"
 
 const balanceRow = (page: Page) => onStep(page).locator(".list-row[data-key^='balance-']")
@@ -116,7 +116,7 @@ test("the name code shows the balance in another browser, and a refund support r
   await expect(onStep(restored).locator(".list-row[data-key^='balance-']").getByRole("button", { name: "Refund" })).toBeVisible()
   await other.close()
 
-  await control(request, `refund/${invoiceId}`)
+  await supportRefunds(request, await bitcoinRefundOf(page, invoiceId, 10000))
   await yourNames(page)
   await expect(balanceRow(page).locator(".main")).toHaveText(`$0From ${label}.simplex, someone has taken this name · refunded $100 by support`)
   await expect(balanceRow(page).getByRole("button")).toHaveCount(0)

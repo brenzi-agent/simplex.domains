@@ -1,7 +1,8 @@
 // The page's frame: theme switch and navigation between views; index.html draws the header and footer.
-import type { AddressProof } from "../api.ts"
-import { alertBox, announce, btn, copyButton, el, fitNames, icon, type Kid, liveRegion, reducedMotion, refill, type Tone, waitOut } from "../dom.ts"
-import { SEP } from "../format.ts"
+import type { AddressProof, Method } from "../api.ts"
+import { alertBox, announce, btn, copyButton, copyField, el, fitNames, icon, type Kid, liveRegion, NO_AUTOFILL, reducedMotion, refill, type Tone, waitOut } from "../dom.ts"
+import * as flow from "../flow.ts"
+import { dollars, methodName, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
 import type { Hold } from "../screens/hold.ts"
 import * as session from "../session.ts"
@@ -318,14 +319,31 @@ export function showPopup(key: string, kids: Kid[], first: HTMLElement | null): 
   first?.focus()
 }
 
-// Support refunds a balance by hand, on a message that quotes the order's reference.
-export function showRefund(reference: string, key: string, proof?: AddressProof): void {
-  const copy = proof === undefined ? copyButton(reference, "field-copy", "Copy reference") : copyButton(withProof(reference, proof), "field-copy", WITH_PROOF)
-  showPopup(key, [
-    el("h2", { id: POPUP_TITLE }, "Refund"),
-    el("p", {}, ...contactSupport("Contact", reference), ". Support refunds what is left of your balance."),
-    el("div", { class: "code-display" }, el("span", { class: "code-text" }, reference), el("span", { class: "code-buttons" }, copy)),
-  ], copy)
+const ADDRESS = /^[0-9A-Za-z]{26,106}$/
+const REFUNDED: Record<Method, string> = { card: " to the card you paid with.", btc: " in Bitcoin to your address.", xmr: " in Monero to your address." }
+
+// Support refunds a balance by hand, on a request that the order's name key signs.
+export function showRefund(order: store.OrderRecord, paidBy: Method, cents: number, key: string): void {
+  const proof = order.invoiceId ? order.payee?.addressProof : undefined
+  const request = el("div", { class: "refund-request" })
+  const ask = (destination: string) => {
+    const line = flow.refundRequest(order, cents, destination)
+    refill(request, copyField("refund request", line, proof === undefined ? line : `${line}\nAddress proof ${JSON.stringify(proof)}`))
+  }
+  const title = el("h2", { id: POPUP_TITLE }, "Refund")
+  const said = el("p", {}, ...supportVia("Contact"), ", and send this refund request. Support refunds your balance of ", dollars(cents), REFUNDED[paidBy])
+  if (paidBy === "card") {
+    ask("card")
+    return showPopup(key, [title, said, request], request.querySelector("button"))
+  }
+  const name = `Your ${methodName(paidBy)} address`
+  const address = el("input", { type: "text", "aria-label": name, ...NO_AUTOFILL })
+  address.addEventListener("input", () => {
+    const typed = address.value.trim()
+    if (ADDRESS.test(typed)) ask(typed)
+    else refill(request)
+  })
+  showPopup(key, [title, said, el("div", { class: "refund-address" }, el("span", { class: "label" }, name), el("label", { class: "field" }, address)), request], address)
 }
 
 const WITH_PROOF = "Copy the order reference and address proof for support"

@@ -11,7 +11,7 @@ import {
   keepOrder, type KeptOrder, LINKS_HEADING, MOCK, mockRegistration, newClient, okPreview, onStep, ownerSetsResolver, ownerSetsText, payButton, previewsShown, registeredAnswer, registeredPhase,
   REGISTRATION_MS, registrationOf, registrationView, SAVED,
   savedToReview, search, searchName, selectedToReview, shownCode, startOrder, takenOrder, test, toCodeStep, toFullReview, toReview, useCode, waitRegistered, withStripeKey, fakeIntent,
-  invoiceMade, shownInvoice, shownOrder, shownRegistration, waitForOrderOf,
+  invoiceMade, shownInvoice, shownOrder, shownRegistration, waitForOrderOf, bitcoinRefundOf, supportRefunds,
 } from "./helpers.ts"
 
 const START_S = Date.UTC(2026, 10, 2, 8) / 1000
@@ -1616,7 +1616,7 @@ screen(2182, "order-taken-reserved", async (r) => {
 })
 screen(2186, "order-taken-balance-spent", async (r) => {
   const { invoiceId } = await takenOrder(r.page, r.request, r.id)
-  await control(r.request, `refund/${invoiceId}`)
+  await supportRefunds(r.request, await bitcoinRefundOf(r.page, invoiceId, 10000))
   await r.page.reload()
   await shown(r.page, "It has been refunded since")
 })
@@ -2076,9 +2076,9 @@ screen(3048, "names-rows-balances", async (r) => {
   await control(r.request, `settle/${rest.invoiceId}`, { paid: (Number(due.cryptoAmount) * 2).toFixed(8) })
   await waitRegistered(r.page, "rows-balance-rest")
   const whole = await takenOrder(r.page, r.request, "rows-refunded-whole")
-  await control(r.request, `refund/${whole.invoiceId}`)
+  await supportRefunds(r.request, await bitcoinRefundOf(r.page, whole.invoiceId, 10000))
   const part = await takenOrder(r.page, r.request, "rows-refunded-part")
-  await control(r.request, `refund/${part.invoiceId}`)
+  await supportRefunds(r.request, await bitcoinRefundOf(r.page, part.invoiceId, 10000))
   await control(r.request, `credit/${await registrationOf(r.request, part.invoiceId)}`, { cents: 5000 })
   await yourNames(r.page, ["rows-balance-taken", "rows-refunded-part"])
 }, { covers: BALANCE_ROWS, timeout: 400_000 })

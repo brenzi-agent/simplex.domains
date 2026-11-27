@@ -276,7 +276,11 @@ const signerOf = (wallet: Wallet): api.OrderSigner => (id, action) => {
 }
 export const orderSigner = ({ ownerCode }: Pick<store.OrderRecord, "ownerCode">): api.OrderSigner => signerOf(walletOf(ownerCode)!)
 
-export const refundRequest = (_order: Pick<store.OrderRecord, "ownerCode" | "invoiceId" | "registrationId">, _cents: number, _destination: string): string => ""
+export function refundRequest(order: Pick<store.OrderRecord, "ownerCode" | "invoiceId" | "registrationId">, cents: number, destination: string): string {
+  const reference = order.invoiceId ?? order.registrationId
+  const { timestamp, signature } = orderSigner(order)(reference, `refund ${cents} ${destination}`)
+  return `refund ${reference} ${cents} ${destination} ${timestamp} ${signature}`
+}
 
 async function reopen(wallet: Wallet, code: string, chosen: Found): Promise<RestoreResult> {
   const owner = checksumAddress(wallet.address)

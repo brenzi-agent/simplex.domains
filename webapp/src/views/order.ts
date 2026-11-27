@@ -1,7 +1,7 @@
 // An order's page (?o=<handle>): payment, registration, and every ending.
 import * as api from "../api.ts"
 import { SITE } from "../config.ts"
-import { alertBox, announce, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameCodeQr, nameText, refill, setAction, type Tone, waitOut } from "../dom.ts"
+import { alertBox, announce, btn, codeDisplay, copyField, el, gradName, icon, type Kid, link, nameCodeQr, nameText, refill, setAction, type Tone, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { clock, dateOf, dollars, methodName, SEP, timeOf } from "../format.ts"
 import { paymentUri, qrSvg } from "../qr.ts"
@@ -397,14 +397,6 @@ const insteadWords = (invoice: api.InvoiceView) => instead?.invoiceId !== invoic
 const insteadLine = (invoice: api.InvoiceView) => {
   const words = insteadWords(invoice)
   return words && el("p", { class: "note" }, words)
-}
-
-function copyField(label: string, value: string): HTMLElement {
-  // A long value, as an address, may break between any two letters, which the field's balance evens out: WebKit
-  // balances only between the breaks it is given, Firefox only in a word that breaks anywhere (.word).
-  const shown = [...value].flatMap((ch, i) => i ? [el("wbr"), ch] : [ch])
-  return el("div", { class: "copy-field" }, el("span", { class: "label" }, label),
-    el("div", { class: "val" }, el("span", { class: "word" }, ...shown), copyButton(value, "field-copy", `Copy ${label}`)))
 }
 
 function validLine(invoice: api.InvoiceView, signal: AbortSignal): HTMLElement {
@@ -1156,7 +1148,8 @@ const REFUND = "refund"
 function balanceActions({ view, invoice, record }: OrderState, same?: HTMLButtonElement): { action: HTMLButtonElement; alt: HTMLElement | null } {
   const kept = same !== undefined || api.paymentKept(view!)
   const another = () => go(searchLink("", api.selectable(view!) ? record?.handle : undefined))
-  const refund = record && kept ? link("Get a refund", () => showRefund(invoice?.invoiceId ?? view!.id, REFUND, proofOf({ record, invoice }))) : null
+  const { payment, balance } = view!
+  const refund = record && kept && payment.type === "invoice" && balance ? link("Get a refund", () => showRefund(record, payment.method, balance.amount, REFUND)) : null
   refund?.setAttribute("data-focus", REFUND)
   refund?.setAttribute("aria-haspopup", "dialog")
   if (codesOnly() && invoice) return { action: codeAction(), alt: refund }

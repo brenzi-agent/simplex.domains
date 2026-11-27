@@ -10,8 +10,8 @@ import { checksumAddress, fromHex, hex, personalDigest, signDigest } from "../sr
 import * as flow from "../src/flow.ts"
 import * as store from "../src/store.ts"
 import {
-  acceptedOnChain, ALTERNATE_COMMUNITY_TERMS, ALTERNATE_GENERAL_TERMS, channelLink, COMMUNITY_TERMS, COMMUNITY_TERMS_HASH, contactLink, control, GENERAL_TERMS_HASH, LISTED_TERMS, MOCK, NAME_POLICY, newClient, oracleQuote, ownerSetsResolver, ownerSetsText,
-  PLAIN_TERMS, relayedAhead, TERMS, test, textChangesOf, uniqueLabel,
+  acceptedOnChain, ALTERNATE_COMMUNITY_TERMS, ALTERNATE_GENERAL_TERMS, BUYER_BITCOIN, channelLink, COMMUNITY_TERMS, COMMUNITY_TERMS_HASH, contactLink, control, GENERAL_TERMS_HASH, LISTED_TERMS, MOCK, NAME_POLICY, newClient, oracleQuote, ownerSetsResolver, ownerSetsText,
+  PLAIN_TERMS, refundFields, relayedAhead, TERMS, test, textChangesOf, uniqueLabel,
 } from "./helpers.ts"
 
 type Json = Record<string, unknown>
@@ -682,21 +682,36 @@ async function findOf(ownerCode: string): Promise<{ registrationId: string; invo
   return (await call("POST", "/api/registration/find", { owner, timestamp, signature })).json.registrations as never
 }
 
+const supportRefund = (line: string, to?: string) => {
+  const { reference, body } = refundFields(line)
+  return call("POST", `/control/refund/${to ?? reference}`, body)
+}
+
 test("support's refund takes the whole balance by invoice id or registration id, and refuses other cents or none left", async ({ request }) => {
   const src = await lateBalance(request)
-  const refund = (reference: string, body: Json = {}) => call("POST", `/control/refund/${reference}`, body)
-  expect(await refund(src.invoiceId, { cents: PRICE.long - 1 })).toEqual({ status: 409, json: { type: "balance_changed", balance: free(PRICE.long) } })
-  for (const cents of [0, "100", 1.5]) expect(await refund(src.invoiceId, { cents }), String(cents)).toEqual({ status: 400, json: { type: "bad_request" } })
-  expect((await refund("nope")).status).toBe(404)
-  expect(await refund(src.invoiceId, { cents: PRICE.long })).toEqual({ status: 200, json: { registrationId: src.id, cents: PRICE.long } })
+  const requestOf = (cents: number, change: Partial<store.OrderRecord> = {}, destination = BUYER_BITCOIN) => flow.refundRequest({ ...src.record, ...change }, cents, destination)
+  const stampedAt = (timestamp: number) => {
+    const message = `simplex.domains order ${src.invoiceId} refund ${PRICE.long} ${BUYER_BITCOIN} ${timestamp}`
+    return `refund ${src.invoiceId} ${PRICE.long} ${BUYER_BITCOIN} ${timestamp} ${hex(signDigest(flow.walletOf(src.draft.ownerCode)!.privateKey, personalDigest(message)))}`
+  }
+  const now = Math.floor(Date.now() / 1000)
+  const refused = { status: 400, json: { type: "bad_request" } }
+  expect(await supportRefund(requestOf(PRICE.long - 1))).toEqual({ status: 409, json: { type: "balance_changed", balance: free(PRICE.long) } })
+  for (const cents of [0, "100", 1.5]) expect(await call("POST", `/control/refund/${src.invoiceId}`, { ...refundFields(requestOf(PRICE.long)).body, cents }), String(cents)).toEqual(refused)
+  expect(await call("POST", `/control/refund/${src.invoiceId}`, { cents: PRICE.long }), "a request without its signature").toEqual(refused)
+  expect(await supportRefund(requestOf(PRICE.long, {}, "card")), "a card for a coin's payment").toEqual(refused)
+  for (const at of [now - 31 * 86400, now + 3600]) expect(await supportRefund(stampedAt(at)), `signed at ${at - now} s`).toEqual(refused)
+  expect((await supportRefund(requestOf(PRICE.long), "nope")).status).toBe(404)
+  expect((await supportRefund(requestOf(PRICE.long, { ownerCode: flow.newOwnerCode() }))).status, "another key's request").toBe(404)
+  expect(await supportRefund(requestOf(PRICE.long))).toEqual({ status: 200, json: { registrationId: src.id, cents: PRICE.long, destination: BUYER_BITCOIN } })
   expect(await balanceOf(src.id)).toEqual(free(0, PRICE.long))
-  expect(await refund(src.id)).toEqual({ status: 409, json: { type: "no_balance" } })
+  expect(await supportRefund(requestOf(PRICE.long, { invoiceId: null }))).toEqual({ status: 409, json: { type: "no_balance" } })
 })
 
 test("a paid order taken first keeps its whole price as its balance until support refunds it, after which no name is selected for it", async ({ request }) => {
   const { id, view } = await takenPaid(request, shortLabel(7))
   expect(view.balance).toEqual(free(PRICE.seven))
-  expect((await call("POST", `/control/refund/${id}`, {})).json).toEqual({ registrationId: id, cents: PRICE.seven })
+  expect((await supportRefund(flow.refundRequest(store.orderByRegistration(id)!, PRICE.seven, BUYER_BITCOIN))).json).toEqual({ registrationId: id, cents: PRICE.seven, destination: BUYER_BITCOIN })
   await expect(selectionOf(store.orderByRegistration(id)!, shortLabel(7)), "a refunded order").rejects.toMatchObject({ code: "bad_request" })
 })
 

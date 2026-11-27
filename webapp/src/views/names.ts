@@ -378,7 +378,8 @@ const BALANCE_FROM: Record<BalanceRow["from"], string | null> = {
 // Support refunds a balance.
 function balanceRow(b: BalanceRow, s: ListState): HTMLElement {
   const o = s.orders.find((r) => r.registrationId === b.id)!
-  const acts = b.amount > 0 ? [small("Refund", `${b.id}-refund`, () => showRefund(o.invoiceId ?? o.registrationId, `${b.id}-refund`, o.invoiceId ? o.payee?.addressProof : undefined), true)] : []
+  const { payment } = s.seen[b.id].view
+  const acts = b.amount > 0 && payment.type === "invoice" ? [small("Refund", `${b.id}-refund`, () => showRefund(o, payment.method, b.amount, `${b.id}-refund`), true)] : []
   const from = BALANCE_FROM[b.from]
   const sub = ["From ", nameText(o.label, o.tld), from && [", ", el("span", { class: "nowrap" }, from)],
     b.refunded ? `${SEP}refunded ${dollars(b.refunded)} by support` : null]
