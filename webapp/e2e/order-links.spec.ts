@@ -55,7 +55,7 @@ test("in a browser without the order, a handle's link is answered with the line 
   })
   await elsewhere.goto(`/?o=${handle}`)
   await expect(onStep(elsewhere).getByRole("heading", { name: "The name code is not in this browser" })).toBeVisible()
-  await expect(onStep(elsewhere).getByText("Enter it in Check your code to see this order.")).toBeVisible()
+  await expect(onStep(elsewhere).getByText("Please enter the name code you saved for this order.")).toBeVisible()
   await expect(onStep(elsewhere).locator(".ref")).toHaveCount(0)
   expect(asked).toEqual([])
 })

@@ -6,8 +6,8 @@ import {
   control, MOCK, mockRegistration, onStep, orderedAtMock, payButton, REGISTRATION_MS, registrationOf, restoreOrder, search, startOrder, test, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
-const NOT_NOW = "Names can't be ordered right now. Try again later."
-const UNCHECKED = "The payment details of this order could not be checked, so they are not shown. Contact support with the order reference."
+const NOT_NOW = "Names can't be ordered right now. Please try again later."
+const UNCHECKED = "Sorry, the payment details of this order could not be checked, so they are not shown. Please contact support with the order reference."
 const SUPPORT_COPY = "Copy the order reference and address proof for support"
 const COIN = { btc: "Bitcoin", xmr: "Monero" } as const
 const UNHELD_TERMS = "# SimpleX Names Conditions of Use\n\nNot the terms the page holds.\n"

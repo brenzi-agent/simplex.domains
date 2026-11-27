@@ -6,7 +6,7 @@ import { alertBox, announce, btn, copyButton, copyField, el, fitNames, icon, typ
 import * as flow from "../flow.ts"
 import { dollars, methodName, SEP } from "../format.ts"
 import type { IconName } from "../icons.ts"
-import type { Hold } from "../screens/hold.ts"
+import { type Hold, PLEASE_LEAD } from "../screens/hold.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
 import { secondsLeft } from "./hold.ts"
@@ -15,10 +15,10 @@ import { reloadedForRoute } from "./served-mode.ts"
 export const CONTACT_EMAIL = "chat@simplex.chat"
 export const SIMPLEX_SUPPORT = "https://smp6.simplex.im/a#lrdvu2d8A1GumSmoKb2krQmtKhWXq-tyGpHuM7aMwsw"
 
-export const supportVia = (verb: "Contact" | "contact"): Kid[] =>
+export const supportVia = (verb: "Please contact" | "contact"): Kid[] =>
   [`${verb} support via `, el("a", { class: "nowrap", href: `mailto:${CONTACT_EMAIL}` }, CONTACT_EMAIL), " or ", el("a", { href: SIMPLEX_SUPPORT, target: "_blank", rel: "noopener" }, "SimpleX")]
 
-export const contactSupport = (verb: "Contact" | "contact", reference: Kid): Kid[] => [...supportVia(verb), ", and include order reference ", reference]
+export const contactSupport = (verb: "Please contact" | "contact", reference: Kid): Kid[] => [...supportVia(verb), ", with the name and the order reference ", reference]
 
 let rerender: () => void = () => undefined
 
@@ -284,15 +284,13 @@ export function outcome(o: Outcome): HTMLElement {
     actionsOf(o))
 }
 
-const LIMITED = "Too many orders were tried from here."
-
 export function limitScreen(hold: Hold | null, again: () => void, back: string, signal: AbortSignal): HTMLElement {
-  const line = el("span", {}, `${LIMITED} Nothing was charged.`)
+  const line = el("span", {}, `${PLEASE_LEAD}try again.`)
   const tryAgain = btn("Try again", "", again)
   tryAgain.disabled = hold !== null
   const shown = outcome({ tone: "warn", icon: "clock", title: "Too many attempts", text: line, action: tryAgain, back })
   // the count goes in once the line is in its notice, where its spoken copy goes beside it
-  if (hold) waitOut(line, Math.max(1, secondsLeft(hold)), (left) => `${LIMITED} Try again in ${left}.`, () => undefined, signal)
+  if (hold) waitOut(line, Math.max(1, secondsLeft(hold)), (left) => `${PLEASE_LEAD}try again in ${left}.`, () => undefined, signal)
   return shown
 }
 
@@ -340,7 +338,7 @@ export function showRefund(order: store.OrderRecord, paidBy: Method, cents: numb
   const refunded = ["Support refunds ", dollars(cents), REFUNDED[paidBy]]
   if (paidBy === "card") {
     ask("card")
-    const said = el("p", {}, ...supportVia("Contact"), ", and send this refund request. ", ...refunded)
+    const said = el("p", {}, ...supportVia("Please contact"), ", and send this refund request. ", ...refunded)
     return showPopup(key, [title, said, request], request.querySelector("button"))
   }
   const coin = methodName(paidBy)
@@ -352,7 +350,7 @@ export function showRefund(order: store.OrderRecord, paidBy: Method, cents: numb
     if (valid(typed)) ask(typed)
     else refill(request)
   })
-  const said = el("p", {}, `Enter your ${coin} address, then `, ...supportVia("contact"), ", and send the refund request shown under it. ", ...refunded)
+  const said = el("p", {}, `Please enter your ${coin} address, then `, ...supportVia("contact"), ", and send the refund request shown under it. ", ...refunded)
   showPopup(key, [title, said, el("div", { class: "refund-address" }, el("span", { class: "label" }, name), el("label", { class: "field" }, address)), request], address)
 }
 

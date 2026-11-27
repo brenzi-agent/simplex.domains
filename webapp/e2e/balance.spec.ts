@@ -10,8 +10,8 @@ import {
 const balanceRow = (page: Page) => onStep(page).locator(".list-row[data-key^='balance-']")
 const WITH_PROOF = "Copy the order reference and address proof for support"
 const REQUEST_WITH_PROOF = "Copy the refund request and address proof for support"
-const SEND = "Contact support via chat@simplex.chat or SimpleX, and send this refund request."
-const SEND_FOR_ADDRESS = (coin: string) => `Enter your ${coin} address, then contact support via chat@simplex.chat or SimpleX, and send the refund request shown under it.`
+const SEND = "Please contact support via chat@simplex.chat or SimpleX, and send this refund request."
+const SEND_FOR_ADDRESS = (coin: string) => `Please enter your ${coin} address, then contact support via chat@simplex.chat or SimpleX, and send the refund request shown under it.`
 const MAINNET_BITCOIN = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
 const signedLine = (reference: string, cents: number, destination: string) => new RegExp(`^refund ${reference} ${cents} ${destination} \\d+ 0x[0-9a-f]{130}$`)
 
@@ -186,12 +186,12 @@ test.describe(() => {
       const message = `simplex.domains order inv-failref refund ${cents} ${BUYER_BITCOIN} ${timestamp}`
       expect(await recoverMessageAddress({ message, signature: signature as Hex }), reason).toBe(order.owner)
     }
-    const monthEnded = onStep(page).locator(".notice", { hasText: "added to its balance" })
-    await expect(monthEnded).toContainText("To have it refunded, choose Get a refund.")
+    const monthEnded = onStep(page).locator(".notice", { hasText: "Your payment is in your balance." })
+    await expect(monthEnded).toContainText("Please choose another name, or for a refund, choose Get a refund.")
     view = failed("monthEnded", { amount: 0, refunded: price })
     await opened()
     await expect(onStep(page).getByRole("button", { name: "Get a refund" }), "a balance refunded already").toHaveCount(0)
-    await expect(monthEnded).toContainText("To have it refunded, contact support via chat@simplex.chat or SimpleX, and include order reference inv-failref.")
+    await expect(monthEnded).toContainText("Please choose another name, or for a refund, contact support via chat@simplex.chat or SimpleX, with the name and the order reference inv-failref.")
   })
 
   test(`a balance of a name of ${MAX_LABEL_LENGTH} wide letters keeps its words clear of its Refund, beside it or above, down to a 320 px phone`, async ({ page }) => {

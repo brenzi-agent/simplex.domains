@@ -7,7 +7,7 @@ import { type Deployment, LOCAL, MAINNET } from "../src/config.ts"
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url))
 const STAND_IN_LABEL = "Test card form: no Stripe key is set, so Pay simulates a payment."
-const STRIPE_NOTE = "The card form is Stripe's. Nothing is charged until you pay."
+const STRIPE_NOTE = "The card form is provided by Stripe. Your card will be charged only when you press Pay."
 const BUILD_MS = 120_000
 
 // the JavaScript a build of the names page, or of the card page, ships, in the mode given
@@ -61,7 +61,7 @@ describe("the page's own policy", () => {
 })
 
 const held = (d: Deployment) => [d.sponsor, d.resolver, d.namePolicy, d.baseRegistrar, ...[...d.generalTerms, ...d.communityTerms].map((t) => t.link), ...d.bitcoinReceiveKeys, ...d.moneroPrimaryAddresses,
-  d.cardOrigin, ...d.apiOrigin ? [d.apiOrigin] : []]
+  d.cardOrigin, d.appOrigin, ...d.apiOrigin ? [d.apiOrigin] : []]
 
 describe("the card form", () => {
   it("is the card page's, which loads Stripe.js; the names page frames it from the card page's origin and never loads Stripe.js", async () => {
