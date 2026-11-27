@@ -169,7 +169,12 @@ function successorLink(replacedBy: string, kept: OrderRecord[]): string | undefi
 }
 
 function recorded(): OrderRecord[] {
-  const kept = all<KeptOrder>("order").map((o) => ({ ...o, handle: o.handle ?? derivedHandle(o) }))
+  const held = new Set<string>()
+  const kept = all<KeptOrder>("order").sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((o) => {
+    const handle = o.handle === undefined || held.has(o.handle) ? derivedHandle(o) : o.handle
+    held.add(handle)
+    return { ...o, handle }
+  })
   return kept.map((o) => o.replacedBy === undefined ? o : { ...o, replacedBy: successorLink(o.replacedBy, kept) })
 }
 

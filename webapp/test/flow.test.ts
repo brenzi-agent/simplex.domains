@@ -708,7 +708,15 @@ describe("store", () => {
     expect(JSON.parse(storage.getItem("simplex-names:order:reg1")!).handle).toBeUndefined()
   })
 
-  it("reads the link of a replacing order an older page kept as that order's handle link, and none for an order this browser has no record of", async () => {
+  it("gives an order whose handle an older order holds a handle of its own, as when a page of an older build copied it into a new invoice's record", async () => {
+    const { store } = await modules()
+    keptByOlderPage(olderRecord("reg1", "inv1", { handle: "h-shared", replacedBy: "/?order=inv2" }), olderRecord("reg2", "inv2", { handle: "h-shared", createdAt: "2026-02-01T00:00:00Z" }))
+    const [first, second] = ["reg1", "reg2"].map((id) => store.orderByRegistration(id)!)
+    expect([first.handle, second.handle]).toEqual(["h-shared", expect.stringMatching(/^[A-Za-z0-9_-]{22}$/)])
+    expect([first.replacedBy, store.orderByHandle("h-shared")?.registrationId]).toEqual([store.orderUrl(second), "reg1"])
+  })
+
+  it("reads the link of a replacing order an older page kept as that order's handle link, and as none for an order kept only in another browser", async () => {
     const { store } = await modules()
     keptByOlderPage(olderRecord("reg1", "inv1", { replacedBy: "/?order=inv2" }), olderRecord("reg2", "inv2", { replacedBy: "/?registration=reg3" }), olderRecord("reg3", null),
       olderRecord("reg4", "inv4", { replacedBy: "/?order=inv9" }))
