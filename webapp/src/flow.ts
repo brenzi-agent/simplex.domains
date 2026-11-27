@@ -270,15 +270,16 @@ export async function newerOrder(record: store.OrderRecord): Promise<store.Order
   return next
 }
 
-const signerOf = (wallet: Wallet): api.OrderSigner => (id, action) => {
+const orderMessageSigned = (wallet: Wallet, fields: string): api.RequestSignature => {
   const timestamp = now()
-  return { timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(`simplex.domains order ${id} ${action} ${timestamp}`))) }
+  return { timestamp, signature: hex(signDigest(wallet.privateKey, personalDigest(`simplex.domains order ${fields} ${timestamp}`))) }
 }
+const signerOf = (wallet: Wallet): api.OrderSigner => (id, action) => orderMessageSigned(wallet, `${id} ${action}`)
 export const orderSigner = ({ ownerCode }: Pick<store.OrderRecord, "ownerCode">): api.OrderSigner => signerOf(walletOf(ownerCode)!)
 
 export function refundRequest(order: Pick<store.OrderRecord, "ownerCode" | "invoiceId" | "registrationId">, cents: number, destination: string): string {
   const reference = order.invoiceId ?? order.registrationId
-  const { timestamp, signature } = orderSigner(order)(reference, `refund ${cents} ${destination}`)
+  const { timestamp, signature } = orderMessageSigned(walletOf(order.ownerCode)!, `${reference} refund ${cents} ${destination}`)
   return `refund ${reference} ${cents} ${destination} ${timestamp} ${signature}`
 }
 

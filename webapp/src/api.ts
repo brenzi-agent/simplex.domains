@@ -537,7 +537,7 @@ export const registerWithCode = (order: SignedOrder, code: string) =>
 export type ToSignRead = Extract<ToSign, { type: "read" }>
 export const signFor = (labelHash: string, owner: string) =>
   checked<ToSignRead>(call("GET", `/api/name/${labelHash}/sign?owner=${owner}`), (a) => a.type === "read" && isToSign(a))
-export type OrderAction = "read" | "cancel" | "retry" | "reveal" | `refund ${number} ${string}`
+export type OrderAction = "read" | "cancel" | "retry" | "reveal"
 export interface RequestSignature { timestamp: number; signature: string }
 export type OrderSigner = (id: string, action: OrderAction) => RequestSignature
 
