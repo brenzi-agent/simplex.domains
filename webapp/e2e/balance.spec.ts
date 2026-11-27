@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test"
+import { LOCAL } from "../src/config.ts"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
   addNameCode, bitcoinRefundOf, BUYER_BITCOIN, FIT_SIZES, keepOrder, MOCK, onStep, registrationOf, sevenLetters, shot, supportRefunds, takenOrder, registrationView, test, uniqueLabel,
@@ -7,6 +8,8 @@ import {
 const balanceRow = (page: Page) => onStep(page).locator(".list-row[data-key^='balance-']")
 const WITH_PROOF = "Copy the order reference and address proof for support"
 const SEND = "Contact support via chat@simplex.chat or SimpleX, and send this refund request."
+const SEND_FOR_ADDRESS = (coin: string) => `Enter your ${coin} address, then contact support via chat@simplex.chat or SimpleX, and send the refund request shown under it.`
+const MAINNET_BITCOIN = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
 const signedLine = (reference: string, cents: number, destination: string) => new RegExp(`^refund ${reference} ${cents} ${destination} \\d+ 0x[0-9a-f]{130}$`)
 
 async function refundLine(popup: Locator): Promise<string> {
@@ -42,7 +45,7 @@ const ROW_SIZES = [{ width: 1280, height: 800 }, { width: 390, height: 844 }, { 
 // the room a list row keeps between its parts (styles.css .list-row .acts)
 const ROW_GAP = 14
 
-test("a paid order taken first keeps its price as its balance, which support refunds to the address of the request its name key signs", async ({ page, request }) => {
+test("a paid order taken first keeps its price as its balance, which support refunds to the address in a request signed with its name key", async ({ page, request }) => {
   const label = sevenLetters()
   const { invoiceId } = await takenOrder(page, request, label)
   await expect(onStep(page).getByRole("button", { name: WITH_PROOF }), "the taken order's page gives support its address proof").toBeVisible()
@@ -61,12 +64,14 @@ test("a paid order taken first keeps its price as its balance, which support ref
   await expect(balanceRow(page).getByRole("button", { name: "Refund" })).toHaveAttribute("aria-haspopup", "dialog")
   await balanceRow(page).getByRole("button", { name: "Refund" }).click()
   const popup = page.getByRole("dialog", { name: "Refund" })
-  await expect(popup).toContainText(`${SEND} Support refunds your balance of $200 in Bitcoin to your address.`)
+  await expect(popup).toContainText(`${SEND_FOR_ADDRESS("Bitcoin")} Support refunds $200 in Bitcoin to your address.`)
   const address = popup.getByRole("textbox", { name: "Your Bitcoin address" })
   await expect(address).toBeFocused()
   await expect(popup.locator(".copy-field")).toHaveCount(0)
-  await address.fill("card")
-  await expect(popup.locator(".copy-field")).toHaveCount(0)
+  for (const other of ["card", MAINNET_BITCOIN, LOCAL.moneroPrimaryAddresses[0], BUYER_BITCOIN.slice(0, -1)]) {
+    await address.fill(other)
+    await expect(popup.locator(".copy-field"), other).toHaveCount(0)
+  }
   await address.fill(BUYER_BITCOIN)
   const line = await refundLine(popup)
   expect(line).toMatch(signedLine(invoiceId, 20000, BUYER_BITCOIN))
@@ -79,7 +84,7 @@ test("a paid order taken first keeps its price as its balance, which support ref
   await expect(balanceRow(page).locator(".main")).toHaveText(`$0From ${label}.simplex, someone has taken this name · refunded $200 by support`)
 })
 
-test("the copy of a refund request of an order paid to an address gives support the address proof under it", async ({ page, context, request, browserName }) => {
+test("the copied refund request of an order paid to an address contains the address proof under it", async ({ page, context, request, browserName }) => {
   test.skip(browserName !== "chromium", "reads the clipboard, which Playwright grants in Chromium")
   await context.grantPermissions(["clipboard-read", "clipboard-write"])
   const label = uniqueLabel("bproof")
@@ -93,16 +98,34 @@ test("the copy of a refund request of an order paid to an address gives support 
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${line}\nAddress proof ${JSON.stringify(addressProof)}`)
 })
 
-test("a card order taken first asks on its page for the refund of its balance to the card, which support records on that signed request", async ({ page, request }) => {
+test("the refund of a card order taken first is requested on its page for the card, and support records it on that signed request", async ({ page, request }) => {
   const { invoiceId } = await takenOrder(page, request, uniqueLabel("bcard"), "card")
   await onStep(page).getByRole("button", { name: "Get a refund" }).click()
   const popup = page.getByRole("dialog", { name: "Refund" })
-  await expect(popup).toContainText(`${SEND} Support refunds your balance of $100 to the card you paid with.`)
+  await expect(popup).toContainText(`${SEND} Support refunds $100 to the card you paid with.`)
   await expect(popup.getByRole("textbox")).toHaveCount(0)
   await expect(popup.getByRole("button", { name: "Copy refund request" })).toBeFocused()
   const line = await refundLine(popup)
   expect(line).toMatch(signedLine(invoiceId, 10000, "card"))
   expect(await supportRefunds(request, line)).toEqual({ registrationId: await registrationOf(request, invoiceId), cents: 10000, destination: "card" })
+})
+
+test("the refund of a Monero order taken first is requested on its page for a Monero address of the page's network, and support records it on that signed request", async ({ page, request }) => {
+  const { invoiceId } = await takenOrder(page, request, uniqueLabel("bxmr"), "xmr")
+  await onStep(page).getByRole("button", { name: "Get a refund" }).click()
+  const popup = page.getByRole("dialog", { name: "Refund" })
+  await expect(popup).toContainText(`${SEND_FOR_ADDRESS("Monero")} Support refunds $100 in Monero to your address.`)
+  const address = popup.getByRole("textbox", { name: "Your Monero address" })
+  await expect(address).toBeFocused()
+  const monero = LOCAL.moneroPrimaryAddresses[0]
+  for (const other of [BUYER_BITCOIN, `${monero.slice(0, -1)}${monero.endsWith("1") ? "2" : "1"}`]) {
+    await address.fill(other)
+    await expect(popup.locator(".copy-field"), other).toHaveCount(0)
+  }
+  await address.fill(monero)
+  const line = await refundLine(popup)
+  expect(line).toMatch(signedLine(invoiceId, 10000, monero))
+  expect(await supportRefunds(request, line)).toEqual({ registrationId: await registrationOf(request, invoiceId), cents: 10000, destination: monero })
 })
 
 test("the name code shows the balance in another browser, and a refund support records shows as refunded, after which no name is selected for the order", async ({ page, browser, request }) => {

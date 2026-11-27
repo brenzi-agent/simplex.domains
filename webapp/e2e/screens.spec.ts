@@ -11,7 +11,7 @@ import {
   keepOrder, type KeptOrder, LINKS_HEADING, MOCK, mockRegistration, newClient, okPreview, onStep, ownerSetsResolver, ownerSetsText, payButton, previewsShown, registeredAnswer, registeredPhase,
   REGISTRATION_MS, registrationOf, registrationView, SAVED,
   savedToReview, search, searchName, selectedToReview, shownCode, startOrder, takenOrder, test, toCodeStep, toFullReview, toReview, useCode, waitRegistered, withStripeKey, fakeIntent,
-  invoiceMade, shownInvoice, shownOrder, shownRegistration, waitForOrderOf, bitcoinRefundOf, supportRefunds,
+  invoiceMade, shownInvoice, shownOrder, shownRegistration, waitForOrderOf, bitcoinRefundOf, BUYER_BITCOIN, supportRefunds,
 } from "./helpers.ts"
 
 const START_S = Date.UTC(2026, 10, 2, 8) / 1000
@@ -49,7 +49,7 @@ function seedPageRandom(seed: string): void {
 
 const countdowns = (page: Page): Locator[] =>
   [page.locator("body > main .time"), page.locator("body > main .countdown b"), page.locator('body > main .sr-only + [aria-hidden="true"] > span'),
-    page.locator("body > main .pay-status .sized > span > span"), page.locator("video")]
+    page.locator("body > main .pay-status .sized > span > span"), page.locator("video"), page.locator("dialog .refund-request .word")]
 
 type Size = typeof SIZES[number][0]
 
@@ -2162,7 +2162,8 @@ screen(3058, "names-popup-refund", async (r) => {
   await takenOrder(r.page, r.request, r.id)
   await yourNames(r.page, [r.id])
   await listRow(r.page, r.id).getByRole("button", { name: "Refund" }).click()
-  await expect(r.page.getByRole("dialog")).toBeVisible()
+  await r.page.getByRole("dialog").getByRole("textbox", { name: "Your Bitcoin address" }).fill(BUYER_BITCOIN)
+  await expect(r.page.getByRole("dialog").getByRole("button", { name: "Copy refund request" })).toBeVisible()
 })
 screen(3060, "names-popup-community", async (r) => {
   await control(r.request, "community", { label: r.id, for: "bakers and pastry chefs" })

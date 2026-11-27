@@ -5,10 +5,18 @@ import { ripemd160 } from "@noble/hashes/legacy"
 import { sha256 } from "@noble/hashes/sha2"
 import { keccak_256 } from "@noble/hashes/sha3"
 import { concatBytes, hexToBytes, utf8ToBytes } from "@noble/hashes/utils"
-import { base58xmr, bech32 } from "@scure/base"
+import { base58xmr, bech32, bech32m, createBase58check } from "@scure/base"
 
 const SCALAR = /^[0-9a-f]{64}$/
 const WITNESS_V0 = 0
+const MAX_WITNESS_VERSION = 16
+const WITNESS_V0_PROGRAM_BYTES = [20, 32]
+const MIN_PROGRAM_BYTES = 2
+const MAX_PROGRAM_BYTES = 40
+const HASH160_BYTES = 20
+const LEGACY_VERSIONS: Record<string, number[]> = { bc: [0x00, 0x05], tb: [0x6f, 0xc4], bcrt: [0x6f, 0xc4] }
+const MONERO_STANDARD_PREFIX: Record<number, number> = { 42: 18, 36: 24, 63: 53 }
+const base58check = createBase58check(sha256)
 const KEY_BYTES = 32
 const CHECKSUM_BYTES = 4
 const MONERO_ADDRESS_BYTES = 1 + 2 * KEY_BYTES + CHECKSUM_BYTES
@@ -31,7 +39,29 @@ export function bitcoinProven(address: string, keyTweak: string, receiveKeys: st
   })
 }
 
-export const hashToScalar = (...parts: Uint8Array[]) => bytesToNumberLE(keccak_256(concatBytes(...parts))) % L
+function segwitAddress(address: string, hrp: string): boolean {
+  const v0 = bech32.decodeUnsafe(address)
+  const decoded = v0 ?? bech32m.decodeUnsafe(address)
+  if (!decoded || decoded.prefix !== hrp) return false
+  const [version, ...words] = decoded.words
+  const program = bech32.fromWordsUnsafe(words)
+  if (!program) return false
+  return v0 ? version === WITNESS_V0 && WITNESS_V0_PROGRAM_BYTES.includes(program.length)
+    : version > WITNESS_V0 && version <= MAX_WITNESS_VERSION && program.length >= MIN_PROGRAM_BYTES && program.length <= MAX_PROGRAM_BYTES
+}
+
+function legacyAddress(address: string, hrp: string): boolean {
+  try {
+    const payload = base58check.decode(address)
+    return payload.length === 1 + HASH160_BYTES && (LEGACY_VERSIONS[hrp] ?? []).includes(payload[0])
+  } catch {
+    return false
+  }
+}
+
+export const bitcoinAddress = (address: string, hrp: string) => segwitAddress(address, hrp) || legacyAddress(address, hrp)
+
+export const hashToScalar =(...parts: Uint8Array[]) => bytesToNumberLE(keccak_256(concatBytes(...parts))) % L
 
 const scalarOf = (hex: string) => {
   if (!SCALAR.test(hex)) return null
@@ -58,6 +88,11 @@ export function moneroKeys(address: string): { prefix: number; spend: Uint8Array
   const body = bytes.slice(0, -CHECKSUM_BYTES)
   if (!equalBytes(keccak_256(body).slice(0, CHECKSUM_BYTES), bytes.slice(-CHECKSUM_BYTES))) return null
   return { prefix: bytes[0], spend: body.slice(1, 1 + KEY_BYTES), view: body.slice(1 + KEY_BYTES) }
+}
+
+export function moneroAddress(address: string, subaddressPrefix: number): boolean {
+  const prefix = moneroKeys(address)?.prefix
+  return prefix !== undefined && (prefix === subaddressPrefix || prefix === MONERO_STANDARD_PREFIX[subaddressPrefix])
 }
 
 export function moneroProven(address: string, spendTweak: string, viewProof: ViewProof, primaryAddresses: string[], subaddressPrefix: number): boolean {

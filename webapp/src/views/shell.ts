@@ -1,5 +1,7 @@
 // The page's frame: theme switch and navigation between views; index.html draws the header and footer.
 import type { AddressProof, Method } from "../api.ts"
+import { SITE } from "../config.ts"
+import { bitcoinAddress, moneroAddress } from "../crypto/payees.ts"
 import { alertBox, announce, btn, copyButton, copyField, el, fitNames, icon, type Kid, liveRegion, NO_AUTOFILL, reducedMotion, refill, type Tone, waitOut } from "../dom.ts"
 import * as flow from "../flow.ts"
 import { dollars, methodName, SEP } from "../format.ts"
@@ -319,10 +321,13 @@ export function showPopup(key: string, kids: Kid[], first: HTMLElement | null): 
   first?.focus()
 }
 
-const ADDRESS = /^[0-9A-Za-z]{26,106}$/
 const REFUNDED: Record<Method, string> = { card: " to the card you paid with.", btc: " in Bitcoin to your address.", xmr: " in Monero to your address." }
+const ADDRESS_OF: Record<Exclude<Method, "card">, (text: string) => boolean> = {
+  btc: (text) => bitcoinAddress(text, SITE.bitcoinHrp),
+  xmr: (text) => moneroAddress(text, SITE.moneroSubaddressPrefix),
+}
 
-// Support refunds a balance by hand, on a request that the order's name key signs.
+// Support refunds by hand, on a request signed with the order's name key.
 export function showRefund(order: store.OrderRecord, paidBy: Method, cents: number, key: string): void {
   const proof = order.invoiceId ? order.payee?.addressProof : undefined
   const request = el("div", { class: "refund-request" })
@@ -331,18 +336,22 @@ export function showRefund(order: store.OrderRecord, paidBy: Method, cents: numb
     refill(request, copyField("refund request", line, proof === undefined ? line : `${line}\nAddress proof ${JSON.stringify(proof)}`))
   }
   const title = el("h2", { id: POPUP_TITLE }, "Refund")
-  const said = el("p", {}, ...supportVia("Contact"), ", and send this refund request. Support refunds your balance of ", dollars(cents), REFUNDED[paidBy])
+  const refunded = ["Support refunds ", dollars(cents), REFUNDED[paidBy]]
   if (paidBy === "card") {
     ask("card")
+    const said = el("p", {}, ...supportVia("Contact"), ", and send this refund request. ", ...refunded)
     return showPopup(key, [title, said, request], request.querySelector("button"))
   }
-  const name = `Your ${methodName(paidBy)} address`
+  const coin = methodName(paidBy)
+  const name = `Your ${coin} address`
   const address = el("input", { type: "text", "aria-label": name, ...NO_AUTOFILL })
+  const valid = ADDRESS_OF[paidBy]
   address.addEventListener("input", () => {
     const typed = address.value.trim()
-    if (ADDRESS.test(typed)) ask(typed)
+    if (valid(typed)) ask(typed)
     else refill(request)
   })
+  const said = el("p", {}, `Enter your ${coin} address, then `, ...supportVia("contact"), ", and send the refund request shown under it. ", ...refunded)
   showPopup(key, [title, said, el("div", { class: "refund-address" }, el("span", { class: "label" }, name), el("label", { class: "field" }, address)), request], address)
 }
 

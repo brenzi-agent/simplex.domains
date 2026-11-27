@@ -3,11 +3,11 @@ import { secp256k1 } from "@noble/curves/secp256k1"
 import { bytesToNumberLE, numberToBytesLE } from "@noble/curves/utils"
 import { keccak_256 } from "@noble/hashes/sha3"
 import { bytesToHex, concatBytes, hexToBytes, utf8ToBytes } from "@noble/hashes/utils"
-import { base58xmr } from "@scure/base"
+import { base58xmr, bech32, bech32m } from "@scure/base"
 import { describe, expect, it } from "vitest"
 import { type AddressProof, addressProven, type InvoiceView } from "../src/api.ts"
 import { LOCAL } from "../src/config.ts"
-import { bitcoinProven, hashToScalar, moneroKeys, moneroProven, p2wpkh, type ViewProof } from "../src/crypto/payees.ts"
+import { bitcoinAddress, bitcoinProven, hashToScalar, moneroAddress, moneroKeys, moneroProven, p2wpkh, type ViewProof } from "../src/crypto/payees.ts"
 import { BIP173, BIP84, DEV_BITCOIN, DEV_MONERO } from "./payee-vectors.ts"
 
 const L = ed25519.Point.Fn.ORDER
@@ -113,6 +113,47 @@ describe("a Monero subaddress", () => {
     const R2 = D.multiplyUnsafe(s).add(dirty.multiplyUnsafe(c))
     expect(hashToScalar(VIEW_PROOF, A.toBytes(), D.toBytes(), dirty.toBytes(), R1.toBytes(), R2.toBytes()), "the equation holds").toBe(c)
     expect(devMonero(subaddress(D.toBytes(), dirty.toBytes()), spendTweak, { challenge: scalarHex(c), response: scalarHex(s) })).toBe(false)
+  })
+})
+
+describe("a refund address", () => {
+  const witness = (code: typeof bech32, hrp: string, version: number, bytes: number) => code.encode(hrp, [version, ...code.toWords(new Uint8Array(bytes).fill(7))])
+  const mainnetMonero = () => {
+    const { spend, view } = moneroKeys(DEV_MONERO.primaryAddress)!
+    const body = concatBytes(new Uint8Array([18]), spend, view)
+    return base58xmr.encode(concatBytes(body, keccak_256(body).slice(0, 4)))
+  }
+
+  it.each([
+    ["bc", BIP173.addresses[0].address], ["tb", BIP173.addresses[1].address], ["bc", BIP173.addresses[0].address.toUpperCase()],
+    ["tb", "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7"], ["bc", "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0"],
+    ["bc", "BC1SW50QGDZ25J"], ["bc", "bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs"], ["bcrt", DEV_BITCOIN.invoices[0].address], ["bcrt", witness(bech32m, "bcrt", 1, 32)],
+    ["bc", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"], ["bc", "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"], ["tb", "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn"], ["bcrt", "2MzQwSSnBHWHqSAqtTVQ6v47XtaisrJa1Vc"],
+  ])("is a Bitcoin address of the network %s, as %s", (hrp, address) => {
+    expect(bitcoinAddress(address, hrp)).toBe(true)
+  })
+
+  it.each([
+    ["of another network", "bcrt", BIP173.addresses[0].address], ["of another network, in the legacy form", "tb", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"],
+    ["with a broken checksum", "bc", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5"], ["with a broken legacy checksum", "bc", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNb"],
+    ["in mixed case", "bc", "bc1qW508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"],
+    ["of version 1 in bech32", "bc", "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd"], ["of version 0 in bech32m", "bc", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kemeawh"],
+    ["of version 0 with 16 bytes", "bc", "BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P"], ["of version 1 with 1 byte", "bc", "bc1pw5dgrnzv"],
+    ["of version 1 with 41 bytes", "bc", witness(bech32m, "bc", 1, 41)], ["of version 17", "bc", witness(bech32m, "bc", 17, 32)],
+    ["a Monero address", "bcrt", DEV_MONERO.primaryAddress], ["a word", "bcrt", "card"], ["nothing", "bcrt", ""],
+  ])("is not a Bitcoin address %s", (_, hrp, address) => {
+    expect(bitcoinAddress(address, hrp)).toBe(false)
+  })
+
+  it("is a Monero address of the network of the page's subaddresses, primary or subaddress, and no other", () => {
+    const { address } = DEV_MONERO.invoices[0]
+    expect([bitcoinAddress(address, "bcrt"), moneroAddress(DEV_MONERO.primaryAddress, STAGENET_SUBADDRESS), moneroAddress(address, STAGENET_SUBADDRESS)]).toEqual([false, true, true])
+    expect([moneroAddress(DEV_MONERO.primaryAddress, MAINNET_SUBADDRESS), moneroAddress(address, MAINNET_SUBADDRESS)], "on the mainnet").toEqual([false, false])
+    expect([moneroAddress(mainnetMonero(), MAINNET_SUBADDRESS), moneroAddress(mainnetMonero(), STAGENET_SUBADDRESS)], "a mainnet address").toEqual([true, false])
+    const bytes = base58xmr.decode(address)
+    bytes[bytes.length - 1] ^= 1
+    expect(moneroAddress(base58xmr.encode(bytes), STAGENET_SUBADDRESS), "a broken checksum").toBe(false)
+    expect([moneroAddress(DEV_BITCOIN.invoices[0].address, STAGENET_SUBADDRESS), moneroAddress("", STAGENET_SUBADDRESS)]).toEqual([false, false])
   })
 })
 
