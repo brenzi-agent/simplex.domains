@@ -164,9 +164,10 @@ test.describe(() => {
     const failed = (reason: string, balance: { amount: number; refunded: number }) =>
       registrationView(order, { phase: { type: "failed", reason }, commitTx: "0x02", price, balance })
     let view = failed("registryRefused", { amount: 2500, refunded: 0 })
+    const expiresAt = new Date(Date.now() - 1000).toISOString()
     await page.route("**/api/registration/reg-failref*", (route) => route.fulfill({ json: view }))
     await page.route("**/api/invoice/inv-failref*", (route) => route.fulfill({ json: { invoiceId: "inv-failref", status: "paid", amount: price, currency: "usd",
-      expiresAt: new Date(Date.now() - 1000).toISOString(), kind: "name", registration: view, cryptoCurrency: "btc", cryptoAmount: "0.00156", ...bitcoinPayee(devReceiving, LOCAL.bitcoinHrp, 0),
+      expiresAt, kind: "name", registration: view, cryptoCurrency: "btc", cryptoAmount: "0.00156", ...bitcoinPayee(devReceiving, LOCAL.bitcoinHrp, 0),
       cryptoAmountPaid: "0.00156", cryptoAmountDue: "0", paidInFull: true } }))
     const opened = async () => {
       await page.goto("/#/trademarks")
