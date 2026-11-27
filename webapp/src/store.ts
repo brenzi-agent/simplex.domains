@@ -1,6 +1,9 @@
 // What this browser keeps: its orders with their owner codes, and its prepaid codes.
 // Storage can be missing or full; the page then keeps everything in memory and says so where it matters.
 
+import { hmac } from "@noble/hashes/hmac"
+import { sha256 } from "@noble/hashes/sha2"
+import { utf8ToBytes } from "@noble/hashes/utils"
 import type { AddressProof, Method } from "./api.ts"
 import { base64url } from "./crypto/code.ts"
 import { type OrderLink, orderLinkOf } from "./screens/routes.ts"
@@ -39,7 +42,9 @@ export interface Payee { address: string; addressProof?: AddressProof }
 export type CodeRefusal = "code_used" | "code_invalid" | "code_expired"
 
 const HANDLE_BYTES = 16
-export const newHandle = () => base64url(crypto.getRandomValues(new Uint8Array(HANDLE_BYTES)))
+const newHandle = () => base64url(crypto.getRandomValues(new Uint8Array(HANDLE_BYTES)))
+const derivedHandle = ({ ownerCode, registrationId }: KeptOrder) =>
+  base64url(hmac(sha256, utf8ToBytes(ownerCode), utf8ToBytes(`simplex.domains handle ${registrationId}`)).slice(0, HANDLE_BYTES))
 export const orderUrl = ({ handle }: Pick<OrderRecord, "handle">) => `/?o=${handle}`
 
 export interface CodeRecord {
@@ -153,13 +158,6 @@ export const cardKey = (invoiceId: string) => `${PREFIX}card:${invoiceId}`
 
 type KeptOrder = Omit<OrderRecord, "handle"> & Partial<Pick<OrderRecord, "handle">>
 
-const handled = (o: KeptOrder): o is OrderRecord => o.handle !== undefined
-
-const rewritten = (o: OrderRecord) => {
-  put("order", o.registrationId, o)
-  return o
-}
-
 const linkedIn = (kept: OrderRecord[], link: OrderLink) => kept.find((o) => "handle" in link ? o.handle === link.handle
   : link.invoiceId === null ? o.registrationId === link.registrationId : o.invoiceId === link.invoiceId)
 
@@ -171,11 +169,8 @@ function successorLink(replacedBy: string, kept: OrderRecord[]): string | undefi
 }
 
 function recorded(): OrderRecord[] {
-  const kept = all<KeptOrder>("order").map((o) => handled(o) ? o : rewritten({ ...o, handle: newHandle() }))
-  return kept.map((o) => {
-    const replacedBy = o.replacedBy && successorLink(o.replacedBy, kept)
-    return replacedBy === o.replacedBy ? o : rewritten({ ...o, replacedBy })
-  })
+  const kept = all<KeptOrder>("order").map((o) => ({ ...o, handle: o.handle ?? derivedHandle(o) }))
+  return kept.map((o) => o.replacedBy === undefined ? o : { ...o, replacedBy: successorLink(o.replacedBy, kept) })
 }
 
 export function orders(): OrderRecord[] {
@@ -192,6 +187,7 @@ export function orderByInvoice(invoiceId: string): OrderRecord | undefined {
 
 export const orderOfLink = (link: OrderLink) => linkedIn(recorded(), link)
 export const orderByHandle = (handle: string) => orderOfLink({ handle })
+export const handleFor = (registrationId: string) => orderByRegistration(registrationId)?.handle ?? newHandle()
 
 export function saveOrder(order: OrderRecord): boolean {
   const saved = put("order", order.registrationId, order)

@@ -934,13 +934,13 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
     if (terms === null) return
     const built = await flow.orderRequest(flow.draftAgain(record, quote, terms, method))
     const res = await api.createOrder(built.request, method, quote.price)
-    const replaced = res.registration.id !== record.registrationId
-    const next = { ...record, handle: replaced ? store.newHandle() : record.handle, request: built.request, terms, registrationId: res.registration.id, invoiceId: res.invoiceId, method, paid: res.registration.price, ...flow.payeeOf(res), cancelled: false, cardSubmittedAt: undefined, replacedBy: undefined, createdAt: new Date(api.serviceNow()).toISOString() }
+    const handle = store.handleFor(res.registration.id)
+    const next = store.orderUrl({ handle })
     // the old record is the stored owner code until the new one is stored too
-    store.saveOrder(next)
+    store.saveOrder({ ...record, handle, request: built.request, terms, registrationId: res.registration.id, invoiceId: res.invoiceId, method, paid: res.registration.price, ...flow.payeeOf(res), cancelled: false, cardSubmittedAt: undefined, replacedBy: undefined, createdAt: new Date(api.serviceNow()).toISOString() })
     // Your names lists the old order only while money it received needs its reference; its page leads to the new one
-    if (replaced) store.updateOrder(record.registrationId, { replacedBy: store.orderUrl(next) })
-    if (isOpen(gen)) go(store.orderUrl(next))
+    if (res.registration.id !== record.registrationId) store.updateOrder(record.registrationId, { replacedBy: next })
+    if (isOpen(gen)) go(next)
   } catch (e) {
     if (!isOpen(gen)) {
       holdFrom(e)

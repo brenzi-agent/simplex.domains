@@ -676,25 +676,36 @@ describe("store", () => {
     for (const r of records) storage.setItem(`simplex-names:order:${r.registrationId}`, JSON.stringify(r))
   }
 
-  it("links each order by a handle of 16 random bytes, made with its record and kept by every save, in place of its ids", async () => {
+  it("links each order by a handle of 16 random bytes, made with its first record and kept by every save and every record made again for it, in place of its ids", async () => {
     const { flow, store } = await modules()
-    store.saveOrder(flow.recordFor(draft(), await flow.orderRequest(draft()), "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" }))
+    const built = await flow.orderRequest(draft())
+    store.saveOrder(flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" }))
     store.saveOrder(flow.recordFor(draft(), await flow.orderRequest(draft()), "code", 0, { registrationId: "reg2", invoiceId: null }))
     const [paid, coded] = ["reg1", "reg2"].map((id) => store.orderUrl(store.orderByRegistration(id)!))
     expect([paid, coded]).toEqual([expect.stringMatching(HANDLE_LINK), expect.stringMatching(HANDLE_LINK)])
     expect(paid).not.toBe(coded)
     store.updateOrder("reg1", { cancelled: true })
     expect(store.orderUrl(store.orderByInvoice("inv1")!)).toBe(paid)
+    const resent = flow.recordFor(draft(), built, "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" })
+    store.saveOrder(resent)
+    expect([store.orderUrl(resent), store.orderUrl(store.orderByRegistration("reg1")!)]).toEqual([paid, paid])
   })
 
-  it("gives an order an older page kept its handle at its first read, which a later page reads", async () => {
+  it("gives each order an older page kept one handle, which every tab and every later page reads, without writing to storage", async () => {
     const { store } = await modules()
-    keptByOlderPage(olderRecord("reg1", "inv1"))
-    const link = store.orderUrl(store.orderByRegistration("reg1")!)
-    expect(link).toMatch(HANDLE_LINK)
+    keptByOlderPage(olderRecord("reg1", "inv1"), olderRecord("reg2", "inv2"))
+    const storage = (globalThis as unknown as { window: { localStorage: Storage } }).window.localStorage
+    const setItem = storage.setItem
+    storage.setItem = () => { throw new DOMException("full", "QuotaExceededError") }
+    const links = store.orders().map((o) => store.orderUrl(o))
+    expect(links).toEqual([expect.stringMatching(HANDLE_LINK), expect.stringMatching(HANDLE_LINK)])
+    expect(links[0]).not.toBe(links[1])
     vi.resetModules()
-    const later = await import("../src/store.ts")
-    expect(later.orders().map((o) => later.orderUrl(o))).toEqual([link])
+    const other = await import("../src/store.ts")
+    expect(other.orders().map((o) => other.orderUrl(o))).toEqual(links)
+    storage.setItem = setItem
+    expect(store.canPersist(), "no read moved the page to memory").toBe(true)
+    expect(JSON.parse(storage.getItem("simplex-names:order:reg1")!).handle).toBeUndefined()
   })
 
   it("reads the link of a replacing order an older page kept as that order's handle link, and none for an order this browser has no record of", async () => {
