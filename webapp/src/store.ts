@@ -2,9 +2,12 @@
 // Storage can be missing or full; the page then keeps everything in memory and says so where it matters.
 
 import type { AddressProof, Method } from "./api.ts"
+import { base64url } from "./crypto/code.ts"
+import { type OrderLink, orderLinkOf } from "./screens/routes.ts"
 
 export interface OrderRecord {
   registrationId: string
+  handle: string
   invoiceId: string | null
   label: string
   ownerCode: string
@@ -35,9 +38,9 @@ export interface Payee { address: string; addressProof?: AddressProof }
 
 export type CodeRefusal = "code_used" | "code_invalid" | "code_expired"
 
-export const invoiceUrl = (invoiceId: string) => `/?order=${invoiceId}`
-export const orderUrl = (o: { invoiceId: string | null; registrationId: string }) =>
-  o.invoiceId ? invoiceUrl(o.invoiceId) : `/?registration=${o.registrationId}`
+const HANDLE_BYTES = 16
+export const newHandle = () => base64url(crypto.getRandomValues(new Uint8Array(HANDLE_BYTES)))
+export const orderUrl = ({ handle }: Pick<OrderRecord, "handle">) => `/?o=${handle}`
 
 export interface CodeRecord {
   code: string
@@ -148,17 +151,47 @@ export function canPersist(): boolean {
 export const orderKey = (registrationId: string) => `${PREFIX}order:${registrationId}`
 export const cardKey = (invoiceId: string) => `${PREFIX}card:${invoiceId}`
 
+type KeptOrder = Omit<OrderRecord, "handle"> & Partial<Pick<OrderRecord, "handle">>
+
+const handled = (o: KeptOrder): o is OrderRecord => o.handle !== undefined
+
+const rewritten = (o: OrderRecord) => {
+  put("order", o.registrationId, o)
+  return o
+}
+
+const linkedIn = (kept: OrderRecord[], link: OrderLink) => kept.find((o) => "handle" in link ? o.handle === link.handle
+  : link.invoiceId === null ? o.registrationId === link.registrationId : o.invoiceId === link.invoiceId)
+
+function successorLink(replacedBy: string, kept: OrderRecord[]): string | undefined {
+  const link = orderLinkOf(new URLSearchParams(replacedBy.split("?")[1]))
+  if (link === null || "handle" in link) return replacedBy
+  const next = linkedIn(kept, link)
+  return next && orderUrl(next)
+}
+
+function recorded(): OrderRecord[] {
+  const kept = all<KeptOrder>("order").map((o) => handled(o) ? o : rewritten({ ...o, handle: newHandle() }))
+  return kept.map((o) => {
+    const replacedBy = o.replacedBy && successorLink(o.replacedBy, kept)
+    return replacedBy === o.replacedBy ? o : rewritten({ ...o, replacedBy })
+  })
+}
+
 export function orders(): OrderRecord[] {
-  return all<OrderRecord>("order").sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return recorded().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
 export function orderByRegistration(registrationId: string): OrderRecord | undefined {
-  return get<OrderRecord>("order", registrationId)
+  return recorded().find((o) => o.registrationId === registrationId)
 }
 
 export function orderByInvoice(invoiceId: string): OrderRecord | undefined {
-  return all<OrderRecord>("order").find((o) => o.invoiceId === invoiceId)
+  return recorded().find((o) => o.invoiceId === invoiceId)
 }
+
+export const orderOfLink = (link: OrderLink) => linkedIn(recorded(), link)
+export const orderByHandle = (handle: string) => orderOfLink({ handle })
 
 export function saveOrder(order: OrderRecord): boolean {
   const saved = put("order", order.registrationId, order)

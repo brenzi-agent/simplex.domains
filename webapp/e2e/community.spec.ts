@@ -5,7 +5,7 @@ import { createHash } from "node:crypto"
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test"
 import {
   ACCEPT, acceptCommunityTerms, AGREE, agreeToTerms, ALTERNATE_COMMUNITY_TERMS, ALTERNATE_GENERAL_TERMS, COMMUNITY_HEADING, control, MOCK, onStep, orderedAtMock, payButton, REGISTRATION_MS, registrationOf, restoreOrder, search,
-  SAVED, startOrder, takenOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered, withStripeKey, acceptedOnChain, COMMUNITY_TERMS, COMMUNITY_TERMS_HASH, PLAIN_TERMS,
+  SAVED, startOrder, takenOrder, test, toCodeStep, toReview, uniqueLabel, waitRegistered, withStripeKey, acceptedOnChain, COMMUNITY_TERMS, COMMUNITY_TERMS_HASH, PLAIN_TERMS, invoiceMade, shownInvoice, waitForOrderOf,
 } from "./helpers.ts"
 import { keccak256, toHex } from "viem"
 import * as api from "../src/api.ts"
@@ -215,9 +215,7 @@ test("an order refused for terms changed meanwhile unticks the box and says so i
     await expect(notice).toHaveCount(0)
     expect(await places(page, parts), "ticked again").toEqual(before)
     await payButton(page).click()
-    await page.waitForURL(/\?order=/)
-    const invoiceId = new URL(page.url()).searchParams.get("order")!
-    expect(api.signedTermsOf((await invoiceViewOf(request, invoiceId)).terms)).toBe(hash.slice(2))
+    expect(api.signedTermsOf((await invoiceViewOf(request, await shownInvoice(page))).terms)).toBe(hash.slice(2))
   })
 })
 
@@ -252,8 +250,7 @@ test("a name put on the list meanwhile is refused for the community terms, which
     await expect(onStep(page).locator(".check.terms"), "the community terms include the general terms").toHaveCount(0)
     await expect(onStep(page).locator(".order .name").getByRole("button", { name: MARKER })).toBeVisible()
     await payButton(page).click()
-    await page.waitForURL(/\?order=/)
-    const view = await invoiceViewOf(request, new URL(page.url()).searchParams.get("order")!)
+    const view = await invoiceViewOf(request, await shownInvoice(page))
     expect([api.signedTermsOf(view.terms), view.community]).toEqual([COMMUNITY_TERMS, { for: LISTED_FOR, years: 2 }])
     await page.goto("/#/names")
     const marker = page.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: MARKER })
@@ -283,7 +280,7 @@ test("a name selected for a taken order asks for that name's terms first, a comm
       await expect(onStep(page).getByText(TERMS_CHANGED)).toBeVisible()
       await acceptCommunityTerms(page)
       await select.click()
-      await page.waitForURL(/\?order=/)
+      await page.waitForURL(/\?o=/)
       await expect.poll(async () => api.signedTermsOf((await viewOf(request, registrationId)).terms), { timeout: REGISTRATION_MS }).toBe(`community/${hash.slice(2)}`)
     })
   })
@@ -298,10 +295,9 @@ test("a new invoice for the same name signs the order's own terms without asking
   const away = await other.newPage()
   await restoreOrder(away, ownerCode, label)
   await expect(onStep(away).getByRole("heading", { name: "Invoice closed" })).toBeVisible()
-  await onStep(away).getByRole("button", { name: "Get a new invoice" }).click()
-  await away.waitForURL((url) => (url.searchParams.get("order") ?? invoiceId) !== invoiceId)
+  const second = await invoiceMade(away, () => onStep(away).getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(away, second)
   await expect(onStep(away).locator(".check.terms"), "nothing asked at the same version").toHaveCount(0)
-  const second = new URL(away.url()).searchParams.get("order")!
   expect(api.signedTermsOf((await invoiceViewOf(request, second)).terms)).toBe(PLAIN_TERMS)
   await other.close()
 
@@ -318,9 +314,7 @@ test("a new invoice for the same name signs the order's own terms without asking
     await expect(again).toBeDisabled()
     expect(await places(page, parts), "with the box").toEqual(before)
     await agreeToTerms(page)
-    await again.click()
-    await page.waitForURL((url) => url.searchParams.get("order") !== second)
-    const third = new URL(page.url()).searchParams.get("order")!
+    const third = await invoiceMade(page, () => again.click())
     expect(api.signedTermsOf((await invoiceViewOf(request, third)).terms)).toBe(hash.slice(2))
   })
 })
@@ -338,10 +332,9 @@ test("a card form that did not load asks for changed terms before cancelling its
     await expect(again).toBeDisabled()
     expect((await (await request.get(`${MOCK}/control/invoice/${invoiceId}`)).json()).status, "nothing cancelled before the tick").toBe("open")
     await agreeToTerms(page)
-    await again.click()
-    await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
+    const next = await invoiceMade(page, () => again.click())
     expect((await (await request.get(`${MOCK}/control/invoice/${invoiceId}`)).json()).status).toBe("expired")
-    expect(api.signedTermsOf((await invoiceViewOf(request, new URL(page.url()).searchParams.get("order")!)).terms)).toBe(hash.slice(2))
+    expect(api.signedTermsOf((await invoiceViewOf(request, next)).terms)).toBe(hash.slice(2))
   })
 })
 

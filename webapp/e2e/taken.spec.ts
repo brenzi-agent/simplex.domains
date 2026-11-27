@@ -5,8 +5,8 @@ import { checksumAddress, hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import { ALTERNATE_GENERAL_TERMS } from "./terms.ts"
 import {
-  addNameCode, agreeToTerms, answersReserved, control, failedOrder, FIT_SIZES, keepOrder, MOCK, mockRegistration, onStep, REGISTRATION_MS, registrationOf,
-  registrationView, offCentre, search, searchName, selectedToReview, sevenLetters, shot, startOrder, takenHeading, takenOrder, test, uniqueLabel, waitRegistered,
+  addNameCode, agreeToTerms, answersReserved, control, failedOrder, FIT_SIZES, invoiceMade, keepOrder, MOCK, mockRegistration, onStep, REGISTRATION_MS, registrationOf,
+  registrationView, offCentre, search, searchName, selectedToReview, sevenLetters, shot, shownOrder, startOrder, takenHeading, takenOrder, test, uniqueLabel, waitForOrderOf, waitRegistered,
 } from "./helpers.ts"
 
 // an order this browser keeps, answered paid with the registration given
@@ -49,8 +49,9 @@ test("a name taken first keeps its payment as its balance, with which a name sel
   await expect(onStep(stranger).getByText("Get a refund")).toHaveCount(0)
   await elsewhere.close()
 
+  const { handle } = await shownOrder(page)
   await page.getByRole("button", { name: "Choose another name" }).click()
-  await expect(page).toHaveURL(new RegExp(`[?&]order=${await registrationOf(request, invoiceId)}`))
+  await expect(page).toHaveURL(new RegExp(`[?&]o=${handle}`))
   const next = uniqueLabel("tk2")
   await page.getByLabel("Name", { exact: true }).fill(next)
   await page.getByLabel("Name", { exact: true }).press("Enter")
@@ -91,12 +92,12 @@ test("a paid order whose name was reserved meanwhile says so, and keeps its paym
 
 test("a taken order offers another name for it without searching its own name", async ({ page, request }) => {
   const label = uniqueLabel("fg")
-  const { invoiceId } = await takenOrder(page, request, label)
-  const registrationId = await registrationOf(request, invoiceId)
+  await takenOrder(page, request, label)
+  const { handle } = await shownOrder(page)
   const searched: string[] = []
   page.on("request", (r) => { if (r.url().includes(`/api/name/${hex(labelHash(label))}`)) searched.push(r.url()) })
   await onStep(page).getByRole("button", { name: "Choose another name" }).click()
-  await expect(page).toHaveURL(new RegExp(`[?&]order=${registrationId}`))
+  await expect(page).toHaveURL(new RegExp(`[?&]o=${handle}`))
   await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue("")
   expect(searched).toEqual([])
@@ -104,11 +105,12 @@ test("a taken order offers another name for it without searching its own name", 
 
 test("a name an order holds is searched as that order in its browser, and as taken with nothing more in another", async ({ page, browser, request }) => {
   const label = uniqueLabel("hd")
-  const { invoiceId } = await failedOrder(page, request, label)
+  await failedOrder(page, request, label)
+  const { handle } = await shownOrder(page)
   await search(page, label)
   const own = page.locator(".answer .line", { hasText: "You already have an order for this name." })
   await expect(own).toBeVisible()
-  await expect(own.getByRole("link", { name: "Open that order" })).toHaveAttribute("href", new RegExp(`order=${invoiceId}`))
+  await expect(own.getByRole("link", { name: "Open that order" })).toHaveAttribute("href", `/?o=${handle}`)
   await expect(page.locator(".answer").getByText("Taken", { exact: true })).toHaveCount(0)
   const other = await browser.newContext()
   const stranger = await other.newPage()
@@ -244,9 +246,8 @@ test("a late payment to a replaced invoice is kept by a restored browser after a
   const label = `${uniqueLabel("adopt")}-${"long-name".repeat(4)}`
   const { invoiceId, ownerCode } = await startOrder(page, label, { method: "btc" })
   await control(request, `expire/${invoiceId}`)
-  await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
-  const second = new URL(page.url()).searchParams.get("order")!
+  const second = await invoiceMade(page, () => page.getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(page, second)
   await control(request, "take", { label })
   await control(request, `settle/${second}`)
   await expect(page.getByRole("heading", { name: takenHeading(label) })).toBeVisible({ timeout: REGISTRATION_MS })
@@ -272,7 +273,7 @@ test("a late payment to a replaced invoice is kept by a restored browser after a
   await expect(restored.locator(".list-row:visible", { hasText: `${label}.simplex` }).filter({ hasText: "Part of the payment arrived; kept as your balance" })).toHaveCount(1)
   await restored.goto(`/?order=${invoiceId}`)
   await restored.getByRole("button", { name: "Open the new invoice" }).click()
-  await restored.waitForURL((url) => url.searchParams.get("order") === second)
+  await waitForOrderOf(restored, second)
   await other.close()
 
   // the name someone else registered, searched at phone width, wraps inside its card

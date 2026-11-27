@@ -36,7 +36,7 @@ const card = (change: Partial<InvoiceView> = {}, reg: Short = {}): InvoiceView =
 
 function record(change: Partial<OrderRecord> = {}): OrderRecord {
   return {
-    registrationId: "reg-1", invoiceId: "inv-1", label: "alice", ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: OWNER, contact: "", channel: "",
+    registrationId: "reg-1", handle: "h-reg-1", invoiceId: "inv-1", label: "alice", ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: OWNER, contact: "", channel: "",
     method: "btc", paid: 1500, years: 2, request: { labelHash: "0x4f1b", length: 5, duration: 2 * 365 * 86400, owner: OWNER, commitment: COMMITMENT, sealed: "sealed-box" },
     terms: SIGNED.slice(2), tld: "simplex", createdAt: "2026-10-17T11:59:00Z", ...change,
   }
@@ -452,7 +452,7 @@ describe("closedBalance", () => {
     expect(closedBalance(read(crypto(LATE_FULL, { balance: BALANCE }))), "kept expired").toBe("offer")
   })
   it("leads a replaced invoice's balance to its new invoice, which can be cancelled for it", () => {
-    const replaced = read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }, { balance: BALANCE }), undefined, { record: record({ replacedBy: "/?order=inv-2" }) })
+    const replaced = read(crypto({ status: "expired", cryptoAmountPaid: "0.0001" }, { balance: BALANCE }), undefined, { record: record({ replacedBy: "/?o=h-reg-2" }) })
     expect(closedBalance(replaced)).toBe("replaced")
   })
   it("offers nothing before the credit, after it is spent, without the code, or for an invoice nothing reached", () => {

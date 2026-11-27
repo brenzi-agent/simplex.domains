@@ -278,7 +278,7 @@ export interface EditForm {
 }
 
 export interface EditState {
-  registrationId: string
+  handle: string
   record: OrderRecord | null
   read: EditRead | null
   form: EditForm | null
@@ -301,7 +301,7 @@ export type EditEvent =
   | { type: "save-refused"; moved: { nonce: number; records: Links | null } | null; edits?: RecordEdits | null }
   | { type: "hold-ended" }
 
-export const initialEdit = (registrationId: string, record: OrderRecord | null): EditState => ({ registrationId, record, read: null, form: null, failures: 0, reading: false })
+export const initialEdit = (handle: string, record: OrderRecord | null): EditState => ({ handle, record, read: null, form: null, failures: 0, reading: false })
 
 export const changesOf = (f: EditForm): Partial<Links> => Object.fromEntries(LINK_KINDS.filter((k) => f.values[k] !== f.current[k]).map((k) => [k, f.values[k]]))
 

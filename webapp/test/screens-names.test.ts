@@ -30,7 +30,7 @@ const invoice = (change: Partial<InvoiceView> = {}, reg: ShortView = {}): Invoic
 
 function record(change: Partial<OrderRecord> = {}): OrderRecord {
   return {
-    registrationId: "reg-1", invoiceId: "inv-1", label: "alice", ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: OWNER, contact: "", channel: "",
+    registrationId: "reg-1", handle: `h-${change.registrationId ?? "reg-1"}`, invoiceId: "inv-1", label: "alice", ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: OWNER, contact: "", channel: "",
     method: "btc", paid: 1500, years: 2, request: { duration: 2 * 365 * 86400, labelHash: "0x4f1b", length: 5, owner: OWNER, commitment: "0x9c11", sealed: "sealed-box" },
     tld: "simplex", createdAt: "2026-10-17T11:59:00Z", ...change,
   }
@@ -147,7 +147,7 @@ describe("list helpers", () => {
     expect(hasLinks(record({ contact: CONTACT }), available), "an answer of no name").toBe(true)
   })
   it("listedOrders leaves out a replaced invoice until its read says money reached it", () => {
-    const replaced = record({ registrationId: "reg-old", replacedBy: "/?order=inv-2" })
+    const replaced = record({ registrationId: "reg-old", replacedBy: "/?o=h-reg-2" })
     const s = list({ orders: [record(), replaced] })
     expect(listedOrders(s).map((o) => o.registrationId)).toEqual(["reg-1"])
     const late = reduceList(s, { type: "row-read", id: "reg-old", view: registration({ id: "reg-old" }), invoice: invoice({ status: "paid" }), now: NOW })
@@ -158,10 +158,10 @@ describe("list helpers", () => {
   it("listedOrders puts the order that replaced another in the replaced one's place", () => {
     const newer = record({ registrationId: "reg-2", invoiceId: "inv-2", createdAt: "2026-10-17T11:59:30Z" })
     const other = record({ registrationId: "reg-b", invoiceId: "inv-b", createdAt: "2026-10-17T11:59:10Z" })
-    const replaced = record({ registrationId: "reg-1", replacedBy: "/?order=inv-2" })
+    const replaced = record({ registrationId: "reg-1", replacedBy: "/?o=h-reg-2" })
     expect(listedOrders(list({ orders: [newer, other, replaced] })).map((o) => o.registrationId)).toEqual(["reg-b", "reg-2"])
     const newest = record({ registrationId: "reg-3", invoiceId: "inv-3", createdAt: "2026-10-17T11:59:50Z" })
-    const chain = [newest, { ...newer, replacedBy: "/?order=inv-3" }, other, replaced]
+    const chain = [newest, { ...newer, replacedBy: "/?o=h-reg-3" }, other, replaced]
     expect(listedOrders(list({ orders: chain })).map((o) => o.registrationId)).toEqual(["reg-b", "reg-3"])
     const late = reduceList(list({ orders: [newer, other, replaced] }), { type: "row-read", id: "reg-1", view: registration(), invoice: invoice({ status: "paid" }), now: NOW })
     expect(listedOrders(late).map((o) => o.registrationId)).toEqual(["reg-2", "reg-b", "reg-1"])
@@ -169,7 +169,7 @@ describe("list helpers", () => {
   it("a listed order that becomes replaced leaves the list until a fresh read says money reached it", () => {
     const open = reduceList(list({ orders: [record()] }), { type: "row-read", id: "reg-1", view: registration(), invoice: invoice(), now: NOW })
     expect(listedOrders(open).map((o) => o.registrationId)).toEqual(["reg-1"])
-    const replaced = reduceList(open, storedEvent({ orders: [record({ replacedBy: "/?order=inv-2" })] }))
+    const replaced = reduceList(open, storedEvent({ orders: [record({ replacedBy: "/?o=h-reg-2" })] }))
     expect(replaced.seen).toEqual({})
     expect(listedOrders(replaced)).toEqual([])
     const late = reduceList(replaced, { type: "row-read", id: "reg-1", view: registration(), invoice: invoice({ status: "paid" }), now: NOW })
@@ -177,7 +177,7 @@ describe("list helpers", () => {
   })
   it("a read begun before another tab replaced the order lists it again only for money that reached it, whichever lands first", () => {
     const open = reduceList(list({ orders: [record()] }), { type: "row-read", id: "reg-1", view: registration(), invoice: invoice(), now: NOW })
-    const replacedNow = storedEvent({ orders: [record({ replacedBy: "/?order=inv-2" })] })
+    const replacedNow = storedEvent({ orders: [record({ replacedBy: "/?o=h-reg-2" })] })
     const staleRead = { type: "row-read", id: "reg-1", view: registration(), invoice: invoice(), now: NOW + 1000 } as const
     expect(listedOrders(reduceList(reduceList(open, replacedNow), staleRead))).toEqual([])
     expect(listedOrders(reduceList(reduceList(open, staleRead), replacedNow))).toEqual([])
@@ -188,7 +188,7 @@ describe("list helpers", () => {
     expect(hasRecords(list())).toBe(false)
     expect(hasRecords(list({ pending: [pending("SN-P")] }))).toBe(true)
     expect(hasRecords(list({ codes: [code("SN6-A")] }))).toBe(true)
-    expect(hasRecords(list({ orders: [record({ replacedBy: "/?order=inv-2" })] }))).toBe(true)
+    expect(hasRecords(list({ orders: [record({ replacedBy: "/?o=h-reg-2" })] }))).toBe(true)
   })
 })
 
@@ -284,7 +284,7 @@ describe("list", () => {
     const seen = { "reg-1": { view, invoice: null }, "reg-gone": { view, invoice: null } }
     const s = initialList(stored({ orders: [record()], codes: [code("SN6-A"), code("SN6-B")] }), null, seen, { "SN6-A": "used", "SN6-B": "unchecked", "SN6-gone": "unused" }, NOW)
     expect(s.seen).toEqual({ "reg-1": { view, invoice: null } })
-    const replaced = initialList(stored({ orders: [record({ replacedBy: "/?order=inv-2" })] }), null, { "reg-1": { view, invoice: invoice() } }, {}, NOW)
+    const replaced = initialList(stored({ orders: [record({ replacedBy: "/?o=h-reg-2" })] }), null, { "reg-1": { view, invoice: invoice() } }, {}, NOW)
     expect(replaced.seen).toEqual({})
     expect(listedOrders(replaced)).toEqual([])
     expect(s.checked).toEqual({ "SN6-A": "used" })
@@ -633,7 +633,7 @@ describe("rows drawn and unanswered", () => {
     expect(done).toBe(false)
   })
   it("keeps a drawn order's row in its place while the newer order that replaced it is read, then draws the newer one there", () => {
-    const older = record({ registrationId: "reg-a", invoiceId: "inv-a", replacedBy: "/?order=inv-new", createdAt: "2026-10-17T11:05:00Z" })
+    const older = record({ registrationId: "reg-a", invoiceId: "inv-a", replacedBy: "/?o=h-reg-new", createdAt: "2026-10-17T11:05:00Z" })
     const newer = record({ registrationId: "reg-new", invoiceId: "inv-new", createdAt: "2026-10-17T11:07:00Z" })
     const s = initialList(stored({ orders: [newer, older, b] }), null, { "reg-b": { view: progress, invoice: null } }, {}, NOW)
     const drawn = new Set(["reg-a", "reg-b"])

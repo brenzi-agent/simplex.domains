@@ -2,7 +2,7 @@ import { type APIRequestContext, expect, type Page } from "@playwright/test"
 import { labelHash } from "../src/crypto/registration.ts"
 import { hex } from "../src/crypto/wallet.ts"
 import {
-  CODES_PAGE, codeField, codesPageHolds, codesTest, control, keepOrder, loads, MOCK, onStep, payButton, recordedFrames, recordFrames, registrationView, savedToReview, search, shot, startOrder, takenOrder, test,
+  CODES_PAGE, codeField, codesPageHolds, codesTest, control, keepOrder, loads, MOCK, onStep, payButton, recordedFrames, recordFrames, registrationView, savedToReview, search, shot, shownInvoice, startOrder, takenOrder, test,
   toCodeStep, toReview, uniqueLabel, useCode, waitRegistered,
 } from "./helpers.ts"
 
@@ -187,7 +187,7 @@ codesTest("a valid prepaid code opens the search for the names it covers and reg
   await expect(onStep(page).getByText("Remove code")).toHaveCount(0)
   await shot(page, "C5-codes-only-review")
   await onStep(page).getByRole("button", { name: "Register with your code" }).click()
-  await page.waitForURL(/\?registration=/)
+  await page.waitForURL(/\?o=/)
   await waitRegistered(page, label)
   expect(calls.filter((c) => PAYMENT_CALL.test(c)), "nothing was paid").toEqual([])
   expect(calls).toContain("POST /api/name/register")
@@ -212,7 +212,7 @@ codesTest("a code taken off on Check your order leaves the code field in place o
   await expect(onStep(page).getByRole("button", { name: "Register with your code" })).toBeEnabled()
   await expect(field, "the field stays as it took the code").toBeVisible()
   await onStep(page).getByRole("button", { name: "Register with your code" }).click()
-  await page.waitForURL(/\?registration=/)
+  await page.waitForURL(/\?o=/)
 })
 
 test("an order paid before codes only shows no new invoice or other name, only Register with code and the refund", async ({ page, request }) => {
@@ -286,7 +286,7 @@ test("a closed invoice's page opened before codes only, refused a new invoice, s
   await page.getByRole("button", { name: "Get a new invoice" }).click()
   const note = onStep(page).locator(".notice", { hasText: CODES_ONLY_TITLE })
   await expect(note).toContainText("Nothing was charged. Enter a code.")
-  await expect(page).toHaveURL(new RegExp(`order=${invoiceId}`))
+  expect(await shownInvoice(page)).toBe(invoiceId)
   expect(seen.count, "the refusal stays in view, in the page as it was").toBe(0)
   await Promise.all([
     page.waitForResponse((r) => new URL(r.url()).pathname === "/api/config"),

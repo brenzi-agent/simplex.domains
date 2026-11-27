@@ -42,8 +42,8 @@ const onPage = (page: number) => page === opens && isRoute(pageRoute)
 
 export function searchPage(params: URLSearchParams): void {
   const name = foldLabel(params.get("name") ?? "")
-  const orderId = params.get("order")
-  const order = orderId ? store.orderByRegistration(orderId) ?? null : null
+  const handle = params.get("o")
+  const order = handle ? store.orderByHandle(handle) ?? null : null
   const opening: Opening = order ? "order" : "plain"
   const fresh = !isRedraw() || shown === null || state.opening !== opening
   const returned = fresh && throughHistory()

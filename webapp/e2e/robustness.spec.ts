@@ -2,6 +2,7 @@ import { expect, type Page, type Route } from "@playwright/test"
 import {
   channelLink, contactLink, recordedFrames, recordFrames, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, control, mockRegistration, okPreview, onStep, payButton, REGISTRATION_MS, registeredAnswer, registrationOf, savedToReview, search, selectedToReview, shot,
   shownCode, startOrder, restoreOrder, takenOrder, test, toCodeStep, toReview, uniqueLabel, useCode, waitRegistered, keepOrder, registeredPhase, registrationView, withStripeKey,
+  handleOf, invoiceMade, shownInvoice, shownOrder, waitForOrderOf,
 } from "./helpers.ts"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 
@@ -48,7 +49,7 @@ test("Back from an order page keeps it reachable with Forward", async ({ page })
   await page.goBack()
   await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
   await page.goForward()
-  await expect(page).toHaveURL(new RegExp(`order=${invoiceId}`))
+  expect(await shownInvoice(page)).toBe(invoiceId)
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
 })
 
@@ -58,7 +59,7 @@ test("Back from the payment lands once on the search, past the checkout's steps,
   const entries = await page.evaluate(() => history.length)
   await toReview(page)
   await payButton(page).click()
-  await page.waitForURL(/\?order=/)
+  await page.waitForURL(/\?o=/)
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   expect(await page.evaluate(() => history.length), "the checkout's entries gave way to the order").toBe(entries + 1)
   await page.goBack()
@@ -104,7 +105,7 @@ test("an unpaid invoice is pointed at from checkout without blocking a new order
   await search(page, uniqueLabel("second"))
   await toReview(page)
   await expect(page.getByText("Another order is waiting for its payment.")).toBeVisible()
-  await expect(page.getByRole("link", { name: "Open that order" })).toHaveAttribute("href", `/?order=${invoiceId}`)
+  await expect(page.getByRole("link", { name: "Open that order" })).toHaveAttribute("href", `/?o=${await handleOf(page, invoiceId)}`)
   await expect(payButton(page)).toBeEnabled()
   await shot(page, "N3e2-open-invoice")
 })
@@ -137,22 +138,21 @@ test("Get a new invoice keeps an invoice the service would not cancel", async ({
     await page.route("**/api/invoice/*/cancel", (route) => route.fulfill({ status: answer.status, json: answer.body }))
     await page.getByRole("button", { name: "Get a new invoice" }).click()
     await expect(page.getByText(answer.text)).toBeVisible()
-    await expect(page).toHaveURL(new RegExp(`order=${invoiceId}`))
+    expect(await shownInvoice(page)).toBe(invoiceId)
     await page.unroute("**/api/invoice/*/cancel")
   }
   await page.route("**/api/invoice/*/cancel", (route) => route.fulfill({ status: 429, headers: { "retry-after": "2" }, json: { type: "rate_limited" } }))
   await page.getByRole("button", { name: "Get a new invoice" }).click()
   await expect(page.locator("[aria-hidden=true]", { hasText: /^The invoice is still open\. Try again in/ })).toBeVisible()
-  await expect(page).toHaveURL(new RegExp(`order=${invoiceId}`))
+  expect(await shownInvoice(page)).toBe(invoiceId)
 })
 
-test("a registration link of an order paid by invoice points at its payment link", async ({ page, request }) => {
+test("an older registration link of an order paid by invoice opens the order's page, its payment", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("reglink"), { method: "btc" })
   const registrationId = await registrationOf(request, invoiceId)
   await page.goto(`/?registration=${registrationId}`)
-  await expect(page.getByRole("heading", { name: "This order is paid by invoice" })).toBeVisible()
-  await page.getByRole("button", { name: "Open its payment" }).click()
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
+  expect(await shownInvoice(page)).toBe(invoiceId)
 })
 
 test("a registered order opened in a browser without its code offers restore", async ({ page, browser, request }) => {
@@ -168,7 +168,8 @@ test("a registered order opened in a browser without its code offers restore", a
   await codeField(page2).fill(ownerCode)
   await page2.getByRole("button", { name: "Add to Your names" }).click()
   // back on the order's page, which now has the code
-  await page2.waitForURL((url) => url.searchParams.get("order") === invoiceId)
+  await page2.waitForURL(/\?o=/)
+  expect(await shownInvoice(page2)).toBe(invoiceId)
   await waitRegistered(page2, label)
   await expect(await shownCode(page2), "the restored browser holds the code").toHaveText(ownerCode)
   await other.close()
@@ -177,13 +178,14 @@ test("a registered order opened in a browser without its code offers restore", a
 test("a selection refused for a name taken meanwhile says the name is no longer available, and the next search is for the same order", async ({ page, request }) => {
   const { invoiceId } = await takenOrder(page, request, uniqueLabel("rtt"))
   const registrationId = await registrationOf(request, invoiceId)
+  const { handle } = await shownOrder(page)
   await page.goto(`/#/?order=${registrationId}`)
   await page.route("**/api/registration/*/name", (route) => route.fulfill({ status: 409, json: { type: "name_taken" } }))
   await selectedToReview(page, uniqueLabel("rtt2"))
   await onStep(page).getByRole("button", { name: "Register with your payment" }).click()
   await expect(onStep(page).getByRole("heading", { name: "This name is no longer available" })).toBeVisible()
   await onStep(page).getByRole("button", { name: "Search another name" }).click()
-  await expect(page).toHaveURL(new RegExp(`[?&]order=${registrationId}`))
+  await expect(page).toHaveURL(new RegExp(`[?&]o=${handle}`))
   await page.unrouteAll({ behavior: "ignoreErrors" })
 })
 
@@ -204,8 +206,7 @@ test("Your names tells part-paid and confirming orders from unpaid ones, and a n
   const plainOrder = await startOrder(page, plain, { method: "btc" })
   await control(request, `expire/${plainOrder.invoiceId}`)
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
-  await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== plainOrder.invoiceId)
+  await waitForOrderOf(page, await invoiceMade(page, () => page.getByRole("button", { name: "Get a new invoice" }).click()))
   await page.goto("/#/names")
   const chipOf = (label: string) => page.locator(".list-row:visible", { hasText: `${label}.simplex` }).locator(".chip")
   await expect(chipOf(part)).toHaveText("Waiting for the rest")
@@ -375,18 +376,17 @@ test("search points at this browser's open order for a name instead of a second 
   await search(page, label)
   await expect(page.getByText("You already have an order for this name.")).toBeVisible()
   await expect(page.getByRole("button", { name: "Register" })).toBeDisabled()
-  await expect(page.getByRole("link", { name: "Open that order" })).toHaveAttribute("href", `/?order=${invoiceId}`)
+  await expect(page.getByRole("link", { name: "Open that order" })).toHaveAttribute("href", `/?o=${await handleOf(page, invoiceId)}`)
   await shot(page, "N2f-own-order")
 })
 
 test("an old invoice link leads to the invoice that replaced it", async ({ page, request }) => {
   const { invoiceId } = await startOrder(page, uniqueLabel("old"), { method: "btc" })
   await control(request, `expire/${invoiceId}`)
-  await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
-  const replacement = new URL(page.url()).searchParams.get("order")
+  const replacement = await invoiceMade(page, () => page.getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(page, replacement)
   await page.goto(`/?order=${invoiceId}`)
-  await expect(page).toHaveURL(new RegExp(`order=${replacement}`))
+  await waitForOrderOf(page, replacement)
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
 })
 
@@ -574,8 +574,7 @@ for (const other of ["Monero", "a code"]) {
     await toReview(page)
     const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
     await payButton(page).click()
-    await page.waitForURL(/\?order=/)
-    const invoiceId = new URL(page.url()).searchParams.get("order")
+    const invoiceId = await shownInvoice(page)
     const copy = await page.context().newPage()
     // a duplicated tab starts with the first tab's session, the same checkout and its name code
     await copy.addInitScript(([key, value]) => { if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, value) }, [CHECKOUT_KEY, checkout])
@@ -591,15 +590,14 @@ for (const other of ["Monero", "a code"]) {
       await copy.goto("/#/checkout")
       await onStep(copy).getByRole("button", { name: "Register with your code" }).click()
     }
-    await copy.waitForURL(/\?order=/)
-    expect(new URL(copy.url()).searchParams.get("order"), "the order's one invoice").toBe(invoiceId)
+    expect(await shownInvoice(copy), "the order's one invoice").toBe(invoiceId)
     await expect(copy.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
     const why = `This name already has a Bitcoin invoice from an earlier try, so it opened instead of ${other === "Monero" ? "a new Monero one" : "using your code"}.`
     await expect(onStep(copy).getByText(why)).toBeVisible()
     await copy.getByRole("link", { name: "Your names" }).first().click()
     await copy.locator(".list-row").getByRole("button", { name: "Open" }).first().click()
     await expect(copy.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-    expect(new URL(copy.url()).searchParams.get("order"), "the same invoice opened again").toBe(invoiceId)
+    expect(await shownInvoice(copy), "the same invoice opened again").toBe(invoiceId)
     await expect(onStep(copy).locator(".note", { hasText: "earlier try" }), "the line is said once").toHaveCount(0)
     await copy.close()
   })
@@ -880,9 +878,8 @@ test("a drawn order that a newer order of its name replaces keeps its place unti
   await restoreOrder(restored, ownerCode, label)
   await control(request, `expire/${invoiceId}`)
   await restored.goto(`/?order=${invoiceId}`)
-  await restored.getByRole("button", { name: "Get a new invoice" }).click()
-  await restored.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
-  const second = new URL(restored.url()).searchParams.get("order")!
+  const second = await invoiceMade(restored, () => restored.getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(restored, second)
   await other.close()
   await page.route(`**/api/invoice/${second}*`, async (route) => {
     await new Promise((wait) => setTimeout(wait, ROW_READ_MS))

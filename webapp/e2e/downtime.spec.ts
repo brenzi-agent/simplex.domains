@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test"
 import {
-  AGREE, agreeToTerms, ALTERNATE_GENERAL_TERMS, CHECKOUT_KEY, control, loads, mockRegistration, onStep, orderedAtMock, payButton, REGISTRATION_MS, registrationOf, search, startOrder, takenOrder,
+  AGREE, agreeToTerms, ALTERNATE_GENERAL_TERMS, CHECKOUT_KEY, control, loads, mockRegistration, onStep, orderedAtMock, payButton, REGISTRATION_MS, registrationOf, search, shownOrder, startOrder, takenOrder,
   test, toFullReview, toReview, uniqueLabel, waitRegistered,
 } from "./helpers.ts"
 
@@ -54,7 +54,7 @@ test("an order's page open as a downtime ends loads again with its invoice, and 
   await readOnView(page)
   await inDowntime(page, false)
   await reloadedOnView(page)
-  await expect(page).toHaveURL(new RegExp(`order=${invoiceId}`))
+  expect((await shownOrder(page)).invoiceId).toBe(invoiceId)
   await control(request, `settle/${invoiceId}`)
   await waitRegistered(page, label)
 })

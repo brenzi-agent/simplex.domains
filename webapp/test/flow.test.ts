@@ -565,7 +565,7 @@ describe("orderOfCodes", () => {
     const other = formatOwnerCode(fromHex("0123456789abcdef0123456789abcdef"))
     const record = flow.recordFor(draft(), await flow.orderRequest(draft()), "btc", 20000, { registrationId: "reg1", invoiceId: "inv1" })
     store.saveOrder({ ...record, createdAt: "2026-01-02T00:00:00Z" })
-    store.saveOrder({ ...record, registrationId: "reg2", invoiceId: "inv2", ownerCode: other, createdAt: "2026-01-01T00:00:00Z" })
+    store.saveOrder({ ...record, registrationId: "reg2", handle: "h-reg2", invoiceId: "inv2", ownerCode: other, createdAt: "2026-01-01T00:00:00Z" })
     let finds = 0
     answers["POST /api/registration/find"] = () => finds++ === 0 ? { registrations: [] } : new Response(JSON.stringify({ type: "rate_limited" }), { status: 429 })
     calls = []
@@ -590,8 +590,8 @@ describe("store", () => {
     const { store } = await modules()
     const base = { invoiceId: null, label: "a", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, tld: "simplex",
       request: { labelHash: "0x", length: 6, duration: 2 * YEAR_S, owner: OWNER, commitment: "0x", sealed: "sealed" } }
-    expect(store.saveOrder({ ...base, registrationId: "old", createdAt: "2026-01-01T00:00:00Z" })).toBe(true)
-    store.saveOrder({ ...base, registrationId: "new", createdAt: "2026-02-01T00:00:00Z" })
+    expect(store.saveOrder({ ...base, registrationId: "old", handle: "h-old", createdAt: "2026-01-01T00:00:00Z" })).toBe(true)
+    store.saveOrder({ ...base, registrationId: "new", handle: "h-new", createdAt: "2026-02-01T00:00:00Z" })
     store.updateOrder("old", { cancelled: true })
     expect(store.orders().map((o) => [o.registrationId, o.cancelled ?? false])).toEqual([["new", false], ["old", true]])
     store.forgetEverything()
@@ -617,11 +617,11 @@ describe("store", () => {
     expect(tabA.orders()).toEqual([])
     const base = { invoiceId: null, label: "b", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, tld: "simplex",
       request: { labelHash: "0x", length: 6, duration: 2 * YEAR_S, owner: OWNER, commitment: "0x", sealed: "sealed" } }
-    tabB.saveOrder({ ...base, registrationId: "fromB", createdAt: "2026-01-01T00:00:00Z" })
+    tabB.saveOrder({ ...base, registrationId: "fromB", handle: "h-fromB", createdAt: "2026-01-01T00:00:00Z" })
     tabA.addCode({ code: "SN6-X", minLength: 6, years: 2, addedAt: "2026-01-01T00:00:00Z" })
     expect(tabB.orders().map((o) => o.registrationId)).toEqual(["fromB"])
     expect(tabB.codes().map((c) => c.code)).toEqual(["SN6-X"])
-    tabA.saveOrder({ ...base, registrationId: "fromA", createdAt: "2026-02-01T00:00:00Z" })
+    tabA.saveOrder({ ...base, registrationId: "fromA", handle: "h-fromA", createdAt: "2026-02-01T00:00:00Z" })
     expect(tabB.orders().map((o) => o.registrationId)).toEqual(["fromA", "fromB"])
     tabB.forgetEverything()
     expect([tabA.orders(), tabA.codes()]).toEqual([[], []])
@@ -643,14 +643,14 @@ describe("store", () => {
     const { store } = await modules()
     const base = { invoiceId: null, label: "a", ownerCode: OWNER_CODE, owner: OWNER, contact: "", channel: "", method: "code" as const, paid: 0, years: 2, tld: "simplex",
       request: { labelHash: "0x", length: 6, duration: 2 * YEAR_S, owner: OWNER, commitment: "0x", sealed: "sealed" } }
-    store.saveOrder({ ...base, registrationId: "kept", createdAt: "2026-01-01T00:00:00Z" })
+    store.saveOrder({ ...base, registrationId: "kept", handle: "h-kept", createdAt: "2026-01-01T00:00:00Z" })
     const storage = (globalThis as unknown as { window: { localStorage: Storage } }).window.localStorage
     const setItem = storage.setItem
     storage.setItem = () => { throw new DOMException("full", "QuotaExceededError") }
     expect(store.orders().map((o) => o.registrationId)).toEqual(["kept"])
     expect(store.canPersist()).toBe(false)
     expect(store.orders().map((o) => o.registrationId)).toEqual(["kept"])
-    expect(store.saveOrder({ ...base, registrationId: "new", createdAt: "2026-02-01T00:00:00Z" })).toBe(false)
+    expect(store.saveOrder({ ...base, registrationId: "new", handle: "h-new", createdAt: "2026-02-01T00:00:00Z" })).toBe(false)
     expect(store.orders().map((o) => o.registrationId)).toEqual(["new", "kept"])
     store.forgetEverything()
     expect(store.orders()).toEqual([])

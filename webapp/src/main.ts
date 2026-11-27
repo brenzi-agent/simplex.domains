@@ -1,22 +1,41 @@
 // The router: one page per route, redrawn on navigation.
 import { readConfig } from "./config.ts"
 import { el } from "./dom.ts"
-import { checkoutStepOf, EDIT_PATH, fromOrder, viewOf } from "./screens/routes.ts"
+import { checkoutStepOf, EDIT_PATH, editUrl, fromOrder, orderLinkOf, viewOf } from "./screens/routes.ts"
+import * as store from "./store.ts"
 import { checkoutPage } from "./views/checkout.ts"
 import { setUpChrome } from "./views/chrome.ts"
 import { checkCodePage, editPage, historyPage, trademarksPage } from "./views/names.ts"
 import { orderPage } from "./views/order.ts"
 import { searchPage } from "./views/search.ts"
 import { followServedMode, reloadedForRoute } from "./views/served-mode.ts"
-import { go, historyMoved, nextRoute, setRenderer } from "./views/shell.ts"
+import { go, historyMoved, nextRoute, redirect, searchLink, setRenderer } from "./views/shell.ts"
+
+function handleLinkOf(query: URLSearchParams, path: string, hashQuery: URLSearchParams): string | null {
+  const link = orderLinkOf(query)
+  if (link !== null && !("handle" in link)) {
+    const record = store.orderOfLink(link)
+    return record ? store.orderUrl(record) : null
+  }
+  const edited = EDIT_PATH.exec(path)?.[1]
+  if (edited !== undefined) {
+    const record = store.orderByHandle(edited) ? undefined : store.orderByRegistration(edited)
+    return record ? editUrl(record.handle) : null
+  }
+  const choosing = hashQuery.get("order")
+  if (choosing === null || viewOf(query, path) !== "search") return null
+  return searchLink(hashQuery.get("name") ?? "", store.orderByRegistration(choosing)?.handle)
+}
 
 function render(): void {
   const query = new URLSearchParams(location.search)
   const [path, hashQuery = ""] = location.hash.replace(/^#/, "").split("?")
+  const moved = handleLinkOf(query, path, new URLSearchParams(hashQuery))
+  if (moved !== null) return redirect(moved)
   const view = viewOf(query, path)
   nextRoute()
   switch (view) {
-    case "order": return orderPage(query.get("order"), query.get("registration"))
+    case "order": return orderPage(orderLinkOf(query)!)
     case "checkout": return checkoutPage(checkoutStepOf(path))
     case "names": return historyPage()
     case "trademarks": return trademarksPage()
@@ -53,7 +72,7 @@ async function start(): Promise<void> {
     e.preventDefault()
     if (!e.repeat) (e.target as HTMLElement).click()
   })
-  // A link from /?order=… to /#/… would load a new document, dropping what this page holds in memory, so its views switch in place.
+  // A link from /?o=… to /#/… would load a new document, dropping what this page holds in memory, so its views switch in place.
   document.addEventListener("click", (e) => {
     const a = (e.target as Element | null)?.closest("a")
     const href = a?.getAttribute("href")

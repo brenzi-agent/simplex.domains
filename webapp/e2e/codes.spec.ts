@@ -10,7 +10,7 @@ import {
   agreeToTerms, answersReserved, blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, LINKS_HEADING, MOCK, offCentre, onStep,
   payButton, previewsShown, qrText, registrationView, savedToReview, search, searchName, selectedToReview, sevenLetters, shot, shownCode, SLOW_FETCH_MS, startOrder, takenHeading, test, textChangesOf, toCodeStep, restoreOrder, toReview, uniqueLabel,
   useCode, waitRegistered,
-  acceptedOnChain, COMMUNITY_TERMS_HASH, contractsOwnerLists, GENERAL_TERMS_HASH,
+  acceptedOnChain, COMMUNITY_TERMS_HASH, contractsOwnerLists, GENERAL_TERMS_HASH, shownOrder, shownRegistration,
 } from "./helpers.ts"
 
 // a commit's wait of about three minutes, counted from the service's own clock
@@ -75,14 +75,15 @@ async function payWithCode(page: Page, label: string, code: string, links: Links
   } else await toReview(page)
   await expect(total(page)).toHaveText(FREE_TOTAL)
   await onStep(page).getByRole("button", { name: REGISTER_WITH_CODE }).click()
-  await page.waitForURL(/\?registration=/)
+  await page.waitForURL(/\?o=/)
 }
 
-async function registerWithCode(page: Page, request: APIRequestContext, prefix: string, links: Links | null = null): Promise<{ code: string; registrationId: string; label: string }> {
+async function registerWithCode(page: Page, request: APIRequestContext, prefix: string, links: Links | null = null): Promise<{ code: string; registrationId: string; handle: string; label: string }> {
   const { code } = await control(request, "code", { minLength: 6 }) as { code: string }
   const label = uniqueLabel(prefix)
   await payWithCode(page, label, code, links)
-  return { code, registrationId: new URL(page.url()).searchParams.get("registration")!, label }
+  const { registrationId, handle } = await shownOrder(page)
+  return { code, registrationId, handle, label }
 }
 
 const ownerCodeOf = (page: Page, registrationId: string) =>
@@ -108,7 +109,7 @@ test("a prepaid code from Check your code shows a name as Free and registers it 
   const register = onStep(page).getByRole("button", { name: REGISTER_WITH_CODE })
   await expect(register).toBeEnabled()
   await register.click()
-  await page.waitForURL(/\?registration=/)
+  await page.waitForURL(/\?o=/)
   // the code is the order's now, so the header offers Check your code again
   await expect(chip(page)).toBeHidden()
   await waitRegistered(page, label)
@@ -116,7 +117,7 @@ test("a prepaid code from Check your code shows a name as Free and registers it 
   expect(registered.type).toBe("registered")
   await expect(page.locator("body > main .lead")).toHaveText(`Registered until ${dateOf(registered.expiresAt as number)}.`)
   // the code's term, its 5 years and the free days, sent as the duration, counted on chain from the register's block
-  const view = await (await request.get(`${MOCK}/control/registration/${new URL(page.url()).searchParams.get("registration")}`)).json() as
+  const view = await (await request.get(`${MOCK}/control/registration/${await shownRegistration(page)}`)).json() as
     { years: number; duration: number; registerTx: string; phase: { disputeUntil: number } }
   expect(view.years).toBe(5)
   expect(await chainExpiry(label)).toBe(await blockTimeOf(view.registerTx) + view.duration)
@@ -190,7 +191,7 @@ test("a prepaid code registers a name the contracts' owner listed on chain, its 
   await contractsOwnerLists(label)
   await payWithCode(page, label, code)
   await waitRegistered(page, label)
-  const view = await (await request.get(`${MOCK}/control/registration/${new URL(page.url()).searchParams.get("registration")}`)).json() as { owner: string; registerTx: string }
+  const view = await (await request.get(`${MOCK}/control/registration/${await shownRegistration(page)}`)).json() as { owner: string; registerTx: string }
   expect(await acceptedOnChain(view.registerTx)).toEqual({ kind: "community", name: label, holder: view.owner, termsHash: COMMUNITY_TERMS_HASH })
 })
 
@@ -205,9 +206,9 @@ test("a prepaid code for 5 years registers a community name for its 2 years and 
   await expect(page.locator(".card.order .trow").first()).toHaveText(/^Term2 years and /)
   await expect(page.locator(".card.order .hint")).toHaveText("A community name is registered for 2 years, not your code's 5.")
   await onStep(page).getByRole("button", { name: REGISTER_WITH_CODE }).click()
-  await page.waitForURL(/\?registration=/)
+  await page.waitForURL(/\?o=/)
   await waitRegistered(page, label)
-  const view = await (await request.get(`${MOCK}/control/registration/${new URL(page.url()).searchParams.get("registration")}`)).json() as { duration: number; registerTx: string }
+  const view = await (await request.get(`${MOCK}/control/registration/${await shownRegistration(page)}`)).json() as { duration: number; registerTx: string }
   expect(Math.floor(view.duration / YEAR_S), "2 years and the free days").toBe(2)
   expect(await chainExpiry(label)).toBe(await blockTimeOf(view.registerTx) + view.duration)
 })
@@ -244,11 +245,11 @@ test("a name's link whose data cannot be read now shows as its kind's default pi
 })
 
 test("Edit links on a name registered with a code adds both its links on chain in one transaction, then changes one", async ({ page, request }) => {
-  const { registrationId, label } = await registerWithCode(page, request, "cedit")
+  const { handle, label } = await registerWithCode(page, request, "cedit")
   await waitRegistered(page, label)
   await page.goto("/#/names")
   await page.locator(".list-row", { hasText: `${label}.simplex` }).getByRole("button", { name: "Add links" }).click()
-  await page.waitForURL((url) => url.hash === `#/edit/${registrationId}`)
+  await page.waitForURL((url) => url.hash === `#/edit/${handle}`)
   const contact = contactLink("CE")
   const channel = channelLink("CE")
   const link = onStep(page).getByRole("textbox", { name: "Link", exact: true })
@@ -301,7 +302,7 @@ const yoursLayout = (page: Page) => onStep(page).evaluate((step) => {
 })
 
 test("the name-is-yours screen offers Edit links, a small secondary button under the name code that moves nothing above it", async ({ page, request }) => {
-  const { registrationId, label } = await registerWithCode(page, request, "cyours", { contact: contactLink("CY"), channel: channelLink("CY") })
+  const { handle, label } = await registerWithCode(page, request, "cyours", { contact: contactLink("CY"), channel: channelLink("CY") })
   await waitRegistered(page, label)
   const edit = onStep(page).getByRole("button", { name: "Edit links" })
   await expect(edit).toBeVisible()
@@ -320,7 +321,7 @@ test("the name-is-yours screen offers Edit links, a small secondary button under
   }
   await shot(page, "K8b-registered-edit-links")
   await edit.click()
-  await page.waitForURL((url) => url.hash === `#/edit/${registrationId}`)
+  await page.waitForURL((url) => url.hash === `#/edit/${handle}`)
   await expect(onStep(page).getByRole("heading", { name: "Edit links" })).toBeVisible()
   await expect(onStep(page).getByRole("textbox", { name: "Link", exact: true })).toHaveValue(contactLink("CY"))
 })
@@ -666,7 +667,7 @@ test("a prepaid code entered on Check your order makes the order free in place, 
   await expect(total(page)).toHaveText(FREE_TOTAL)
   await agreeToTerms(page)
   await register.click()
-  await page.waitForURL(/\?registration=/)
+  await page.waitForURL(/\?o=/)
 })
 
 test("a code on Check your order that is not valid, used, too short for the name or a name code says why, and the order is paid once it is removed", async ({ page, request }) => {
@@ -863,13 +864,13 @@ test("a name selected for a code order taken first is registered with its code, 
   const label = uniqueLabel("ctk")
   await control(request, "take", { label })
   await payWithCode(page, label, code)
-  const registrationId = new URL(page.url()).searchParams.get("registration")!
+  const { registrationId, handle } = await shownOrder(page)
   const ownerCode = await page.evaluate((id) => JSON.parse(localStorage.getItem(`simplex-names:order:${id}`)!).ownerCode as string, registrationId)
   await expect(page.getByRole("heading", { name: takenHeading(label) })).toBeVisible({ timeout: 120_000 })
   await expect(onStep(page).getByText("Get a refund")).toHaveCount(0)
   await shot(page, "K9-code-taken")
   await onStep(page).getByRole("button", { name: "Choose another name" }).click()
-  await expect(page).toHaveURL(new RegExp(`[?&]order=${registrationId}`))
+  await expect(page).toHaveURL(new RegExp(`[?&]o=${handle}`))
   // a name shorter than the code allows is answered at once, without searching it
   const short = sevenLetters()
   await page.getByLabel("Name", { exact: true }).fill(short)
@@ -927,7 +928,7 @@ test("a code order taken first asks a browser without its name code for the code
   const label = uniqueLabel("ctw")
   await control(request, "take", { label })
   await payWithCode(page, label, code)
-  const registrationId = new URL(page.url()).searchParams.get("registration")!
+  const registrationId = await shownRegistration(page)
   await expect(page.getByRole("heading", { name: takenHeading(label) })).toBeVisible({ timeout: 120_000 })
   const other = await browser.newContext()
   const stranger = await other.newPage()
@@ -1032,7 +1033,7 @@ test("a code held by this browser's failed order is noted as held by it, with a 
   await expect(verdict).toHaveClass(/\binfo\b/)
   await verdict.getByRole("link", { name: "Open your order" }).click()
   await expect(page.getByRole("heading", { name: "Not registered" })).toBeVisible()
-  expect(new URL(page.url()).searchParams.get("registration")).toBe(registrationId)
+  expect(await shownRegistration(page)).toBe(registrationId)
   const { code: held } = await control(request, "code", { minLength: 6, state: "reserved" }) as { code: string }
   await page.goto("/#/code")
   await codeField(page).fill(held)
@@ -1260,7 +1261,7 @@ test("a view whose sponsor nonce could not be read is read again after 5 then 15
   })
   await payWithCode(page, label, code)
   // the order's stored reveal cleared at its register, and the service's reads of the sponsor's nonce fail for a while from then on
-  await control(request, `stale/${new URL(page.url()).searchParams.get("registration")}`)
+  await control(request, `stale/${await shownRegistration(page)}`)
   await control(request, "search", { unreadSeconds: 18 })
   try {
     await waitRegistered(page, label)

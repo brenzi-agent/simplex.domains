@@ -55,13 +55,39 @@ export async function registrationOf(request: APIRequestContext, invoiceId: stri
 
 export const HANDLE = /^[A-Za-z0-9_-]{22}$/
 
+interface PageOrder { handle: string; invoiceId: string | null; registrationId: string; ownerCode: string }
+
+const pageOrders = (page: Page) => page.evaluate(() => Object.entries({ ...localStorage }).filter(([key]) => key.startsWith("simplex-names:order:"))
+  .map(([, value]) => JSON.parse(value) as PageOrder))
+
 export async function shownOrder(page: Page): Promise<{ handle: string; invoiceId: string | null; registrationId: string }> {
   await page.waitForURL(/\?o=/)
   const handle = new URL(page.url()).searchParams.get("o")!
-  const record = await page.evaluate((h) => Object.values({ ...localStorage }).map((v) => { try { return JSON.parse(v) } catch { return null } })
-    .find((o) => o?.handle === h) as { invoiceId: string | null; registrationId: string } | undefined, handle)
+  const record = (await pageOrders(page)).find((o) => o.handle === handle)
   expect(record, `this browser's record of the order ${handle}`).toBeDefined()
   return { handle, invoiceId: record!.invoiceId, registrationId: record!.registrationId }
+}
+
+export const shownRegistration = async (page: Page) => (await shownOrder(page)).registrationId
+
+export async function shownInvoice(page: Page): Promise<string> {
+  const { invoiceId } = await shownOrder(page)
+  expect(invoiceId, "the invoice of the order on show").not.toBeNull()
+  return invoiceId!
+}
+
+export const handleOf = async (page: Page, invoiceId: string) => (await pageOrders(page)).find((o) => o.invoiceId === invoiceId)?.handle
+
+export async function waitForOrderOf(page: Page, invoiceId: string): Promise<void> {
+  await expect.poll(() => handleOf(page, invoiceId), `this browser's record of the invoice ${invoiceId}`).toBeDefined()
+  const handle = await handleOf(page, invoiceId)
+  await page.waitForURL((url) => url.searchParams.get("o") === handle)
+}
+
+export async function invoiceMade(page: Page, act: () => Promise<void>): Promise<string> {
+  const answered = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/invoice" && r.request().method() === "POST" && r.ok())
+  await act()
+  return ((await (await answered).json()) as { invoiceId: string }).invoiceId
 }
 
 export const BUYER_BITCOIN = p2wpkh(LOCAL.bitcoinHrp, secp256k1.getPublicKey(new Uint8Array(32).fill(7), true))
@@ -388,8 +414,7 @@ export async function qrText(svg: Locator): Promise<string | null> {
 export const CHECKOUT_KEY = "simplex-names-checkout"
 export const checkoutOwnerCode = (page: Page) => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).ownerCode as string, CHECKOUT_KEY)
 // the name code this browser keeps with the order of an invoice
-export const orderOwnerCode = (page: Page, invoiceId: string) => page.evaluate((id) => Object.values({ ...localStorage }).map((v) => { try { return JSON.parse(v) } catch { return null } })
-  .find((o) => o?.invoiceId === id)?.ownerCode as string | undefined, invoiceId)
+export const orderOwnerCode = async (page: Page, invoiceId: string) => (await pageOrders(page)).find((o) => o.invoiceId === invoiceId)?.ownerCode
 
 export const LINKS_HEADING = "Your name's links"
 export const CODE_HEADING = "Save your name code"
@@ -522,11 +547,11 @@ export async function startOrder(page: Page, label: string, opts: OrderOptions =
   await expect(pay).toBeEnabled()
   const ownerCode = await checkoutOwnerCode(page)
   if (opts.shots) await shot(page, `${opts.shots}-checkout`)
-  await pay.click()
-  await page.waitForURL(/\?order=/)
+  const invoiceId = await invoiceMade(page, () => pay.click())
+  await page.waitForURL(/\?o=/)
   // the order's page has replaced the checkout in view, whose Pay a later locator would find otherwise
   await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toHaveCount(0)
-  return { invoiceId: new URL(page.url()).searchParams.get("order")!, ownerCode }
+  return { invoiceId, ownerCode }
 }
 
 const CSP_REPORT = "reportCspViolation"

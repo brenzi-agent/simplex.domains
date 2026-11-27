@@ -8,7 +8,7 @@ import { CARD_FORM_TIMEOUT_MS } from "../src/stripe.ts"
 import {
   blockTimeOf, chainExpiry, channelLink, CHECKOUT_KEY, checkoutOwnerCode, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, LINKS_HEADING, MOCK, mockRegistration, onStep, oracleQuote, payButton, previewsShown, REGISTRATION_MS,
   offCentre, orderOwnerCode, qrText, registeredAnswer, registrationOf, restoreOrder, SAVED, AGREE, agreeToTerms, savedToReview, search, searchName, shot, shownCode, SLOW_FETCH_MS, startOrder, test, TERMS, toCodeStep, toFullReview, toReview, uniqueLabel, waitRegistered, withStripeKey, AVAILABLE_BRIEF, TAKEN_BRIEF,
-  cardFrame, fakeIntent, keepOrder,
+  cardFrame, fakeIntent, keepOrder, invoiceMade, shownInvoice, shownOrder, waitForOrderOf,
 } from "./helpers.ts"
 
 // the card form these tests pay with is the dev server's stand-in; a production build loads Stripe's own
@@ -342,9 +342,9 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await expect(step.getByRole("checkbox", { name: AGREE }), "the terms stay agreed to").toBeChecked()
 
   await payButton(page).click()
-  await page.waitForURL(/\?order=/)
+  await page.waitForURL(/\?o=/)
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
-  const invoiceId = new URL(page.url()).searchParams.get("order")!
+  const { handle, invoiceId } = await shownOrder(page)
   await control(request, `settle/${invoiceId}`)
   await expect(page.getByRole("heading", { name: `Registering ${label}.simplex` })).toBeVisible({ timeout: REGISTRATION_MS })
   await expect(page.getByTestId("owner-code"), "the code was saved before paying").toHaveCount(0)
@@ -399,7 +399,7 @@ test("a purchase walks the steps a buyer expects, and the links set before payin
   await row.getByRole("button", { name: "Edit links" }).click()
   await expect(page.getByRole("heading", { name: "Edit links" })).toBeVisible()
   await expect(onStep(page).locator(".lead")).toContainText(`${label}.simplex.`)
-  expect(new URL(page.url()).hash).toBe(`#/edit/${await registrationOf(request, invoiceId)}`)
+  expect(new URL(page.url()).hash).toBe(`#/edit/${handle}`)
   const link = page.getByRole("textbox", { name: "Link", exact: true })
   await expect(link).toHaveValue(contact)
 
@@ -743,7 +743,8 @@ test("the owner code restores an order in another browser, and a bad code is ref
   await codeField(page2).fill(ownerCode.toLowerCase().replaceAll("-", " "))
   // reached from the order's page, the code found goes back to its order
   await onStep(page2).getByRole("button", { name: "Add to Your names" }).click()
-  await page2.waitForURL((url) => url.searchParams.get("order") === invoiceId)
+  await page2.waitForURL(/\?o=/)
+  expect(await shownInvoice(page2)).toBe(invoiceId)
   await waitRegistered(page2, label)
   await expect(await shownCode(page2), "the restored browser holds the code").toHaveText(ownerCode)
   await other.close()
@@ -850,9 +851,8 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   // an order made again is agreed to again
   await expect(payButton(page)).toBeDisabled()
   await agreeToTerms(page)
-  await payButton(page).click()
-  await page.waitForURL((url) => (url.searchParams.get("order") ?? invoiceId) !== invoiceId)
-  const second = new URL(page.url()).searchParams.get("order")!
+  const second = await invoiceMade(page, () => payButton(page).click())
+  await waitForOrderOf(page, second)
   expect(await checkoutOwnerCode(page).catch(() => null), "the checkout ended").toBeNull()
   expect(await orderOwnerCode(page, second), "the new order's name code").toBe(ownerCode)
   await control(request, `expire/${second}`)
@@ -860,9 +860,8 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   await shot(page, "N4c-expired")
 
-  await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== second)
-  const third = new URL(page.url()).searchParams.get("order")!
+  const third = await invoiceMade(page, () => page.getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(page, third)
   await control(request, `partial/${third}`)
   await control(request, `expire/${third}`)
   await expect(page.getByText(/BTC arrived, which is not the full amount/)).toBeVisible()
@@ -893,9 +892,9 @@ test("a name searched again after its invoice was cancelled keeps that order's n
   // the cancelled order is not live, so the same code orders the name again
   await onStep(page).getByRole("button", { name: "Continue" }).click()
   await agreeToTerms(page)
-  await payButton(page).click()
-  await page.waitForURL((url) => (url.searchParams.get("order") ?? invoiceId) !== invoiceId)
-  expect(await orderOwnerCode(page, new URL(page.url()).searchParams.get("order")!), "the new order's name code").toBe(ownerCode)
+  const next = await invoiceMade(page, () => payButton(page).click())
+  await waitForOrderOf(page, next)
+  expect(await orderOwnerCode(page, next), "the new order's name code").toBe(ownerCode)
   await page.goto("/#/names")
   await expect(page.locator(".list-row", { hasText: "Checkout not finished" }), "no new code is left pending").toHaveCount(0)
 })
@@ -908,11 +907,10 @@ test("a replaced invoice leads to its new order until a late payment reaches it"
   const { invoiceId, ownerCode } = await startOrder(page, label, { method: "xmr" })
   await control(request, `expire/${invoiceId}`)
   await page.waitForTimeout(ORDER_SECOND_MS)
-  await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
-  const second = new URL(page.url()).searchParams.get("order")!
+  const second = await invoiceMade(page, () => page.getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(page, second)
   await page.goto(`/?order=${invoiceId}`)
-  await page.waitForURL((url) => url.searchParams.get("order") === second)
+  await waitForOrderOf(page, second)
   await page.goto("/#/names")
   await expect(row(page).locator(".chip")).toHaveText(["Waiting for payment"])
 
@@ -920,14 +918,14 @@ test("a replaced invoice leads to its new order until a late payment reaches it"
   const other = await browser.newContext()
   const restored = await other.newPage()
   await restoreOrder(restored, ownerCode, label)
-  await restored.waitForURL((url) => url.searchParams.get("order") === second)
+  await waitForOrderOf(restored, second)
   await restored.goto(`/?order=${invoiceId}`)
-  await restored.waitForURL((url) => url.searchParams.get("order") === second)
+  await waitForOrderOf(restored, second)
 
   // the service has forgotten the old invoice; this browser still knows what replaced it
   await page.route(`**/api/invoice/${invoiceId}*`, (route) => route.fulfill({ status: 404, json: { type: "not_found" } }))
   await page.goto(`/?order=${invoiceId}`)
-  await page.waitForURL((url) => url.searchParams.get("order") === second)
+  await waitForOrderOf(page, second)
   await page.unroute(`**/api/invoice/${invoiceId}*`)
 
   await control(request, `settle/${invoiceId}`)
@@ -936,13 +934,13 @@ test("a replaced invoice leads to its new order until a late payment reaches it"
     await expect(p.getByText("The payment arrived after this invoice had closed")).toBeVisible()
     await expect(onStep(p).getByText(/Once confirmed|not the full amount/), "all of it arrived and is credited").toHaveCount(0)
     await expect(p.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
-    expect(new URL(p.url()).searchParams.get("order")).toBe(invoiceId)
+    expect(await shownInvoice(p)).toBe(invoiceId)
     await p.goto("/#/names")
     await expect(row(p).locator(".chip")).toHaveText(["Waiting for payment", "Paid late"])
     await expect(row(p).nth(1)).toContainText(`reference ${invoiceId}`)
     await p.goto(`/?order=${invoiceId}`)
     await p.getByRole("button", { name: "Open the new invoice" }).click()
-    await p.waitForURL((url) => url.searchParams.get("order") === second)
+    await waitForOrderOf(p, second)
   }
   await other.close()
 })
@@ -952,9 +950,8 @@ test("an invoice that received part of its payment and was replaced leads on to 
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await control(request, `partial/${invoiceId}`)
   await control(request, `expire/${invoiceId}`)
-  await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
-  const second = new URL(page.url()).searchParams.get("order")!
+  const second = await invoiceMade(page, () => page.getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(page, second)
   await control(request, `settle/${invoiceId}`)
   await page.goto(`/?order=${invoiceId}`)
   await expect(page.getByText("The payment arrived after this invoice had closed")).toBeVisible()
@@ -963,7 +960,7 @@ test("an invoice that received part of its payment and was replaced leads on to 
   await expect(page.locator(".list-row:visible", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText(["Waiting for payment", "Paid late"])
   await page.goto(`/?order=${invoiceId}`)
   await page.getByRole("button", { name: "Open the new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") === second)
+  await waitForOrderOf(page, second)
 })
 
 test("an invoice that closed while its payment was confirming says a payment reached it, on its page and in Your names", async ({ page, request }) => {
@@ -1012,9 +1009,8 @@ test("a part payment on a closed invoice, once credited, says so and gets an inv
   expect(await actions.locator(".btn").boundingBox(), "the main button stays where it was").toEqual(place)
   await expect(actions.locator(".alt a")).toHaveText(["Get a refund"])
   await shot(page, "N4g-part-credited")
-  await actions.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
-  const second = new URL(page.url()).searchParams.get("order")!
+  const second = await invoiceMade(page, () => actions.getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(page, second)
   const invoice = async (id: string) => (await request.get(`${MOCK}/control/invoice/${id}`)).json()
   const [closed, whole] = [await invoice(invoiceId), await invoice(second)]
   expect([whole.amount, whole.registration.price, whole.registration.payment, whole.registration.labelHash], "the whole price, for the same name")
@@ -1121,11 +1117,10 @@ test("a browser restored before another browser made a new invoice carries on wi
   const other = await browser.newContext()
   const restored = await other.newPage()
   await restoreOrder(restored, ownerCode, label)
-  await restored.waitForURL((url) => url.searchParams.get("order") === invoiceId)
+  await waitForOrderOf(restored, invoiceId)
   await control(request, `expire/${invoiceId}`)
-  await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
-  const second = new URL(page.url()).searchParams.get("order")!
+  const second = await invoiceMade(page, () => page.getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(page, second)
   await page.close()
 
   await restored.goto(`/?order=${second}`)
@@ -1138,7 +1133,7 @@ test("a browser restored before another browser made a new invoice carries on wi
   await restored.goto("/#/names")
   await expect(restored.locator(".list-row:visible", { hasText: `${label}.simplex` }).locator(".chip")).toHaveText(["Waiting for payment"])
   await restored.goto(`/?order=${invoiceId}`)
-  await restored.waitForURL((url) => url.searchParams.get("order") === second)
+  await waitForOrderOf(restored, second)
   await control(request, `settle/${second}`)
   await waitRegistered(restored, label)
   await other.close()
@@ -1202,19 +1197,18 @@ test("a restored browser that never opened another browser's newer invoice finds
   const other = await browser.newContext()
   const restored = await other.newPage()
   await restoreOrder(restored, ownerCode, label)
-  await restored.waitForURL((url) => url.searchParams.get("order") === invoiceId)
+  await waitForOrderOf(restored, invoiceId)
   await restored.goto("/#/")
   await control(request, `expire/${invoiceId}`)
-  await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
-  const second = new URL(page.url()).searchParams.get("order")!
+  const second = await invoiceMade(page, () => page.getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(page, second)
   await control(request, `settle/${second}`)
   await waitRegistered(page, label)
 
   // the service has forgotten the old invoice by now; the code still finds the order that replaced it
   await restored.route(`**/api/invoice/${invoiceId}*`, (route) => route.fulfill({ status: 404, json: { type: "not_found" } }))
   await restored.goto(`/?order=${invoiceId}`)
-  await restored.waitForURL((url) => url.searchParams.get("order") === second)
+  await waitForOrderOf(restored, second)
   await restored.unroute(`**/api/invoice/${invoiceId}*`)
   await restored.goto("/#/names")
   const row = restored.locator(".list-row:visible", { hasText: `${label}.simplex` })
@@ -1228,9 +1222,8 @@ test("a forgotten empty invoice never leads back to the older invoice it replace
   const { invoiceId } = await startOrder(page, label, { method: "btc" })
   await control(request, `expire/${invoiceId}`)
   await page.waitForTimeout(ORDER_SECOND_MS)
-  await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
-  const second = new URL(page.url()).searchParams.get("order")!
+  const second = await invoiceMade(page, () => page.getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(page, second)
   const secondRegistration = await registrationOf(request, second)
   await control(request, `expire/${second}`)
   await control(request, `settle/${invoiceId}`)
@@ -1243,7 +1236,7 @@ test("a forgotten empty invoice never leads back to the older invoice it replace
   })
   await page.goto(`/?order=${second}`)
   await expect(page.getByRole("heading", { name: "This link does not work" })).toBeVisible()
-  expect(new URL(page.url()).searchParams.get("order")).toBe(second)
+  expect(await shownInvoice(page)).toBe(second)
 })
 
 test("a forgotten order whose code's lookup is refused says the link does not work", async ({ page }) => {
@@ -1274,7 +1267,7 @@ test("an order link whose order the service does not know says so, in the browse
 
 test("a card form that does not load says so and offers a new invoice", async ({ page }) => {
   const label = uniqueLabel("nocard")
-  const { invoiceId } = await startOrder(page, label, { method: "card" })
+  await startOrder(page, label, { method: "card" })
   // Stripe.js is blocked here
   await withStripeKey(page)
   await page.route("https://js.stripe.com/**", (route) => route.abort())
@@ -1282,14 +1275,12 @@ test("a card form that does not load says so and offers a new invoice", async ({
   await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
   await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
   await shot(page, "N10a-card-not-loaded")
-  await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
+  const card = await invoiceMade(page, () => page.getByRole("button", { name: "Get a new invoice" }).click())
+  await waitForOrderOf(page, card)
   await expect(page.getByRole("heading", { name: "Card payment not confirmed" })).toBeVisible()
   await expect(page.getByText("Stripe's form was blocked or failed to load. Nothing was charged.")).toBeVisible()
   // or the coins: the card invoice is cancelled and the name ordered again, paid with the coin chosen
-  const card = new URL(page.url()).searchParams.get("order")!
-  await page.getByRole("button", { name: "Pay with Monero" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== card)
+  await waitForOrderOf(page, await invoiceMade(page, () => page.getByRole("button", { name: "Pay with Monero" }).click()))
   await expect(page.getByRole("heading", { name: "Pay with Monero" })).toBeVisible()
   const cancelled = await (await page.request.get(`${MOCK}/control/invoice/${card}`)).json() as { status: string }
   expect(cancelled.status, "the card invoice").toBe("expired")

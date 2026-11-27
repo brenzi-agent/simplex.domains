@@ -36,6 +36,7 @@ const DAPP_URL = "https://app.simplex.domains"
 const SIGNED_WINDOW_S = 600
 
 const years = (c: session.Checkout) => api.termYears(c.community, c.code?.years ?? c.years)
+const orderHandle = ({ order }: session.Checkout) => order && store.orderByRegistration(order.registrationId)?.handle
 // a card order waiting for Stripe holds a second paid order; an order with a code, or with a taken order's payment, is no second charge, so it holds none
 const blockedBy = ({ checkout, waiting, codesOnly }: CheckoutState) => checkout.code || checkout.order || codesOnly ? null : waiting
 const payLabel = (c: session.Checkout, codesOnly: boolean) => c.code || c.order?.method === "code" || codeEntry(c, codesOnly) === "field" ? "Register with your code"
@@ -43,7 +44,7 @@ const payLabel = (c: session.Checkout, codesOnly: boolean) => c.code || c.order?
 
 function waitingCardOrder(): WaitingOrder | null {
   const order = store.orders().find((o) => o.method === "card" && o.cardSubmittedAt && o.invoiceId)
-  return order ? { registrationId: order.registrationId, invoiceId: order.invoiceId! } : null
+  return order ? { registrationId: order.registrationId, invoiceId: order.invoiceId!, handle: order.handle } : null
 }
 
 let state: CheckoutState
@@ -153,7 +154,7 @@ async function showOpenOrder(signal: AbortSignal): Promise<void> {
   const open = invoices[at]
   if (!open || signal.aborted) return
   const show = (seen: api.InvoiceView | null) => {
-    const order = unpaid(seen) ? { invoiceId: open.invoiceId, confirming: seen.paidInFull === true } : null
+    const order = unpaid(seen) ? { handle: recent[at].handle, confirming: seen.paidInFull === true } : null
     if (!signal.aborted && JSON.stringify(order) !== JSON.stringify(state.openOrder)) dispatch({ type: "open-order-seen", order })
     return order !== null
   }
@@ -226,7 +227,7 @@ function methodsBlock({ checkout: c, openOrder: order, sending }: CheckoutState)
   })
   return el("section", { class: "pay-with" },
     order ? el("p", { class: "note other-order" }, `Another order ${order.confirming ? "is confirming its payment" : "is waiting for its payment"}. `,
-      el("a", { class: "nowrap", href: store.invoiceUrl(order.invoiceId) }, "Open that order")) : null,
+      el("a", { class: "nowrap", href: store.orderUrl(order) }, "Open that order")) : null,
     c.unavailable ? line("warn", "alert", `${methodName(c.unavailable)} is temporarily unavailable. Try another method, or come back later.`) : null,
     el("div", { class: "methods", role: "radiogroup", "aria-label": "Pay with" }, ...radios))
 }
@@ -281,7 +282,7 @@ function removeLink(s: CheckoutState): HTMLAnchorElement | null {
 
 const waitingNotice = (blocked: WaitingOrder) => el("section", { class: "pay-with" },
   alertBox("info", "info", "You have an order waiting to be confirmed", "A second order would be a second charge, so this one cannot start yet. When that payment is confirmed or expires, you can start a new one here."),
-  el("div", {}, btn("Open the waiting order", "quiet", () => go(store.invoiceUrl(blocked.invoiceId)))))
+  el("div", {}, btn("Open the waiting order", "quiet", () => go(store.orderUrl(blocked)))))
 
 const actionLabel = (text: string, s: CheckoutState) => s.sending && !s.busy ? "Sending your order…" : text
 
@@ -333,7 +334,7 @@ function buildLinks(s: CheckoutState): HTMLElement {
   const linked = hasLinks(c)
   const skip = linked ? null : link("Skip for now", () => go(checkoutUrl("review")))
   skip?.setAttribute("data-focus", "skip")
-  return screen({ title: "Your name's links", back: searchLink(c.label, c.order?.registrationId),
+  return screen({ title: "Your name's links", back: searchLink(c.label, orderHandle(c)),
     lead: ["Paste your SimpleX contact address or channel link. ", el("span", { class: "nowrap" }, "You can change it later.")],
     alt: skip, action: continueButton(() => void linksDone(links.fields()), !linked, awaitingChecks) },
     el("span", { class: "label" }, "Link"), links.node)
@@ -388,17 +389,17 @@ function buildReview(s: CheckoutState, signal: AbortSignal): HTMLElement {
 function buildPriceChanged({ checkout: c }: CheckoutState): HTMLElement {
   return outcome({ tone: "warn", icon: "alert", title: "The price changed",
     text: [nameText(c.label, SITE.tld), ` costs ${dollars(c.price)} now; it changed while you were deciding. Nothing was charged.`],
-    action: btn("Search again", "", () => go(searchLink(c.label, c.order?.registrationId))) })
+    action: btn("Search again", "", () => go(searchLink(c.label, orderHandle(c)))) })
 }
 
 function buildTooMany({ checkout: c, hold }: CheckoutState, signal: AbortSignal): HTMLElement {
   holdEnds(signal)(hold !== null)
-  return limitScreen(hold, refresh, searchLink(c.label, c.order?.registrationId), signal)
+  return limitScreen(hold, refresh, searchLink(c.label, orderHandle(c)), signal)
 }
 
 function buildTaken({ checkout: c }: CheckoutState): HTMLElement {
   return outcome({ tone: "info", icon: "info", title: "This name is no longer available", text: [nameText(c.label, SITE.tld), " is no longer available."],
-    action: btn("Search another name", "", () => go(searchLink("", c.order?.registrationId))) })
+    action: btn("Search another name", "", () => go(searchLink("", orderHandle(c)))) })
 }
 
 function buildFailed(s: CheckoutState): HTMLElement {
@@ -406,7 +407,7 @@ function buildFailed(s: CheckoutState): HTMLElement {
   // the same order is sent again from here; Back leaves it for the search
   const retry = setAction(btn("Try again", "", () => void submitOrder()), s.busy, false)
   return outcome({ tone: "danger", icon: "alert", title: "That did not go through", text: ["Nothing was charged. If this happens again, ", ...supportVia("contact"), "."],
-    action: retry, alt: link("Back", () => go(searchLink(c.label, c.order?.registrationId))) })
+    action: retry, alt: link("Back", () => go(searchLink(c.label, orderHandle(c)))) })
 }
 
 const buildRefusedLink = (kind: LinkKind) => (): HTMLElement =>
@@ -415,12 +416,12 @@ const buildRefusedLink = (kind: LinkKind) => (): HTMLElement =>
 function buildUnavailable(s: CheckoutState): HTMLElement {
   const retry = setAction(btn("Try again", "", () => void submitOrder()), s.busy, false)
   return outcome({ tone: "warn", icon: "alert", title: NO_ORDERS, text: "Its terms can't be read now. Nothing was charged. Try again later.",
-    action: retry, alt: link("Back", () => go(searchLink(s.checkout.label, s.checkout.order?.registrationId))) })
+    action: retry, alt: link("Back", () => go(searchLink(s.checkout.label, orderHandle(s.checkout)))) })
 }
 
 function buildDowntime({ checkout: c }: CheckoutState): HTMLElement {
   return outcome({ tone: "info", icon: "clock", title: NEW_ORDERS_SOON, text: "Nothing was charged.",
-    action: btn("Search again", "", () => go(searchLink(c.label, c.order?.registrationId))) })
+    action: btn("Search again", "", () => go(searchLink(c.label, orderHandle(c)))) })
 }
 
 // a page opened before the service took codes only; the code entered there registers the name searched again for free
@@ -470,7 +471,7 @@ async function sendOrder(): Promise<void> {
   // The order is kept whatever the buyer did meanwhile. Its checkout ends, and the order opens, only while this checkout
   // is still the tab's: the buyer may have started another name, by Back and Forward too.
   const mine = currentRoute()
-  const search = searchLink(c.label, c.order?.registrationId)
+  const search = searchLink(c.label, orderHandle(c))
   const done = (url: string) => {
     const current = session.checkout()
     const ours = current?.label === c.label && current.ownerCode === c.ownerCode
@@ -504,12 +505,14 @@ async function sendOrder(): Promise<void> {
         const res = await api.registerWithCode(built.request, c.code.display)
         // the code is the order's now, so this tab registers no other name with it
         session.dropActiveCode(c.code.display)
-        store.saveOrder({ ...flow.recordFor(draft, built, "code", 0, { registrationId: res.registrationId, invoiceId: null }), years: c.code.years, prepaidCode: c.code.display })
-        return done(store.orderUrl({ invoiceId: null, registrationId: res.registrationId }))
+        const record = { ...flow.recordFor(draft, built, "code", 0, { registrationId: res.registrationId, invoiceId: null }), years: c.code.years, prepaidCode: c.code.display }
+        store.saveOrder(record)
+        return done(store.orderUrl(record))
       }
       const res = await api.createOrder(built.request, method, c.price)
-      store.saveOrder({ ...flow.recordFor(draft, built, method, res.registration.price, { registrationId: res.registration.id, invoiceId: res.invoiceId }), years: c.years, ...flow.payeeOf(res) })
-      done(store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id }))
+      const record = { ...flow.recordFor(draft, built, method, res.registration.price, { registrationId: res.registration.id, invoiceId: res.invoiceId }), years: c.years, ...flow.payeeOf(res) }
+      store.saveOrder(record)
+      done(store.orderUrl(record))
     } catch (e) {
       if (!(e instanceof api.ApiError && e.code === "order_exists")) throw e
       // this name code already has a live order for the name, which it opens instead

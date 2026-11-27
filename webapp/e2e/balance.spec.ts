@@ -126,7 +126,7 @@ test("the name code shows the balance in another browser, and a refund support r
   await expect(onStep(page).getByText("Get a refund")).toHaveCount(0)
   await onStep(page).getByRole("button", { name: "Choose another name" }).click()
   await expect(page.getByRole("heading", { name: "Your SimpleX domain" })).toBeVisible()
-  expect(page.url()).not.toContain("order=")
+  expect(new URL(page.url()).hash).toBe("#/?name=")
 })
 
 // the service worker of a production build answers these pages before Playwright's routes in WebKit

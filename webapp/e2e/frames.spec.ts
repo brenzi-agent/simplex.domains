@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test"
 import {
-  agreeToTerms, ALTERNATE_GENERAL_TERMS, CODE_HEADING, contactLink, control, LINKS_HEADING, okPreview, onStep, payButton, recordedFrames, recordFrames, REGISTRATION_MS, SAVED, search, startOrder,
+  agreeToTerms, ALTERNATE_GENERAL_TERMS, CODE_HEADING, contactLink, control, LINKS_HEADING, okPreview, onStep, payButton, recordedFrames, recordFrames, REGISTRATION_MS, SAVED, search, shownInvoice, startOrder,
   takenHeading, test, toFullReview, toReview, uniqueLabel,
 } from "./helpers.ts"
 
@@ -107,7 +107,7 @@ test("the purchase steps and other screens swap without a near-empty frame", asy
     await heading(page, "Pay with Bitcoin")
   })
 
-  const invoiceId = new URL(page.url()).searchParams.get("order")!
+  const invoiceId = await shownInvoice(page)
   await expectNoEmptyFrame(page, "payment to confirming", async () => {
     await control(request, `confirming/${invoiceId}`)
     await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible()

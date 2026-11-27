@@ -34,8 +34,8 @@ const chip = () => document.querySelector<HTMLElement>(".code-chip")!
 
 function choosingFor(): store.OrderRecord | null {
   const [path, query] = location.hash.slice(1).split("?")
-  const id = (path || "/") === "/" && query ? new URLSearchParams(query).get("order") : null
-  return id ? store.orderByRegistration(id) ?? null : null
+  const handle = (path || "/") === "/" && query ? new URLSearchParams(query).get("o") : null
+  return handle ? store.orderByHandle(handle) ?? null : null
 }
 
 function orderWords(order: store.OrderRecord): (Node | string)[] {

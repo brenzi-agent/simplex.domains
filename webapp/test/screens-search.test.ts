@@ -17,7 +17,7 @@ const TAKEN: SearchAnswer = { found: { type: "registered", entities: [], owner: 
 
 function record(change: Partial<OrderRecord> = {}): OrderRecord {
   return {
-    registrationId: "reg-1", invoiceId: "inv-1", label: "alice1", ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: OWNER, contact: "", channel: "",
+    registrationId: "reg-1", handle: "h-reg-1", invoiceId: "inv-1", label: "alice1", ownerCode: "SN-AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF", owner: OWNER, contact: "", channel: "",
     method: "btc", paid: 1500, years: 2, request: { duration: 2 * 365 * 86400, labelHash: "0x4f1b", length: 6, owner: OWNER, commitment: "0x9c11", sealed: "sealed-box" },
     tld: "simplex", createdAt: "2026-10-17T11:59:00Z", ...change,
   }

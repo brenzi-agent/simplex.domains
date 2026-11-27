@@ -6,7 +6,7 @@ import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import { TX_STALL_MS } from "../src/screens/order.ts"
 import {
   AVAILABLE_BRIEF, brokenNames, channelLink, CHECKOUT_KEY, CODE_HEADING, codeField, contactLink, control, fakeRegisteredName, fillLinks, FIT_SIZES, keepOrder, type KeptOrder, LINKS_HEADING, okPreview, onStep, payButton, previewsShown, SAVED,
-  lineStarts, offCentre, recordedFrames, recordFrames, REGISTRATION_MS, registeredAnswer, registrationOf, registrationView, rowFit, savedToReview, search, shot, startOrder, takenOrder, TERMS, test, toCodeStep,
+  lineStarts, offCentre, recordedFrames, recordFrames, REGISTRATION_MS, registeredAnswer, registrationOf, registrationView, rowFit, savedToReview, search, shot, shownInvoice, startOrder, takenOrder, TERMS, test, toCodeStep,
   TAKEN_BRIEF, toFullReview, toReview, uniqueLabel, useCode, waitRegistered, withStripeKey, cardFrame, cardFrameOf, fakeIntent,
 } from "./helpers.ts"
 
@@ -159,10 +159,10 @@ test("every purchase step fits a laptop's and a phone's window, its heading and 
   await fitsWindow(page, "4-review", frames)
   await backInView(page, "review")
   await payButton(page).click()
-  await page.waitForURL(/\?order=/)
+  await page.waitForURL(/\?o=/)
   await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
   await fitsWindow(page, "5-pay-bitcoin", frames)
-  const invoiceId = new URL(page.url()).searchParams.get("order")
+  const invoiceId = await shownInvoice(page)
   await control(request, `confirming/${invoiceId}`)
   await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible()
   await fitsWindow(page, "5c-confirming", frames)
@@ -368,7 +368,7 @@ test.describe(() => {
     await page.getByRole("radio", { name: "Card" }).click()
     const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
     await payButton(page).click()
-    await page.waitForURL(/\?order=/)
+    await page.waitForURL(/\?o=/)
     // a copy of the tab, with its checkout and name code, pays with Bitcoin, and the order's card invoice opens instead
     const copy = await page.context().newPage()
     await copy.addInitScript(([key, value]) => { if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, value) }, [CHECKOUT_KEY, checkout])
@@ -377,7 +377,7 @@ test.describe(() => {
       await copy.goto("/#/checkout")
       await copy.getByRole("radio", { name: "Bitcoin" }).click()
       await payButton(copy).click()
-      await copy.waitForURL(/\?order=/)
+      await copy.waitForURL(/\?o=/)
     }, heldPrice(label.length))
   })
 })
@@ -713,7 +713,7 @@ test("a page loaded directly on a phone draws its invest note where its first fr
   test.skip(!process.env.BASE_URL, "the dev server styles the page from its script, so only the build paints a frame before the page is drawn")
   await page.setViewportSize(SHORT_PHONE)
   await recordFrames(page, () => document.querySelector("body > .invest")?.getBoundingClientRect().top ?? null, true)
-  for (const route of ["/", "/#/names", "/#/namesx", "/#/code", "/#/codes", "/#/trademarks", "/#/edit/nosuchname", "/#/checkout/links", "/?order=nosuchorder", "/?order="]) {
+  for (const route of ["/", "/#/names", "/#/namesx", "/#/code", "/#/codes", "/#/trademarks", "/#/edit/nosuchname", "/#/checkout/links", "/?o=nosuchhandle", "/?order=nosuchorder", "/?order="]) {
     // a document of its own each time, as a route reached by its hash alone is drawn in the page already there
     await page.goto("about:blank")
     await page.goto(route)
@@ -780,10 +780,10 @@ for (const length of [15, 25, MAX_LABEL_LENGTH]) {
     await savedToReview(page)
     await fitsWindow(page, `${shots}-4-review`, frames)
     await payButton(page).click()
-    await page.waitForURL(/\?order=/)
+    await page.waitForURL(/\?o=/)
     await expect(page.getByRole("heading", { name: "Pay with Bitcoin" })).toBeVisible()
     await fitsWindow(page, `${shots}-5-pay-bitcoin`, frames)
-    await control(request, `settle/${new URL(page.url()).searchParams.get("order")}`)
+    await control(request, `settle/${await shownInvoice(page)}`)
     await expect(page.locator(".stage.active", { hasText: "Waiting" })).toBeVisible({ timeout: REGISTRATION_MS })
     await fitsWindow(page, `${shots}-6-registering`)
     await waitRegistered(page, label)

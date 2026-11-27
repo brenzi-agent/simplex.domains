@@ -4,7 +4,7 @@ import { labelHash } from "../src/crypto/registration.ts"
 import { hex } from "../src/crypto/wallet.ts"
 import { dateOf } from "../src/format.ts"
 import {
-  agreeToTerms, checkoutOwnerCode, codeField, control, LINKS_HEADING, onStep, orderOwnerCode, payButton, recordedFrames, recordFrames, REGISTRATION_MS, registeredAnswer, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel,
+  agreeToTerms, checkoutOwnerCode, codeField, control, invoiceMade, LINKS_HEADING, onStep, orderOwnerCode, payButton, recordedFrames, recordFrames, REGISTRATION_MS, registeredAnswer, search, searchName, shot, startOrder, test, toCodeStep, toReview, uniqueLabel,
   waitRegistered,
 } from "./helpers.ts"
 
@@ -184,15 +184,16 @@ test("without storage two expired invoices of one order do not lead to each othe
   })
   const page = await context.newPage()
   const { invoiceId } = await startOrder(page, uniqueLabel("loop"), { method: "btc" })
+  const first = page.url()
   await control(request, `expire/${invoiceId}`)
-  await page.getByRole("button", { name: "Get a new invoice" }).click()
-  await page.waitForURL((url) => url.searchParams.get("order") !== invoiceId)
-  const second = new URL(page.url()).searchParams.get("order")!
+  const second = await invoiceMade(page, () => page.getByRole("button", { name: "Get a new invoice" }).click())
+  await page.waitForURL((url) => url.href !== first)
+  const link = page.url()
   await control(request, `expire/${second}`)
   await expect(page.getByRole("heading", { name: "Invoice closed" })).toBeVisible()
   // a redirect loop would move the page off this invoice within a poll or two
   await page.waitForTimeout(3000)
-  expect(new URL(page.url()).searchParams.get("order")).toBe(second)
+  expect(page.url()).toBe(link)
   await expect(page.getByRole("button", { name: "Get a new invoice" })).toBeEnabled()
   await context.close()
 })
@@ -213,9 +214,9 @@ test("a new invoice for a method that is unavailable says so and offers another 
   await onStep(page).getByRole("button", { name: "Skip for now" }).click()
   await expect(onStep(page).getByRole("heading", { name: "Check your order" })).toBeVisible()
   await agreeToTerms(page)
-  await payButton(page).click()
-  await page.waitForURL((url) => (url.searchParams.get("order") ?? invoiceId) !== invoiceId)
-  expect(await orderOwnerCode(page, new URL(page.url()).searchParams.get("order")!), "the new order's name code").toBe(ownerCode)
+  const next = await invoiceMade(page, () => payButton(page).click())
+  await page.waitForURL(/\?o=/)
+  expect(await orderOwnerCode(page, next), "the new order's name code").toBe(ownerCode)
 })
 
 test("a double click acts once, whatever the redrawn page puts under the pointer", async ({ page }) => {

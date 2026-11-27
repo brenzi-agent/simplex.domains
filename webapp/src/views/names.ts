@@ -320,7 +320,7 @@ function orderRow(o: store.OrderRecord, s: ListState): HTMLElement {
   const shown = code !== null && s.shownCode === id
   const edits = registered && !lapsed(seen.view, s.now) && (!seen.answer || editable(seen.answer, o.owner))
   const acts = code === null ? [small("Open", `${id}-open`, () => go(store.orderUrl(o)))]
-    : [codeToggle(id, shown), edits ? small(linksAction(hasLinks(o, seen.answer)), `${id}-edit`, () => go(editUrl(id))) : null]
+    : [codeToggle(id, shown), edits ? small(linksAction(hasLinks(o, seen.answer)), `${id}-edit`, () => go(editUrl(o.handle))) : null]
   const community = seen?.view.community ?? null
   // a registered name shows the chats it opens, each opening its popup as the home's answer does
   const chats = registered && seen.answer?.found.type === "registered"
@@ -493,8 +493,8 @@ function buildCheck(c: typeof check, signal: AbortSignal): HTMLElement {
 let edit: EditState = initialEdit("", null)
 let editRoute = -1
 
-export function editPage(registrationId: string): void {
-  edit = initialEdit(registrationId, store.orderByRegistration(registrationId) ?? null)
+export function editPage(handle: string): void {
+  edit = initialEdit(handle, store.orderByHandle(handle) ?? null)
   editRoute = currentRoute()
   if (screenOfEdit(edit) === "edit-no-code") return dispatchEdit({ type: "opened" })
   drawLoading("Reading the name…", asStep)
@@ -528,7 +528,7 @@ async function readEdit(route: number): Promise<void> {
     // a forgotten unpaid order may have a newer one, found with the code
     const newer = e instanceof api.ApiError && e.code === "not_found" ? await flow.newerOrder(stored).catch(() => null) : null
     if (!isRoute(route)) return
-    if (newer) return redirect(editUrl(newer.registrationId))
+    if (newer) return redirect(editUrl(newer.handle))
     return answerEdit(route, { type: "read-failed" })
   }
   if (!isRoute(route)) return
@@ -536,7 +536,7 @@ async function readEdit(route: number): Promise<void> {
     // the name may have been registered through a newer invoice that another browser made, perhaps under another name
     const newer = await flow.newerOrder(record).catch(() => null)
     if (!isRoute(route)) return
-    if (newer) return redirect(editUrl(newer.registrationId))
+    if (newer) return redirect(editUrl(newer.handle))
   }
   dispatchEdit({ type: "answered", view, answer, record, now: api.serviceNow(), hold: tabHold() })
 }

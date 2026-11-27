@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { type CheckoutStep, checkoutStepOf, checkoutUrl, CODE_FROM_ORDER_URL, CODE_URL, EDIT_PATH, editUrl, fromOrder, type View, viewOf } from "../src/screens/routes.ts"
+import { type CheckoutStep, checkoutStepOf, checkoutUrl, CODE_FROM_ORDER_URL, CODE_URL, EDIT_PATH, editUrl, fromOrder, orderLinkOf, type View, viewOf } from "../src/screens/routes.ts"
 
 describe("viewOf", () => {
   const cases: [string, string, View][] = [
+    ["?o=Hd1_x-K2", "/", "order"],
     ["?order=inv1", "/", "order"],
     ["?registration=reg1", "/names", "order"],
     ["", "/checkout", "checkout"],
@@ -26,6 +27,15 @@ describe("viewOf", () => {
       expect(viewOf(new URLSearchParams(query), path)).toBe(view)
     })
   }
+})
+
+describe("orderLinkOf", () => {
+  it("reads an order's handle, or an older link's invoice or registration, the handle first", () => {
+    expect(orderLinkOf(new URLSearchParams("o=Hd1&order=inv1"))).toEqual({ handle: "Hd1" })
+    expect(orderLinkOf(new URLSearchParams("order=inv1&registration=reg1"))).toEqual({ invoiceId: "inv1", registrationId: null })
+    expect(orderLinkOf(new URLSearchParams("registration=reg1"))).toEqual({ invoiceId: null, registrationId: "reg1" })
+    expect(orderLinkOf(new URLSearchParams("o=&order="))).toBeNull()
+  })
 })
 
 describe("checkoutStepOf and checkoutUrl", () => {

@@ -9,8 +9,8 @@ export const FALLBACK_METHOD: Record<Method, Method> = { card: "btc", btc: "xmr"
 export type Refusal = "price-changed" | "too-many" | "failed" | "taken" | "unavailable" | "codes-only" | "downtime" | `link-${LinkKind}`
 export type CheckoutKind = CheckoutStep | `status:${Refusal}`
 
-export interface WaitingOrder { registrationId: string; invoiceId: string }
-interface OpenOrder { invoiceId: string; confirming: boolean }
+export interface WaitingOrder { registrationId: string; invoiceId: string; handle: string }
+interface OpenOrder { handle: string; confirming: boolean }
 
 export interface CheckoutState {
   step: CheckoutStep

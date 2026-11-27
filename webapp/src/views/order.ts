@@ -1,4 +1,4 @@
-// An order's page (?order=<invoice>) or a code registration's (?registration=<id>): payment, registration, and every ending.
+// An order's page (?o=<handle>): payment, registration, and every ending.
 import * as api from "../api.ts"
 import { SITE } from "../config.ts"
 import { alertBox, announce, btn, codeDisplay, copyButton, el, gradName, icon, type Kid, link, nameCodeQr, nameText, refill, setAction, type Tone, waitOut } from "../dom.ts"
@@ -12,7 +12,7 @@ import {
 import { termsToSign, ticked } from "../screens/terms.ts"
 import { CODES_ONLY, codesOnly } from "../mode.ts"
 import type { LinkKind } from "../names.ts"
-import { checkoutUrl, CODE_FROM_ORDER_URL, CODE_URL, editUrl } from "../screens/routes.ts"
+import { checkoutUrl, CODE_FROM_ORDER_URL, CODE_URL, editUrl, type OrderLink } from "../screens/routes.ts"
 import { hasLinks, linksAction } from "../screens/names.ts"
 import * as session from "../session.ts"
 import * as store from "../store.ts"
@@ -45,9 +45,10 @@ let pageRoute = -1
 let reads = 0
 let wakes: ReturnType<typeof setTimeout> | undefined
 
-export function orderPage(invoiceId: string | null, registrationId: string | null): void {
+export function orderPage(link: OrderLink): void {
+  const ids = "handle" in link ? store.orderOfLink(link) ?? null : link
   const mine = currentRoute()
-  const reference = invoiceId ?? registrationId!
+  const reference = ids === null ? "" : ids.invoiceId ?? ids.registrationId!
   const redraw = isRedraw()
   if (!redraw || state.reference !== reference) {
     opened += 1
@@ -55,6 +56,8 @@ export function orderPage(invoiceId: string | null, registrationId: string | nul
     state = initialState(reference, tabHold(), state.reference === reference ? state.reveal : null)
   }
   pageRoute = mine
+  if (ids === null) return dispatch({ type: "no-code" })
+  const { invoiceId, registrationId } = ids
   const polls = new AbortController()
   // another tab cancelling or paying this order changes what it is; other orders' changes leave this page, and a card form, alone
   const onStorage = (e: StorageEvent) => {
@@ -127,10 +130,11 @@ async function follow(mine: number, invoiceId: string | null, registrationId: st
     invoice = null
     view = null
   }
-  let linked = invoiceId ? store.orderByInvoice(invoiceId) : store.orderByRegistration(registrationId!)
+  const linked = invoiceId ? store.orderByInvoice(invoiceId) : store.orderByRegistration(registrationId!)
   while (!linked && isRoute(mine)) {
     try {
-      linked = await flow.orderOfCodes(invoiceId ?? registrationId!) ?? undefined
+      const found = await flow.orderOfCodes(invoiceId ?? registrationId!)
+      if (found && isRoute(mine)) return redirect(store.orderUrl(found))
       break
     } catch (e) {
       const wait = api.retryDelay(e, RETRY_MS)
@@ -853,7 +857,7 @@ async function cancelBeforeReorder(invoice: api.InvoiceView, record: store.Order
     }
   }
   if (after.status === "paid" && !unpaidOrClosed(after.registration)) {
-    if (isOpen(gen)) go(store.invoiceUrl(after.invoiceId))
+    if (isOpen(gen)) go(store.orderUrl(record))
     return false
   }
   if (after.status === "paid" || !api.holdsPayment(after)) return true
@@ -925,7 +929,7 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
     // registered nothing, so the name is ordered again and the late payment is kept as the old order's balance
     const now = await api.readInvoice(invoice.invoiceId, flow.orderSigner(record))
     if (now.status === "open" || (now.status === "paid" && !unpaidOrClosed(now.registration))) {
-      if (isOpen(gen)) go(store.invoiceUrl(invoice.invoiceId))
+      if (isOpen(gen)) go(store.orderUrl(record))
       return
     }
     // a new invoice is a new order of the same name code, at the price the page holds for the name
@@ -938,12 +942,13 @@ async function newInvoice(invoice: api.InvoiceView, record: store.OrderRecord | 
     if (terms === null) return
     const built = await flow.orderRequest(flow.draftAgain(record, quote, terms, method))
     const res = await api.createOrder(built.request, method, quote.price)
-    const next = store.orderUrl({ invoiceId: res.invoiceId, registrationId: res.registration.id })
+    const replaced = res.registration.id !== record.registrationId
+    const next = { ...record, handle: replaced ? store.newHandle() : record.handle, request: built.request, terms, registrationId: res.registration.id, invoiceId: res.invoiceId, method, paid: res.registration.price, ...flow.payeeOf(res), cancelled: false, cardSubmittedAt: undefined, replacedBy: undefined, createdAt: new Date(api.serviceNow()).toISOString() }
     // the old record is the stored owner code until the new one is stored too
-    store.saveOrder({ ...record, request: built.request, terms, registrationId: res.registration.id, invoiceId: res.invoiceId, method, paid: res.registration.price, ...flow.payeeOf(res), cancelled: false, cardSubmittedAt: undefined, replacedBy: undefined, createdAt: new Date(api.serviceNow()).toISOString() })
+    store.saveOrder(next)
     // Your names lists the old order only while money it received needs its reference; its page leads to the new one
-    if (res.registration.id !== record.registrationId) store.updateOrder(record.registrationId, { replacedBy: next })
-    if (isOpen(gen)) go(next)
+    if (replaced) store.updateOrder(record.registrationId, { replacedBy: store.orderUrl(next) })
+    if (isOpen(gen)) go(store.orderUrl(next))
   } catch (e) {
     if (!isOpen(gen)) {
       holdFrom(e)
@@ -1108,7 +1113,7 @@ function buildRegistered(s: OrderState): HTMLElement {
     el("p", { class: "note center" }, "Keep your name code: it owns the name and edits its links."),
     codeDisplay(code, "owner-code", true, (shown) => refill(qr, shown && nameCodeQr(code))),
     // under the code and over its QR, so showing the code moves it and nothing above it
-    el("div", { class: "yours-edit center" }, btn(linksAction(hasLinks(s.record!, null)), "quiet small", () => go(editUrl(view.id)))), qr] : null)
+    el("div", { class: "yours-edit center" }, btn(linksAction(hasLinks(s.record!, null)), "quiet small", () => go(editUrl(s.record!.handle)))), qr] : null)
 }
 
 function registeredLead(view: api.RegistrationView): string {
@@ -1150,7 +1155,7 @@ const REFUND = "refund"
 // name is searched as usual.
 function balanceActions({ view, invoice, record }: OrderState, same?: HTMLButtonElement): { action: HTMLButtonElement; alt: HTMLElement | null } {
   const kept = same !== undefined || api.paymentKept(view!)
-  const another = () => go(searchLink("", api.selectable(view!) ? view!.id : undefined))
+  const another = () => go(searchLink("", api.selectable(view!) ? record?.handle : undefined))
   const refund = record && kept ? link("Get a refund", () => showRefund(invoice?.invoiceId ?? view!.id, REFUND, proofOf({ record, invoice }))) : null
   refund?.setAttribute("data-focus", REFUND)
   refund?.setAttribute("aria-haspopup", "dialog")

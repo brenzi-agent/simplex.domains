@@ -108,7 +108,7 @@ export const payeeOf = ({ address, addressProof }: api.InvoiceView): Pick<store.
 
 export function recordFor(draft: Draft, built: BuiltOrder, method: store.OrderRecord["method"], paid: number, ids: { registrationId: string; invoiceId: string | null }): store.OrderRecord {
   return {
-    ...ids, label: draft.label, ownerCode: draft.ownerCode, owner: built.owner, ...draft.links, method, paid, years: draft.years,
+    ...ids, handle: store.newHandle(), label: draft.label, ownerCode: draft.ownerCode, owner: built.owner, ...draft.links, method, paid, years: draft.years,
     request: built.request, terms: draft.terms, tld: SITE.tld, createdAt: new Date(api.serviceNow()).toISOString(),
   }
 }
@@ -288,7 +288,7 @@ async function reopen(wallet: Wallet, code: string, chosen: Found): Promise<Rest
   const known = store.orderByRegistration(view.id)
   const payeeKnown = known !== undefined && invoice !== null && known.invoiceId === invoice.invoiceId && known.payee !== undefined
   const record: store.OrderRecord = {
-    ...known, registrationId: view.id, invoiceId: chosen.invoiceId, ownerCode: code, owner, ...opened,
+    ...known, registrationId: view.id, handle: known?.handle ?? store.newHandle(), invoiceId: chosen.invoiceId, ownerCode: code, owner, ...opened,
     method: known?.method ?? opened.method ?? (view.payment.type === "invoice" ? view.payment.method : view.payment.type), paid: view.price, years: view.years,
     tld: SITE.tld, createdAt: chosen.createdAt,
     ...known && known.request.commitment === view.commitment ? { terms: known.terms } : {},

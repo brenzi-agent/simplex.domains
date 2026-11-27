@@ -11,6 +11,7 @@ import {
   keepOrder, type KeptOrder, LINKS_HEADING, MOCK, mockRegistration, newClient, okPreview, onStep, ownerSetsResolver, ownerSetsText, payButton, previewsShown, registeredAnswer, registeredPhase,
   REGISTRATION_MS, registrationOf, registrationView, SAVED,
   savedToReview, search, searchName, selectedToReview, shownCode, startOrder, takenOrder, test, toCodeStep, toFullReview, toReview, useCode, waitRegistered, withStripeKey, fakeIntent,
+  invoiceMade, shownInvoice, shownOrder, shownRegistration, waitForOrderOf,
 } from "./helpers.ts"
 
 const START_S = Date.UTC(2026, 10, 2, 8) / 1000
@@ -177,8 +178,7 @@ async function codeOrder(r: Reach, name: string, link: string | null = null): Pr
     await savedToReview(r.page)
   } else await toReview(r.page)
   await press(r.page, "Register with your code")
-  await r.page.waitForURL(/\?registration=/)
-  return { code, registrationId: new URL(r.page.url()).searchParams.get("registration")! }
+  return { code, registrationId: await shownRegistration(r.page) }
 }
 
 async function codeFailed(r: Reach, name: string): Promise<{ code: string; registrationId: string }> {
@@ -198,8 +198,7 @@ async function withLink(r: Reach, name: string, kind: "contact" | "channel"): Pr
   await press(r.page, "Continue")
   await savedToReview(r.page)
   await payButton(r.page).click()
-  await r.page.waitForURL(/\?order=/)
-  return new URL(r.page.url()).searchParams.get("order")!
+  return shownInvoice(r.page)
 }
 
 async function kept(r: Reach, registrationId: string, invoiceId: string | null, name: string, links = { contact: "", channel: "" }): Promise<KeptOrder> {
@@ -302,7 +301,7 @@ screen(116, "home-select-failed-order", async (r) => {
   await heading(r.page, "Paid, not registered")
 })
 
-const invoicePage = (url: URL) => url.searchParams.has("order")
+const invoicePage = (url: URL) => url.searchParams.has("o")
 const selectedElsewhere = async (r: Reach, selecting: string) => {
   const other = await r.page.context().newPage()
   await other.goto(selecting)
@@ -1074,8 +1073,7 @@ screen(1184, "checkout-review-code-verdict-reserved-own", async (r) => {
   await searchHere(r.page, `${r.id}-first`)
   await toReview(r.page)
   await press(r.page, "Register with your code")
-  await r.page.waitForURL(/\?registration=/)
-  await control(r.request, `fail/${new URL(r.page.url()).searchParams.get("registration")}`)
+  await control(r.request, `fail/${await shownRegistration(r.page)}`)
   await control(r.request, "search", { unsentSeconds: 0 })
   await heading(r.page, "Not registered")
   await codeTyped(r, code)
@@ -1454,13 +1452,13 @@ const copiedCheckout = async (page: Page, name: string, card: boolean): Promise<
   if (card) await chooseMethod(page, "Card")
   const checkout = await page.evaluate((key) => sessionStorage.getItem(key)!, CHECKOUT_KEY)
   await payButton(page).click()
-  await page.waitForURL(/\?order=/)
+  await page.waitForURL(/\?o=/)
   const copy = await page.context().newPage()
   await copy.addInitScript(([key, value]) => { if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, value) }, [CHECKOUT_KEY, checkout])
   await copy.goto("/#/checkout")
   await chooseMethod(copy, card ? "Bitcoin" : "Monero")
   await payButton(copy).click()
-  await copy.waitForURL(/\?order=/)
+  await copy.waitForURL(/\?o=/)
   await shown(copy, "opened instead of")
   return copy
 }
@@ -1578,10 +1576,11 @@ screen(2164, "order-card-slow-seen", async (r) => {
   await r.page.reload()
   await heading(r.page, "Card payment not confirmed")
 })
-screen(2166, "order-paid-by-invoice-record", async (r) => {
-  const { invoiceId } = await startOrder(r.page, r.id, { method: "btc" })
-  await r.page.goto(`/?registration=${await registrationOf(r.request, invoiceId)}`)
-  await heading(r.page, "This order is paid by invoice")
+screen(2170, "order-not-on-device-handle", async (r) => {
+  await startOrder(r.page, r.id, { method: "btc" })
+  const other = await elsewhere(r, `/?o=${(await shownOrder(r.page)).handle}`)
+  await heading(other, "The name code is not in this browser")
+  return other
 })
 screen(2172, "order-not-on-device", async (r) => {
   const { invoiceId } = await committedUnsigned(r, r.id)
@@ -1634,8 +1633,7 @@ const codeTaken = async (r: Reach) => {
   await searchHere(r.page, r.id)
   await toReview(r.page)
   await press(r.page, "Register with your code")
-  await r.page.waitForURL(/\?registration=/)
-  return new URL(r.page.url()).searchParams.get("registration")!
+  return shownRegistration(r.page)
 }
 screen(2194, "order-taken-code", async (r) => {
   await codeTaken(r)
@@ -1710,8 +1708,7 @@ screen(2220, "order-closed-paid-late-support", async (r) => {
 })
 screen(2222, "order-closed-replaced", async (r) => {
   const old = await closed(r)
-  await press(r.page, "Get a new invoice")
-  await r.page.waitForURL((url) => url.searchParams.get("order") !== old)
+  await waitForOrderOf(r.page, await invoiceMade(r.page, () => press(r.page, "Get a new invoice")))
   await control(r.request, `partial/${old}`)
   const paidPart = await halfOf(r, old)
   await control(r.request, `settle/${old}`, { paid: paidPart })
@@ -1948,8 +1945,7 @@ const registered = async (r: Reach, name: string, links: { contact: string; chan
     await savedToReview(r.page)
   } else await toReview(r.page)
   await press(r.page, "Register with your code")
-  await r.page.waitForURL(/\?registration=/)
-  const registrationId = new URL(r.page.url()).searchParams.get("registration")!
+  const registrationId = await shownRegistration(r.page)
   await waitRegistered(r.page, name)
   return registrationId
 }
@@ -2046,7 +2042,7 @@ screen(3044, "names-rows-progress", async (r) => {
   await searchHere(r.page, "rows-committing")
   await toReview(r.page)
   await press(r.page, "Register with your code")
-  await r.page.waitForURL(/\?registration=/)
+  await r.page.waitForURL(/\?o=/)
   await yourNames(r.page, ["rows-queued", "rows-committing"])
 }, { covers: PROGRESS_ROWS, timeout: 400_000 })
 
@@ -2217,8 +2213,7 @@ screen(3089, "names-check-prepaid-reserved-own", async (r) => {
   await searchHere(r.page, r.id)
   await toReview(r.page)
   await press(r.page, "Register with your code")
-  await r.page.waitForURL(/\?registration=/)
-  await control(r.request, `fail/${new URL(r.page.url()).searchParams.get("registration")}`)
+  await control(r.request, `fail/${await shownRegistration(r.page)}`)
   await control(r.request, "search", { unsentSeconds: 0 })
   await heading(r.page, "Not registered")
   await checked(r.page, code)
@@ -2385,8 +2380,7 @@ screen(3138, "names-edit-not-registered", async (r) => {
   await searchHere(r.page, r.id)
   await toReview(r.page)
   await press(r.page, "Register with your code")
-  await r.page.waitForURL(/\?registration=/)
-  await r.page.goto(`/#/edit/${new URL(r.page.url()).searchParams.get("registration")}`)
+  await r.page.goto(`/#/edit/${(await shownOrder(r.page)).handle}`)
   await shown(r.page, "The name is not registered yet")
 })
 screen(3140, "names-edit-form-empty", async (r) => { await editOf(r) })
@@ -2445,13 +2439,14 @@ screen(3160, "names-edit-moved", async (r) => {
 screen(3162, "names-edit-refused", (r) => saveWith(r, (route) => answer(route, 400, "bad_request"), "The links were not saved."))
 screen(3164, "names-edit-held", (r) => saveWith(r, (route) => answer(route, 429, "rate_limited", 30), "Too many attempts"))
 screen(3166, "names-edit-held-at-open", async (r) => {
-  const registrationId = await registered(r, r.id)
+  await registered(r, r.id)
+  const { handle } = await shownOrder(r.page)
   await control(r.request, "search", { findLimitSeconds: 60 })
   await checked(r.page, NO_ORDER_CODE)
   await r.page.locator("body > header").getByRole("link", { name: "Your names" }).click()
   await heading(r.page, "Your names")
   await listRow(r.page, r.id).getByRole("button", { name: /^(Edit|Add) links$/ }).click()
-  await r.page.waitForURL((url) => url.hash === `#/edit/${registrationId}`)
+  await r.page.waitForURL((url) => url.hash === `#/edit/${handle}`)
   await r.page.waitForTimeout(1000)
 })
 screen(3168, "names-edit-limited", async (r) => {
