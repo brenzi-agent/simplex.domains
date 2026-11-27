@@ -23,7 +23,17 @@ const FLAT_BACKGROUND = fileURLToPath(new URL("screens.css", import.meta.url))
 interface Reach { page: Page; request: APIRequestContext; browser: Browser; baseURL: string; id: string; now: number }
 
 function seedPageRandom(seed: string): void {
-  let state = [...seed].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0, 2166136261) || 1
+  let loads = 0
+  if (typeof document !== "undefined") {
+    try {
+      loads = Number(sessionStorage.getItem("screens-loads"))
+      sessionStorage.setItem("screens-loads", String(loads + 1))
+    } catch {
+      loads = 0
+    }
+  }
+  const drawn = loads === 0 ? seed : `${seed} ${loads}`
+  let state = [...drawn].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0, 2166136261) || 1
   const next = () => {
     state ^= state << 13
     state ^= state >>> 17

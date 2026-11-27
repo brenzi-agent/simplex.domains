@@ -12,7 +12,7 @@ Every run draws the same pixels:
 
 - each state runs at its own fixed time: `/control/clock` sets the mock's clock and moves the chain to it, and the page's clock is set to the same moment;
 - `/control/seed` makes the mock's ids, references, addresses and codes depend only on the state;
-- an init script makes the page's own random bytes, as its name codes, depend only on the state, and so do the name codes the spec itself makes;
+- an init script makes the page's own random bytes, as its name codes, depend only on the state and on how many times the tab has loaded the page in it, and the name codes the spec itself makes depend only on the state;
 - a time shown to the minute comes from a step made at a set time: a state whose steps take longer than a minute sets the mock's clock before it;
 - countdowns are masked, and each waits 20 seconds or more, so its words keep their number;
 - each screenshot waits for the page's fonts;
