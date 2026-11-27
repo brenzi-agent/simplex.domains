@@ -75,7 +75,7 @@ test("a paid order taken first keeps its price as its balance, which support ref
   await popup.getByRole("button", { name: "Close" }).click()
   await expect(balanceRow(page).getByRole("button", { name: "Refund" })).toBeFocused()
   expect(await supportRefunds(request, line)).toEqual({ registrationId: await registrationOf(request, invoiceId), cents: 20000, destination: BUYER_BITCOIN })
-  await yourNames(page)
+  await page.reload()
   await expect(balanceRow(page).locator(".main")).toHaveText(`$0From ${label}.simplex, someone has taken this name · refunded $200 by support`)
 })
 

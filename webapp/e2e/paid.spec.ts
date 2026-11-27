@@ -873,7 +873,7 @@ test("a cancelled invoice leads back to its name to order again, and expired inv
 
 test("a name searched again after its invoice was cancelled keeps that order's name code, saved already", async ({ page }) => {
   const label = uniqueLabel("keep")
-  const { invoiceId, ownerCode } = await startOrder(page, label, { method: "btc" })
+  const { ownerCode } = await startOrder(page, label, { method: "btc" })
   await page.getByRole("button", { name: "Cancel this invoice" }).click()
   await expect(page.getByText("This invoice was cancelled and nothing was received.")).toBeVisible()
 

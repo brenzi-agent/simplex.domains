@@ -8,8 +8,8 @@ import { foundry } from "viem/chains"
 import { LOCAL } from "../src/config.ts"
 import { p2wpkh } from "../src/crypto/payees.ts"
 import { labelHash, YEAR_S } from "../src/crypto/registration.ts"
-import { checksumAddress, hex } from "../src/crypto/wallet.ts"
-import { KEYS, newOwnerCode, refundRequest, walletOf } from "../src/flow.ts"
+import { checksumAddress, hex, personalDigest, signDigest } from "../src/crypto/wallet.ts"
+import { KEYS, newOwnerCode, walletOf } from "../src/flow.ts"
 import { readQr } from "../src/scan.ts"
 import { qrPixels } from "../test/qr-image.ts"
 import { codesPageUrl, mockUrl, pageUrl } from "./slots.ts"
@@ -102,10 +102,16 @@ export async function supportRefunds(request: APIRequestContext, line: string): 
   return control(request, `refund/${reference}`, body)
 }
 
+export function refundSignedAt(ownerCode: string, reference: string, cents: number, destination: string, timestamp: number): string {
+  const message = `simplex.domains order ${reference} refund ${cents} ${destination} ${timestamp}`
+  return `refund ${reference} ${cents} ${destination} ${timestamp} ${hex(signDigest(walletOf(ownerCode)!.privateKey, personalDigest(message)))}`
+}
+
 export async function bitcoinRefundOf(page: Page, invoiceId: string, cents: number): Promise<string> {
   const order = (await pageOrders(page)).find((o) => o.invoiceId === invoiceId)
   expect(order, `this browser's record of the invoice ${invoiceId}`).toBeDefined()
-  return refundRequest(order!, cents, BUYER_BITCOIN)
+  const pageSeconds = Math.floor(await page.evaluate(() => Date.now()) / 1000)
+  return refundSignedAt(order!.ownerCode, invoiceId, cents, BUYER_BITCOIN, pageSeconds)
 }
 
 interface MockRegistration { invoiceId: string | null; phase: string; revealAfter: number | null; label: string | null; createdAt: string }

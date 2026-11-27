@@ -11,7 +11,7 @@ import * as flow from "../src/flow.ts"
 import * as store from "../src/store.ts"
 import {
   acceptedOnChain, ALTERNATE_COMMUNITY_TERMS, ALTERNATE_GENERAL_TERMS, BUYER_BITCOIN, channelLink, COMMUNITY_TERMS, COMMUNITY_TERMS_HASH, contactLink, control, GENERAL_TERMS_HASH, LISTED_TERMS, MOCK, NAME_POLICY, newClient, oracleQuote, ownerSetsResolver, ownerSetsText,
-  PLAIN_TERMS, refundFields, relayedAhead, TERMS, test, textChangesOf, uniqueLabel,
+  PLAIN_TERMS, refundFields, refundSignedAt, relayedAhead, TERMS, test, textChangesOf, uniqueLabel,
 } from "./helpers.ts"
 
 type Json = Record<string, unknown>
@@ -689,18 +689,16 @@ const supportRefund = (line: string, to?: string) => {
 
 test("support's refund takes the whole balance by invoice id or registration id, and refuses other cents or none left", async ({ request }) => {
   const src = await lateBalance(request)
-  const requestOf = (cents: number, change: Partial<store.OrderRecord> = {}, destination = BUYER_BITCOIN) => flow.refundRequest({ ...src.record, ...change }, cents, destination)
-  const stampedAt = (timestamp: number) => {
-    const message = `simplex.domains order ${src.invoiceId} refund ${PRICE.long} ${BUYER_BITCOIN} ${timestamp}`
-    return `refund ${src.invoiceId} ${PRICE.long} ${BUYER_BITCOIN} ${timestamp} ${hex(signDigest(flow.walletOf(src.draft.ownerCode)!.privateKey, personalDigest(message)))}`
-  }
+  const requestOf = (cents: number, change: Partial<store.OrderRecord> = {}, destination: string = BUYER_BITCOIN) => flow.refundRequest({ ...src.record, ...change }, cents, destination)
   const now = Math.floor(Date.now() / 1000)
   const refused = { status: 400, json: { type: "bad_request" } }
   expect(await supportRefund(requestOf(PRICE.long - 1))).toEqual({ status: 409, json: { type: "balance_changed", balance: free(PRICE.long) } })
   for (const cents of [0, "100", 1.5]) expect(await call("POST", `/control/refund/${src.invoiceId}`, { ...refundFields(requestOf(PRICE.long)).body, cents }), String(cents)).toEqual(refused)
   expect(await call("POST", `/control/refund/${src.invoiceId}`, { cents: PRICE.long }), "a request without its signature").toEqual(refused)
   expect(await supportRefund(requestOf(PRICE.long, {}, "card")), "a card for a coin's payment").toEqual(refused)
-  for (const at of [now - 31 * 86400, now + 3600]) expect(await supportRefund(stampedAt(at)), `signed at ${at - now} s`).toEqual(refused)
+  for (const at of [now - 31 * 86400, now + 3600]) {
+    expect(await supportRefund(refundSignedAt(src.draft.ownerCode, src.invoiceId, PRICE.long, BUYER_BITCOIN, at)), `signed at ${at - now} s`).toEqual(refused)
+  }
   expect((await supportRefund(requestOf(PRICE.long), "nope")).status).toBe(404)
   expect((await supportRefund(requestOf(PRICE.long, { ownerCode: flow.newOwnerCode() }))).status, "another key's request").toBe(404)
   expect(await supportRefund(requestOf(PRICE.long))).toEqual({ status: 200, json: { registrationId: src.id, cents: PRICE.long, destination: BUYER_BITCOIN } })
