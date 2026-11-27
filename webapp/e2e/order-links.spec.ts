@@ -44,7 +44,7 @@ test("an older link of an order by its invoice or registration, and of its Edit 
   expect(hashQuery(page).get("order")).toBeNull()
 })
 
-test("a handle's link opened in a browser without the order shows that its name code is not there, and the page's only request to the service is for its config", async ({ page, browser }) => {
+test("in a browser without the order, a handle's link is answered with the line that its name code is not there, and only the config is asked of the service", async ({ page, browser }) => {
   await startOrder(page, uniqueLabel("handlex"), { method: "btc" })
   const { handle } = await shownOrder(page)
   const elsewhere = await (await browser.newContext()).newPage()
