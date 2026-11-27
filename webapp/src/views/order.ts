@@ -1168,10 +1168,11 @@ function buildFailed(s: OrderState, signal: AbortSignal): HTMLElement {
   holdEnds(signal)(s.hold !== null)
   const failedAt: StageState[] = view.commitTx === null ? ["failed", "", ""] : ["done", "done", "failed"]
   const reference = invoice?.invoiceId ?? view.id
-  return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: settled ? undefined : failedLead(s), action, alt: failedRefund(s) },
+  const refund = failedRefund(s)
+  return screen({ title: invoice ? "Paid, not registered" : "Not registered", lead: settled ? undefined : failedLead(s), action, alt: refund },
     el("p", { class: "note center" }, ...orderLine(s)),
     stages(failedAt),
-    alertBox("danger", "alert", failedAlert(s), settled ? supportText(settled, view, reference) : [...contactSupport("Contact", reference), "."]),
+    alertBox("danger", "alert", failedAlert(s), settled ? supportText(settled, view, reference, refund !== null) : [...contactSupport("Contact", reference), "."]),
     continues && s.downtime ? alertBox("info", "clock", null, `${SIGNING_SOON}.`) : null,
     actionNote(s, signal),
     referenceLine(reference, proofOf(s)),
@@ -1185,7 +1186,7 @@ function failedRefund({ view, record }: OrderState): HTMLAnchorElement | null {
   return cents > 0 ? refundLink(record, payment.method, cents) : null
 }
 
-function supportText(settled: SupportCase, view: api.RegistrationView, reference: string): Kid[] {
+function supportText(settled: SupportCase, view: api.RegistrationView, reference: string, refundable: boolean): Kid[] {
   const code = view.payment.type === "code"
   const contact = contactSupport("contact", reference)
   const received = code ? "Your code is received" : "Your payment is received"
@@ -1196,7 +1197,7 @@ function supportText(settled: SupportCase, view: api.RegistrationView, reference
   }
   return code
     ? ["Your code is released. If it has not expired, use it for another name. Otherwise, ", ...contact, "."]
-    : ["The money paid for this order has been added to its balance. To have it refunded, ", ...contact, "."]
+    : ["The money paid for this order has been added to its balance. To have it refunded, ", ...refundable ? ["choose Get a refund."] : [...contact, "."]]
 }
 
 async function continueOrder(): Promise<void> {

@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { type Hex, recoverMessageAddress } from "viem"
-import { LOCAL } from "../src/config.ts"
+import { bitcoinPayee, devReceiving } from "../dev/mock/addresses.ts"
+import { heldPrice, LOCAL } from "../src/config.ts"
 import { MAX_LABEL_LENGTH } from "../src/names.ts"
 import {
   addNameCode, bitcoinRefundOf, BUYER_BITCOIN, FIT_SIZES, keepOrder, MOCK, onStep, registrationOf, sevenLetters, shot, supportRefunds, takenOrder, registrationView, test, uniqueLabel,
@@ -158,19 +159,20 @@ test.describe(() => {
   test.use({ serviceWorkers: "block" })
   test("the refund of a paid order whose registration failed is requested on its page for its price and its balance, or, once its month ended, for the balance its price went to", async ({ page }) => {
     const order = await keepOrder(page, "reg-failref", "inv-failref", "failref")
+    const price = heldPrice(order.label.length)
     const failed = (reason: string, balance: { amount: number; refunded: number }) =>
-      registrationView(order, { phase: { type: "failed", reason }, commitTx: "0x02", balance })
+      registrationView(order, { phase: { type: "failed", reason }, commitTx: "0x02", price, balance })
     let view = failed("registryRefused", { amount: 2500, refunded: 0 })
-    await page.route("**/api/**", (route) => route.fulfill({ status: 404, json: { type: "not_found" } }))
-    await page.route("**/api/config", (route) => route.continue())
-    await page.route("**/api/invoice/inv-failref*", (route) => route.fulfill({ json: { invoiceId: "inv-failref", status: "paid", amount: 10000, currency: "usd",
-      expiresAt: new Date(Date.now() - 1000).toISOString(), kind: "name", registration: view, cryptoCurrency: "btc", cryptoAmount: "0.00156", address: "bcrt1q", paidInFull: true } }))
+    await page.route("**/api/registration/reg-failref*", (route) => route.fulfill({ json: view }))
+    await page.route("**/api/invoice/inv-failref*", (route) => route.fulfill({ json: { invoiceId: "inv-failref", status: "paid", amount: price, currency: "usd",
+      expiresAt: new Date(Date.now() - 1000).toISOString(), kind: "name", registration: view, cryptoCurrency: "btc", cryptoAmount: "0.00156", ...bitcoinPayee(devReceiving, LOCAL.bitcoinHrp, 0),
+      cryptoAmountPaid: "0.00156", cryptoAmountDue: "0", paidInFull: true } }))
     const opened = async () => {
       await page.goto("/#/trademarks")
       await page.goto("/?order=inv-failref")
       await expect(onStep(page).getByRole("heading", { name: "Paid, not registered" })).toBeVisible()
     }
-    for (const [reason, balance, cents] of [["registryRefused", 2500, 12500], ["monthEnded", 10000, 10000]] as const) {
+    for (const [reason, balance, cents] of [["registryRefused", 2500, price + 2500], ["monthEnded", price, price]] as const) {
       view = failed(reason, { amount: balance, refunded: 0 })
       await opened()
       await onStep(page).getByRole("button", { name: "Get a refund" }).click()
@@ -182,9 +184,12 @@ test.describe(() => {
       const message = `simplex.domains order inv-failref refund ${cents} ${BUYER_BITCOIN} ${timestamp}`
       expect(await recoverMessageAddress({ message, signature: signature as Hex }), reason).toBe(order.owner)
     }
-    view = failed("monthEnded", { amount: 0, refunded: 10000 })
+    const monthEnded = onStep(page).locator(".notice", { hasText: "added to its balance" })
+    await expect(monthEnded).toContainText("To have it refunded, choose Get a refund.")
+    view = failed("monthEnded", { amount: 0, refunded: price })
     await opened()
     await expect(onStep(page).getByRole("button", { name: "Get a refund" }), "a balance refunded already").toHaveCount(0)
+    await expect(monthEnded).toContainText("To have it refunded, contact support via chat@simplex.chat or SimpleX, and include order reference inv-failref.")
   })
 
   test(`a balance of a name of ${MAX_LABEL_LENGTH} wide letters keeps its words clear of its Refund, beside it or above, down to a 320 px phone`, async ({ page }) => {
