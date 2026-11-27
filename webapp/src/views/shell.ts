@@ -321,6 +321,7 @@ export function showPopup(key: string, kids: Kid[], first: HTMLElement | null): 
   first?.focus()
 }
 
+const REQUEST_WITH_PROOF = "Copy the refund request and address proof for support"
 const REFUNDED: Record<Method, string> = { card: " to the card you paid with.", btc: " in Bitcoin to your address.", xmr: " in Monero to your address." }
 const ADDRESS_OF: Record<Exclude<Method, "card">, (text: string) => boolean> = {
   btc: (text) => bitcoinAddress(text, SITE.bitcoinHrp),
@@ -333,7 +334,7 @@ export function showRefund(order: store.OrderRecord, paidBy: Method, cents: numb
   const request = el("div", { class: "refund-request" })
   const ask = (destination: string) => {
     const line = flow.refundRequest(order, cents, destination)
-    refill(request, copyField("refund request", line, proof === undefined ? line : `${line}\nAddress proof ${JSON.stringify(proof)}`))
+    refill(request, proof === undefined ? copyField("refund request", line) : copyField("refund request", line, `${line}\nAddress proof ${JSON.stringify(proof)}`, REQUEST_WITH_PROOF))
   }
   const title = el("h2", { id: POPUP_TITLE }, "Refund")
   const refunded = ["Support refunds ", dollars(cents), REFUNDED[paidBy]]

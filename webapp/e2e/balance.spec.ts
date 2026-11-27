@@ -9,6 +9,7 @@ import {
 
 const balanceRow = (page: Page) => onStep(page).locator(".list-row[data-key^='balance-']")
 const WITH_PROOF = "Copy the order reference and address proof for support"
+const REQUEST_WITH_PROOF = "Copy the refund request and address proof for support"
 const SEND = "Contact support via chat@simplex.chat or SimpleX, and send this refund request."
 const SEND_FOR_ADDRESS = (coin: string) => `Enter your ${coin} address, then contact support via chat@simplex.chat or SimpleX, and send the refund request shown under it.`
 const MAINNET_BITCOIN = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
@@ -77,7 +78,7 @@ test("a paid order taken first keeps its price as its balance, which support ref
   await address.fill(BUYER_BITCOIN)
   const line = await refundLine(popup)
   expect(line).toMatch(signedLine(invoiceId, 20000, BUYER_BITCOIN))
-  await expect(popup.getByRole("button", { name: "Copy refund request" })).toBeVisible()
+  await expect(popup.getByRole("button", { name: REQUEST_WITH_PROOF })).toBeVisible()
   await shot(page, "B2-refund")
   await popup.getByRole("button", { name: "Close" }).click()
   await expect(balanceRow(page).getByRole("button", { name: "Refund" })).toBeFocused()
@@ -96,7 +97,7 @@ test("the copied refund request of an order paid to an address contains the addr
   const popup = page.getByRole("dialog", { name: "Refund" })
   await popup.getByRole("textbox", { name: "Your Bitcoin address" }).fill(BUYER_BITCOIN)
   const line = await refundLine(popup)
-  await popup.getByRole("button", { name: "Copy refund request" }).click()
+  await popup.getByRole("button", { name: REQUEST_WITH_PROOF }).click()
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${line}\nAddress proof ${JSON.stringify(addressProof)}`)
 })
 

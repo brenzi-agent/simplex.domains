@@ -2163,7 +2163,7 @@ screen(3058, "names-popup-refund", async (r) => {
   await yourNames(r.page, [r.id])
   await listRow(r.page, r.id).getByRole("button", { name: "Refund" }).click()
   await r.page.getByRole("dialog").getByRole("textbox", { name: "Your Bitcoin address" }).fill(BUYER_BITCOIN)
-  await expect(r.page.getByRole("dialog").getByRole("button", { name: "Copy refund request" })).toBeVisible()
+  await expect(r.page.getByRole("dialog").getByRole("button", { name: "Copy the refund request and address proof for support" })).toBeVisible()
 })
 screen(3060, "names-popup-community", async (r) => {
   await control(r.request, "community", { label: r.id, for: "bakers and pastry chefs" })
