@@ -1,4 +1,4 @@
-// An order's page (?o=<handle>): payment, registration, and every ending.
+// An order's page (?o=<handle>, or an older ?order=<invoice> or ?registration=<id> of an order without a record here): payment, registration, and every ending.
 import * as api from "../api.ts"
 import { SITE } from "../config.ts"
 import { alertBox, announce, btn, codeDisplay, copyField, el, gradName, icon, type Kid, link, nameCodeQr, nameText, refill, setAction, type Tone, waitOut } from "../dom.ts"

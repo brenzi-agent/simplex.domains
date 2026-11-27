@@ -17,7 +17,7 @@ test("an order's page and its Edit links are linked by this browser's handle of 
   await expect(page).toHaveURL(new RegExp(`/#/edit/${order.handle}$`))
 })
 
-test("a taken order's search for another name holds the order's handle and none of its ids", async ({ page, request }) => {
+test("the search for another name from a taken order's page contains the order's handle and none of its ids", async ({ page, request }) => {
   const label = uniqueLabel("handlet")
   const { invoiceId } = await takenOrder(page, request, label)
   const order = await shownOrder(page)
@@ -28,7 +28,7 @@ test("a taken order's search for another name holds the order's handle and none 
   expect(page.url()).not.toContain(order.registrationId)
 })
 
-test("an older link of an order by its invoice or registration, and of its Edit links or its search for another name, opens at the order's handle", async ({ page, request }) => {
+test("an older link of an order by its invoice or registration, and of its Edit links or its search for another name, is replaced by the link of the order's handle", async ({ page, request }) => {
   const label = uniqueLabel("handleo")
   const { invoiceId } = await takenOrder(page, request, label)
   const { handle, registrationId } = await shownOrder(page)
@@ -44,7 +44,7 @@ test("an older link of an order by its invoice or registration, and of its Edit 
   expect(hashQuery(page).get("order")).toBeNull()
 })
 
-test("a handle's link in a browser without the order says that its name code is not there, and asks the service nothing", async ({ page, browser }) => {
+test("a handle's link opened in a browser without the order shows that its name code is not there, and the page's only request to the service is for its config", async ({ page, browser }) => {
   await startOrder(page, uniqueLabel("handlex"), { method: "btc" })
   const { handle } = await shownOrder(page)
   const elsewhere = await (await browser.newContext()).newPage()

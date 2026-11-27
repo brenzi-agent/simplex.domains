@@ -1536,8 +1536,8 @@ export async function controlUnregister(registrationId: string): Promise<Record<
   return { ok: true }
 }
 
-// A refund support records, by the order's invoice id or registration id, of the whole balance, on the refund request its
-// owner signed: to the card that paid, or to the address the request names.
+// A refund support records, by the order's invoice id or registration id, of the whole balance, on a refund request signed
+// by the order's owner: to the card the order was paid with, or to the address in the request.
 export async function controlRefund(reference: string, { cents, destination, timestamp, signature }: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (!Number.isInteger(cents) || (cents as number) <= 0 || typeof destination !== "string" || !/^\S+$/.test(destination) || !Number.isInteger(timestamp)) throw badRequest()
   const age = nowSeconds() - (timestamp as number)
