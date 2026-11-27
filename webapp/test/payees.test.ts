@@ -127,7 +127,7 @@ describe("a refund address", () => {
   it.each([
     ["bc", BIP173.addresses[0].address], ["tb", BIP173.addresses[1].address], ["bc", BIP173.addresses[0].address.toUpperCase()],
     ["tb", "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7"], ["bc", "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0"],
-    ["bc", "BC1SW50QGDZ25J"], ["bc", "bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs"], ["bcrt", DEV_BITCOIN.invoices[0].address], ["bcrt", witness(bech32m, "bcrt", 1, 32)],
+    ["bcrt", DEV_BITCOIN.invoices[0].address], ["bcrt", witness(bech32m, "bcrt", 1, 32)],
     ["bc", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"], ["bc", "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"], ["tb", "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn"], ["bcrt", "2MzQwSSnBHWHqSAqtTVQ6v47XtaisrJa1Vc"],
   ])("is a Bitcoin address of the network %s, as %s", (hrp, address) => {
     expect(bitcoinAddress(address, hrp)).toBe(true)
@@ -139,7 +139,8 @@ describe("a refund address", () => {
     ["in mixed case", "bc", "bc1qW508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"],
     ["of version 1 in bech32", "bc", "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd"], ["of version 0 in bech32m", "bc", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kemeawh"],
     ["of version 0 with 16 bytes", "bc", "BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P"], ["of version 1 with 1 byte", "bc", "bc1pw5dgrnzv"],
-    ["of version 1 with 41 bytes", "bc", witness(bech32m, "bc", 1, 41)], ["of version 17", "bc", witness(bech32m, "bc", 17, 32)],
+    ["of version 1 with 40 bytes", "bc", witness(bech32m, "bc", 1, 40)], ["of version 2, which anyone can spend", "bc", "bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs"],
+    ["of version 16, which anyone can spend", "bc", "BC1SW50QGDZ25J"], ["of version 17", "bc", witness(bech32m, "bc", 17, 32)],
     ["a Monero address", "bcrt", DEV_MONERO.primaryAddress], ["a word", "bcrt", "card"], ["nothing", "bcrt", ""],
   ])("is not a Bitcoin address %s", (_, hrp, address) => {
     expect(bitcoinAddress(address, hrp)).toBe(false)

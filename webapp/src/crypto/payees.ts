@@ -9,10 +9,9 @@ import { base58xmr, bech32, bech32m, createBase58check } from "@scure/base"
 
 const SCALAR = /^[0-9a-f]{64}$/
 const WITNESS_V0 = 0
-const MAX_WITNESS_VERSION = 16
+const WITNESS_V1 = 1
 const WITNESS_V0_PROGRAM_BYTES = [20, 32]
-const MIN_PROGRAM_BYTES = 2
-const MAX_PROGRAM_BYTES = 40
+const TAPROOT_PROGRAM_BYTES = 32
 const HASH160_BYTES = 20
 const LEGACY_VERSIONS: Record<string, number[]> = { bc: [0x00, 0x05], tb: [0x6f, 0xc4], bcrt: [0x6f, 0xc4] }
 const MONERO_STANDARD_PREFIX: Record<number, number> = { 42: 18, 36: 24, 63: 53 }
@@ -46,8 +45,7 @@ function segwitAddress(address: string, hrp: string): boolean {
   const [version, ...words] = decoded.words
   const program = bech32.fromWordsUnsafe(words)
   if (!program) return false
-  return v0 ? version === WITNESS_V0 && WITNESS_V0_PROGRAM_BYTES.includes(program.length)
-    : version > WITNESS_V0 && version <= MAX_WITNESS_VERSION && program.length >= MIN_PROGRAM_BYTES && program.length <= MAX_PROGRAM_BYTES
+  return v0 ? version === WITNESS_V0 && WITNESS_V0_PROGRAM_BYTES.includes(program.length) : version === WITNESS_V1 && program.length === TAPROOT_PROGRAM_BYTES
 }
 
 function legacyAddress(address: string, hrp: string): boolean {
